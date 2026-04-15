@@ -934,8 +934,12 @@ function getApiKey(){
 
 function saveApiKey(){
   const val=document.getElementById('apiKeyInput').value.trim();
-  if(!val||!val.startsWith('sk-ant-')){
-    alert('Please enter a valid Anthropic API key (starts with sk-ant-)');
+  if(!val){
+    alert('Please paste your Anthropic API key');
+    return;
+  }
+  if(val.length < 20){
+    alert('That key looks too short. Please paste the full key from console.anthropic.com');
     return;
   }
   localStorage.setItem(KEY_STORE,val);
@@ -968,17 +972,17 @@ document.getElementById('apiKeyInput').addEventListener('keydown',e=>{
   if(e.key==='Enter') saveApiKey();
 });
 
-// On load: show modal if no key, else load dashboard
+// On load: hide modal if key already set, else keep it visible
 updateKeyIndicator();
-if(!getApiKey()){
-  document.getElementById('apiModal').style.display='flex';
-} else {
+if(getApiKey()){
+  document.getElementById('apiModal').style.display='none';
   loadDashboard();
 }
+// If no key, modal is already visible (display:flex in HTML)
 </script>
 
 <!-- API KEY MODAL -->
-<div id="apiModal" class="modal-overlay" style="display:none">
+<div id="apiModal" class="modal-overlay" style="display:flex">
   <div class="modal-box">
     <div class="modal-title">Enter your API key</div>
     <div class="modal-sub">
