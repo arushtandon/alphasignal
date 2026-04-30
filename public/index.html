@@ -225,20 +225,6 @@ header{position:sticky;top:0;z-index:300;background:rgba(7,8,11,0.88);backdrop-f
 .ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem}
 .pt{font-family:'DM Sans',sans-serif;font-size:21px;font-style:italic}
 
-/* Analysis card — Short/Medium/Long tabs (scoped outside mobile-only media so desktop is not stuck on white default buttons) */
-button.hz-card-tab,.hz-card-tab{
-  padding:8px 16px;font-size:11px;
-  appearance:none;-webkit-appearance:none;
-  background:rgba(255,255,255,.06)!important;
-  color:var(--m2)!important;border:1px solid var(--b1);border-radius:8px;margin-right:8px;margin-bottom:6px;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;
-  transition:background .15s,color .15s,border-color .15s;white-space:nowrap;outline:none
-}
-button.hz-card-tab:hover,.hz-card-tab:hover{color:var(--tx)!important;background:rgba(255,255,255,.09)!important;border-color:var(--b2)}
-button.hz-card-tab.act,.hz-card-tab.act{color:var(--ac)!important;background:var(--s2)!important;border-color:var(--ac)!important;font-weight:600;box-shadow:inset 0 -2px 0 var(--ac)}
-button.hz-card-tab span,.hz-card-tab span{color:inherit}
-
-.hist-summary-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,172px),1fr));gap:14px;width:100%;margin-bottom:1rem}
-
 footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var(--m1);font-size:10px;font-family:'DM Mono',monospace;line-height:1.9;position:relative;z-index:1;margin-top:2rem}
 @media(max-width:900px){
   .wrap{grid-template-columns:1fr}
@@ -259,7 +245,9 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
 @media(max-width:600px){
   .picks-grid{grid-template-columns:1fr}
   .chart-tab{padding:4px 8px;font-size:9px}
-  .hz-card-tab{font-size:10px;padding:7px 12px;margin-right:6px}
+  .hz-card-tab{padding:8px 16px;font-size:11px;background:transparent!important;color:var(--m2);border:none;border-bottom:2px solid transparent;cursor:pointer;font-family:'DM Sans',sans-serif;font-weight:500;transition:all .15s;white-space:nowrap;outline:none}
+.hz-card-tab:hover{color:var(--tx)!important;background:rgba(255,255,255,.05)!important}
+.hz-card-tab.act{color:var(--ac)!important;border-bottom-color:var(--ac)!important;background:var(--s2)!important;font-weight:600}
   .hz-r{font-size:13px}
   .tp{font-size:16px}
   .card-top{flex-wrap:wrap;gap:8px}
@@ -272,8 +260,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
 }
 
 /* API KEY MODAL */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}
-.modal-overlay.modal-open{display:flex}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);backdrop-filter:blur(8px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem}
 .modal-box{background:var(--s2);border:1px solid var(--b2);border-radius:var(--rxl);padding:2rem;max-width:480px;width:100%;animation:su .3s ease}
 .modal-title{font-family:'DM Sans',sans-serif;font-size:24px;font-style:italic;margin-bottom:.5rem}
 .modal-sub{font-size:12px;color:var(--m2);line-height:1.7;margin-bottom:1.25rem}
@@ -337,74 +324,28 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
     <button class="nb" id="nav-analysis" onclick="switchTab('analysis')">Analysis</button>
     <button class="nb" id="nav-history" onclick="switchTab('history')">History</button>
     <button class="nb" id="nav-watchlist" onclick="switchTab('watchlist')">Watchlist</button>
-    <div class="key-indicator" id="keyIndicator" style="margin-left:6px;cursor:pointer" title="AI status · click for optional client key" onclick="openQuickStartModal()">
+    <div class="key-indicator" id="keyIndicator" style="margin-left:6px;cursor:default">
       <span class="key-dot" id="keyDot"></span><span id="keyLabel">Checking...</span>
     </div>
   </div>
 </header>
-<script>
-/* Runs before the large app bundle so the pill updates even if a later script error blocks startApp(). */
-(function () {
-  function setHeader(t, dotOk) {
-    var lbl = document.getElementById('keyLabel');
-    var dot = document.getElementById('keyDot');
-    if (lbl) lbl.textContent = t;
-    if (dot) {
-      dot.style.background = dotOk ? 'var(--buy)' : 'var(--sell)';
-      if (dotOk) dot.classList.add('set');
-      else dot.classList.remove('set');
-    }
-  }
-  var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  var tid = setTimeout(function () {
-    try {
-      if (ctrl) ctrl.abort();
-    } catch (e) {}
-  }, 12000);
-  fetch('/api/health', {
-    cache: 'no-store',
-    signal: ctrl ? ctrl.signal : undefined
-  })
-    .then(function (r) {
-      clearTimeout(tid);
-      return r.text().then(function (txt) {
-        var d = null;
-        try {
-          d = JSON.parse(txt);
-        } catch (e) {}
-        if (!r.ok || !d || typeof d !== 'object') {
-          setHeader(r.ok ? 'API: bad response' : 'HTTP ' + r.status, false);
-          return;
-        }
-        setHeader(d.hasKey ? 'AI Ready ✓' : 'AI off (quotes OK)', !!d.hasKey);
-      });
-    })
-    .catch(function () {
-      clearTimeout(tid);
-      setHeader('Cannot reach API', false);
-    });
-})();
-</script>
 
-<!-- API KEY MODAL (hidden by default; open with ?quickstart=1 or header AI status click) -->
-<div id="apiModal" class="modal-overlay" aria-hidden="true" onclick="if(event.target===this) skipApiModal()">
-  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="apiModalTitle" onclick="event.stopPropagation()">
-    <div class="modal-title" id="apiModalTitle">Quick start</div>
+<!-- API KEY MODAL -->
+<div id="apiModal" class="modal-overlay" style="display:flex">
+  <div class="modal-box">
+    <div class="modal-title">Enter your API key</div>
     <div class="modal-sub">
-      <strong>Live prices, charts &amp; history</strong> load from Yahoo Finance on your AlphaSignal server (no Claude required).<br><br>
-      On <strong>Render / production</strong>, set <strong>ANTHROPIC_API_KEY</strong> in the service <strong>Environment</strong> tab — then click <strong>Skip</strong> below. You only paste a key here for a legacy <strong>browser</strong> override (blocked storage will still let you Skip).<br><br>
-      Tip: append <strong><code>?quickstart=1</code></strong> to the URL to open this dialog again.
+      AlphaSignal uses the <strong>Claude API</strong> to generate analysis. You need a free Anthropic API key to use this app.<br><br>
+      Get one at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> &rarr; API Keys &rarr; Create Key.
+      New accounts get free credits.
     </div>
     <input id="apiKeyInput" class="modal-input" type="password" placeholder="sk-ant-api03-..." />
     <div class="modal-note">
-      Server keys belong in deployment env (<code>Vultr</code> / systemd / Docker), not necessarily in this tab.
+      &#128274; Your key is stored only in your browser (localStorage) and sent directly to Anthropic's servers. It is never stored or logged anywhere else.
     </div>
     <div class="modal-footer">
-      <a href="https://console.anthropic.com/settings/keys" target="_blank">&rarr; Anthropic console</a>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn" type="button" onclick="skipApiModal()">Skip</button>
-        <button class="btn ac" type="button" onclick="saveApiKey()">Save &amp; Continue &rarr;</button>
-      </div>
+      <a href="https://console.anthropic.com/settings/keys" target="_blank">&rarr; Get API key</a>
+      <button class="btn ac" onclick="saveApiKey()">Save &amp; Start &rarr;</button>
     </div>
   </div>
 </div>
@@ -516,7 +457,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
 </div>
 
 <footer>
-  AlphaSignal · Live quotes: Yahoo Finance · AI scans: Claude (optional) · Not financial advice
+  AlphaSignal · Powered by Claude AI · Educational purposes only · Not financial advice · $10k per trade assumed for PnL calculations<br>
   Universe: S&P 500 · NASDAQ 100 · FTSE 100 · Hang Seng · Nikkei 225 · DAX · CAC 40 · EuroStoxx 50 · Gold · Silver · Brent Oil · WTI Oil · Bitcoin · Ethereum
 </footer>
 
@@ -1055,9 +996,10 @@ function switchTab(t){
   });
   if(t==='history') {
     renderHist();
-    renderSummaryCards('short');
-    // Silently auto-fix bad entry prices (async — renderHist ends with renderSummaryCards)
-    fixHistoryPrices(true).then(()=>{ renderHist(); });
+    // Init summary cards for default short tab
+    setTimeout(()=>{ if(typeof renderSummaryCards==='function') renderSummaryCards('short'); }, 100);
+    // Silently auto-fix bad entry prices (async - re-renders when done)
+    fixHistoryPrices(true).then(()=>{ renderHist(); setTimeout(()=>renderSummaryCards('short'),100); });
     const anyMktOpen = ST.history.some(h => isMarketTrading(h.ticker));
     if(ST.history.length && anyMktOpen) setTimeout(refreshHistoryPnl, 3000);
   }
@@ -1110,66 +1052,6 @@ function fmtPct(n){
   return (n>=0?'+':'')+n.toFixed(1)+'%';
 }
 
-/** Same mid-range % as server.js HORIZON_PCT / applyServerPriceLevels */
-const DASH_HORIZON_PCT = {
-  short: {
-    buy: { tp1: 0.025, tp2: 0.045, sl: -0.015 },
-    sell: { tp1: -0.025, tp2: -0.045, sl: 0.015 }
-  },
-  medium: {
-    buy: { tp1: 0.07, tp2: 0.13, sl: -0.04 },
-    sell: { tp1: -0.07, tp2: -0.13, sl: 0.04 }
-  },
-  long: {
-    buy: { tp1: 0.18, tp2: 0.35, sl: -0.10 },
-    sell: { tp1: -0.18, tp2: -0.35, sl: 0.10 }
-  }
-};
-function roundDashPrice(x) {
-  if (x == null || Number.isNaN(x)) return x;
-  const a = Math.abs(Number(x));
-  const d = a >= 100 ? 2 : a >= 10 ? 2 : a >= 1 ? 3 : 4;
-  return +Number(x).toFixed(d);
-}
-function ratingImpliesSellDash(rating) {
-  return String(rating || '').toLowerCase().includes('sell');
-}
-/** Snapshot live Yahoo price into short/medium/long entry + targets (dashboard + history save). */
-function enrichDashPickLevels(s) {
-  if (!s || !s.ticker) return;
-  const liveRaw = priceCache[s.ticker] && priceCache[s.ticker].price;
-  const live = typeof liveRaw === 'number' && liveRaw > 0 ? liveRaw : null;
-  if (!live) return;
-  var hzKeys = ['short', 'medium', 'long'];
-  var ratingKeys = { short: 'shortRating', medium: 'mediumRating', long: 'longRating' };
-  for (var hi = 0; hi < hzKeys.length; hi++) {
-    var hz = hzKeys[hi];
-    var sell = ratingImpliesSellDash(s[ratingKeys[hz]]);
-    var p = DASH_HORIZON_PCT[hz][sell ? 'sell' : 'buy'];
-    var e = live;
-    s[hz + 'Entry'] = String(roundDashPrice(e));
-    s[hz + 'Target1'] = String(roundDashPrice(e * (1 + p.tp1)));
-    s[hz + 'Target2'] = String(roundDashPrice(e * (1 + p.tp2)));
-    s[hz + 'StopLoss'] = String(roundDashPrice(e * (1 + p.sl)));
-  }
-  s.entry = s.shortEntry;
-  s.target1 = s.shortTarget1;
-  s.target2 = s.shortTarget2;
-  s.stopLoss = s.shortStopLoss;
-  var mainSell = String(s.action || '').toLowerCase() === 'sell' || ratingImpliesSellDash(s.shortRating);
-  if (mainSell) {
-    s.sellEntry = s.shortEntry;
-    s.sellTarget1 = s.shortTarget1;
-    s.sellTarget2 = s.shortTarget2;
-    s.sellStopLoss = s.shortStopLoss;
-  } else {
-    s.sellEntry = s.sellEntry || '';
-    s.sellTarget1 = s.sellTarget1 || '';
-    s.sellTarget2 = s.sellTarget2 || '';
-    s.sellStopLoss = s.sellStopLoss || '';
-  }
-}
-
 // ══════════════════════════════════════════════
 // SCHEMA
 // ══════════════════════════════════════════════
@@ -1195,9 +1077,7 @@ async function loadDashboard(force=false){
   if(!force&&ST.dashData&&ST.dashTs){
     const age=(Date.now()-ST.dashTs)/1000/3600;
     if(age<4){
-      waitForEl('hzShortBuy', function(){
-        renderDashboard(ST.dashData).catch(function(e){ console.warn('renderDashboard', e); });
-      });
+      waitForEl('hzShortBuy', ()=>renderDashboard(ST.dashData));
       return;
     }
   }
@@ -1232,28 +1112,71 @@ async function runDashScan(){
     logEl.innerHTML+='<div>→ '+batch.join(', ')+'</div>';
     logEl.scrollTop=logEl.scrollHeight;
 
-    // Get live prices for this batch
+    // Fetch REAL technical indicators + live prices (RSI, MA, MACD, Support/Resistance from Yahoo Finance)
     let batchPriceCtx = '';
+    let batchTech = {};
     try {
-      const bpr = await fetch('/api/prices?symbols='+encodeURIComponent(batch.join(',')));
-      if(bpr.ok){
-        const bpd = await bpr.json();
-        const lines = batch.map(t => { const p=bpd[t]; return p&&p.price?`${t}=${p.price}${p.currency||''}`:null; }).filter(Boolean);
-        if(lines.length) batchPriceCtx = `\nLive prices: ${lines.join(', ')}. Base all entry/target/stop levels on these prices.`;
-      }
-    } catch(e){}
+      const [bpr, techR] = await Promise.all([
+        fetch('/api/prices?symbols='+encodeURIComponent(batch.join(','))),
+        fetch('/api/technicals/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbols:batch})})
+      ]);
+      const prices = bpr.ok ? await bpr.json() : {};
+      if(techR.ok) batchTech = await techR.json();
+      const priceLines = batch.map(t=>{const p=prices[t];return p?.price?`${t}=${p.price}`:null;}).filter(Boolean);
+      if(priceLines.length) batchPriceCtx = `\nLIVE PRICES: ${priceLines.join(', ')}`;
+      const techLines = batch.map(t=>{
+        const tech=batchTech[t]; if(!tech) return null;
+        return `${t}: price=${tech.currentPrice}, RSI14=${tech.rsi}(${tech.rsiSignal}), `
+          +`MA20=${tech.ma20}(${tech.aboveMa20?'above':'below'}), MA50=${tech.ma50}(${tech.aboveMa50?'above':'below'}), `
+          +`trend=${tech.trend20}, MACD=${tech.macd?.trend||'?'}, `
+          +`support1=${tech.support1}, support2=${tech.support2}, `
+          +`resistance1=${tech.resistance1}, resistance2=${tech.resistance2}, `
+          +`ATR%=${tech.atrPct}, volume=${tech.volume?.confirmation||'?'}, `
+          +`pattern=${tech.candlePattern}`;
+      }).filter(Boolean);
+      if(techLines.length) batchPriceCtx += `\n\nREAL TECHNICAL DATA (computed from Yahoo Finance OHLCV):\n${techLines.join('\n')}`;
+    } catch(e){ console.warn('Technicals fetch:', e.message); }
 
-    const exampleJson = '[{"ticker":"AAPL","name":"Apple Inc","market":"S&P 500","shortScore":82,"mediumScore":75,"longScore":68,"shortSellScore":20,"mediumSellScore":55,"longSellScore":30,"shortAction":"Buy","mediumAction":"Buy","longAction":"Hold","shortRating":"Strong Buy","mediumRating":"Buy","longRating":"Hold","shortConf":82,"mediumConf":74,"longConf":65,"shortEntry":"185.50","shortTarget1":"189","shortTarget2":"193","shortStopLoss":"182","mediumEntry":"185.50","mediumTarget1":"198","mediumTarget2":"210","mediumStopLoss":"178","longEntry":"185.50","longTarget1":"215","longTarget2":"240","longStopLoss":"168","entry":"185.50","target1":"189","target2":"193","stopLoss":"182","sellEntry":"215","sellTarget1":"200","sellTarget2":"185","sellStopLoss":"222","reason":"Breaking above key resistance","sellReason":"Approaching major resistance overbought"}]';
-    const prompt = 'Rate and analyze these instruments for trading: ' + batch.join(', ') + '.' + batchPriceCtx
-      + '\n\nCRITICAL: Each timeframe MUST have DIFFERENT numeric targets (server enforces math from live price; you must still output distinct intent):'
-      + '\n- Short (1-3 days):   entry = live price, TP1 ≈ +2.5%, TP2 ≈ +4.5%, SL ≈ −1.5% from entry (long); shorts inverted.'
-      + '\n- Medium (1-3 weeks): entry = live price, TP1 ≈ +7%,   TP2 ≈ +13%,  SL ≈ −4%'
-      + '\n- Long (1-6 months):  entry = live price, TP1 ≈ +18%, TP2 ≈ +35%, SL ≈ −10%'
-      + '\nshortTarget1 MUST numerically differ from mediumTarget1 MUST differ from longTarget1 (different % from same live base).'
-      + '\n\nQUALITY: backtestedWinRate 45-72% (realistic). Only Strong Buy/Sell with R:R > 2.5x. Give Sell scores freely for bearish setups.'
-      + '\n\nReturn ONLY raw JSON array. No markdown, no backticks, no "json" prefix. Start immediately with ['
-      + '\n\nFormat: ' + exampleJson
-      + '\n\nInclude all ' + batch.length + ' instruments. [';
+    const exampleJson = '[{"ticker":"AAPL","name":"Apple Inc","market":"S&P 500","shortScore":82,"mediumScore":72,"longScore":65,"shortSellScore":18,"mediumSellScore":50,"longSellScore":30,"shortAction":"Buy","mediumAction":"Buy","longAction":"Hold","shortRating":"Strong Buy","mediumRating":"Buy","longRating":"Hold","shortConf":82,"mediumConf":72,"longConf":58,"shortEntry":"185.50","shortTarget1":"190.12","shortTarget2":"194.30","shortStopLoss":"182.72","mediumEntry":"185.50","mediumTarget1":"198.49","mediumTarget2":"209.82","mediumStopLoss":"177.86","longEntry":"185.50","longTarget1":"218.89","longTarget2":"250.43","longStopLoss":"166.95","entry":"185.50","target1":"190.12","target2":"194.30","stopLoss":"182.72","sellEntry":"215.00","sellTarget1":"200.00","sellTarget2":"188.00","sellStopLoss":"221.00","reason":"RSI 52 rising from 20MA support, bullish volume, uptrend","sellReason":"RSI overbought 76, bearish engulfing at resistance","backtestedWinRate":65}]';
+
+    // Build per-ticker tech context for the prompt
+    const techContext = batch.map(t => {
+      const tech = batchTech[t];
+      if(!tech) return `${t}: no technical data available`;
+      return `${t}: RSI=${tech.rsi}(${tech.rsiSignal}), MA20=${tech.ma20}(${tech.aboveMa20?'ABOVE':'BELOW'}), MA50=${tech.ma50}(${tech.aboveMa50?'ABOVE':'BELOW'}), trend=${tech.trend20}, MACD=${tech.macd?.trend||'unknown'}, support1=${tech.support1}, support2=${tech.support2}, resistance1=${tech.resistance1}, resistance2=${tech.resistance2}, ATR%=${tech.atrPct}%, volume=${tech.volume?.confirmation||'unknown'}, pattern=${tech.candlePattern}`;
+    }).join('\n');
+
+    const prompt = `You are a professional quant analyst. Analyze these instruments using the REAL technical data provided below.${batchPriceCtx}
+
+REAL TECHNICAL INDICATORS (computed from Yahoo Finance OHLCV — use these, do NOT guess):
+${techContext}
+
+SIGNAL RULES — strictly enforce for high win rate:
+SHORT (1-3 days) — Buy only if: RSI between 40-65 AND above MA20 AND uptrend AND volume bullish/neutral. Sell only if: RSI between 55-78 AND below MA20 AND downtrend. Otherwise: Hold.
+MEDIUM (1-3 weeks) — Buy only if: RSI between 45-65 AND above MA50 AND trend up. Sell only if: RSI between 55-75 AND below MA50 AND trend down. Otherwise: Hold.
+LONG (1-6 months) — Buy only if: above MA200 or MA50 upsloping AND RSI>40 AND fundamentals positive. Sell if: below MA200 AND downtrend AND RSI<55.
+
+STOP LOSS — base on real support/resistance levels provided:
+- Short: SL = support1 if within 2% below entry, else entry × 0.985
+- Medium: SL = support2 if within 5% below entry, else entry × 0.96
+- Long: SL = support2 or entry × 0.90
+
+TAKE PROFIT — base on real resistance levels:
+- Short TP1: resistance1 if within 5% above entry, else entry × 1.025
+- Short TP2: resistance2 if available, else entry × 1.045
+- Medium TP1: resistance1 + buffer, or entry × 1.07
+- Long TP1: entry × 1.18, TP2: entry × 1.35 (fundamental driven)
+
+SCORING:
+- Strong Buy/Sell (85+): RSI ideal range + 3 MA alignment + confirming volume + clear S/R setup
+- Buy/Sell (70-84): RSI in range + 2 MA alignment
+- Hold (<65): mixed signals, RSI extreme, or no clear setup. PREFER HOLD OVER BAD TRADES.
+
+backtestedWinRate: honest estimate. RSI40-65+above MA20+uptrend historically wins ~63-68%. Overbought RSI>70 wins ~35%. Be accurate.
+
+Return ONLY raw JSON array starting with [. No text, no markdown.
+Format: ${exampleJson}
+Instruments: ${batch.join(', ')} [
 
     try{
       const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:window.CLAUDE_MODEL||'claude-haiku-4-5-20251001',max_tokens:500,system:'You are a financial data API. You output ONLY raw JSON arrays. Never use markdown, never use backticks, never add explanations. Your response must begin with [ and end with ].',messages:[{role:'user',content:prompt}]})});
@@ -1310,12 +1233,14 @@ async function runDashScan(){
         if(res && res.length > 0){
           function scoreFrom(rating, action, winRate){
             const v=(rating||action||'').toLowerCase();
-            const highConf = !winRate || winRate >= 70;
-            if(v.includes('strong buy'))  return highConf ? 88 : 72;
-            if(v.includes('buy'))         return 72;
-            if(v.includes('strong sell')) return highConf ? 82 : 68;
-            if(v.includes('sell'))        return 68;
-            return 45;
+            const wr = winRate || 0;
+            // Higher win rate = higher score multiplier
+            const boost = wr >= 68 ? 1.1 : wr >= 60 ? 1.0 : 0.85;
+            if(v.includes('strong buy'))  return Math.round(88 * boost);
+            if(v.includes('buy'))         return Math.round(74 * boost);
+            if(v.includes('strong sell')) return Math.round(85 * boost);
+            if(v.includes('sell'))        return Math.round(70 * boost);
+            return 35; // Hold scores low so it doesn't surface in top 5
           }
           res.forEach(r=>{
             if(!r.shortScore  ||r.shortScore===0)  r.shortScore  =scoreFrom(r.shortRating,  r.shortAction  ||r.action, r.backtestedWinRate);
@@ -1324,19 +1249,6 @@ async function runDashScan(){
             if(!r.shortSellScore)  r.shortSellScore  =(r.shortRating ||'').toLowerCase().includes('sell')?75:0;
             if(!r.mediumSellScore) r.mediumSellScore =(r.mediumRating||'').toLowerCase().includes('sell')?75:0;
             if(!r.longSellScore)   r.longSellScore   =(r.longRating  ||'').toLowerCase().includes('sell')?75:0;
-            ['short','medium','long'].forEach(hz=>{
-              const sk = hz+'SellScore';
-              let v = r[sk]||0;
-              const rat = String(r[hz+'Rating']||'').toLowerCase();
-              if(rat.includes('strong sell')) v = Math.max(v, 82);
-              else if(rat.includes('sell')) v = Math.max(v, 70);
-              const buySc = r[hz+'Score']||0;
-              const act = String(r[hz+'Action']||r.action||'').toLowerCase();
-              if(act==='sell'||act==='short') v = Math.max(v, 68);
-              if(buySc>0 && buySc<52) v = Math.max(v, 38 + Math.round(52-buySc));
-              if(buySc>0 && buySc<45) v = Math.max(v, 45);
-              r[sk]=Math.min(100,Math.round(v));
-            });
           });
           console.log('✓ Batch parsed', res.length, 'items');
           all.push(...res);
@@ -1358,7 +1270,7 @@ async function runDashScan(){
             +'<span><strong>Error '+resp.status+':</strong> '+friendlyMsg+'</span>'
             +'<button class="btn ac" style="font-size:10px;padding:3px 10px;flex-shrink:0" onclick="ST.dashData=null;ST.dashTs=null;ss();loadDashboard(true)">↻ Force Retry</button>'
             +'</div>';
-          if(ST.dashData) { renderDashboard(ST.dashData).catch(function(e){ console.warn(e); }); return; }
+          if(ST.dashData) { renderDashboard(ST.dashData); return; }
           return;
         }
       }
@@ -1391,32 +1303,9 @@ async function runDashScan(){
   const shortTop5=[...deduped].sort((a,b)=>(b.shortScore||0)-(a.shortScore||0)).slice(0,5);
   const medTop5=[...deduped].sort((a,b)=>(b.mediumScore||0)-(a.mediumScore||0)).slice(0,5);
   const longTop5=[...deduped].sort((a,b)=>(b.longScore||0)-(a.longScore||0)).slice(0,5);
-  const SELL_MIN = 22;
-  let shortSell5=[...deduped].filter(s=>(s.shortSellScore||0)>=SELL_MIN).sort((a,b)=>(b.shortSellScore||0)-(a.shortSellScore||0)).slice(0,5);
-  let medSell5=[...deduped].filter(s=>(s.mediumSellScore||0)>=SELL_MIN).sort((a,b)=>(b.mediumSellScore||0)-(a.mediumSellScore||0)).slice(0,5);
-  let longSell5=[...deduped].filter(s=>(s.longSellScore||0)>=SELL_MIN).sort((a,b)=>(b.longSellScore||0)-(a.longSellScore||0)).slice(0,5);
-
-  function fillSellFallback(hz, arr) {
-    if (arr && arr.length) return arr;
-    const sk = hz+'Score';
-    let pool = [...deduped]
-      .filter(s => (s[sk] || 0) < 58)
-      .sort((a, b) => (a[sk] || 99) - (b[sk] || 99));
-    if (!pool.length) {
-      pool = [...deduped].sort((a, b) => (a[sk] || 99) - (b[sk] || 99)).slice(0, 5);
-    }
-    if (!pool.length) return [];
-    return pool.slice(0, 5).map(s => {
-      const c = { ...s };
-      const bsc = c[hz + 'Score'] || 0;
-      c[hz + 'SellScore'] = Math.max(c[hz + 'SellScore'] || 0, Math.round(40 + Math.max(0, 58 - bsc) * 1.2));
-      c[hz + 'Rating'] = c[hz + 'Rating'] || 'Weak Sell';
-      return c;
-    });
-  }
-  shortSell5 = fillSellFallback('short', shortSell5);
-  medSell5 = fillSellFallback('medium', medSell5);
-  longSell5 = fillSellFallback('long', longSell5);
+  const shortSell5=[...deduped].filter(s=>(s.shortSellScore||0)>=40).sort((a,b)=>(b.shortSellScore||0)-(a.shortSellScore||0)).slice(0,5);
+  const medSell5=[...deduped].filter(s=>(s.mediumSellScore||0)>=40).sort((a,b)=>(b.mediumSellScore||0)-(a.mediumSellScore||0)).slice(0,5);
+  const longSell5=[...deduped].filter(s=>(s.longSellScore||0)>=40).sort((a,b)=>(b.longSellScore||0)-(a.longSellScore||0)).slice(0,5);
 
   const dashData={short:shortTop5,medium:medTop5,long:longTop5,shortSell:shortSell5,medSell:medSell5,longSell:longSell5};
   ST.dashData=dashData;ST.dashTs=Date.now();ss();
@@ -1428,11 +1317,8 @@ async function runDashScan(){
   if(allPickTickers.length) {
     try { await fetchLivePrices(allPickTickers); } catch(e) {}
   }
-  ['short','medium','long','shortSell','medSell','longSell'].forEach(function(k){
-    (dashData[k]||[]).forEach(function(s){ enrichDashPickLevels(s); });
-  });
-  saveDashPicksToHistory(dashData);  // Now priceCache has live prices + per-horizon math
-  await renderDashboard(dashData);
+  saveDashPicksToHistory(dashData);  // Now priceCache has live prices
+  renderDashboard(dashData);
 }
 
 async function saveDashPicksToHistory(data) {
@@ -1456,35 +1342,37 @@ async function saveDashPicksToHistory(data) {
     // Always use live market price as entry — AI entry levels are just reference zones
     const liveP = priceCache[s.ticker]?.price;
     const aiEntryRaw = isSell ? (s.sellEntry||s[hz+'Entry']||s.entry) : (s[hz+'Entry']||s.entry);
+    const aiEntry = parseFloat(aiEntryRaw) || liveP;
     const entry = liveP ? parseFloat(liveP.toFixed(2)) : parseFloat(aiEntryRaw);
     if(!entry) return null;
 
-    // Per-horizon % table (CURSOR_CONTEXT) — use AI prices only when they diverge meaningfully from live entry
-    const MKRECORD_PCTS = {
-      short:  { tp1: 0.025, tp2: 0.045, sl: -0.015 },
-      medium: { tp1: 0.07, tp2: 0.13, sl: -0.04 },
-      long:   { tp1: 0.18, tp2: 0.35, sl: -0.10 }
-    };
-    const dir = isSell ? -1 : 1;
-    const p = MKRECORD_PCTS[hz];
-    const minMove = 0.005;
-
+    // Recalculate TP/SL as % moves from live entry price
+    // Derive % from AI levels (relative to AI entry), then apply to live entry
+    // BUY: TP above entry, SL below. SELL: TP below entry, SL above.
     const aiTp1Raw = isSell ? (s.sellTarget1||s[hz+'Target1']||s.target1) : (s[hz+'Target1']||s.target1);
     const aiTp2Raw = isSell ? (s.sellTarget2||s[hz+'Target2']||s.target2) : (s[hz+'Target2']||s.target2);
     const aiSlRaw  = isSell ? (s.sellStopLoss||s[hz+'StopLoss']||s.stopLoss) : (s[hz+'StopLoss']||s.stopLoss);
-    const aiTp1 = parseFloat(aiTp1Raw) || 0;
-    const aiTp2 = parseFloat(aiTp2Raw) || 0;
-    const aiSl = parseFloat(aiSlRaw) || 0;
+    const aiTp1 = parseFloat(aiTp1Raw), aiTp2 = parseFloat(aiTp2Raw), aiSl = parseFloat(aiSlRaw);
 
-    let tp1 = (aiTp1 && Math.abs(aiTp1 - entry) / entry > minMove)
-      ? parseFloat(aiTp1.toFixed(2))
-      : parseFloat((entry * (1 + dir * p.tp1)).toFixed(2));
-    let tp2 = (aiTp2 && Math.abs(aiTp2 - entry) / entry > minMove)
-      ? parseFloat(aiTp2.toFixed(2))
-      : parseFloat((entry * (1 + dir * p.tp2)).toFixed(2));
-    let sl  = (aiSl && Math.abs(aiSl - entry) / entry > minMove)
-      ? parseFloat(aiSl.toFixed(2))
-      : parseFloat((entry * (1 + dir * p.sl)).toFixed(2));
+    // Calculate percentage moves from AI entry, apply to live entry
+    let tp1, tp2, sl;
+    if(aiTp1 && aiEntry) {
+      const pct1 = (aiTp1 - aiEntry) / aiEntry;
+      tp1 = parseFloat((entry * (1 + pct1)).toFixed(2));
+    }
+    if(aiTp2 && aiEntry) {
+      const pct2 = (aiTp2 - aiEntry) / aiEntry;
+      tp2 = parseFloat((entry * (1 + pct2)).toFixed(2));
+    }
+    if(aiSl && aiEntry) {
+      const pctSl = (aiSl - aiEntry) / aiEntry;
+      sl = parseFloat((entry * (1 + pctSl)).toFixed(2));
+    }
+
+    // Fallback defaults if AI didn't give levels
+    if(!tp1) tp1 = isSell ? parseFloat((entry*0.95).toFixed(2)) : parseFloat((entry*1.05).toFixed(2));
+    if(!tp2) tp2 = isSell ? parseFloat((entry*0.90).toFixed(2)) : parseFloat((entry*1.10).toFixed(2));
+    if(!sl)  sl  = isSell ? parseFloat((entry*1.03).toFixed(2)) : parseFloat((entry*0.97).toFixed(2));
 
     // Sanity check direction: BUY needs tp > entry > sl, SELL needs tp < entry < sl
     if(!isSell && tp1 <= entry) tp1 = parseFloat((entry*1.04).toFixed(2));
@@ -1556,9 +1444,9 @@ async function saveDashPicksToHistory(data) {
   }
 }
 
-async function loadHistoryFromServer(fetchOpts) {
+async function loadHistoryFromServer() {
   try {
-    const r = await fetch('/api/history', fetchOpts || {});
+    const r = await fetch('/api/history');
     if(r.ok) {
       const serverData = await r.json();
       if(serverData.length > 0) {
@@ -1674,45 +1562,23 @@ async function fixHistoryPrices(silent) {
 }
 
 
-async function renderDashboard(data){
+function renderDashboard(data){
   const ts=ST.dashTs?new Date(ST.dashTs).toLocaleString():'—';
   document.getElementById('dashTs').textContent='Updated: '+ts+' · '+SAMPLE.length+' instruments · Prices: Yahoo Finance (real-time)';
   console.log('renderDashboard called, short picks:', data.short&&data.short.length, 'medium:', data.medium&&data.medium.length);
-  const syms=[...(data.short||[]),...(data.medium||[]),...(data.long||[]),...(data.shortSell||[]),...(data.medSell||[]),...(data.longSell||[])].map(s=>s.ticker).filter(Boolean);
-  const u=[...new Set(syms)];
-  if(u.length){ try{ await fetchLivePrices(u); }catch(e){} }
-  ['short','medium','long','shortSell','medSell','longSell'].forEach(function(k){
-    (data[k]||[]).forEach(function(s){ enrichDashPickLevels(s); });
-  });
-  if(u.length){ try{ updatePrices(); }catch(e){} }
+  // Pre-fetch prices for all picks
+  const allSyms=[...(data.short||[]),...(data.medium||[]),...(data.long||[])].map(s=>s.ticker).filter(Boolean);
+  if(allSyms.length) fetchLivePrices([...new Set(allSyms)]).then(updatePrices);
   renderPicksPane('hzShortBuy',data.short,'short','buy');
   renderPicksPane('hzMediumBuy',data.medium,'medium','buy');
   renderPicksPane('hzLongBuy',data.long,'long','buy');
   renderPicksPane('hzShortSell',data.shortSell||[],'short','sell');
   renderPicksPane('hzMediumSell',data.medSell||[],'medium','sell');
   renderPicksPane('hzLongSell',data.longSell||[],'long','sell');
-}
-
-/** Dashboard pick card: always read horizon-specific numeric fields when present */
-function pickLevelsForDashboardPane(s, hz, isSell) {
-  const eK = hz + 'Entry';
-  const t1 = hz + 'Target1';
-  const t2 = hz + 'Target2';
-  const slK = hz + 'StopLoss';
-  if (isSell) {
-    return {
-      entry: s[eK] ?? s.sellEntry,
-      tp1: s[t1] ?? s.sellTarget1,
-      tp2: s[t2] ?? s.sellTarget2,
-      sl: s[slK] ?? s.sellStopLoss
-    };
-  }
-  return {
-    entry: s[eK] ?? s.entry,
-    tp1: s[t1] ?? s.target1,
-    tp2: s[t2] ?? s.target2,
-    sl: s[slK] ?? s.stopLoss
-  };
+  // Save picks to history
+  saveDashPicksToHistory(data);
+  // Load earnings calendar
+  // Earnings loads on demand only
 }
 
 function renderPicksPane(elId,picks,hz,side){
@@ -1734,11 +1600,10 @@ function renderPicksPane(elId,picks,hz,side){
     const ac=isSell?'sell':aCls(action);
     const score=s[scoreKey]||0;
     const conf=s[confKey]||s.shortConf||0;
-    const lv = pickLevelsForDashboardPane(s, hz, isSell);
-    const entryP = lv.entry;
-    const tp1 = lv.tp1;
-    const tp2 = lv.tp2;
-    const sl = lv.sl;
+    const entryP=isSell?s.sellEntry:s.entry;
+    const tp1=isSell?s.sellTarget1:s.target1;
+    const tp2=isSell?s.sellTarget2:s.target2;
+    const sl=isSell?s.sellStopLoss:s.stopLoss;
     const reason=isSell?s.sellReason:s.reason;
     const pnl=calcPnl(entryP,tp1,sl,action);
     return `<div class="pick-card ${ac}" onclick="loadPickDetail('${s.ticker}','${hz}')">
@@ -1774,11 +1639,10 @@ function renderSummaryTable(elId,picks,hz,isSell){
   const rows=picks.map((s,i)=>{
     const action=isSell?'Sell':(s[actionKey]||'Hold');
     const ac=isSell?'sell':aCls(action);
-    const lv = pickLevelsForDashboardPane(s, hz, isSell);
-    const entryP = lv.entry;
-    const tp1 = lv.tp1;
-    const tp2 = lv.tp2;
-    const sl = lv.sl;
+    const entryP=isSell?s.sellEntry:s.entry;
+    const tp1=isSell?s.sellTarget1:s.target1;
+    const tp2=isSell?s.sellTarget2:s.target2;
+    const sl=isSell?s.sellStopLoss:s.stopLoss;
     const pnl=calcPnl(entryP,tp1,sl,action);
     const pnl2=calcPnl(entryP,tp2,sl,action);
     const score=s[scoreKey]||0;
@@ -1865,9 +1729,9 @@ async function loadPickDetail(ticker,hz){
         mediumTarget1: s.mediumTarget1||s.target1||null,
         mediumTarget2: s.mediumTarget2||s.target2||null,
         mediumTarget:  s.mediumTarget1||s.target1||null,
-        longTarget1:   s.longTarget1  ||s.target1||null,
+        longTarget1:   s.longTarget1  ||s.target2||null,
         longTarget2:   s.longTarget2  ||s.target2||null,
-        longTarget:    s.longTarget1  ||s.target1||null,
+        longTarget:    s.longTarget1  ||s.target2||null,
         target1:       s.shortTarget1 ||s.target1||null,
         target2:       s.shortTarget2 ||s.target2||null,
         shortStopLoss:  s.shortStopLoss ||s.stopLoss||null,
@@ -1913,7 +1777,7 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
 
   const priceLines = tickers.map(t => {
     const p = livePrices[t];
-    return p && p.price ? (t+': price='+p.price+' '+(p.currency||'USD')+', chg='+(p.change||0)+'%, H='+( p.high||p.price)+', L='+(p.low||p.price)) : null;
+    return p && p.price ? (t+': price='+p.price+' '+(p.currency||'USD')+', chg='+(p.change||0)+'%, H='+(p.high||p.price)+', L='+(p.low||p.price)) : null;
   }).filter(Boolean);
 
   if(priceLines.length === 0) {
@@ -1922,29 +1786,115 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
     return null;
   }
 
-  if(!isTop5 && sEl) sEl.innerHTML = '<div class="ld"><div class="sp"></div><span>Running analysis (server)...</span></div>';
+  // Fetch REAL technical indicators for single instrument analysis
+  let realTechCtx = '';
+  try {
+    if(!isTop5 && sEl) sEl.innerHTML = '<div class="ld"><div class="sp"></div><span>Computing technical indicators from Yahoo Finance...</span></div>';
+    const techResp = await fetch('/api/technicals/'+encodeURIComponent(tickers[0]));
+    if(techResp.ok) {
+      const tech = await techResp.json();
+      realTechCtx = `\n\nREAL TECHNICAL INDICATORS (computed from Yahoo Finance OHLCV — use these as ground truth):`
+        + `\nRSI(14)=${tech.rsi} → ${tech.rsiSignal}`
+        + `\nMA20=${tech.ma20} (price is ${tech.aboveMa20?'ABOVE':'BELOW'})`
+        + `\nMA50=${tech.ma50} (price is ${tech.aboveMa50?'ABOVE':'BELOW'})`
+        + (tech.ma200 ? `\nMA200=${tech.ma200} (price is ${tech.aboveMa200?'ABOVE':'BELOW'})` : '')
+        + `\nEMA9=${tech.ema9}, EMA21=${tech.ema21}`
+        + `\nTrend(20d)=${tech.trend20}` + (tech.trend50?`, Trend(50d)=${tech.trend50}`:'')
+        + `\nMACD=${tech.macd?.macd?.toFixed(3)||'?'}, Signal=${tech.macd?.signal?.toFixed(3)||'?'}, Histogram=${tech.macd?.histogram?.toFixed(3)||'?'} → ${tech.macd?.trend||'?'}`
+        + `\nBollinger: upper=${tech.bb?.upper}, mid=${tech.bb?.middle}, lower=${tech.bb?.lower}, %B=${tech.bb?.pct}% → ${tech.bbSignal||'?'}`
+        + `\nATR(14)=${tech.atr?.toFixed(2)} (${tech.atrPct}% of price)`
+        + `\nVolume: rel=${tech.volume?.relativeVolume}x avg, ${tech.volume?.confirmation}`
+        + `\nCandle pattern: ${tech.candlePattern}`
+        + `\n\nKEY LEVELS (pivot-based from 60 days of data):`
+        + `\nSupport1=${tech.support1} (${tech.distToSup1Pct}% below)`
+        + (tech.support2 ? `, Support2=${tech.support2}` : '')
+        + `\nResistance1=${tech.resistance1} (${tech.distToRes1Pct}% above)`
+        + (tech.resistance2 ? `, Resistance2=${tech.resistance2}` : '')
+        + (tech.weeklyRSI ? `\nWeekly RSI=${tech.weeklyRSI}, Weekly trend=${tech.weeklyTrend}` : '')
+        + `\n\nTECHNICAL SUMMARY: ${tech.summary}`;
+    }
+  } catch(e) { console.warn('Technicals fetch:', e.message); }
 
+  if(!isTop5 && sEl) sEl.innerHTML = '<div class="ld"><div class="sp"></div><span>Running AI analysis on real data...</span></div>';
+
+  const livePriceContext = '\nLIVE PRICES:\n' + priceLines.join('\n') + realTechCtx;
+  const firstP = livePrices[tickers[0]];
+
+  // Build search query for news context (medium/long term)
+  const newsNote = '\nFor MEDIUM-TERM (1-3 weeks): weight 70% technical + 30% news/sentiment. Consider any recent earnings, analyst upgrades/downgrades, geopolitical events, sector news, macro data (Fed decisions, CPI, employment) and their directional impact on the stock.'
+    + '\nFor LONG-TERM (1-6 months): weight 60% technical + 20% fundamental (P/E vs peers, revenue growth, margins, debt) + 20% news/catalysts (upcoming earnings, product launches, regulatory changes, M&A, macro trends).'
+    + '\nFor SHORT-TERM (1-3 days): weight 100% technical — use only price action, momentum, volume, and candlestick patterns.';
+
+  const btNote = '\nBacktesting context: For each recommendation, estimate backtested win rate % based on how this exact setup (same pattern + RSI + trend alignment) has historically performed over the past 2 years. Include this in backtestedWinRate field (0-100). This affects confidence scores.';
+
+  // If we have a dashboard pick hint, anchor the ratings
+  const ratingHint = dashHint
+    ? '\n\nIMPORTANT: The dashboard scan gave these ratings for '+dashHint.ticker+': Short='+( dashHint.shortRating||'—')+', Medium='+(dashHint.mediumRating||'—')+', Long='+(dashHint.longRating||'—')+'. Your detailed analysis should be CONSISTENT with these ratings — do not contradict them without strong reason.'
+    : '';
+
+  const prompt = 'You are a professional quant analyst. Analyze ' + tickers.join(', ') + ' using the REAL technical data computed from Yahoo Finance OHLCV below.'
+    + livePriceContext
+    + '\n\nApply these rules using the REAL indicators above:'
+    + '\n\nSHORT TERM (1-3 days) — Pure technical momentum:'
+    + '\n  BUY: RSI 40-65 AND above MA20 AND uptrend AND bullish/neutral volume → TP1=resistance1, TP2=resistance2, SL=support1'
+    + '\n  SELL: RSI 55-78 AND below MA20 AND downtrend → TP1=support1, SL=resistance1'
+    + '\n  HOLD: RSI>72 (overbought), RSI<30 (oversold), sideways trend, or R:R<2'
+    + '\n\nMEDIUM TERM (1-3 weeks) — Technical + news/catalyst:'
+    + '\n  BUY: above MA50 AND weekly RSI<68 AND trend up → TP1=+7%, TP2=+13%, SL=support2 or -4%'
+    + '\n  SELL: below MA50 AND downtrend → SL=resistance1, TP=support levels'
+    + '\n  Include impact of: upcoming earnings, sector news, macro (Fed/CPI), analyst moves'
+    + '\n\nLONG TERM (1-6 months) — Fundamental + macro + technical:'
+    + '\n  BUY: above MA200 (or MA50 upsloping) AND earnings growth positive AND P/E reasonable → TP1=+18%, TP2=+35%, SL=-10%'
+    + '\n  Key drivers: product launches, earnings beats, sector tailwinds, buybacks'
+    + '\n  SELL: below MA200 AND fundamental deterioration or P/E 2x+ sector average'
+    + '\n\nTP/SL: use support1/resistance1 from above as primary levels. R:R must be >= 2:1 (>=2.5 for Strong).'
+    + newsNote + btNote
+    + '\nReturn ONLY JSON array starting with [. No text before [.'
+    + '\nSchema: ' + SCHEMA
+    + '\nExtra: candlePattern, candleSignal, candleConf, backtestedWinRate, newsImpact, nextEarningsDate, earningsTime, epsEstimate, epsPrior'
+    + ratingHint
+    + '\nRatings: Strong Buy|Buy|Hold|Sell|Strong Sell';
   try{
-    const resp=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers,dashHint})});
+    const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:window.CLAUDE_MODEL||'claude-haiku-4-5-20251001',max_tokens:2000,system:'You are a financial analyst API. Start response with [ and end with ]. Raw JSON only. Output ONLY valid JSON array starting with [. No markdown fences, no "json" prefix, no backticks, no explanation. Pure JSON only.',messages:[{role:'user',content:prompt}]})});
     if(resp.status===401||resp.status===403){
-      if(!isTop5) sEl.innerHTML='<div class="eb"><strong>Invalid API key.</strong> Set ANTHROPIC_API_KEY on the server (Render).</div>';
+      if(!isTop5) sEl.innerHTML='<div class="eb"><strong>Invalid API key.</strong> Use the key bar at the top to update your key.</div>';
       if(btn) btn.disabled=false;
       return null;
     }
     const respText2 = await resp.text();
     console.log('Analysis API status:', resp.status);
     if(resp.status===429){
-      if(!isTop5) sEl.innerHTML='<div class="eb">Rate limited — wait ~60 seconds after a dashboard scan (scan uses many tokens), then click Analyze again.</div>';
+      if(!isTop5) sEl.innerHTML='<div class="eb"><strong>Rate limited:</strong> Too many requests. The dashboard scan uses most of the API quota. Wait 60 seconds after a scan, then click Analyze again.</div>';
       if(btn) btn.disabled=false;
       return null;
     }
-    let payload;
-    try{ payload=JSON.parse(respText2); }catch(parseErr){ throw new Error('Server response parse error: '+parseErr.message); }
     if(!resp.ok){
-      throw new Error(payload?.error||respText2||`HTTP ${resp.status}`);
+      let e; try{ e=JSON.parse(respText2); }catch(ex){ e=null; }
+      throw new Error(e?.error?.message||respText2||`HTTP ${resp.status}`);
     }
-    const stocks=payload.stocks;
-    if(!Array.isArray(stocks)||!stocks.length)throw new Error(payload?.error||'Empty analysis response.');
+    let data;
+    try{ data=JSON.parse(respText2); }
+    catch(e){ throw new Error('Server response parse error: '+e.message); }
+    let rawAI = '';
+    if(data.content && Array.isArray(data.content)){
+      data.content.forEach(b => { if(b.type==='text') rawAI += b.text; });
+    }
+    rawAI = rawAI.trim();
+    // Strip ALL possible prefixes before JSON (backticks, "json" word, any text before [ )
+    rawAI = rawAI.replace(/```json/gi,'').replace(/```/g,'').trim();
+    // Find first [ and last ] - ignore any text before/after
+    const si2=rawAI.indexOf('['), ei2=rawAI.lastIndexOf(']');
+    if(si2===-1||ei2===-1) {
+      // Maybe it's a single object not wrapped in array
+      const oi=rawAI.indexOf('{'), oe=rawAI.lastIndexOf('}');
+      if(oi!==-1&&oe>oi) rawAI='['+rawAI.slice(oi,oe+1)+']';
+      else throw new Error('No JSON in response. Raw: '+rawAI.substring(0,300));
+    }
+    let jStr=rawAI.slice(si2,ei2+1).replace(/,\s*([}\]])/g,'$1');
+    let stocks;
+    try{ stocks=JSON.parse(jStr); }
+    catch(e){ try{ stocks=Function('return '+jStr)(); }catch(e2){ throw new Error('JSON parse failed: '+e2.message); } }
+    if(!Array.isArray(stocks)||!stocks.length)throw new Error('Empty response.');
     if(!isTop5){
       sEl.innerHTML='';
       rEl.innerHTML=stocks.map(renderCard).join('');
@@ -1981,19 +1931,19 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
           mediumTarget1: s.mediumTarget1||s.target1||null,
           mediumTarget2: s.mediumTarget2||s.target2||null,
           mediumTarget:  s.mediumTarget1||s.target1||null,
-        longTarget1:   s.longTarget1  ||s.target1||null,
-        longTarget2:   s.longTarget2  ||s.target2||null,
-        longTarget:    s.longTarget1  ||s.target1||null,
-        target1:       s.shortTarget1 ||s.target1||null,
-        target2:       s.shortTarget2 ||s.target2||null,
-        shortStopLoss:  s.shortStopLoss ||s.stopLoss||null,
-        mediumStopLoss: s.mediumStopLoss||s.stopLoss||null,
-        longStopLoss:   s.longStopLoss  ||s.stopLoss||null,
-        stopLossLevel:  s.shortStopLoss ||s.stopLoss||null,
-        shortPnlDollar:null, mediumPnlDollar:null, longPnlDollar:null,
-        shortPnlPct:null, mediumPnlPct:null, longPnlPct:null,
-      });
-    });if(ST.history.length>200)ST.history=ST.history.slice(0,200);ss();}
+          longTarget1:   s.longTarget1  ||s.target2||null,
+          longTarget2:   s.longTarget2  ||s.target2||null,
+          longTarget:    s.longTarget1  ||s.target2||null,
+          target1:       s.shortTarget1 ||s.target1||null,
+          target2:       s.shortTarget2 ||s.target2||null,
+          shortStopLoss:  s.shortStopLoss ||s.stopLoss||null,
+          mediumStopLoss: s.mediumStopLoss||s.stopLoss||null,
+          longStopLoss:   s.longStopLoss  ||s.stopLoss||null,
+          stopLossLevel:  s.shortStopLoss ||s.stopLoss||null,
+          shortPnlDollar:null, mediumPnlDollar:null, longPnlDollar:null,
+          shortPnlPct:null, mediumPnlPct:null, longPnlPct:null,
+        });
+      });if(ST.history.length>200)ST.history=ST.history.slice(0,200);ss();}
     if(btn)btn.disabled=false;
     return stocks;
   }catch(err){
@@ -2007,12 +1957,17 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
 // RENDER CARD
 // ══════════════════════════════════════════════
 function applyWinRateThreshold(rating, winRate) {
-  // Downgrade Strong Buy/Sell to Buy/Sell if backtested win rate < 70%
+  // Downgrade Strong Buy/Sell if backtested win rate below threshold
   if (!rating) return rating;
   const v = rating.toLowerCase();
-  if (winRate && winRate < 70) {
+  if (winRate && winRate < 65) {
     if (v === 'strong buy') return 'Buy';
     if (v === 'strong sell') return 'Sell';
+  }
+  // Filter out even Buy/Sell if win rate is very low
+  if (winRate && winRate < 50) {
+    if (v === 'buy' || v === 'strong buy') return 'Hold';
+    if (v === 'sell' || v === 'strong sell') return 'Hold';
   }
   return rating;
 }
@@ -2118,7 +2073,7 @@ async function fetchEarningsForTicker(ticker) {
     if(histEl) histEl.innerHTML='<span style="color:var(--m2);font-size:11px">No earnings applicable</span>';
     return;
   }
-  if(nextEl) nextEl.innerHTML='<div style="color:var(--m1);font-size:11px">Fetching earnings…</div>';
+  if(nextEl) nextEl.innerHTML='<div style="color:var(--m1);font-size:11px">Fetching from Yahoo Finance...</div>';
   if(histEl) histEl.innerHTML='<div style="color:var(--m1);font-size:11px">Loading...</div>';
   const today=new Date(), todayISO=today.toISOString().slice(0,10);
   try {
@@ -2127,7 +2082,6 @@ async function fetchEarningsForTicker(ticker) {
     const data = await r.json();
     if(data.error) throw new Error(data.error);
     if(nextEl) {
-      const srcTag = (data.calendarPrimarySource || 'multi-source').replace(/_/g, ' ');
       if(data.nextEarningsDate && data.nextEarningsDate >= todayISO) {
         const d=new Date(data.nextEarningsDate+'T12:00:00');
         const ds=d.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
@@ -2137,17 +2091,14 @@ async function fetchEarningsForTicker(ticker) {
         const tb=tl.includes('after')||tl.includes('post')?'var(--sellb)':tl.includes('before')||tl.includes('pre')?'var(--buyb)':'var(--holdb)';
         nextEl.innerHTML='<div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px">'
           +'<div><div style="font-size:15px;font-weight:500;font-family:DM Mono,monospace">'+ds+eds+'</div>'
-          +'<div style="font-size:9px;color:var(--m2);margin-top:2px;font-family:DM Mono,monospace">Source: '+srcTag+'</div></div>'
+          +'<div style="font-size:9px;color:var(--buy);margin-top:2px">Source: Yahoo Finance</div></div>'
           +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
           +(data.earningsTime?'<span style="font-size:10px;padding:2px 8px;border-radius:10px;font-family:DM Mono,monospace;background:'+tb+';color:'+tc+'">'+data.earningsTime+'</span>':'')
           +(data.epsEstimate?'<span style="font-size:11px;color:var(--m1)">EPS est: <strong>'+data.epsEstimate+'</strong></span>':'')
           +'</div></div>';
-      } else if(data.nextEarningsDate) {
-        nextEl.innerHTML='<div style="font-size:12px;color:var(--tx)">Next quarter not scheduled in feeds yet.</div>'
-          +'<div style="font-size:10px;color:var(--m2);margin-top:4px">Last calendar date from data: '+new Date(data.nextEarningsDate+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})+' · '+srcTag+'</div>';
       } else {
         nextEl.innerHTML='<div style="font-size:12px;color:var(--tx)">Next date not yet announced</div>'
-          +'<div style="font-size:9px;color:var(--m2);margin-top:2px">Merged Finnhub · FMP · Yahoo — check API keys on host if blank.</div>';
+          +(data.nextEarningsDate?'<div style="font-size:9px;color:var(--m2);margin-top:2px">Last: '+new Date(data.nextEarningsDate+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})+'</div>':'');
       }
     }
     if(histEl) {
@@ -2170,18 +2121,14 @@ async function fetchAndAddStockReactions(ticker,history,histEl) {
     const r=await fetch('/api/chart?symbol='+encodeURIComponent(ticker)+'&range=2y&interval=1d');
     if(!r.ok) return;
     const pd=await r.json();
-    const dates = pd.dates || (Array.isArray(pd.timestamps)?pd.timestamps:[]).map(function(t){
-      return typeof t==='number'&&Number.isFinite(t)?new Date(t*1000).toISOString().slice(0,10):null;
-    }).filter(Boolean);
-    const closes = pd.closes;
-    if(!dates.length||!closes||!closes.length) return;
+    if(!pd.dates||!pd.closes) return;
     let changed=false;
     history.forEach(q=>{
       if(!q.date||q.stockReaction) return;
-      const idx=dates.indexOf(q.date);
-      const useIdx=idx>=0?idx:dates.findIndex(d=>d>=q.date);
-      if(useIdx>=0&&useIdx+1<closes.length&&closes[useIdx]!=null&&closes[useIdx+1]!=null) {
-        const chg=(closes[useIdx+1]-closes[useIdx])/closes[useIdx]*100;
+      const idx=pd.dates.indexOf(q.date);
+      const useIdx=idx>=0?idx:pd.dates.findIndex(d=>d>=q.date);
+      if(useIdx>=0&&useIdx+1<pd.closes.length&&pd.closes[useIdx]&&pd.closes[useIdx+1]) {
+        const chg=(pd.closes[useIdx+1]-pd.closes[useIdx])/pd.closes[useIdx]*100;
         q.stockReaction=(chg>=0?'+':'')+chg.toFixed(1)+'%';
         changed=true;
       }
@@ -2217,52 +2164,46 @@ function renderCard(s){
   const cardTp2=isSellCard?(s.sellTarget2||s.target2):s.target2;
   const cardSl=isSellCard?(s.sellStopLoss||s.stopLoss):s.stopLoss;
 
-  // Per-timeframe data — numeric levels come from server (distinct % bands per horizon)
-  function hzIsSell(rat){ const v=(rat||'').toLowerCase(); return v.includes('sell'); }
+  // Per-timeframe data
+  // Use per-horizon price levels from AI response
   const horizons = [
     {
       key:'short', label:'Short', period:'1–3 days',
       rating:applyWinRateThreshold(s.shortRating, s.backtestedWinRate), conf:s.shortConf,
       weighting:s.shortWeighting||'100% Technical',
-      action: hzIsSell(s.shortRating)?'Sell':(s.shortRating||'').toLowerCase().includes('buy')?'Buy':'Hold',
+      action: (s.shortRating||'').toLowerCase().includes('sell')?'Sell':
+              (s.shortRating||'').toLowerCase().includes('buy')?'Buy':'Hold',
       entry:  s.shortEntry  || s.entry,
       tp1:    s.shortTarget1|| s.target1,
       tp2:    s.shortTarget2|| s.target2,
       sl:     s.shortStopLoss|| s.stopLoss,
-      sellEntry: hzIsSell(s.shortRating)?(s.shortEntry||s.entry):(s.sellEntry||''),
-      sellTp1: hzIsSell(s.shortRating)?(s.shortTarget1||s.target1):(s.sellTarget1||''),
-      sellTp2: hzIsSell(s.shortRating)?(s.shortTarget2||s.target2):(s.sellTarget2||''),
-      sellSl: hzIsSell(s.shortRating)?(s.shortStopLoss||s.stopLoss):(s.sellStopLoss||''),
+      sellEntry:s.sellEntry, sellTp1:s.sellTarget1, sellTp2:s.sellTarget2, sellSl:s.sellStopLoss,
       analysis: s.shortAnalysis || s.techSummary || ''
     },
     {
       key:'medium', label:'Medium', period:'1–3 weeks',
       rating:applyWinRateThreshold(s.mediumRating, s.backtestedWinRate), conf:s.mediumConf,
       weighting:s.mediumWeighting||'70% Technical · 30% News',
-      action: hzIsSell(s.mediumRating)?'Sell':(s.mediumRating||'').toLowerCase().includes('buy')?'Buy':'Hold',
+      action: (s.mediumRating||'').toLowerCase().includes('sell')?'Sell':
+              (s.mediumRating||'').toLowerCase().includes('buy')?'Buy':'Hold',
       entry:  s.mediumEntry  || s.entry,
       tp1:    s.mediumTarget1|| s.target1,
       tp2:    s.mediumTarget2|| s.target2,
       sl:     s.mediumStopLoss|| s.stopLoss,
-      sellEntry: hzIsSell(s.mediumRating)?(s.mediumEntry||s.entry):(s.sellEntry||''),
-      sellTp1: hzIsSell(s.mediumRating)?(s.mediumTarget1||s.target1):(s.sellTarget1||''),
-      sellTp2: hzIsSell(s.mediumRating)?(s.mediumTarget2||s.target2):(s.sellTarget2||''),
-      sellSl: hzIsSell(s.mediumRating)?(s.mediumStopLoss||s.stopLoss):(s.sellStopLoss||''),
+      sellEntry:s.sellEntry, sellTp1:s.sellTarget1, sellTp2:s.sellTarget2, sellSl:s.sellStopLoss,
       analysis: s.mediumAnalysis || (s.newsImpact?'News: '+s.newsImpact+' | ':'')+( s.techSummary||'')
     },
     {
       key:'long', label:'Long', period:'1–6 months',
       rating:applyWinRateThreshold(s.longRating, s.backtestedWinRate), conf:s.longConf,
       weighting:s.longWeighting||'60% Technical · 20% Fundamental · 20% News',
-      action: hzIsSell(s.longRating)?'Sell':(s.longRating||'').toLowerCase().includes('buy')?'Buy':'Hold',
+      action: (s.longRating||'').toLowerCase().includes('sell')?'Sell':
+              (s.longRating||'').toLowerCase().includes('buy')?'Buy':'Hold',
       entry:  s.longEntry  || s.entry,
       tp1:    s.longTarget1|| s.target1,
       tp2:    s.longTarget2|| s.target2,
       sl:     s.longStopLoss|| s.stopLoss,
-      sellEntry: hzIsSell(s.longRating)?(s.longEntry||s.entry):(s.sellEntry||''),
-      sellTp1: hzIsSell(s.longRating)?(s.longTarget1||s.target1):(s.sellTarget1||''),
-      sellTp2: hzIsSell(s.longRating)?(s.longTarget2||s.target2):(s.sellTarget2||''),
-      sellSl: hzIsSell(s.longRating)?(s.longStopLoss||s.stopLoss):(s.sellStopLoss||''),
+      sellEntry:s.sellEntry, sellTp1:s.sellTarget1, sellTp2:s.sellTarget2, sellSl:s.sellStopLoss,
       analysis: s.longAnalysis || (s.fundSummary||'')+(s.newsImpact?' | News: '+s.newsImpact:'')
     }
   ];
@@ -2465,7 +2406,8 @@ function renderHist() {
     const s = v>=0?'+':'-'; return s+'$'+Math.abs(v).toFixed(0);
   }
 
-  const summaryCards = '<div id="histSummaryCards" class="hist-summary-strip"></div>';
+  const summaryCards = '<div id="histSummaryCards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.25rem"></div>';
+  setTimeout(()=>renderSummaryCards('short'), 50);
 
   const horizonTabs = '<div style="display:flex;gap:0;margin-bottom:1rem;border-bottom:1px solid var(--b1)">'
     + '<div class="ht act" id="hist-ht-short" onclick="switchHistHz(\'short\')">Short · 1–3 days</div>'
@@ -2508,20 +2450,10 @@ function renderHist() {
       const pnlP      = h[ppk] !== undefined ? h[ppk] : h.pnlPct;
       // If closed (TP/SL hit) but pnlD is null, compute from stored levels
       let computedPnlD = pnlD, computedPnlP = pnlP;
-      if(pnlD == null && (h[hz+'Status']==='tp1_hit'||h[hz+'Status']==='tp2_hit'||h[hz+'Status']==='sl_hit'||h[hz+'Status']==='time_limit')) {
+      if(pnlD == null && (h[hz+'Status']==='tp1_hit'||h[hz+'Status']==='tp2_hit'||h[hz+'Status']==='sl_hit')) {
         const isSc = (h.action||'').toLowerCase()==='sell';
-        const entryV = parsePrice(h[hz+'Entry']||h.entry||h.entryPrice);
-        let exitRaw = h[hz+'ExitPrice'];
-        if (exitRaw == null || exitRaw === '') {
-          const stt = h[hz+'Status'];
-          const tp1f = h[hz+'Target1']||h.target1;
-          const tp2f = h[hz+'Target2']||h.target2;
-          const slf = h[hz+'StopLoss']||(isSc?h.sellStopLoss:h.stopLoss)||h.stopLoss;
-          if (stt==='tp1_hit') exitRaw = tp1f;
-          else if (stt==='tp2_hit') exitRaw = tp2f;
-          else if (stt==='sl_hit') exitRaw = slf;
-        }
-        const exitV = parsePrice(exitRaw);
+        const entryV = parseFloat(h[hz+'Entry']||h.entry||h.entryPrice||0);
+        const exitV  = parseFloat(h[hz+'ExitPrice']||(h[hz+'Status']==='tp1_hit'?h.target1:h[hz+'Status']==='tp2_hit'?h.target2:h.stopLoss)||0);
         if(entryV && exitV) {
           const dir = isSc ? -1 : 1;
           const shares = Math.floor(10000/entryV);
@@ -2536,9 +2468,10 @@ function renderHist() {
       const minsElapsed = (Date.now() - new Date(h.entryDate||h.timestamp).getTime()) / 60000;
       const mktNowOpen = isMarketTrading(h.ticker);
       const isToday = new Date(h.entryDate||h.timestamp).toDateString() === new Date().toDateString();
+      // Only mark 'pending' if market closed AND trade hasn't been priced yet
+      // Don't override genuine TP/SL hits (those have pnlDollar set)
       const wasClosed = status==='tp1_hit'||status==='tp2_hit'||status==='sl_hit'||status==='time_limit';
-      const wouldBePending = (isToday && !mktNowOpen && status!=='tp1_hit' && status!=='tp2_hit' && status!=='sl_hit' && status!=='time_limit');
-      const effectiveStatus = (wouldBePending && computedPnlD == null) ? 'pending' : status;
+      const effectiveStatus = (isToday && !mktNowOpen && status!=='tp1_hit' && status!=='tp2_hit' && status!=='sl_hit' && status!=='time_limit') ? 'pending' : status;
       const effectiveIsOpen = effectiveStatus === 'open' || effectiveStatus === 'pending';
       const effectiveIsTp1  = effectiveStatus === 'tp1_hit';
       const effectiveIsTp2  = effectiveStatus === 'tp2_hit';
@@ -2632,51 +2565,40 @@ function renderHist() {
       +'<button class="btn ac" style="font-size:10px;padding:4px 12px;flex-shrink:0" onclick="refreshHistoryPnl()">↻ Refresh PnL</button></div>'
     : '';
 
-  el.innerHTML = summaryCards + pendingBanner
+  el.innerHTML = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:1rem">'+summaryCards+'</div>'
+    +pendingBanner
     +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;flex-wrap:wrap;gap:6px">'
     +'<span style="font-size:10px;color:var(--m1);font-family:DM Mono,monospace">'+hist.length+' Buy/Sell trades · $10k per trade · 🟡 Unrealised · ✓ TP hit · ✗ SL hit</span>'
     +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
     +'<button class="btn" style="font-size:10px;padding:4px 10px" onclick="refreshHistoryPnl()">↻ Refresh PnL</button>'
     +'</div></div>'
     +horizonTabs+mkTable('short')+mkTable('medium')+mkTable('long');
-  renderSummaryCards('short');
 }
 
 function calcSummaryForHz(hzKey) {
   const hist = ST.history.filter(h=>h&&h.ticker);
   const hzHist = hist.filter(h => !h.hz || h.hz === hzKey);
-  const closedKinds = ['tp1_hit','tp2_hit','sl_hit','time_limit'];
   function getP(h) {
-    const st = h[hzKey+'Status'];
-    const closed = closedKinds.includes(st);
-    const stored = h[hzKey+'PnlDollar'];
-    const nOpen = stored != null && stored !== '' ? Number(stored) : null;
-    const openPnl = Number.isFinite(nOpen) ? nOpen : null;
-    if (closed) {
-      const r = resolveHistoricalHzPnl(h, hzKey);
-      const pnl = r != null ? r : openPnl;
-      return { pnl, isOpen: false };
-    }
-    return { pnl: openPnl, isOpen: true };
+    const rawStatus = h[hzKey+'Status'] || (h[hzKey+'PnlDollar']!=null?'open':null);
+    const pnl = h[hzKey+'PnlDollar'];
+    const mktOpen = isMarketTrading(h.ticker);
+    const isToday = new Date(h.entryDate||h.timestamp).toDateString() === new Date().toDateString();
+    const wasClosed = rawStatus==='tp1_hit'||rawStatus==='tp2_hit'||rawStatus==='sl_hit';
+    const effectiveOpen = rawStatus==='open'||rawStatus==null||(isToday&&!mktOpen&&wasClosed);
+    return { pnl, isOpen: effectiveOpen };
   }
   const pnlArr = hzHist.map(h => getP(h));
-  const withPnl = pnlArr.filter(x => x.pnl != null && Number.isFinite(x.pnl));
-  const realised   = withPnl.filter(x=>!x.isOpen).reduce((s,x)=>s+Number(x.pnl), 0);
-  const unrealised = withPnl.filter(x=>x.isOpen).reduce((s,x)=>s+Number(x.pnl), 0);
-  const closedForWr = hzHist.filter(h => closedKinds.includes(h[hzKey+'Status']));
-  function hzWin(h) {
+  const withPnl = pnlArr.filter(x => x.pnl != null);
+  const realised   = withPnl.filter(x=>!x.isOpen).reduce((s,x)=>s+x.pnl, 0);
+  const unrealised = withPnl.filter(x=>x.isOpen).reduce((s,x)=>s+x.pnl, 0);
+  const closed = withPnl.filter(x=>!x.isOpen);
+  const wins = closed.filter(x=>x.pnl>0).length;
+  const wr = closed.length ? Math.round(wins/closed.length*100) : null;
+  const openCnt = hzHist.filter(h => {
     const s = h[hzKey+'Status'];
-    const p = resolveHistoricalHzPnl(h, hzKey);
-    if (s === 'sl_hit') return false;
-    if (s === 'tp1_hit' || s === 'tp2_hit') return p == null ? true : p > 0;
-    if (s === 'time_limit') return p != null && p > 0;
-    return false;
-  }
-  const winsClosed = closedForWr.filter(hzWin).length;
-  const wr = closedForWr.length ? Math.round(winsClosed / closedForWr.length * 100) : null;
-  const closedLen = closedForWr.length;
-  const openCnt = hzHist.filter(h => !closedKinds.includes(h[hzKey+'Status'])).length;
-  return { openCnt, unrealised, realised, wr, closedLen };
+    return s==='open' || (h[hzKey+'PnlDollar']!=null && s!=='tp1_hit' && s!=='tp2_hit' && s!=='sl_hit' && s!=='time_limit');
+  }).length;
+  return { openCnt, unrealised, realised, wr, closedLen: closed.length };
 }
 
 function renderSummaryCards(hzKey) {
@@ -2685,18 +2607,14 @@ function renderSummaryCards(hzKey) {
   const { openCnt, unrealised, realised, wr, closedLen } = calcSummaryForHz(hzKey);
   function fp(v){ if(v==null||v===undefined)return '—'; return (v>=0?'+':'-')+'$'+Math.abs(v).toFixed(0); }
   const hzLabel = hzKey==='short'?'Short 1–3d':hzKey==='medium'?'Medium 1–3w':'Long 1–6m';
-  const card = (l, v, sub, c) =>
-    '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-height:92px;display:flex;flex-direction:column;justify-content:center;gap:6px">'
-    + '<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace;font-weight:500">'+l+'</div>'
-    + '<div style="font-size:23px;font-weight:600;font-family:DM Mono,monospace;line-height:1.15;color:'+c+'">'+v+'</div>'
-    + '<div style="font-size:11px;color:var(--m2);line-height:1.35">'+sub+'</div>'
-    + '</div>';
   el.innerHTML = [
-    ['Active Trades', openCnt+' open', hzLabel + ' horizon', 'var(--ac)'],
-    ['Unrealised PnL', fp(unrealised), 'Open & pending', unrealised>=0?'var(--buy)':'var(--sell)'],
-    ['Realised PnL', fp(realised), 'All closed (TP, SL, time exit)', realised>=0?'var(--buy)':'var(--sell)'],
-    ['Win Rate', closedLen ? wr+'%' : '—', closedLen ? ('from '+closedLen+' closed · wins = TP hits + profitable time exits') : 'Need closed trades', !closedLen?'var(--m1)':wr>=55?'var(--buy)':wr>=40?'#F5C842':'var(--sell)'],
-  ].map(([l,v,sub,c]) => card(l,v,sub,c)).join('');
+    ['Active Trades', openCnt+' open', 'var(--ac)'],
+    ['Unrealised PnL', fp(unrealised), unrealised>=0?'var(--buy)':'var(--sell)'],
+    ['Realised PnL', fp(realised), realised>=0?'var(--buy)':'var(--sell)'],
+    ['Win Rate', closedLen ? wr+'%' : '—', !closedLen?'var(--m1)':wr>=55?'var(--buy)':wr>=40?'#F5C842':'var(--sell)'],
+  ].map(([l,v,c])=>'<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:10px 14px">'
+    +'<div style="font-size:9px;color:var(--m1);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;font-family:DM Mono,monospace">'+l+' <span style="color:var(--m2)">('+hzLabel+')</span></div>'
+    +'<div style="font-size:20px;font-weight:600;font-family:DM Mono,monospace;color:'+c+'">'+v+'</div></div>').join('');
 }
 
 function switchHistHz(hzKey) {
@@ -2717,46 +2635,6 @@ function calcHistPnl(entryStr, currentPrice, action) {
   const pnlDollar = (currentPrice - entry) * dir * shares;
   const pnlPct = (currentPrice - entry) / entry * dir * 100;
   return { pnlDollar, pnlPct, shares };
-}
-
-/** $10k notional realised PnL for one horizon row; prefers stored hz*PnlDollar, recomputes TP/SL from levels if missing */
-function resolveHistoricalHzPnl(h, hz) {
-  const pk = hz + 'PnlDollar';
-  const stk = hz + 'Status';
-  const raw = h[pk];
-  const st = h[stk];
-  if (raw != null && raw !== '') {
-    const n = Number(raw);
-    if (Number.isFinite(n)) return n;
-  }
-  if (st === 'time_limit') {
-    const isSell = (h.action || '').toLowerCase() === 'sell';
-    const entryV = parsePrice(h[hz + 'Entry'] || h.entry || h.entryPrice);
-    const exitV = parsePrice(h[hz + 'ExitPrice']);
-    if (!entryV || !exitV) return null;
-    const dir = isSell ? -1 : 1;
-    const shares = Math.floor(10000 / entryV);
-    return (exitV - entryV) * dir * shares;
-  }
-  if (st !== 'tp1_hit' && st !== 'tp2_hit' && st !== 'sl_hit') return null;
-  const isSell = (h.action || '').toLowerCase() === 'sell';
-  const entryV = parsePrice(h[hz + 'Entry'] || h.entry || h.entryPrice);
-  let exitRaw = h[hz + 'ExitPrice'];
-  if (exitRaw == null || exitRaw === '') {
-    const tp1f = h[hz + 'Target1'] || h.target1;
-    const tp2f = h[hz + 'Target2'] || h.target2;
-    const slf =
-      h[hz + 'StopLoss'] ||
-      (isSell ? (h.sellStopLoss || h.stopLoss) : h.stopLoss);
-    if (st === 'tp1_hit') exitRaw = tp1f;
-    else if (st === 'tp2_hit') exitRaw = tp2f;
-    else exitRaw = slf;
-  }
-  const exitV = parsePrice(exitRaw);
-  if (!entryV || !exitV) return null;
-  const dir = isSell ? -1 : 1;
-  const shares = Math.floor(10000 / entryV);
-  return (exitV - entryV) * dir * shares;
 }
 
 function isMarketTrading(ticker) {
@@ -2803,9 +2681,10 @@ async function refreshHistoryPnl() {
         const entryStr = h[hz+'Entry'] || h.entry;
         const entry = parsePrice(entryStr);
         if(!entry) return;
-        const tp1 = parsePrice(h[hz+'Target1'] || h.target1);
-        const tp2 = parsePrice(h[hz+'Target2'] || h.target2);
-        const sl  = parsePrice(h[hz+'StopLoss'] || h.stopLoss);
+        // Use the record's stored targets (set correctly at save time)
+        const tp1 = parsePrice(h.target1);
+        const tp2 = parsePrice(h.target2);
+        const sl  = parsePrice(h.stopLoss);
         const shares = Math.floor(10000 / entry);
         const pnlDollar = (curr - entry) * dir * shares;
         const pnlPct    = (curr - entry) / entry * dir * 100;
@@ -2952,20 +2831,10 @@ async function loadEarningsCalendar(force) {
     const resp = await fetch('/api/earnings-calendar'+cacheParam);
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     let earnings = await resp.json();
-    if (earnings && typeof earnings === 'object' && !Array.isArray(earnings)) {
-      if (earnings.error) throw new Error(String(earnings.error));
-      earnings = [];
-    }
-    if(!Array.isArray(earnings)) earnings = [];
+    if(earnings.error) throw new Error(earnings.error);
     const todayISO = today.toISOString().slice(0,10);
-    earnings = earnings.filter(e=>{
-      if(!e||!e.date) return false;
-      if(e.date<todayISO) return false;
-      if(e.reported===true) return false;
-      if(e.epsActual!=null && String(e.epsActual)!=='') return false;
-      return true;
-    }).sort((a,b)=>a.date.localeCompare(b.date));
-    if(!earnings.length) { elContent.innerHTML='<span style="color:var(--m1)">No rows after filters. If you added <strong>FMP_API_KEY</strong> / <strong>FINNHUB_API_KEY</strong> on the host, Save and redeploy — the calendar merges the full-market feed into the widget (capped). Otherwise only Yahoo-backed symbols can appear. Try ↻ Retry with force.</span>'; return; }
+    earnings = earnings.filter(e=>e.date>=todayISO && e.reported!==true).sort((a,b)=>a.date.localeCompare(b.date));
+    if(!earnings.length) { elContent.innerHTML='<span style="color:var(--m1)">No upcoming earnings this week.</span>'; return; }
     earningsCache=earnings; earningsCacheTs=Date.now();
     renderEarningsWidget(earnings, elContent);
   } catch(e) {
@@ -3006,7 +2875,6 @@ function renderEarningsWidget(earnings, elContent) {
           +'<span style="font-family:DM Mono,monospace;font-size:11px;font-weight:600">'+e.ticker+'</span>'
           +(e.time?'<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:rgba(255,255,255,.07);color:'+timeColor(e.time)+'">'+timeLabel(e.time)+'</span>':'')
           +(e.market?'<span style="font-size:8px;color:var(--m1);font-family:DM Mono,monospace;margin-left:auto">'+e.market+'</span>':'')
-          +(e.source?'<span style="font-size:8px;color:var(--m2);font-family:DM Mono,monospace;margin-left:4px">'+e.source+'</span>':'')
           +'</div>'
           +'<div style="font-size:10px;color:var(--m2);margin-bottom:2px">'+(e.name||'')+'</div>'
           +'<div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace">'+(e.note||'')+'</div>'
@@ -3050,160 +2918,56 @@ function scheduleDailyRefresh() {
   }, msUntil);
 }
 
-function hideQuickStartModal() {
-  const modal = document.getElementById('apiModal');
-  if (!modal) return;
-  modal.classList.remove('modal-open');
-  modal.style.display = 'none';
-  modal.setAttribute('aria-hidden', 'true');
-}
-
-function openQuickStartModal() {
-  const modal = document.getElementById('apiModal');
-  if (!modal) return;
-  modal.classList.add('modal-open');
-  modal.style.display = 'flex';
-  modal.setAttribute('aria-hidden', 'false');
-}
-
 async function startApp() {
+  const modal = document.getElementById('apiModal');
+  if(modal) modal.style.display = 'none';
   window.CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 
-  const API_TIMEOUT_MS = 12000;
-  function apiSignal() {
-    try {
-      if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-        return AbortSignal.timeout(API_TIMEOUT_MS);
-      }
-    } catch (_) { /* fall through */ }
-    const c = new AbortController();
-    setTimeout(() => c.abort(), API_TIMEOUT_MS);
-    return c.signal;
+  // Server-side cleanup of bad AI entries (runs once on startup)
+  try { await fetch('/api/history/cleanup-entries', {method:'POST'}); } catch(e){}
+  // Load history from server
+  await loadHistoryFromServer();
+  // If still empty and we have cached dashboard data, seed it
+  if(!ST.history.length && ST.dashData) {
+    console.log('Seeding history from cached dashData');
+    await saveDashPicksToHistory(ST.dashData);
   }
 
-  let hasKey = false;
-  let headerKeyResolved = false;
-  function setHeaderKey(text, dotOk) {
-    headerKeyResolved = true;
+  try {
+    const r = await fetch('/api/health');
+    const d = await r.json();
     const dot = document.getElementById('keyDot');
     const lbl = document.getElementById('keyLabel');
-    if (lbl) lbl.textContent = text;
-    if (dot) {
-      dot.style.background = dotOk ? 'var(--buy)' : 'var(--sell)';
-      dotOk ? dot.classList.add('set') : dot.classList.remove('set');
-    }
-  }
-
-  // Ping /api/health first so the header never stays on "Checking..." while history/cleanup run
-  try {
-    const r = await fetch('/api/health', { cache: 'no-store', signal: apiSignal() });
-    const ct = (r.headers.get('content-type') || '').toLowerCase();
-    let d = null;
-    if (ct.includes('application/json')) {
-      try { d = await r.json(); } catch (_) { /* ignore */ }
-    } else if (r.ok) {
-      try { d = JSON.parse(await r.text()); } catch (_) { /* ignore */ }
-    }
-    if (!r.ok || !d || typeof d !== 'object') {
-      setHeaderKey(r.ok ? 'API: bad response' : 'HTTP ' + r.status, false);
-    } else if (d.hasKey) {
-      hasKey = true;
-      setHeaderKey('AI Ready ✓', true);
+    if(d.hasKey) {
+      if(dot) { dot.style.background='var(--buy)'; dot.classList.add('set'); }
+      if(lbl) lbl.textContent = 'API Ready ✓';
+      loadDashboard();
     } else {
-      setHeaderKey('AI off (quotes OK)', false);
+      if(dot) dot.style.background='var(--sell)';
+      if(lbl) lbl.textContent = 'Key not configured';
+      const ds = document.getElementById('dashStatus');
+      if(ds) ds.innerHTML = '<div class="eb"><strong>ANTHROPIC_API_KEY not set on server.</strong> Add it in Render → Environment, then redeploy.</div>';
     }
-  } catch (e) {
-    const aborted = String(e.name || e) === 'AbortError' || String(e.message || '').toLowerCase().includes('abort');
-    setHeaderKey(aborted ? 'API timeout (>' + Math.round(API_TIMEOUT_MS / 1000) + 's)' : 'Cannot reach API', false);
-    console.warn('Health check failed:', e.message || e);
-  }
-
-  try {
-    await fetch('/api/history/cleanup-entries', { method: 'POST', signal: apiSignal() });
-  } catch (_) { /* optional */ }
-
-  try {
-    await loadHistoryFromServer({ signal: apiSignal() });
-  } catch (e) {
-    console.warn('History load failed:', e.message || e);
-  }
-
-  if (!ST.history.length && ST.dashData) {
-    try {
-      console.log('Seeding history from cached dashData');
-      await saveDashPicksToHistory(ST.dashData);
-    } catch (e) { /* ignore */ }
-  }
-
-  try {
-    const ds = document.getElementById('dashStatus');
-    if (!hasKey && ds) {
-      ds.innerHTML =
-        '<div class="eb" style="opacity:.92">Live prices/charts use Yahoo Finance. Set server <strong>ANTHROPIC_API_KEY</strong> to enable dashboard scans &amp; full analysis.</div>';
-    }
-    await (hasKey ? loadDashboard() : loadDashboard(false));
-  } catch (e) {
-    console.warn('Dashboard bootstrap:', e);
-    try {
-      await loadDashboard();
-    } catch (_) { /* ignore */ }
-  }
-}
-
-function skipApiModal() {
-  hideQuickStartModal();
+  } catch(e) { loadDashboard(); }
 }
 
 function saveApiKey() {
   const inputEl = document.getElementById('apiKeyInput');
   const val = (inputEl ? inputEl.value : '').trim();
-  if (!val.length) {
-    skipApiModal();
-    return;
-  }
-  if (val.length < 20) {
-    alert('That key looks too short. Leave the field blank and click Skip, or paste the full Anthropic key.');
-    return;
-  }
-  hideQuickStartModal();
-  try {
-    localStorage.setItem('as_apikey', val);
-  } catch (e) {
-    console.warn('Cannot store API key in browser:', e.message);
-    alert('Browser blocked saving the key locally (private window or storage full). Clear the box and click Skip — use ANTHROPIC_API_KEY on your server instead.');
-    openQuickStartModal();
-    return;
-  }
+  if(!val || val.length < 20) { alert('Please enter your full Anthropic API key'); return; }
+  localStorage.setItem('as_apikey', val);
+  const modal = document.getElementById('apiModal');
+  if(modal) modal.style.display = 'none';
+  startApp();
 }
 
-const _inpBoot = document.getElementById('apiKeyInput');
-if (_inpBoot) _inpBoot.addEventListener('keydown', e => { if (e.key === 'Escape') skipApiModal(); else if(e.key === 'Enter') saveApiKey(); });
+const _inp = document.getElementById('apiKeyInput');
+if(_inp) _inp.addEventListener('keydown', e => { if(e.key==='Enter') saveApiKey(); });
+const _modal = document.getElementById('apiModal');
+if(_modal) _modal.style.display = 'none';
 
-(function bootAlphasignal(){
-  try {
-    const qs = new URLSearchParams(location.search || '');
-    if (qs.get('quickstart') === '1') openQuickStartModal();
-    const ti = document.getElementById('tickerInput');
-    if (ti) ti.addEventListener('keydown', e => { if (e.key === 'Enter') analyze(); });
-  } catch (e) {
-    console.error('Alphasignal boot:', e);
-  }
-  startApp().catch(e => {
-    console.error('startApp', e);
-    const lbl = document.getElementById('keyLabel');
-    if (lbl && lbl.textContent === 'Checking...') lbl.textContent = 'Startup error — refresh / see console';
-    const dashTsEl = document.getElementById('dashTs');
-    if (dashTsEl && dashTsEl.textContent === 'Loading...') dashTsEl.textContent = 'Startup failed — try refresh';
-  });
-  setTimeout(function () {
-    var lbl = document.getElementById('keyLabel');
-    if (lbl && /checking/i.test(String(lbl.textContent || ''))) {
-      lbl.textContent = 'No reply from /api/health — redeploy server or hard-refresh';
-      var dot = document.getElementById('keyDot');
-      if (dot) { dot.style.background = 'var(--sell)'; dot.classList.remove('set'); }
-    }
-  }, 20000);
-})();
+document.getElementById('tickerInput').addEventListener('keydown', e => { if(e.key==='Enter') analyze(); });
+startApp();
 
 function pnlBadge(dollar, pct) {
   if (dollar === null || dollar === undefined) {
