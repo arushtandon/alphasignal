@@ -1391,24 +1391,28 @@ async function runDashScan(){
   const shortTop5=[...deduped].sort((a,b)=>(b.shortScore||0)-(a.shortScore||0)).slice(0,5);
   const medTop5=[...deduped].sort((a,b)=>(b.mediumScore||0)-(a.mediumScore||0)).slice(0,5);
   const longTop5=[...deduped].sort((a,b)=>(b.longScore||0)-(a.longScore||0)).slice(0,5);
-  const SELL_MIN = 28;
+  const SELL_MIN = 22;
   let shortSell5=[...deduped].filter(s=>(s.shortSellScore||0)>=SELL_MIN).sort((a,b)=>(b.shortSellScore||0)-(a.shortSellScore||0)).slice(0,5);
   let medSell5=[...deduped].filter(s=>(s.mediumSellScore||0)>=SELL_MIN).sort((a,b)=>(b.mediumSellScore||0)-(a.mediumSellScore||0)).slice(0,5);
   let longSell5=[...deduped].filter(s=>(s.longSellScore||0)>=SELL_MIN).sort((a,b)=>(b.longSellScore||0)-(a.longSellScore||0)).slice(0,5);
 
   function fillSellFallback(hz, arr) {
-    if(arr&&arr.length) return arr;
+    if (arr && arr.length) return arr;
     const sk = hz+'Score';
-    return [...deduped]
-      .filter(s=> (s[sk]||0) < 58)
-      .sort((a,b)=>(a[sk]||99)-(b[sk]||99))
-      .slice(0,3)
-      .map(s=>{
-        const c={...s};
-        c[hz+'SellScore']=Math.max(c[hz+'SellScore']||0, Math.round(40+(58-(c[hz+'Score']||0))*1.2));
-        c[hz+'Rating']=c[hz+'Rating']||'Weak Sell';
-        return c;
-      });
+    let pool = [...deduped]
+      .filter(s => (s[sk] || 0) < 58)
+      .sort((a, b) => (a[sk] || 99) - (b[sk] || 99));
+    if (!pool.length) {
+      pool = [...deduped].sort((a, b) => (a[sk] || 99) - (b[sk] || 99)).slice(0, 5);
+    }
+    if (!pool.length) return [];
+    return pool.slice(0, 5).map(s => {
+      const c = { ...s };
+      const bsc = c[hz + 'Score'] || 0;
+      c[hz + 'SellScore'] = Math.max(c[hz + 'SellScore'] || 0, Math.round(40 + Math.max(0, 58 - bsc) * 1.2));
+      c[hz + 'Rating'] = c[hz + 'Rating'] || 'Weak Sell';
+      return c;
+    });
   }
   shortSell5 = fillSellFallback('short', shortSell5);
   medSell5 = fillSellFallback('medium', medSell5);
@@ -2500,10 +2504,20 @@ function renderHist() {
       const pnlP      = h[ppk] !== undefined ? h[ppk] : h.pnlPct;
       // If closed (TP/SL hit) but pnlD is null, compute from stored levels
       let computedPnlD = pnlD, computedPnlP = pnlP;
-      if(pnlD == null && (h[hz+'Status']==='tp1_hit'||h[hz+'Status']==='tp2_hit'||h[hz+'Status']==='sl_hit')) {
+      if(pnlD == null && (h[hz+'Status']==='tp1_hit'||h[hz+'Status']==='tp2_hit'||h[hz+'Status']==='sl_hit'||h[hz+'Status']==='time_limit')) {
         const isSc = (h.action||'').toLowerCase()==='sell';
-        const entryV = parseFloat(h[hz+'Entry']||h.entry||h.entryPrice||0);
-        const exitV  = parseFloat(h[hz+'ExitPrice']||(h[hz+'Status']==='tp1_hit'?h.target1:h[hz+'Status']==='tp2_hit'?h.target2:h.stopLoss)||0);
+        const entryV = parsePrice(h[hz+'Entry']||h.entry||h.entryPrice);
+        let exitRaw = h[hz+'ExitPrice'];
+        if (exitRaw == null || exitRaw === '') {
+          const stt = h[hz+'Status'];
+          const tp1f = h[hz+'Target1']||h.target1;
+          const tp2f = h[hz+'Target2']||h.target2;
+          const slf = h[hz+'StopLoss']||(isSc?h.sellStopLoss:h.stopLoss)||h.stopLoss;
+          if (stt==='tp1_hit') exitRaw = tp1f;
+          else if (stt==='tp2_hit') exitRaw = tp2f;
+          else if (stt==='sl_hit') exitRaw = slf;
+        }
+        const exitV = parsePrice(exitRaw);
         if(entryV && exitV) {
           const dir = isSc ? -1 : 1;
           const shares = Math.floor(10000/entryV);
@@ -2627,30 +2641,37 @@ function renderHist() {
 function calcSummaryForHz(hzKey) {
   const hist = ST.history.filter(h=>h&&h.ticker);
   const hzHist = hist.filter(h => !h.hz || h.hz === hzKey);
+  const closedKinds = ['tp1_hit','tp2_hit','sl_hit','time_limit'];
   function getP(h) {
-    const rawStatus = h[hzKey+'Status'] || (h[hzKey+'PnlDollar']!=null?'open':null);
-    const pnl = h[hzKey+'PnlDollar'];
-    const mktOpen = isMarketTrading(h.ticker);
-    const isToday = new Date(h.entryDate||h.timestamp).toDateString() === new Date().toDateString();
-    const wasClosed = rawStatus==='tp1_hit'||rawStatus==='tp2_hit'||rawStatus==='sl_hit';
-    const effectiveOpen = rawStatus==='open'||rawStatus==null||(isToday&&!mktOpen&&wasClosed);
-    return { pnl, isOpen: effectiveOpen };
+    const st = h[hzKey+'Status'];
+    const closed = closedKinds.includes(st);
+    const stored = h[hzKey+'PnlDollar'];
+    const nOpen = stored != null && stored !== '' ? Number(stored) : null;
+    const openPnl = Number.isFinite(nOpen) ? nOpen : null;
+    if (closed) {
+      const r = resolveHistoricalHzPnl(h, hzKey);
+      const pnl = r != null ? r : openPnl;
+      return { pnl, isOpen: false };
+    }
+    return { pnl: openPnl, isOpen: true };
   }
   const pnlArr = hzHist.map(h => getP(h));
-  const withPnl = pnlArr.filter(x => x.pnl != null);
-  const realised   = withPnl.filter(x=>!x.isOpen).reduce((s,x)=>s+x.pnl, 0);
-  const unrealised = withPnl.filter(x=>x.isOpen).reduce((s,x)=>s+x.pnl, 0);
-  const decisive = hzHist.filter(h => {
+  const withPnl = pnlArr.filter(x => x.pnl != null && Number.isFinite(x.pnl));
+  const realised   = withPnl.filter(x=>!x.isOpen).reduce((s,x)=>s+Number(x.pnl), 0);
+  const unrealised = withPnl.filter(x=>x.isOpen).reduce((s,x)=>s+Number(x.pnl), 0);
+  const closedForWr = hzHist.filter(h => closedKinds.includes(h[hzKey+'Status']));
+  function hzWin(h) {
     const s = h[hzKey+'Status'];
-    return s === 'tp1_hit' || s === 'tp2_hit' || s === 'sl_hit';
-  });
-  const winsDecisive = decisive.filter(h => (h[hzKey+'PnlDollar'] ?? 0) > 0).length;
-  const wr = decisive.length ? Math.round(winsDecisive / decisive.length * 100) : null;
-  const closedLen = decisive.length;
-  const openCnt = hzHist.filter(h => {
-    const s = h[hzKey+'Status'];
-    return s==='open' || (h[hzKey+'PnlDollar']!=null && s!=='tp1_hit' && s!=='tp2_hit' && s!=='sl_hit' && s!=='time_limit');
-  }).length;
+    const p = resolveHistoricalHzPnl(h, hzKey);
+    if (s === 'sl_hit') return false;
+    if (s === 'tp1_hit' || s === 'tp2_hit') return p == null ? true : p > 0;
+    if (s === 'time_limit') return p != null && p > 0;
+    return false;
+  }
+  const winsClosed = closedForWr.filter(hzWin).length;
+  const wr = closedForWr.length ? Math.round(winsClosed / closedForWr.length * 100) : null;
+  const closedLen = closedForWr.length;
+  const openCnt = hzHist.filter(h => !closedKinds.includes(h[hzKey+'Status'])).length;
   return { openCnt, unrealised, realised, wr, closedLen };
 }
 
@@ -2669,8 +2690,8 @@ function renderSummaryCards(hzKey) {
   el.innerHTML = [
     ['Active Trades', openCnt+' open', hzLabel + ' horizon', 'var(--ac)'],
     ['Unrealised PnL', fp(unrealised), 'Open & pending', unrealised>=0?'var(--buy)':'var(--sell)'],
-    ['Realised PnL', fp(realised), 'TP / SL exits', realised>=0?'var(--buy)':'var(--sell)'],
-    ['Win Rate', closedLen ? wr+'%' : '—', closedLen ? ('from '+closedLen+' closed (excl. time limit)') : 'Need closed trades', !closedLen?'var(--m1)':wr>=55?'var(--buy)':wr>=40?'#F5C842':'var(--sell)'],
+    ['Realised PnL', fp(realised), 'All closed (TP, SL, time exit)', realised>=0?'var(--buy)':'var(--sell)'],
+    ['Win Rate', closedLen ? wr+'%' : '—', closedLen ? ('from '+closedLen+' closed · wins = TP hits + profitable time exits') : 'Need closed trades', !closedLen?'var(--m1)':wr>=55?'var(--buy)':wr>=40?'#F5C842':'var(--sell)'],
   ].map(([l,v,sub,c]) => card(l,v,sub,c)).join('');
 }
 
@@ -2692,6 +2713,46 @@ function calcHistPnl(entryStr, currentPrice, action) {
   const pnlDollar = (currentPrice - entry) * dir * shares;
   const pnlPct = (currentPrice - entry) / entry * dir * 100;
   return { pnlDollar, pnlPct, shares };
+}
+
+/** $10k notional realised PnL for one horizon row; prefers stored hz*PnlDollar, recomputes TP/SL from levels if missing */
+function resolveHistoricalHzPnl(h, hz) {
+  const pk = hz + 'PnlDollar';
+  const stk = hz + 'Status';
+  const raw = h[pk];
+  const st = h[stk];
+  if (raw != null && raw !== '') {
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+  }
+  if (st === 'time_limit') {
+    const isSell = (h.action || '').toLowerCase() === 'sell';
+    const entryV = parsePrice(h[hz + 'Entry'] || h.entry || h.entryPrice);
+    const exitV = parsePrice(h[hz + 'ExitPrice']);
+    if (!entryV || !exitV) return null;
+    const dir = isSell ? -1 : 1;
+    const shares = Math.floor(10000 / entryV);
+    return (exitV - entryV) * dir * shares;
+  }
+  if (st !== 'tp1_hit' && st !== 'tp2_hit' && st !== 'sl_hit') return null;
+  const isSell = (h.action || '').toLowerCase() === 'sell';
+  const entryV = parsePrice(h[hz + 'Entry'] || h.entry || h.entryPrice);
+  let exitRaw = h[hz + 'ExitPrice'];
+  if (exitRaw == null || exitRaw === '') {
+    const tp1f = h[hz + 'Target1'] || h.target1;
+    const tp2f = h[hz + 'Target2'] || h.target2;
+    const slf =
+      h[hz + 'StopLoss'] ||
+      (isSell ? (h.sellStopLoss || h.stopLoss) : h.stopLoss);
+    if (st === 'tp1_hit') exitRaw = tp1f;
+    else if (st === 'tp2_hit') exitRaw = tp2f;
+    else exitRaw = slf;
+  }
+  const exitV = parsePrice(exitRaw);
+  if (!entryV || !exitV) return null;
+  const dir = isSell ? -1 : 1;
+  const shares = Math.floor(10000 / entryV);
+  return (exitV - entryV) * dir * shares;
 }
 
 function isMarketTrading(ticker) {

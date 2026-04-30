@@ -470,6 +470,55 @@ function nextEarningsFromCalendar(qs) {
   return out;
 }
 
+/** Past quarters when chart `events=earnings` is empty — Yahoo quoteSummary earningsHistory module */
+function earningsHistoryFromQuoteSummary(qs) {
+  const hist = qs?.quoteSummary?.result?.[0]?.earningsHistory?.history;
+  if (!Array.isArray(hist) || !hist.length) return [];
+  function num(v) {
+    if (v == null) return null;
+    if (typeof v === 'object' && Number.isFinite(Number(v.raw))) return Number(v.raw);
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  const pick = hist.slice(-8).reverse().slice(0, 4);
+  return pick
+    .map((row) => {
+      const epsA = num(row.epsActual);
+      const epsE = num(row.epsEstimate);
+      let surp = num(row.surprisePercent);
+      if ((surp == null || Number.isNaN(surp)) && epsA != null && epsE != null && Math.abs(epsE) > 1e-9) {
+        surp = ((epsA - epsE) / Math.abs(epsE)) * 100;
+      }
+      let dateStr = '';
+      const per = row.period ?? row.quarter?.fmt ?? row.quarter;
+      if (per != null) {
+        const ps = typeof per === 'object' && per.fmt ? String(per.fmt) : String(per);
+        if (/^\d{4}-\d{2}-\d{2}/.test(ps)) dateStr = ps.slice(0, 10);
+      }
+      if (!dateStr && row.period?.raw != null && Number(row.period.raw) > 1e11) {
+        dateStr = new Date(Number(row.period.raw)).toISOString().slice(0, 10);
+      }
+      const quarter =
+        (typeof row.quarter === 'object' && row.quarter?.fmt ? row.quarter.fmt : row.quarter) ||
+        (dateStr
+          ? new Date(dateStr + 'T12:00:00').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+          : '');
+      const surpLabel =
+        surp != null && Number.isFinite(surp) ? (surp >= 0 ? '+' : '') + surp.toFixed(1) + '%' : null;
+      return {
+        quarter,
+        date: dateStr,
+        epsActual: epsA != null ? String(epsA) : null,
+        epsEstimate: epsE != null ? String(epsE) : null,
+        epsSurprise: surpLabel,
+        beat: surp != null ? surp >= 0 : null,
+        revenueActual: null,
+        stockReaction: null
+      };
+    })
+    .filter((r) => r.date || r.quarter);
+}
+
 /** Past quarters from Yahoo chart earnings events — same logic as legacy fallback. */
 function earningsHistoryFromChart(result) {
   const nowTs = Date.now() / 1000;
@@ -480,10 +529,9 @@ function earningsHistoryFromChart(result) {
     .slice(-4)
     .reverse()
     .map((e) => {
-      const surp =
-        e.epsActual != null && e.epsEstimate != null
-          ? (e.epsActual - e.epsEstimate) / Math.abs(e.epsEstimate) * 100
-          : null;
+      const ea = e.epsActual != null && Number.isFinite(Number(e.epsActual)) ? Number(e.epsActual) : null;
+      const ee = e.epsEstimate != null && Number.isFinite(Number(e.epsEstimate)) ? Number(e.epsEstimate) : null;
+      const surp = ea != null && ee != null && Math.abs(ee) > 1e-9 ? ((ea - ee) / Math.abs(ee)) * 100 : null;
       return {
         quarter: new Date(e.date * 1000).toLocaleDateString('en-GB', {
           month: 'short',
@@ -507,7 +555,10 @@ const EARNINGS_CAL_SYMBOLS = [
   'V', 'MA', 'JNJ', 'UNH', 'PG', 'HD', 'AVGO', 'LLY', 'XOM', 'CVX', 'ABBV', 'KO', 'PEP',
   'COST', 'WMT', 'NFLX', 'AMD', 'ADBE', 'CRM', 'TMO', 'ORCL', 'ACN', 'IBM', 'GS',
   'MS', 'BAC', 'MCD', 'ASML.AS', 'SAP.DE', 'MC.PA', 'AZN.L', 'SHEL.L',
-  '9988.HK', '7203.T'
+  '9988.HK', '7203.T',
+  // India / HK names also on dashboard watchlist widget
+  'RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS', 'BAJFINANCE.NS',
+  '0700.HK'
 ];
 
 function normalizeTickerMatch(s) {
@@ -686,7 +737,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
     .filter(
       (x) =>
         x &&
-        x.epsActual == null &&
+        (x.epsActual == null || x.epsActual === '' || Number.isNaN(Number(x.epsActual))) &&
         String(x.date).slice(0, 10) >= fromISO &&
         String(x.date).slice(0, 10) <= toISO &&
         tickerInOurUniverse(x.symbol)
@@ -845,6 +896,20 @@ app.get('/api/earnings/:symbol', async (req, res) => {
         }
       }
     }
+    let historySource = 'yahoo_chart_events';
+    if (!epsHistory.length) {
+      const histSyms =
+        sym === 'GOOGL' || sym === 'GOOG' ? ['GOOGL', 'GOOG'] : symbolsForChart;
+      for (const cs of histSyms) {
+        const qHist = await quoteSummary(cs, 'earningsHistory');
+        const chunk = earningsHistoryFromQuoteSummary(qHist);
+        if (chunk.length) {
+          epsHistory = chunk;
+          historySource = 'yahoo_quoteSummary_earningsHistory';
+          break;
+        }
+      }
+    }
     const sourcesUsed = {};
     if (process.env.FINNHUB_API_KEY) sourcesUsed.finnhub = true;
     if (process.env.FMP_API_KEY) sourcesUsed.fmp = true;
@@ -860,7 +925,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       calendarPrimarySource: calendarPrimary || null,
       calendarSourcesConsulted: sourcesUsed,
       history: Array.isArray(epsHistory) ? epsHistory.slice(0, 4) : [],
-      historySource: 'yahoo_chart_events'
+      historySource
     });
   } catch (e) {
     console.error('Earnings err:', e.message);
