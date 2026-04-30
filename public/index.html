@@ -485,51 +485,6 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
 const priceCache = {};
 const PRICE_TTL = 60000; // 1 minute cache
 
-/** Mirror server.js HORIZON_PCT so dashboard TP/SL/entry differ clearly by horizon after live enrichment */
-const DASH_HORIZON_PCT = {
-  short: {
-    buy: { tp1: 0.03, tp2: 0.055, sl: -0.015 },
-    sell: { tp1: -0.03, tp2: -0.055, sl: 0.015 }
-  },
-  medium: {
-    buy: { tp1: 0.09, tp2: 0.16, sl: -0.05 },
-    sell: { tp1: -0.09, tp2: -0.16, sl: 0.05 }
-  },
-  long: {
-    buy: { tp1: 0.22, tp2: 0.45, sl: -0.10 },
-    sell: { tp1: -0.22, tp2: -0.45, sl: 0.10 }
-  }
-};
-function dashRoundPrice(x) {
-  if (x == null || Number.isNaN(+x)) return x;
-  const a = Math.abs(+x);
-  const d = a >= 100 ? 2 : a >= 10 ? 2 : a >= 1 ? 3 : 4;
-  return +Number(x).toFixed(d);
-}
-function enrichDashPickLevels(s, side) {
-  const live = priceCache[s.ticker]?.price;
-  if (!live || live <= 0) return;
-  for (const hz of ['short', 'medium', 'long']) {
-    const p = DASH_HORIZON_PCT[hz][side];
-    const e = live;
-    s[hz + 'Entry'] = String(dashRoundPrice(e));
-    s[hz + 'Target1'] = String(dashRoundPrice(e * (1 + p.tp1)));
-    s[hz + 'Target2'] = String(dashRoundPrice(e * (1 + p.tp2)));
-    s[hz + 'StopLoss'] = String(dashRoundPrice(e * (1 + p.sl)));
-  }
-  if (side === 'buy') {
-    s.entry = s.shortEntry;
-    s.target1 = s.shortTarget1;
-    s.target2 = s.shortTarget2;
-    s.stopLoss = s.shortStopLoss;
-  } else {
-    s.sellEntry = s.shortEntry;
-    s.sellTarget1 = s.shortTarget1;
-    s.sellTarget2 = s.shortTarget2;
-    s.sellStopLoss = s.shortStopLoss;
-  }
-}
-
 async function fetchLivePrices(symbols) {
   const toFetch = symbols.filter(s => {
     const c = priceCache[s];
@@ -3006,48 +2961,52 @@ function openQuickStartModal() {
 async function startApp() {
   window.CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 
-  const API_TIMEOUT_MS = 15000;
+  const API_TIMEOUT_MS = 12000;
   function apiSignal() {
     try {
-      return AbortSignal.timeout(API_TIMEOUT_MS);
-    } catch (e) {
-      const c = new AbortController();
-      setTimeout(() => c.abort(), API_TIMEOUT_MS);
-      return c.signal;
-    }
+      if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+        return AbortSignal.timeout(API_TIMEOUT_MS);
+      }
+    } catch (_) { /* fall through */ }
+    const c = new AbortController();
+    setTimeout(() => c.abort(), API_TIMEOUT_MS);
+    return c.signal;
   }
 
   let hasKey = false;
+  let headerKeyResolved = false;
+  function setHeaderKey(text, dotOk) {
+    headerKeyResolved = true;
+    const dot = document.getElementById('keyDot');
+    const lbl = document.getElementById('keyLabel');
+    if (lbl) lbl.textContent = text;
+    if (dot) {
+      dot.style.background = dotOk ? 'var(--buy)' : 'var(--sell)';
+      dotOk ? dot.classList.add('set') : dot.classList.remove('set');
+    }
+  }
 
   // Ping /api/health first so the header never stays on "Checking..." while history/cleanup run
   try {
     const r = await fetch('/api/health', { cache: 'no-store', signal: apiSignal() });
-    const ct = r.headers.get('content-type') || '';
+    const ct = (r.headers.get('content-type') || '').toLowerCase();
     let d = null;
     if (ct.includes('application/json')) {
       try { d = await r.json(); } catch (_) { /* ignore */ }
     } else if (r.ok) {
       try { d = JSON.parse(await r.text()); } catch (_) { /* ignore */ }
     }
-    const dot = document.getElementById('keyDot');
-    const lbl = document.getElementById('keyLabel');
     if (!r.ok || !d || typeof d !== 'object') {
-      if (lbl) lbl.textContent = r.ok ? 'API: bad response' : 'HTTP ' + r.status;
-      if (dot) { dot.style.background = 'var(--sell)'; dot.classList.remove('set'); }
+      setHeaderKey(r.ok ? 'API: bad response' : 'HTTP ' + r.status, false);
     } else if (d.hasKey) {
       hasKey = true;
-      if (dot) { dot.style.background = 'var(--buy)'; dot.classList.add('set'); }
-      if (lbl) lbl.textContent = 'AI Ready ✓';
+      setHeaderKey('AI Ready ✓', true);
     } else {
-      if (dot) { dot.style.background = 'var(--sell)'; dot.classList.remove('set'); }
-      if (lbl) lbl.textContent = 'AI off (quotes OK)';
+      setHeaderKey('AI off (quotes OK)', false);
     }
   } catch (e) {
-    const aborted = String(e.name || e) === 'AbortError' || String(e.message || '').includes('aborted');
-    const lbl = document.getElementById('keyLabel');
-    const dot = document.getElementById('keyDot');
-    if (lbl) lbl.textContent = aborted ? 'API timeout (>15s)' : 'Cannot reach API';
-    if (dot) { dot.style.background = 'var(--sell)'; dot.classList.remove('set'); }
+    const aborted = String(e.name || e) === 'AbortError' || String(e.message || '').toLowerCase().includes('abort');
+    setHeaderKey(aborted ? 'API timeout (>' + Math.round(API_TIMEOUT_MS / 1000) + 's)' : 'Cannot reach API', false);
     console.warn('Health check failed:', e.message || e);
   }
 
@@ -3128,6 +3087,14 @@ if (_inpBoot) _inpBoot.addEventListener('keydown', e => { if (e.key === 'Escape'
     const dashTsEl = document.getElementById('dashTs');
     if (dashTsEl && dashTsEl.textContent === 'Loading...') dashTsEl.textContent = 'Startup failed — try refresh';
   });
+  setTimeout(function () {
+    var lbl = document.getElementById('keyLabel');
+    if (lbl && /checking/i.test(String(lbl.textContent || ''))) {
+      lbl.textContent = 'No reply from /api/health — redeploy server or hard-refresh';
+      var dot = document.getElementById('keyDot');
+      if (dot) { dot.style.background = 'var(--sell)'; dot.classList.remove('set'); }
+    }
+  }, 20000);
 })();
 
 function pnlBadge(dollar, pct) {

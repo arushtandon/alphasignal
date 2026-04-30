@@ -5,33 +5,6 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
-
-// ── Health ──────────────────────────────────────────────────────────────────
-app.get('/api/history/status', (req, res) => {
-  const today = new Date().toDateString();
-  const todayCnt = tradeHistory.filter(h => new Date(h.entryDate||h.timestamp).toDateString()===today).length;
-  const byHz = {};
-  tradeHistory.forEach(h => { const hz=h.hz||'none'; byHz[hz]=(byHz[hz]||0)+1; });
-  res.json({total:tradeHistory.length, todayCount:todayCnt, byHz, file:HISTORY_FILE});
-});
-
-app.get('/api/health', (req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
-  res.json({
-    status: 'ok',
-    quotes: 'yahoo_finance',
-    earnings: {
-      finnhub_calendar: !!process.env.FINNHUB_API_KEY,
-      fmp_calendar: !!process.env.FMP_API_KEY,
-      yahoo_fallback: true
-    },
-    hasKey: !!process.env.ANTHROPIC_API_KEY,
-    ts: Date.now(),
-    historyVersion: HISTORY_VERSION,
-    historyCount: tradeHistory.length
-  });
-});
 
 // ── Price headers ─────────────────────────────────────────────────────────
 const YF_HEADERS = {
@@ -364,6 +337,32 @@ function saveHistoryFile(data) {
 }
 
 let tradeHistory = loadHistoryFile();
+
+// ── Health (after tradeHistory — used in payload) ────────────────────────────
+app.get('/api/history/status', (req, res) => {
+  const today = new Date().toDateString();
+  const todayCnt = tradeHistory.filter(h => new Date(h.entryDate||h.timestamp).toDateString()===today).length;
+  const byHz = {};
+  tradeHistory.forEach(h => { const hz=h.hz||'none'; byHz[hz]=(byHz[hz]||0)+1; });
+  res.json({total:tradeHistory.length, todayCount:todayCnt, byHz, file:HISTORY_FILE});
+});
+
+app.get('/api/health', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    status: 'ok',
+    quotes: 'yahoo_finance',
+    earnings: {
+      finnhub_calendar: !!process.env.FINNHUB_API_KEY,
+      fmp_calendar: !!process.env.FMP_API_KEY,
+      yahoo_fallback: true
+    },
+    hasKey: !!process.env.ANTHROPIC_API_KEY,
+    ts: Date.now(),
+    historyVersion: HISTORY_VERSION,
+    historyCount: tradeHistory.length
+  });
+});
 
 // GET all history
 app.get('/api/history', (req, res) => {
@@ -1191,6 +1190,9 @@ app.post('/api/history/cleanup-entries', async (req, res) => {
   console.log('Cleanup: fixed', fixed, 'bad entries');
   res.json({ fixed, total: tradeHistory.length });
 });
+
+// Static files AFTER /api routes so `/api/*` never gets swallowed by filesystem lookup
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
