@@ -1405,7 +1405,7 @@ async function runDashScan(){
       .slice(0,3)
       .map(s=>{
         const c={...s};
-        c[hz+'SellScore']=Math.max(c[hz+'SellScore']||0, Math.round(40+(58-(c[hz+'Score']||0))*1.2)));
+        c[hz+'SellScore']=Math.max(c[hz+'SellScore']||0, Math.round(40+(58-(c[hz+'Score']||0))*1.2));
         c[hz+'Rating']=c[hz+'Rating']||'Weak Sell';
         return c;
       });
