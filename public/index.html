@@ -2170,14 +2170,18 @@ async function fetchAndAddStockReactions(ticker,history,histEl) {
     const r=await fetch('/api/chart?symbol='+encodeURIComponent(ticker)+'&range=2y&interval=1d');
     if(!r.ok) return;
     const pd=await r.json();
-    if(!pd.dates||!pd.closes) return;
+    const dates = pd.dates || (Array.isArray(pd.timestamps)?pd.timestamps:[]).map(function(t){
+      return typeof t==='number'&&Number.isFinite(t)?new Date(t*1000).toISOString().slice(0,10):null;
+    }).filter(Boolean);
+    const closes = pd.closes;
+    if(!dates.length||!closes||!closes.length) return;
     let changed=false;
     history.forEach(q=>{
       if(!q.date||q.stockReaction) return;
-      const idx=pd.dates.indexOf(q.date);
-      const useIdx=idx>=0?idx:pd.dates.findIndex(d=>d>=q.date);
-      if(useIdx>=0&&useIdx+1<pd.closes.length&&pd.closes[useIdx]&&pd.closes[useIdx+1]) {
-        const chg=(pd.closes[useIdx+1]-pd.closes[useIdx])/pd.closes[useIdx]*100;
+      const idx=dates.indexOf(q.date);
+      const useIdx=idx>=0?idx:dates.findIndex(d=>d>=q.date);
+      if(useIdx>=0&&useIdx+1<closes.length&&closes[useIdx]!=null&&closes[useIdx+1]!=null) {
+        const chg=(closes[useIdx+1]-closes[useIdx])/closes[useIdx]*100;
         q.stockReaction=(chg>=0?'+':'')+chg.toFixed(1)+'%';
         changed=true;
       }
@@ -2961,7 +2965,7 @@ async function loadEarningsCalendar(force) {
       if(e.epsActual!=null && String(e.epsActual)!=='') return false;
       return true;
     }).sort((a,b)=>a.date.localeCompare(b.date));
-    if(!earnings.length) { elContent.innerHTML='<span style="color:var(--m1)">No upcoming earnings in the next ~21 days for the tracked list, or feeds need API keys. Try ↻ Retry with force.</span>'; return; }
+    if(!earnings.length) { elContent.innerHTML='<span style="color:var(--m1)">No rows after filters. If you added <strong>FMP_API_KEY</strong> / <strong>FINNHUB_API_KEY</strong> on the host, Save and redeploy — the calendar merges the full-market feed into the widget (capped). Otherwise only Yahoo-backed symbols can appear. Try ↻ Retry with force.</span>'; return; }
     earningsCache=earnings; earningsCacheTs=Date.now();
     renderEarningsWidget(earnings, elContent);
   } catch(e) {

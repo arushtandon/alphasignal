@@ -158,17 +158,21 @@ async function quoteSummary(symbol, modules) {
       ? [symbol.replace('.', '-')]
       : [])
   ];
+  const hosts = ['query2', 'query1'];
   for (const sym of symVariants) {
-    const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=${modules}`;
-    try {
-      const r = await fetch(url, {
-        headers: YF_HEADERS,
-        signal: AbortSignal.timeout(10000)
-      });
-      if (!r.ok) continue;
-      return await r.json();
-    } catch (e) {
-      console.log('quoteSummary', sym, e.message);
+    for (const host of hosts) {
+      const url = `https://${host}.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=${modules}`;
+      try {
+        const r = await fetch(url, {
+          headers: YF_HEADERS,
+          signal: AbortSignal.timeout(12000)
+        });
+        if (!r.ok) continue;
+        const j = await r.json();
+        if (j?.quoteSummary?.result?.length) return j;
+      } catch (e) {
+        console.log('quoteSummary', sym, host, e.message);
+      }
     }
   }
   return null;
@@ -278,6 +282,11 @@ app.get('/api/chart', async (req, res) => {
         currency: meta.currency || 'USD',
         regularMarketPrice: meta.regularMarketPrice,
         timestamps,
+        dates: timestamps.map((t) =>
+          typeof t === 'number' && Number.isFinite(t)
+            ? new Date(t * 1000).toISOString().slice(0, 10)
+            : null
+        ),
         opens:   (quote.open   || []).map(v => v != null ? +v.toFixed(4) : null),
         highs:   (quote.high   || []).map(v => v != null ? +v.toFixed(4) : null),
         lows:    (quote.low    || []).map(v => v != null ? +v.toFixed(4) : null),
@@ -448,18 +457,39 @@ function nextEarningsFromCalendar(qs) {
   try {
     const ce = qs?.quoteSummary?.result?.[0]?.calendarEvents?.earnings;
     if (!ce?.earningsDate) return {};
-    const ed = ce.earningsDate;
-    const raw =
-      Array.isArray(ed)
-        ? ed[0]?.raw ?? ed[0]
-        : typeof ed === 'number'
-          ? ed
-          : ed?.raw;
-    if (raw == null || !Number.isFinite(Number(raw))) return {};
-    const n = Number(raw);
-    const ms = n > 1e12 ? n : n * 1000;
-    const d = new Date(ms);
-    if (d.getFullYear() < 2020 || d.getFullYear() > 2100) return {};
+    const edArr = ce.earningsDate;
+    const slots = Array.isArray(edArr) ? edArr : [edArr];
+    const candidates = [];
+    for (const ed of slots) {
+      let ms = null;
+      if (typeof ed === 'number') ms = ed > 1e12 ? ed : ed * 1000;
+      else if (ed && typeof ed === 'object') {
+        if (ed.raw != null && Number.isFinite(Number(ed.raw))) {
+          const n = Number(ed.raw);
+          ms = n > 1e12 ? n : n * 1000;
+        } else if (ed.fmt != null) {
+          const fmts =
+            typeof ed.fmt === 'string' && /^(\d{1,4})[-/](\d{1,2})[-/](\d{1,2})/.test(ed.fmt.trim())
+              ? Date.parse(ed.fmt)
+              : Date.parse(String(ed.fmt).replace(/,/g, ''));
+          if (!Number.isNaN(fmts)) ms = fmts;
+        }
+      }
+      if (ms == null || !Number.isFinite(ms)) continue;
+      const year = new Date(ms).getFullYear();
+      if (year < 2020 || year > 2100) continue;
+      candidates.push(ms);
+    }
+    if (!candidates.length) return {};
+    const now = Date.now();
+    const slack = 86400000 * 14;
+    const future = candidates.filter((m) => m >= now - slack);
+    const todayUtc0 =
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()) - 86400000;
+    const nextLike = candidates.filter((m) => m >= todayUtc0);
+    const pickMs =
+      nextLike.length ? Math.min(...nextLike) : future.length ? Math.min(...future) : Math.min(...candidates);
+    const d = new Date(pickMs);
     const nextDate = d.toISOString().slice(0, 10);
     let eps = null;
     if (ce.epsAverage?.fmt != null) eps = String(ce.epsAverage.fmt);
@@ -480,6 +510,27 @@ function earningsHistoryFromQuoteSummary(qs) {
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   }
+  function periodToDateStr(row) {
+    const per = row.period;
+    const perFmt =
+      typeof per === 'object' && per != null && per.fmt != null
+        ? String(per.fmt).trim()
+        : per != null && typeof per !== 'object'
+          ? String(per).trim()
+          : '';
+    const perRaw =
+      typeof per === 'object' && per != null && per.raw != null ? Number(per.raw) : null;
+    if (Number.isFinite(perRaw)) {
+      if (perRaw > 1e11) return new Date(perRaw).toISOString().slice(0, 10);
+      if (perRaw > 1e8) return new Date(perRaw * 1000).toISOString().slice(0, 10);
+    }
+    if (/^\d{4}-\d{2}-\d{2}/.test(perFmt)) return perFmt.slice(0, 10);
+    if (perFmt) {
+      const t = Date.parse(perFmt.replace(',', ''));
+      if (!Number.isNaN(t)) return new Date(t).toISOString().slice(0, 10);
+    }
+    return '';
+  }
   const pick = hist.slice(-8).reverse().slice(0, 4);
   return pick
     .map((row) => {
@@ -489,15 +540,7 @@ function earningsHistoryFromQuoteSummary(qs) {
       if ((surp == null || Number.isNaN(surp)) && epsA != null && epsE != null && Math.abs(epsE) > 1e-9) {
         surp = ((epsA - epsE) / Math.abs(epsE)) * 100;
       }
-      let dateStr = '';
-      const per = row.period ?? row.quarter?.fmt ?? row.quarter;
-      if (per != null) {
-        const ps = typeof per === 'object' && per.fmt ? String(per.fmt) : String(per);
-        if (/^\d{4}-\d{2}-\d{2}/.test(ps)) dateStr = ps.slice(0, 10);
-      }
-      if (!dateStr && row.period?.raw != null && Number(row.period.raw) > 1e11) {
-        dateStr = new Date(Number(row.period.raw)).toISOString().slice(0, 10);
-      }
+      const dateStr = periodToDateStr(row);
       const quarter =
         (typeof row.quarter === 'object' && row.quarter?.fmt ? row.quarter.fmt : row.quarter) ||
         (dateStr
@@ -671,7 +714,7 @@ function mapFmpCalRow(e) {
   return {
     ticker: String(e.symbol || ''),
     name: e.name || String(e.symbol || ''),
-    date: String(e.date || '').slice(0, 10),
+    date: calRowDateISO(e),
     time: fmpTimeToUi(e),
     epsEst: est,
     epsPrior: '',
@@ -685,6 +728,21 @@ const WANT_SYM = new Set(EARNINGS_CAL_SYMBOLS.map((t) => normalizeTickerMatch(t)
 
 function tickerInOurUniverse(sym) {
   return WANT_SYM.has(normalizeTickerMatch(sym));
+}
+
+/** Cap payload / UI size when merging full-market calendars */
+const EARNINGS_CALENDAR_MAX = 400;
+
+function calRowDateISO(e) {
+  if (!e) return '';
+  const d = e.date ?? e.earningDate ?? e.earningsDate ?? e.earning_date;
+  return d ? String(d).slice(0, 10) : '';
+}
+
+function isUpcomingCalRow(e, fromISO, toISO) {
+  const d = calRowDateISO(e);
+  if (!d || d < fromISO || d > toISO) return false;
+  return true;
 }
 
 async function yahooEarningsGapRow(ticker) {
@@ -733,28 +791,26 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
 
   const byTicker = new Map();
 
+  // Full-window merge (not limited to ~55 watchlist names) so the widget reflects the real market.
   fhRaw
     .filter(
       (x) =>
         x &&
+        x.symbol &&
         (x.epsActual == null || x.epsActual === '' || Number.isNaN(Number(x.epsActual))) &&
-        String(x.date).slice(0, 10) >= fromISO &&
-        String(x.date).slice(0, 10) <= toISO &&
-        tickerInOurUniverse(x.symbol)
+        isUpcomingCalRow(x, fromISO, toISO)
     )
     .forEach((e) => {
       const row = mapFinnhubCalRow(e);
-      byTicker.set(normalizeTickerMatch(row.ticker), row);
+      const k = normalizeTickerMatch(row.ticker);
+      if (!k) return;
+      if (!byTicker.has(k)) byTicker.set(k, row);
     });
 
   fmpRows.forEach((e) => {
-    if (
-      !(e && String(e.date).slice(0, 10) >= fromISO && String(e.date).slice(0, 10) <= toISO &&
-        tickerInOurUniverse(e.symbol))
-    ) {
-      return;
-    }
+    if (!e || !e.symbol || !isUpcomingCalRow(e, fromISO, toISO)) return;
     const k = normalizeTickerMatch(e.symbol);
+    if (!k) return;
     if (!byTicker.has(k)) byTicker.set(k, mapFmpCalRow(e));
   });
 
@@ -788,9 +844,10 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
     })
   );
 
-  return [...byTicker.values()].sort(
+  const sorted = [...byTicker.values()].sort(
     (a, b) => a.date.localeCompare(b.date) || a.ticker.localeCompare(b.ticker)
   );
+  return sorted.slice(0, EARNINGS_CALENDAR_MAX);
 }
 
 // ── Earnings data — multi-source calendar (Finnhub / FMP preferred; Yahoo fallback) ─
@@ -850,10 +907,10 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
 
-    const qs = await quoteSummary(sym, 'calendarEvents,earnings');
+    let qs = await quoteSummary(sym, 'calendarEvents,earnings,earningsHistory');
     let fromCal = nextEarningsFromCalendar(qs);
     if ((!fromCal.nextDate || fromCal.nextDate < todayISO) && (sym === 'GOOGL' || sym === 'GOOG')) {
-      const altQs = await quoteSummary(sym === 'GOOGL' ? 'GOOG' : 'GOOGL', 'calendarEvents,earnings');
+      const altQs = await quoteSummary(sym === 'GOOGL' ? 'GOOG' : 'GOOGL', 'calendarEvents,earnings,earningsHistory');
       const altCal = nextEarningsFromCalendar(altQs);
       if (altCal.nextDate && (!fromCal.nextDate || fromCal.nextDate < todayISO)) fromCal = altCal;
     }
@@ -863,6 +920,18 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       calendarPrimary = calendarPrimary || 'yahoo_quoteSummary';
     } else if (fromCal.epsEstimate && !epsEst) {
       epsEst = fromCal.epsEstimate;
+    }
+
+    let historySource = 'yahoo_chart_events';
+    epsHistory = earningsHistoryFromQuoteSummary(qs);
+    if (epsHistory.length) historySource = 'yahoo_quoteSummary_earningsHistory';
+    else if (sym === 'GOOGL' || sym === 'GOOG') {
+      const altQsHist = await quoteSummary(sym === 'GOOGL' ? 'GOOG' : 'GOOGL', 'earningsHistory');
+      const altH = earningsHistoryFromQuoteSummary(altQsHist);
+      if (altH.length) {
+        epsHistory = altH;
+        historySource = 'yahoo_quoteSummary_earningsHistory';
+      }
     }
 
     const symbolsForChart =
@@ -879,7 +948,10 @@ app.get('/api/earnings/:symbol', async (req, res) => {
             const result = d?.chart?.result?.[0];
             if (!result) continue;
             const chunk = earningsHistoryFromChart(result);
-            if (chunk.length > epsHistory.length) epsHistory = chunk;
+            if (chunk.length > epsHistory.length) {
+              epsHistory = chunk;
+              historySource = 'yahoo_chart_events';
+            }
             if (!nextDate) {
               const nowTs = Date.now() / 1000;
               const evts = Object.values(result.events?.earnings || {}).sort((a, b) => a.date - b.date);
@@ -896,7 +968,6 @@ app.get('/api/earnings/:symbol', async (req, res) => {
         }
       }
     }
-    let historySource = 'yahoo_chart_events';
     if (!epsHistory.length) {
       const histSyms =
         sym === 'GOOGL' || sym === 'GOOG' ? ['GOOGL', 'GOOG'] : symbolsForChart;
