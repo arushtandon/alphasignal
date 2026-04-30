@@ -342,6 +342,49 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
     </div>
   </div>
 </header>
+<script>
+/* Runs before the large app bundle so the pill updates even if a later script error blocks startApp(). */
+(function () {
+  function setHeader(t, dotOk) {
+    var lbl = document.getElementById('keyLabel');
+    var dot = document.getElementById('keyDot');
+    if (lbl) lbl.textContent = t;
+    if (dot) {
+      dot.style.background = dotOk ? 'var(--buy)' : 'var(--sell)';
+      if (dotOk) dot.classList.add('set');
+      else dot.classList.remove('set');
+    }
+  }
+  var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var tid = setTimeout(function () {
+    try {
+      if (ctrl) ctrl.abort();
+    } catch (e) {}
+  }, 12000);
+  fetch('/api/health', {
+    cache: 'no-store',
+    signal: ctrl ? ctrl.signal : undefined
+  })
+    .then(function (r) {
+      clearTimeout(tid);
+      return r.text().then(function (txt) {
+        var d = null;
+        try {
+          d = JSON.parse(txt);
+        } catch (e) {}
+        if (!r.ok || !d || typeof d !== 'object') {
+          setHeader(r.ok ? 'API: bad response' : 'HTTP ' + r.status, false);
+          return;
+        }
+        setHeader(d.hasKey ? 'AI Ready ✓' : 'AI off (quotes OK)', !!d.hasKey);
+      });
+    })
+    .catch(function () {
+      clearTimeout(tid);
+      setHeader('Cannot reach API', false);
+    });
+})();
+</script>
 
 <!-- API KEY MODAL (hidden by default; open with ?quickstart=1 or header AI status click) -->
 <div id="apiModal" class="modal-overlay" aria-hidden="true" onclick="if(event.target===this) skipApiModal()">
