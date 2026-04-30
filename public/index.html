@@ -324,28 +324,59 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
     <button class="nb" id="nav-analysis" onclick="switchTab('analysis')">Analysis</button>
     <button class="nb" id="nav-history" onclick="switchTab('history')">History</button>
     <button class="nb" id="nav-watchlist" onclick="switchTab('watchlist')">Watchlist</button>
-    <div class="key-indicator" id="keyIndicator" style="margin-left:6px;cursor:default">
+    <div class="key-indicator" id="keyIndicator" style="margin-left:6px;cursor:pointer" title="AI status · open Quick start" onclick="openQuickStartModal()">
       <span class="key-dot" id="keyDot"></span><span id="keyLabel">Checking...</span>
     </div>
   </div>
 </header>
+<script>
+(function () {
+  function setHeader(t, dotOk) {
+    var lbl = document.getElementById('keyLabel');
+    var dot = document.getElementById('keyDot');
+    if (lbl) lbl.textContent = t;
+    if (dot) {
+      dot.style.background = dotOk ? 'var(--buy)' : 'var(--sell)';
+      if (dotOk) dot.classList.add('set');
+      else dot.classList.remove('set');
+    }
+  }
+  var ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var tid = setTimeout(function () { try { if (ctrl) ctrl.abort(); } catch (e) {} }, 12000);
+  fetch('/api/health', { cache: 'no-store', signal: ctrl ? ctrl.signal : undefined })
+    .then(function (r) {
+      clearTimeout(tid);
+      return r.text().then(function (txt) {
+        var d = null;
+        try { d = JSON.parse(txt); } catch (e) {}
+        if (!r.ok || !d || typeof d !== 'object') {
+          setHeader(r.ok ? 'API: bad response' : 'HTTP ' + r.status, false);
+          return;
+        }
+        setHeader(d.hasKey ? 'AI Ready ✓' : 'AI off · quotes OK', !!d.hasKey);
+      });
+    })
+    .catch(function () { clearTimeout(tid); setHeader('Cannot reach API', false); });
+})();
+try { var __m = document.getElementById('apiModal'); if (__m) __m.style.display = 'none'; } catch (e1) {}
+</script>
 
-<!-- API KEY MODAL -->
-<div id="apiModal" class="modal-overlay" style="display:flex">
-  <div class="modal-box">
-    <div class="modal-title">Enter your API key</div>
+<!-- API KEY MODAL — hidden unless ?quickstart=1 or header click (server uses ANTHROPIC_API_KEY on Render) -->
+<div id="apiModal" class="modal-overlay" style="display:none" aria-hidden="true" onclick="if(event.target===this) skipApiModal()">
+  <div class="modal-box" role="dialog" onclick="event.stopPropagation()">
+    <div class="modal-title">Quick start</div>
     <div class="modal-sub">
-      AlphaSignal uses the <strong>Claude API</strong> to generate analysis. You need a free Anthropic API key to use this app.<br><br>
-      Get one at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> &rarr; API Keys &rarr; Create Key.
-      New accounts get free credits.
+      <strong>Prices, charts &amp; earnings</strong> use your AlphaSignal server (Yahoo/FMP/etc.). Claude runs when <strong>ANTHROPIC_API_KEY</strong> is set on the host.<br><br>
+      Hosting on <strong>Render</strong>? Put the key in <strong>Environment</strong>, redeploy — then tap <strong>Skip</strong>. Use the box below only for a legacy <strong>browser</strong> override.
     </div>
-    <input id="apiKeyInput" class="modal-input" type="password" placeholder="sk-ant-api03-..." />
-    <div class="modal-note">
-      &#128274; Your key is stored only in your browser (localStorage) and sent directly to Anthropic's servers. It is never stored or logged anywhere else.
-    </div>
+    <input id="apiKeyInput" class="modal-input" type="password" placeholder="Browser override: sk-ant-api03-..." />
+    <div class="modal-note">Production keys belong in deployment env — not pasted here unless you intentionally want a client-side override.</div>
     <div class="modal-footer">
-      <a href="https://console.anthropic.com/settings/keys" target="_blank">&rarr; Get API key</a>
-      <button class="btn ac" onclick="saveApiKey()">Save &amp; Start &rarr;</button>
+      <a href="https://console.anthropic.com/settings/keys" target="_blank">Anthropic console</a>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="btn" type="button" onclick="skipApiModal()">Skip</button>
+        <button class="btn ac" type="button" onclick="saveApiKey()">Save &amp; Continue</button>
+      </div>
     </div>
   </div>
 </div>
@@ -2918,55 +2949,77 @@ function scheduleDailyRefresh() {
   }, msUntil);
 }
 
+function skipApiModal() {
+  const m = document.getElementById('apiModal');
+  if (m) { m.style.display = 'none'; m.setAttribute('aria-hidden', 'true'); }
+  try { localStorage.setItem('as_skip_api_prompt', '1'); } catch (e) {}
+}
+
+function openQuickStartModal() {
+  const m = document.getElementById('apiModal');
+  if (m) { m.style.display = 'flex'; m.setAttribute('aria-hidden', 'false'); }
+}
+
 async function startApp() {
   const modal = document.getElementById('apiModal');
-  if(modal) modal.style.display = 'none';
+  if (modal) { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); }
   window.CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 
-  // Server-side cleanup of bad AI entries (runs once on startup)
-  try { await fetch('/api/history/cleanup-entries', {method:'POST'}); } catch(e){}
-  // Load history from server
+  try { await fetch('/api/history/cleanup-entries', { method: 'POST' }); } catch (e) {}
   await loadHistoryFromServer();
-  // If still empty and we have cached dashboard data, seed it
-  if(!ST.history.length && ST.dashData) {
+  if (!ST.history.length && ST.dashData) {
     console.log('Seeding history from cached dashData');
     await saveDashPicksToHistory(ST.dashData);
   }
 
   try {
-    const r = await fetch('/api/health');
+    const r = await fetch('/api/health', { cache: 'no-store' });
     const d = await r.json();
     const dot = document.getElementById('keyDot');
     const lbl = document.getElementById('keyLabel');
-    if(d.hasKey) {
-      if(dot) { dot.style.background='var(--buy)'; dot.classList.add('set'); }
-      if(lbl) lbl.textContent = 'API Ready ✓';
+    if (d.hasKey) {
+      if (dot) { dot.style.background = 'var(--buy)'; dot.classList.add('set'); }
+      if (lbl) lbl.textContent = 'AI Ready ✓';
       loadDashboard();
     } else {
-      if(dot) dot.style.background='var(--sell)';
-      if(lbl) lbl.textContent = 'Key not configured';
+      if (dot) dot.style.background = 'var(--sell)';
+      if (lbl) lbl.textContent = 'AI off · quotes OK';
       const ds = document.getElementById('dashStatus');
-      if(ds) ds.innerHTML = '<div class="eb"><strong>ANTHROPIC_API_KEY not set on server.</strong> Add it in Render → Environment, then redeploy.</div>';
+      if (ds) {
+        ds.innerHTML =
+          '<div class="eb"><strong>ANTHROPIC_API_KEY</strong> not visible to this host. Add it in Render → Environment (same service as this URL), save, redeploy. '
+          + 'Or <button type="button" class="btn" style="font-size:11px;margin-left:6px" onclick="openQuickStartModal()">Quick start</button> for a browser key.</div>';
+      }
+      loadDashboard();
     }
-  } catch(e) { loadDashboard(); }
+  } catch (e) {
+    loadDashboard();
+  }
 }
 
 function saveApiKey() {
   const inputEl = document.getElementById('apiKeyInput');
   const val = (inputEl ? inputEl.value : '').trim();
-  if(!val || val.length < 20) { alert('Please enter your full Anthropic API key'); return; }
+  if (!val || val.length < 20) {
+    alert('Enter a full Anthropic API key, or click Skip to use only the server key.');
+    return;
+  }
   localStorage.setItem('as_apikey', val);
-  const modal = document.getElementById('apiModal');
-  if(modal) modal.style.display = 'none';
+  skipApiModal();
   startApp();
 }
 
 const _inp = document.getElementById('apiKeyInput');
-if(_inp) _inp.addEventListener('keydown', e => { if(e.key==='Enter') saveApiKey(); });
-const _modal = document.getElementById('apiModal');
-if(_modal) _modal.style.display = 'none';
+if (_inp) _inp.addEventListener('keydown', e => { if (e.key === 'Enter') saveApiKey(); });
 
-document.getElementById('tickerInput').addEventListener('keydown', e => { if(e.key==='Enter') analyze(); });
+(function bootQs() {
+  try {
+    if (new URLSearchParams(location.search || '').get('quickstart') === '1') setTimeout(openQuickStartModal, 0);
+  } catch (e) {}
+})();
+
+const tiEl = document.getElementById('tickerInput');
+if (tiEl) tiEl.addEventListener('keydown', e => { if (e.key === 'Enter') analyze(); });
 startApp();
 
 function pnlBadge(dollar, pct) {
