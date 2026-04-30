@@ -1073,7 +1073,7 @@ function parsePrice(p){
   const v=parseFloat(m);
   return isNaN(v)?null:v;
 }
-function fmt$(n){
+function fmtUsd(n){
   if(n===null||n===undefined) return '—';
   const s=n>=0?'+':'-';
   return s+'$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0});
@@ -1647,8 +1647,8 @@ function renderPicksPane(elId,picks,hz,side){
       <div class="pc-pnl">
         <div class="pnl-item"><div class="pnl-label">${isSell?'Sell Entry':'Entry'}</div><div class="pnl-val ${isSell?'r':'b'}">${entryP||'—'}</div></div>
         <div class="pnl-item"><div class="pnl-label">Stop Loss</div><div class="pnl-val ${isSell?'g':'r'}">${sl||'—'}</div></div>
-        <div class="pnl-item"><div class="pnl-label">TP ($10k)</div><div class="pnl-val g">${pnl?fmt$(pnl.tp_pnl):'—'}</div></div>
-        <div class="pnl-item"><div class="pnl-label">Max Loss</div><div class="pnl-val r">${pnl&&pnl.sl_pnl!==null?fmt$(pnl.sl_pnl):'—'}</div></div>
+        <div class="pnl-item"><div class="pnl-label">TP ($10k)</div><div class="pnl-val g">${pnl?fmtUsd(pnl.tp_pnl):'—'}</div></div>
+        <div class="pnl-item"><div class="pnl-label">Max Loss</div><div class="pnl-val r">${pnl&&pnl.sl_pnl!==null?fmtUsd(pnl.sl_pnl):'—'}</div></div>
       </div>
       <div class="pc-reason">${reason||''}</div>
     </div>`;
@@ -1687,8 +1687,8 @@ function renderSummaryTable(elId,picks,hz,isSell){
       <td><span class="tt-num ${entryColor}">${entryP||'—'}</span></td>
       <td><span class="tt-num ${tpColor}">${tp1||'—'}</span><br><span style="font-size:10px;color:var(--m1)">${tp2||''}</span></td>
       <td><span class="tt-num ${isSell?'g':'r'}">${sl||'—'}</span></td>
-      <td><span class="tt-num g">${pnl?fmt$(pnl.tp_pnl):'—'}</span><br><span class="tt-num" style="font-size:10px;color:var(--buy)">${pnl?fmtPct(pnl.tp_pct):''}</span></td>
-      <td><span class="tt-num r">${pnl&&pnl.sl_pnl!==null?fmt$(pnl.sl_pnl):'—'}</span><br><span class="tt-num" style="font-size:10px;color:var(--sell)">${pnl&&pnl.sl_pct!==null?fmtPct(pnl.sl_pct):''}</span></td>
+      <td><span class="tt-num g">${pnl?fmtUsd(pnl.tp_pnl):'—'}</span><br><span class="tt-num" style="font-size:10px;color:var(--buy)">${pnl?fmtPct(pnl.tp_pct):''}</span></td>
+      <td><span class="tt-num r">${pnl&&pnl.sl_pnl!==null?fmtUsd(pnl.sl_pnl):'—'}</span><br><span class="tt-num" style="font-size:10px;color:var(--sell)">${pnl&&pnl.sl_pct!==null?fmtPct(pnl.sl_pct):''}</span></td>
       <td><div class="tt-bar"><span class="tt-num m">${rr}</span></div></td>
       <td><div class="tt-bar"><div class="rr-bar"><div class="rr-fill" style="width:${score}%"></div></div><span class="tt-num m">${score}</span></div></td>
     </tr>`;
@@ -2271,9 +2271,9 @@ function renderCard(s){
       + '</div>'
       + '<div class="pnl-box">'
       + '<div><div class="pnl-label">Shares ($10k)</div><div class="pnl-value b">'+(pnl?pnl.shares:'—')+'</div></div>'
-      + '<div><div class="pnl-label">P&L @ T1</div><div class="pnl-value g">'+(pnl?fmt$(pnl.tp_pnl)+' ('+fmtPct(pnl.tp_pct)+')':'—')+'</div></div>'
-      + '<div><div class="pnl-label">P&L @ T2</div><div class="pnl-value g">'+(pnl2?fmt$(pnl2.tp_pnl)+' ('+fmtPct(pnl2.tp_pct)+')':'—')+'</div></div>'
-      + '<div><div class="pnl-label">Max Loss</div><div class="pnl-value r">'+(pnl&&pnl.sl_pnl!==null?fmt$(pnl.sl_pnl)+' ('+fmtPct(pnl.sl_pct)+')':'—')+'</div></div>'
+      + '<div><div class="pnl-label">P&L @ T1</div><div class="pnl-value g">'+(pnl?fmtUsd(pnl.tp_pnl)+' ('+fmtPct(pnl.tp_pct)+')':'—')+'</div></div>'
+      + '<div><div class="pnl-label">P&L @ T2</div><div class="pnl-value g">'+(pnl2?fmtUsd(pnl2.tp_pnl)+' ('+fmtPct(pnl2.tp_pct)+')':'—')+'</div></div>'
+      + '<div><div class="pnl-label">Max Loss</div><div class="pnl-value r">'+(pnl&&pnl.sl_pnl!==null?fmtUsd(pnl.sl_pnl)+' ('+fmtPct(pnl.sl_pct)+')':'—')+'</div></div>'
       + '</div></div>'
       // Analysis text
       + (hz.analysis ? '<p class="prose" style="margin-top:8px">'+hz.analysis+'</p>' : '')
