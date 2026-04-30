@@ -5,27 +5,6 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '10mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
-
-// ── Health ──────────────────────────────────────────────────────────────────
-app.get('/api/history/status', (req, res) => {
-  const today = new Date().toDateString();
-  const todayCnt = tradeHistory.filter(h => new Date(h.entryDate||h.timestamp).toDateString()===today).length;
-  const byHz = {};
-  tradeHistory.forEach(h => { const hz=h.hz||'none'; byHz[hz]=(byHz[hz]||0)+1; });
-  res.json({total:tradeHistory.length, todayCount:todayCnt, byHz, file:HISTORY_FILE});
-});
-
-app.get('/api/health', (req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
-  res.json({ 
-    status: 'ok', 
-    hasKey: !!process.env.ANTHROPIC_API_KEY, 
-    ts: Date.now(),
-    historyVersion: HISTORY_VERSION,
-    historyCount: tradeHistory.length
-  });
-});
 
 // ── Price headers ─────────────────────────────────────────────────────────
 const YF_HEADERS = {
@@ -107,16 +86,118 @@ async function fetchSinglePrice(symbol) {
   return null;
 }
 
+/** Normalize one Yahoo Finance v7 quote row into fetchSinglePrice() shape */
+function normalizeV7Quote(q) {
+  if (!q?.symbol || q.regularMarketPrice == null) return null;
+  return {
+    price: q.regularMarketPrice,
+    change:
+      q.regularMarketChangePercent != null ? +(+q.regularMarketChangePercent).toFixed(2) : 0,
+    prevClose: q.regularMarketPreviousClose,
+    open: q.regularMarketOpen,
+    high: q.regularMarketDayHigh,
+    low: q.regularMarketDayLow,
+    currency: q.currency || 'USD',
+    source: 'yahoo_v7_bulk'
+  };
+}
+
+/**
+ * Multi-symbol Yahoo v7 quotes (comma-separated — one HTTP call per chunk).
+ */
+function sameYahooSymbol(requested, yahooSym) {
+  const a = String(requested || '').toUpperCase();
+  const b = String(yahooSym || '').toUpperCase();
+  if (a === b) return true;
+  if (a.includes('.')) return a.replace(/\./g, '-') === b || a === b.replace(/-/g, '.');
+  return a.replace(/-/g, '.') === b;
+}
+
+async function fetchQuotesV7Bulk(symbols) {
+  const map = {};
+  const BATCH = 45;
+  for (let i = 0; i < symbols.length; i += BATCH) {
+    const batch = symbols.slice(i, i + BATCH);
+    const qs = batch.map((s) => encodeURIComponent(String(s))).join('%2C');
+    const urls = [
+      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${qs}`,
+      `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${qs}`
+    ];
+    for (const url of urls) {
+      try {
+        const r = await fetch(url, {
+          headers: YF_HEADERS,
+          signal: AbortSignal.timeout(12000)
+        });
+        if (!r.ok) continue;
+        const data = await r.json();
+        const arr = data?.quoteResponse?.result || [];
+        for (const q of arr) {
+          const row = normalizeV7Quote(q);
+          if (!row || !q.symbol) continue;
+          const orig = batch.find((b) => sameYahooSymbol(b, q.symbol));
+          if (!orig) continue;
+          map[orig] = row;
+        }
+        break;
+      } catch (e) {
+        console.log('v7 bulk err:', batch.slice(0, 5).join(','), e.message);
+      }
+    }
+  }
+  return map;
+}
+
+async function quoteSummary(symbol, modules) {
+  const symVariants = [
+    symbol,
+    ...(symbol.includes('.') &&
+    !/[=-]/.test(symbol) &&
+    !symbol.includes('.HK') &&
+    !symbol.includes('.NS')
+      ? [symbol.replace('.', '-')]
+      : [])
+  ];
+  const hosts = ['query2', 'query1'];
+  for (const sym of symVariants) {
+    for (const host of hosts) {
+      const url = `https://${host}.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=${modules}`;
+      try {
+        const r = await fetch(url, {
+          headers: YF_HEADERS,
+          signal: AbortSignal.timeout(12000)
+        });
+        if (!r.ok) continue;
+        const j = await r.json();
+        if (j?.quoteSummary?.result?.length) return j;
+      } catch (e) {
+        console.log('quoteSummary', sym, host, e.message);
+      }
+    }
+  }
+  return null;
+}
+
 // ── Prices endpoint ───────────────────────────────────────────────────────
 app.get('/api/prices', async (req, res) => {
   const symbols = (req.query.symbols || '').split(',').map(s => s.trim()).filter(Boolean);
   if (!symbols.length) return res.json({});
 
   const results = {};
-  // Fetch concurrently in groups of 8
+
+  const bulkMap = await fetchQuotesV7Bulk(symbols);
+  Object.assign(results, bulkMap);
+
+  const failed = symbols.filter(s => !results[s]);
+  if (!failed.length) {
+    console.log(`Prices Yahoo v7 bulk: ${Object.keys(results).length}/${symbols.length}`);
+    return res.json(results);
+  }
+
+  // Fallback for anything the bulk endpoint missed — per-symbol
   const BATCH = 8;
-  for (let i = 0; i < symbols.length; i += BATCH) {
-    const batch = symbols.slice(i, i + BATCH);
+  for (let i = 0; i < failed.length; i += BATCH) {
+    const batch = failed.slice(i, i + BATCH);
     const settled = await Promise.allSettled(batch.map(s => fetchSinglePrice(s)));
     settled.forEach((r, idx) => {
       if (r.status === 'fulfilled' && r.value) {
@@ -126,10 +207,10 @@ app.get('/api/prices', async (req, res) => {
   }
 
   // For any symbols that failed, try getting latest close from chart endpoint
-  const failed = symbols.filter(s => !results[s]);
-  if (failed.length > 0) {
-    console.log(`Trying chart fallback for: ${failed.join(',')}`);
-    const chartFallbacks = await Promise.allSettled(failed.map(async sym => {
+  const stillMissing = symbols.filter((s) => !results[s]);
+  if (stillMissing.length > 0) {
+    console.log(`Trying chart fallback for: ${stillMissing.join(',')}`);
+    const chartFallbacks = await Promise.allSettled(stillMissing.map(async sym => {
       try {
         const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=1d&interval=1m`;
         const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(8000) });
@@ -201,6 +282,11 @@ app.get('/api/chart', async (req, res) => {
         currency: meta.currency || 'USD',
         regularMarketPrice: meta.regularMarketPrice,
         timestamps,
+        dates: timestamps.map((t) =>
+          typeof t === 'number' && Number.isFinite(t)
+            ? new Date(t * 1000).toISOString().slice(0, 10)
+            : null
+        ),
         opens:   (quote.open   || []).map(v => v != null ? +v.toFixed(4) : null),
         highs:   (quote.high   || []).map(v => v != null ? +v.toFixed(4) : null),
         lows:    (quote.low    || []).map(v => v != null ? +v.toFixed(4) : null),
@@ -218,10 +304,14 @@ app.get('/api/chart', async (req, res) => {
 // In-memory store (persists while server is running, resets on redeploy)
 // Use a simple JSON file for persistence on Render disk
 const fs = require('fs');
-// Try to persist in /opt/render/project/src (persists across restarts on Render disk)
-// Fallback to /tmp if that fails
+// Persist history: VPS / Render disk / local ./data / tmp (self-hosted: ./data wins)
 const HISTORY_FILE = (() => {
+  const dataDir = path.join(__dirname, 'data');
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+  } catch (_) {}
   const paths = [
+    path.join(dataDir, 'history_data.json'),
     '/opt/render/project/src/history_data.json',
     path.join(__dirname, 'history_data.json'),
     '/tmp/alphasignal_history.json'
@@ -256,6 +346,32 @@ function saveHistoryFile(data) {
 }
 
 let tradeHistory = loadHistoryFile();
+
+// ── Health (after tradeHistory — used in payload) ────────────────────────────
+app.get('/api/history/status', (req, res) => {
+  const today = new Date().toDateString();
+  const todayCnt = tradeHistory.filter(h => new Date(h.entryDate||h.timestamp).toDateString()===today).length;
+  const byHz = {};
+  tradeHistory.forEach(h => { const hz=h.hz||'none'; byHz[hz]=(byHz[hz]||0)+1; });
+  res.json({total:tradeHistory.length, todayCount:todayCnt, byHz, file:HISTORY_FILE});
+});
+
+app.get('/api/health', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    status: 'ok',
+    quotes: 'yahoo_finance',
+    earnings: {
+      finnhub_calendar: !!process.env.FINNHUB_API_KEY,
+      fmp_calendar: !!process.env.FMP_API_KEY,
+      yahoo_fallback: true
+    },
+    hasKey: !!process.env.ANTHROPIC_API_KEY,
+    ts: Date.now(),
+    historyVersion: HISTORY_VERSION,
+    historyCount: tradeHistory.length
+  });
+});
 
 // GET all history
 app.get('/api/history', (req, res) => {
@@ -335,454 +451,867 @@ app.delete('/api/history', (req, res) => {
 });
 
 
-// ── Earnings data from Yahoo Finance ────────────────────────────────
+/** Next earnings ISO date + optional EPS avg from Yahoo quoteSummary.calendarEvents. */
+function nextEarningsFromCalendar(qs) {
+  const out = {};
+  try {
+    const ce = qs?.quoteSummary?.result?.[0]?.calendarEvents?.earnings;
+    if (!ce?.earningsDate) return {};
+    const edArr = ce.earningsDate;
+    const slots = Array.isArray(edArr) ? edArr : [edArr];
+    const candidates = [];
+    for (const ed of slots) {
+      let ms = null;
+      if (typeof ed === 'number') ms = ed > 1e12 ? ed : ed * 1000;
+      else if (ed && typeof ed === 'object') {
+        if (ed.raw != null && Number.isFinite(Number(ed.raw))) {
+          const n = Number(ed.raw);
+          ms = n > 1e12 ? n : n * 1000;
+        } else if (ed.fmt != null) {
+          const fmts =
+            typeof ed.fmt === 'string' && /^(\d{1,4})[-/](\d{1,2})[-/](\d{1,2})/.test(ed.fmt.trim())
+              ? Date.parse(ed.fmt)
+              : Date.parse(String(ed.fmt).replace(/,/g, ''));
+          if (!Number.isNaN(fmts)) ms = fmts;
+        }
+      }
+      if (ms == null || !Number.isFinite(ms)) continue;
+      const year = new Date(ms).getFullYear();
+      if (year < 2020 || year > 2100) continue;
+      candidates.push(ms);
+    }
+    if (!candidates.length) return {};
+    const now = Date.now();
+    const slack = 86400000 * 14;
+    const future = candidates.filter((m) => m >= now - slack);
+    const todayUtc0 =
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()) - 86400000;
+    const nextLike = candidates.filter((m) => m >= todayUtc0);
+    const pickMs =
+      nextLike.length ? Math.min(...nextLike) : future.length ? Math.min(...future) : Math.min(...candidates);
+    const d = new Date(pickMs);
+    const nextDate = d.toISOString().slice(0, 10);
+    let eps = null;
+    if (ce.epsAverage?.fmt != null) eps = String(ce.epsAverage.fmt);
+    else if (ce.epsEstimate?.average?.fmt != null) eps = String(ce.epsEstimate.average.fmt);
+    out.nextDate = nextDate;
+    out.epsEstimate = eps;
+  } catch (_) {}
+  return out;
+}
+
+/** Past quarters when chart `events=earnings` is empty — Yahoo quoteSummary earningsHistory module */
+function earningsHistoryFromQuoteSummary(qs) {
+  const hist = qs?.quoteSummary?.result?.[0]?.earningsHistory?.history;
+  if (!Array.isArray(hist) || !hist.length) return [];
+  function num(v) {
+    if (v == null) return null;
+    if (typeof v === 'object' && Number.isFinite(Number(v.raw))) return Number(v.raw);
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  function periodToDateStr(row) {
+    const per = row.period;
+    const perFmt =
+      typeof per === 'object' && per != null && per.fmt != null
+        ? String(per.fmt).trim()
+        : per != null && typeof per !== 'object'
+          ? String(per).trim()
+          : '';
+    const perRaw =
+      typeof per === 'object' && per != null && per.raw != null ? Number(per.raw) : null;
+    if (Number.isFinite(perRaw)) {
+      if (perRaw > 1e11) return new Date(perRaw).toISOString().slice(0, 10);
+      if (perRaw > 1e8) return new Date(perRaw * 1000).toISOString().slice(0, 10);
+    }
+    if (/^\d{4}-\d{2}-\d{2}/.test(perFmt)) return perFmt.slice(0, 10);
+    if (perFmt) {
+      const t = Date.parse(perFmt.replace(',', ''));
+      if (!Number.isNaN(t)) return new Date(t).toISOString().slice(0, 10);
+    }
+    return '';
+  }
+  const pick = hist.slice(-8).reverse().slice(0, 4);
+  return pick
+    .map((row) => {
+      const epsA = num(row.epsActual);
+      const epsE = num(row.epsEstimate);
+      let surp = num(row.surprisePercent);
+      if ((surp == null || Number.isNaN(surp)) && epsA != null && epsE != null && Math.abs(epsE) > 1e-9) {
+        surp = ((epsA - epsE) / Math.abs(epsE)) * 100;
+      }
+      const dateStr = periodToDateStr(row);
+      const quarter =
+        (typeof row.quarter === 'object' && row.quarter?.fmt ? row.quarter.fmt : row.quarter) ||
+        (dateStr
+          ? new Date(dateStr + 'T12:00:00').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+          : '');
+      const surpLabel =
+        surp != null && Number.isFinite(surp) ? (surp >= 0 ? '+' : '') + surp.toFixed(1) + '%' : null;
+      return {
+        quarter,
+        date: dateStr,
+        epsActual: epsA != null ? String(epsA) : null,
+        epsEstimate: epsE != null ? String(epsE) : null,
+        epsSurprise: surpLabel,
+        beat: surp != null ? surp >= 0 : null,
+        revenueActual: null,
+        stockReaction: null
+      };
+    })
+    .filter((r) => r.date || r.quarter);
+}
+
+/** Past quarters from Yahoo chart earnings events — same logic as legacy fallback. */
+function earningsHistoryFromChart(result) {
+  const nowTs = Date.now() / 1000;
+  const evts = Object.values(result?.events?.earnings || {}).sort((a, b) => a.date - b.date);
+  const past = evts.filter((e) => e.date <= nowTs);
+  if (!past.length) return [];
+  return past
+    .slice(-4)
+    .reverse()
+    .map((e) => {
+      const ea = e.epsActual != null && Number.isFinite(Number(e.epsActual)) ? Number(e.epsActual) : null;
+      const ee = e.epsEstimate != null && Number.isFinite(Number(e.epsEstimate)) ? Number(e.epsEstimate) : null;
+      const surp = ea != null && ee != null && Math.abs(ee) > 1e-9 ? ((ea - ee) / Math.abs(ee)) * 100 : null;
+      return {
+        quarter: new Date(e.date * 1000).toLocaleDateString('en-GB', {
+          month: 'short',
+          year: 'numeric'
+        }),
+        date: new Date(e.date * 1000).toISOString().slice(0, 10),
+        epsActual: e.epsActual != null ? String(e.epsActual) : null,
+        epsEstimate: e.epsEstimate != null ? String(e.epsEstimate) : null,
+        epsSurprise:
+          surp != null ? (surp >= 0 ? '+' : '') + surp.toFixed(1) + '%' : null,
+        beat: surp != null ? surp >= 0 : null,
+        revenueActual: null,
+        stockReaction: null
+      };
+    });
+}
+
+/** Tracked universe (same intent as client TRACKED_TICKERS) — calendar merge + Yahoo gap-fill */
+const EARNINGS_CAL_SYMBOLS = [
+  'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'JPM', 'BRK.B',
+  'V', 'MA', 'JNJ', 'UNH', 'PG', 'HD', 'AVGO', 'LLY', 'XOM', 'CVX', 'ABBV', 'KO', 'PEP',
+  'COST', 'WMT', 'NFLX', 'AMD', 'ADBE', 'CRM', 'TMO', 'ORCL', 'ACN', 'IBM', 'GS',
+  'MS', 'BAC', 'MCD', 'ASML.AS', 'SAP.DE', 'MC.PA', 'AZN.L', 'SHEL.L',
+  '9988.HK', '7203.T',
+  // India / HK names also on dashboard watchlist widget
+  'RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS', 'BAJFINANCE.NS',
+  '0700.HK'
+];
+
+function normalizeTickerMatch(s) {
+  return String(s || '').trim().toUpperCase().replace(/^BRK-B$/i, 'BRK.B').replace(/-/g, '.');
+}
+
+/** Drop bogus vendor dates (wrong field / stale cache shapes) outside the fetch window */
+function isValidEarningsCalendarRow(dateStr, fromISO, toISO) {
+  const d = (dateStr && String(dateStr).trim().slice(0, 10)) || '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  if (d < fromISO || d > toISO) return false;
+  const rowY = parseInt(d.slice(0, 4), 10);
+  const fy = parseInt(fromISO.slice(0, 4), 10);
+  const ty = parseInt(toISO.slice(0, 4), 10);
+  if (!Number.isFinite(rowY)) return false;
+  if (rowY < fy - 1 || rowY > ty + 1) return false;
+  return true;
+}
+
+/** Lower sort index = larger / watchlist-first in the sidebar */
+function earningsTickerPriority(sym) {
+  const k = normalizeTickerMatch(sym);
+  for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i++) {
+    if (normalizeTickerMatch(EARNINGS_CAL_SYMBOLS[i]) === k) return i;
+  }
+  return EARNINGS_CAL_SYMBOLS.length + 500;
+}
+
+function finnhubHourToUi(h) {
+  const x = String(h || '').toLowerCase();
+  if (x === 'amc' || x === 'after') return 'post-market';
+  if (x === 'bmo' || x === 'bmh' || x === 'before') return 'pre-market';
+  return 'during-market';
+}
+
+function fmpTimeToUi(row) {
+  const t = String(row?.time || '').toLowerCase();
+  if (t.includes('after')) return 'post-market';
+  if (t.includes('pre') || t.includes('before')) return 'pre-market';
+  return 'during-market';
+}
+
+let fmpCalCacheAll = { key: '', from: '', to: '', ts: 0, rows: [] };
+
+async function fmpEarningCalendarByRange(fromISO, toISO) {
+  const k = (process.env.FMP_API_KEY || '').trim();
+  if (!k) return [];
+  const t = Date.now();
+  const ttlMs = 45 * 60 * 1000;
+  if (
+    fmpCalCacheAll.key === k &&
+    fmpCalCacheAll.from === fromISO &&
+    fmpCalCacheAll.to === toISO &&
+    t - fmpCalCacheAll.ts < ttlMs
+  ) {
+    return fmpCalCacheAll.rows;
+  }
+
+  async function fetchOne(label, urlStr) {
+    try {
+      const r = await fetch(urlStr, { signal: AbortSignal.timeout(24000) });
+      const txt = await r.text();
+      let parsed;
+      try {
+        parsed = JSON.parse(txt);
+      } catch {
+        console.warn(`FMP calendar ${label}: non-JSON`, txt.slice(0, 160));
+        return [];
+      }
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const errMsg = parsed['Error Message'] || parsed.error || parsed.message;
+        if (errMsg) console.warn(`FMP calendar ${label}:`, String(errMsg).slice(0, 200));
+      }
+      if (!Array.isArray(parsed)) return [];
+      return parsed;
+    } catch (e) {
+      console.warn(`FMP calendar ${label}:`, e.message);
+      return [];
+    }
+  }
+
+  const q = `from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}&apikey=${encodeURIComponent(k)}`;
+  const urls = [
+    ['v3_underscore', `https://financialmodelingprep.com/api/v3/earning_calendar?${q}`],
+    ['stable_underscore', `https://financialmodelingprep.com/stable/earning_calendar?${q}`],
+    ['stable_hyphen', `https://financialmodelingprep.com/stable/earning-calendar?${q}`]
+  ];
+
+  let rows = [];
+  for (const [label, u] of urls) {
+    rows = await fetchOne(label, u);
+    if (rows.length) break;
+  }
+
+  fmpCalCacheAll = { key: k, from: fromISO, to: toISO, ts: t, rows };
+  return rows;
+}
+
+function fmpSymbol(raw) {
+  if (!raw || typeof raw !== 'object') return '';
+  const s = raw.symbol ?? raw.Symbol ?? raw.ticker ?? raw.companySymbol ?? raw.stock;
+  return s ? String(s).trim().toUpperCase() : '';
+}
+
+async function finnhubEarningsCalendar(fromISO, toISO, opts = {}) {
+  const token = (process.env.FINNHUB_API_KEY || '').trim();
+  if (!token) return [];
+  const u = new URLSearchParams({ from: fromISO, to: toISO, token, international: 'true' });
+  if (opts.symbol) u.set('symbol', opts.symbol);
+  try {
+    const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?${u}`, {
+      signal: AbortSignal.timeout(25000)
+    });
+    if (!r.ok) {
+      console.warn('Finnhub calendar', r.status);
+      return [];
+    }
+    const j = await r.json();
+    if (j && typeof j.error === 'string') console.warn('Finnhub calendar error:', j.error.slice(0, 200));
+    return Array.isArray(j.earningsCalendar) ? j.earningsCalendar : [];
+  } catch (e) {
+    console.warn('Finnhub calendar', e.message);
+    return [];
+  }
+}
+
+function mapFinnhubCalRow(e) {
+  const q = e.quarter != null && e.year != null ? `Q${e.quarter} FY${e.year}` : '';
+  const est =
+    e.epsEstimate != null && Number.isFinite(+e.epsEstimate) ? String(e.epsEstimate) : '';
+  const act =
+    e.epsActual != null && Number.isFinite(+e.epsActual) ? String(e.epsActual) : '';
+  return {
+    ticker: String(e.symbol || '').replace(/^BRK-B$/i, 'BRK.B'),
+    name: String(e.symbol || ''),
+    date: String(e.date || '').slice(0, 10),
+    time: finnhubHourToUi(e.hour),
+    epsEst: est,
+    epsPrior: act,
+    note: q,
+    market: 'US',
+    source: 'finnhub'
+  };
+}
+
+function mapFmpCalRow(e) {
+  const est =
+    e.epsEstimated != null
+      ? String(e.epsEstimated)
+      : e.eps != null
+        ? String(e.eps)
+        : '';
+  return {
+    ticker: fmpSymbol(e),
+    name: e.name || String(fmpSymbol(e) || e.symbol || ''),
+    date: calRowDateISO(e),
+    time: fmpTimeToUi(e),
+    epsEst: est,
+    epsPrior: '',
+    note: e.fiscalDateEnding ? `Period ${e.fiscalDateEnding}` : '',
+    market: '',
+    source: 'fmp'
+  };
+}
+
+const WANT_SYM = new Set(EARNINGS_CAL_SYMBOLS.map((t) => normalizeTickerMatch(t)));
+
+function tickerInOurUniverse(sym) {
+  return WANT_SYM.has(normalizeTickerMatch(sym));
+}
+
+/** Cap payload / UI size when merging full-market calendars */
+const EARNINGS_CALENDAR_MAX = 400;
+
+function calRowDateISO(e) {
+  if (!e) return '';
+  const d = e.date ?? e.earningDate ?? e.earningsDate ?? e.earning_date;
+  return d ? String(d).slice(0, 10) : '';
+}
+
+function isUpcomingCalRow(e, fromISO, toISO) {
+  const d = calRowDateISO(e);
+  if (!d || d < fromISO || d > toISO) return false;
+  return true;
+}
+
+async function yahooEarningsGapRow(ticker) {
+  const tryOne = async (t) => {
+    try {
+      const qs = await quoteSummary(t, 'calendarEvents,summaryProfile');
+      const cal = nextEarningsFromCalendar(qs);
+      if (!cal.nextDate) return null;
+      const nm =
+        qs?.quoteSummary?.result?.[0]?.summaryProfile?.longName ||
+        qs?.quoteSummary?.result?.[0]?.summaryProfile?.shortName ||
+        t;
+      const ex = qs?.quoteSummary?.result?.[0]?.summaryProfile?.exchange?.toUpperCase() || '';
+      const market = ex.includes('NMS') || ex.includes('NYQ')
+        ? 'US'
+        : ex.includes('LSE')
+          ? 'UK'
+          : ex.includes('HKG')
+            ? 'HK'
+            : '';
+      return {
+        ticker: t.replace(/-/g, '.'),
+        name: nm,
+        date: cal.nextDate,
+        time: 'during-market',
+        epsEst: cal.epsEstimate || '',
+        epsPrior: '',
+        note: '',
+        market,
+        source: 'yahoo'
+      };
+    } catch (_) {
+      return null;
+    }
+  };
+  let row = await tryOne(ticker);
+  if (row) return row;
+  if (ticker === 'GOOGL') row = await tryOne('GOOG');
+  else if (ticker === 'GOOG') row = await tryOne('GOOGL');
+  return row;
+}
+
+async function mergedEarningsCalendarWidget(fromISO, toISO) {
+  const fhRaw = await finnhubEarningsCalendar(fromISO, toISO);
+  const fmpRows = await fmpEarningCalendarByRange(fromISO, toISO);
+
+  const byTicker = new Map();
+
+  // Full-window merge (not limited to ~55 watchlist names) so the widget reflects the real market.
+  fhRaw
+    .filter((x) => x && x.symbol && isUpcomingCalRow(x, fromISO, toISO))
+    .forEach((e) => {
+      const row = mapFinnhubCalRow(e);
+      const k = normalizeTickerMatch(row.ticker);
+      if (!k) return;
+      if (!byTicker.has(k)) byTicker.set(k, row);
+    });
+
+  fmpRows.forEach((e) => {
+    const sym = fmpSymbol(e);
+    if (!sym || !isUpcomingCalRow(e, fromISO, toISO)) return;
+    const k = normalizeTickerMatch(sym);
+    if (!k) return;
+    if (!byTicker.has(k)) byTicker.set(k, mapFmpCalRow(e));
+  });
+
+  for (const [, row] of byTicker) {
+    if (
+      row.source === 'finnhub' &&
+      (!row.name || row.name === row.ticker || row.name === row.ticker.replace(/\./g, '-'))
+    ) {
+      const hit = fmpRows.find(
+        (r) => fmpSymbol(r) && normalizeTickerMatch(fmpSymbol(r)) === normalizeTickerMatch(row.ticker)
+      );
+      const nm =
+        hit && hit.name && String(hit.name).length > String(hit.symbol || '').length
+          ? hit.name
+          : null;
+      if (nm) row.name = nm;
+    }
+  }
+
+  await Promise.all(
+    EARNINGS_CAL_SYMBOLS.map(async (tick) => {
+      const nk = normalizeTickerMatch(tick);
+      if (byTicker.has(nk)) return;
+      const gap = await yahooEarningsGapRow(tick);
+      if (
+        gap &&
+        gap.date &&
+        gap.date >= fromISO &&
+        gap.date <= toISO
+      ) {
+        byTicker.set(nk, gap);
+      }
+    })
+  );
+
+  const sorted = [...byTicker.values()]
+    .filter((row) =>
+      row && row.date && isValidEarningsCalendarRow(row.date, fromISO, toISO)
+    )
+    .sort((a, b) => {
+      const da = a.date.localeCompare(b.date);
+      if (da !== 0) return da;
+      const pa = earningsTickerPriority(a.ticker);
+      const pb = earningsTickerPriority(b.ticker);
+      if (pa !== pb) return pa - pb;
+      return normalizeTickerMatch(a.ticker).localeCompare(normalizeTickerMatch(b.ticker));
+    });
+  return sorted.slice(0, EARNINGS_CALENDAR_MAX);
+}
+
+// ── Earnings data — multi-source calendar (Finnhub / FMP preferred; Yahoo fallback) ─
 app.get('/api/earnings/:symbol', async (req, res) => {
   const sym = req.params.symbol.toUpperCase();
-  const todayISO = new Date().toISOString().slice(0,10);
-  const today = new Date();
-  const todayStr = today.toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const todayISO = new Date().toISOString().slice(0, 10);
   try {
-    let nextDate=null,nextDateEnd=null,epsEst=null,callTime=null,quarter=null,epsHistory=[];
-    if(apiKey) {
-      // Step 1: Next earnings date via web search
-      try {
-        const r1 = await fetch('https://api.anthropic.com/v1/messages',{
-          method:'POST',
-          headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-beta':'web-search-2025-03-05'},
-          body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:400,
-            tools:[{type:'web_search_20250305',name:'web_search'}],
-            system:'Financial data. Today='+todayStr+' ('+todayISO+'). Return ONLY JSON object, no text.',
-            messages:[{role:'user',content:'Search "'+sym+' next earnings date 2026" and return ONLY JSON: {"nextDate":"YYYY-MM-DD","nextDateEnd":"YYYY-MM-DD or null","earningsTime":"pre-market or post-market","epsEstimate":"number","quarter":"Q1 FY2026"} Date must be after '+todayISO+'.'}]}),
-          signal:AbortSignal.timeout(20000)});
-        if(r1.ok){
-          const d1=await r1.json();
-          let raw=''; if(d1.content)d1.content.forEach(b=>{if(b.type==='text')raw+=b.text; if(b.type==='tool_result'&&b.content)(Array.isArray(b.content)?b.content:[b.content]).forEach(tc=>{if(tc&&tc.type==='text')raw+=tc.text;});});
-          raw=raw.replace(/```json/gi,'').replace(/```/g,'').trim();
-          const si=raw.indexOf('{'),ei=raw.lastIndexOf('}');
-          if(si!==-1&&ei>si){try{
-            const p=JSON.parse(raw.slice(si,ei+1));
-            if(p.nextDate&&p.nextDate>=todayISO){nextDate=p.nextDate;nextDateEnd=p.nextDateEnd&&p.nextDateEnd!=='null'?p.nextDateEnd:null;epsEst=p.epsEstimate||null;callTime=p.earningsTime||null;quarter=p.quarter||null;}
-          }catch(pe){console.log('next parse:',pe.message);}}
-        }
-      } catch(e){console.log('Claude next err:',e.message);}
-      // Step 2: Historical earnings via web search
-      try {
-        const r2 = await fetch('https://api.anthropic.com/v1/messages',{
-          method:'POST',
-          headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-beta':'web-search-2025-03-05'},
-          body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:700,
-            tools:[{type:'web_search_20250305',name:'web_search'}],
-            system:'Financial data. Return ONLY valid JSON array, no markdown.',
-            messages:[{role:'user',content:'Search "'+sym+' earnings results 2024 2025 actual vs estimate EPS beat miss" and return ONLY JSON array of last 4 quarters: [{"quarter":"Q1 FY2026","date":"YYYY-MM-DD","epsActual":"1.86","epsEstimate":"1.79","epsSurprise":"+3.9%","revenueActual":"27.2B","revenueEstimate":"26.1B","stockReaction":"+3.2%","beat":true}] All dates before '+todayISO+'.'}]}),
-          signal:AbortSignal.timeout(20000)});
-        if(r2.ok){
-          const d2=await r2.json();
-          let raw2=''; if(d2.content)d2.content.forEach(b=>{if(b.type==='text')raw2+=b.text; if(b.type==='tool_result'&&b.content)(Array.isArray(b.content)?b.content:[b.content]).forEach(tc=>{if(tc&&tc.type==='text')raw2+=tc.text;});});
-          raw2=raw2.replace(/```json/gi,'').replace(/```/g,'').trim();
-          const si=raw2.indexOf('['),ei=raw2.lastIndexOf(']');
-          if(si!==-1&&ei>si){try{epsHistory=JSON.parse(raw2.slice(si,ei+1)).slice(0,4);}catch(pe){console.log('hist parse:',pe.message);}}
-        }
-      } catch(e){console.log('Claude hist err:',e.message);}
+    let nextDate = null;
+    let nextDateEnd = null;
+    let epsEst = null;
+    let callTime = null;
+    let quarter = null;
+    let epsHistory = [];
+
+    const toFar = new Date();
+    toFar.setDate(toFar.getDate() + 120);
+    const toISOsym = toFar.toISOString().slice(0, 10);
+
+    const fhVariants =
+      sym === 'GOOGL' || sym === 'GOOG'
+        ? ['GOOGL', 'GOOG']
+        : sym.includes('.')
+          ? [sym, sym.replace(/\./g, '-')]
+          : [sym];
+    let fhRows = [];
+    for (const fv of fhVariants) {
+      fhRows = await finnhubEarningsCalendar(todayISO, toISOsym, { symbol: fv });
+      if (fhRows.length) break;
     }
-    // Fallback: Yahoo v8 chart events for history only
-    if(!epsHistory.length){
-      for(const host of ['query1','query2']){
-        try{
-          const url=`https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=3y&interval=3mo&events=earnings&includePrePost=false`;
-          const r=await fetch(url,{headers:YF_HEADERS,signal:AbortSignal.timeout(8000)});
-          if(!r.ok)continue;
-          const d=await r.json();
-          const result=d?.chart?.result?.[0];
-          if(!result)continue;
-          const nowTs=Date.now()/1000;
-          const evts=Object.values(result.events?.earnings||{}).sort((a,b)=>a.date-b.date);
-          const past=evts.filter(e=>e.date<=nowTs);
-          if(past.length){
-            epsHistory=past.slice(-4).reverse().map(e=>{
-              const surp=(e.epsActual!=null&&e.epsEstimate!=null)?((e.epsActual-e.epsEstimate)/Math.abs(e.epsEstimate)*100):null;
-              return{quarter:new Date(e.date*1000).toLocaleDateString('en-GB',{month:'short',year:'numeric'}),
-                date:new Date(e.date*1000).toISOString().slice(0,10),
-                epsActual:e.epsActual!=null?String(e.epsActual):null,
-                epsEstimate:e.epsEstimate!=null?String(e.epsEstimate):null,
-                epsSurprise:surp!=null?(surp>=0?'+':'')+surp.toFixed(1)+'%':null,
-                beat:surp!=null?surp>=0:null,revenueActual:null,stockReaction:null};
-            });
-          }
-          break;
-        }catch(e){console.log('Yahoo fallback:',e.message);}
+    const fhFuture = fhRows.filter((r) => String(r.date).slice(0, 10) >= todayISO);
+    fhFuture.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    let calendarPrimary = '';
+
+    if (fhFuture.length) {
+      const e = fhFuture[0];
+      nextDate = String(e.date).slice(0, 10);
+      if (e.epsEstimate != null && Number.isFinite(+e.epsEstimate)) epsEst = String(e.epsEstimate);
+      if (finnhubHourToUi(e.hour) !== 'during-market') callTime = finnhubHourToUi(e.hour);
+      if (e.quarter != null && e.year != null) quarter = `Q${e.quarter} FY${e.year}`;
+      calendarPrimary = 'finnhub';
+    }
+
+    if (!nextDate && process.env.FMP_API_KEY) {
+      const fmpArr = await fmpEarningCalendarByRange(todayISO, toISOsym);
+      const hit =
+        fmpArr.find((r) => normalizeTickerMatch(r.symbol) === normalizeTickerMatch(sym)) ||
+        (sym === 'GOOGL'
+          ? fmpArr.find((r) => normalizeTickerMatch(r.symbol) === 'GOOG')
+          : sym === 'GOOG'
+            ? fmpArr.find((r) => normalizeTickerMatch(r.symbol) === 'GOOGL')
+            : null);
+      if (hit?.date) {
+        nextDate = String(hit.date).slice(0, 10);
+        if (hit.epsEstimated != null) epsEst = String(hit.epsEstimated);
+        else if (hit.eps != null) epsEst = String(hit.eps);
+        calendarPrimary = 'fmp';
       }
     }
-    console.log('Earnings',sym+': next='+nextDate+', hist='+epsHistory.length);
-    res.json({symbol:sym,nextEarningsDate:nextDate,nextEarningsDateEnd:nextDateEnd,epsEstimate:epsEst,earningsTime:callTime,quarter,history:epsHistory.slice(0,4)});
-  }catch(e){console.error('Earnings err:',e.message);res.status(500).json({error:e.message});}
-});
 
-
-// ── Real Technical Analysis Engine ─────────────────────────────────────────
-// Fetches actual OHLCV data from Yahoo Finance and calculates real indicators
-// This replaces Claude's guessed RSI/MACD/MA values with real computed values
-
-async function fetchOHLCV(symbol, range='6mo', interval='1d') {
-  const sym = symbol.replace('.', '-');
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=${interval}&includePrePost=false`;
-  const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) });
-  if (!r.ok) throw new Error(`Yahoo chart ${r.status}`);
-  const d = await r.json();
-  const res = d?.chart?.result?.[0];
-  if (!res) throw new Error('No chart data');
-  const ts = res.timestamp || [];
-  const q = res.indicators?.quote?.[0] || {};
-  const closes = q.close || [], highs = q.high || [], lows = q.low || [], volumes = q.volume || [];
-  // Filter nulls
-  const data = ts.map((t,i) => ({ t, o: q.open?.[i], h: highs[i], l: lows[i], c: closes[i], v: volumes[i] }))
-    .filter(x => x.c != null && x.h != null && x.l != null);
-  return data;
-}
-
-function calcEMA(closes, period) {
-  if (closes.length < period) return null;
-  const k = 2 / (period + 1);
-  let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  for (let i = period; i < closes.length; i++) ema = closes[i] * k + ema * (1 - k);
-  return parseFloat(ema.toFixed(4));
-}
-
-function calcSMA(closes, period) {
-  if (closes.length < period) return null;
-  const slice = closes.slice(-period);
-  return parseFloat((slice.reduce((a, b) => a + b, 0) / period).toFixed(4));
-}
-
-function calcRSI(closes, period=14) {
-  if (closes.length < period + 1) return null;
-  const recent = closes.slice(-(period * 2 + 1));
-  let gains = 0, losses = 0;
-  for (let i = 1; i <= period; i++) {
-    const d = recent[i] - recent[i-1];
-    if (d > 0) gains += d; else losses -= d;
-  }
-  let avgG = gains / period, avgL = losses / period;
-  for (let i = period + 1; i < recent.length; i++) {
-    const d = recent[i] - recent[i-1];
-    avgG = (avgG * (period-1) + Math.max(d,0)) / period;
-    avgL = (avgL * (period-1) + Math.max(-d,0)) / period;
-  }
-  if (avgL === 0) return 100;
-  return parseFloat((100 - 100 / (1 + avgG / avgL)).toFixed(1));
-}
-
-function calcMACD(closes) {
-  if (closes.length < 35) return null;
-  const ema12 = calcEMA(closes, 12), ema26 = calcEMA(closes, 26);
-  if (!ema12 || !ema26) return null;
-  const macdLine = ema12 - ema26;
-  // Signal = 9-period EMA of MACD line (approximate using last 9 MACD values)
-  const macdValues = [];
-  for (let i = closes.length - 9; i <= closes.length - 1; i++) {
-    const e12 = calcEMA(closes.slice(0, i+1), 12);
-    const e26 = calcEMA(closes.slice(0, i+1), 26);
-    if (e12 && e26) macdValues.push(e12 - e26);
-  }
-  const signal = macdValues.length >= 9 ? calcSMA(macdValues, 9) : null;
-  return {
-    macd: parseFloat(macdLine.toFixed(4)),
-    signal: signal ? parseFloat(signal.toFixed(4)) : null,
-    histogram: signal ? parseFloat((macdLine - signal).toFixed(4)) : null,
-    trend: macdLine > (signal || 0) ? 'bullish' : 'bearish'
-  };
-}
-
-function calcBollinger(closes, period=20) {
-  const sma = calcSMA(closes, period);
-  if (!sma) return null;
-  const slice = closes.slice(-period);
-  const variance = slice.reduce((s, v) => s + Math.pow(v - sma, 2), 0) / period;
-  const std = Math.sqrt(variance);
-  const upper = parseFloat((sma + 2 * std).toFixed(2));
-  const lower = parseFloat((sma - 2 * std).toFixed(2));
-  const last = closes[closes.length - 1];
-  const pct = parseFloat(((last - lower) / (upper - lower) * 100).toFixed(1));
-  return { upper, middle: parseFloat(sma.toFixed(2)), lower, pct, width: parseFloat((2*std/sma*100).toFixed(2)) };
-}
-
-function findSupportResistance(data, lookback=60) {
-  const recent = data.slice(-Math.min(lookback, data.length));
-  const highs = recent.map(d => d.h), lows = recent.map(d => d.l);
-  // Find pivot highs/lows (local maxima/minima with 3-bar confirmation)
-  const pivotHighs = [], pivotLows = [];
-  for (let i = 2; i < recent.length - 2; i++) {
-    if (highs[i] > highs[i-1] && highs[i] > highs[i-2] && highs[i] > highs[i+1] && highs[i] > highs[i+2])
-      pivotHighs.push(highs[i]);
-    if (lows[i] < lows[i-1] && lows[i] < lows[i-2] && lows[i] < lows[i+1] && lows[i] < lows[i+2])
-      pivotLows.push(lows[i]);
-  }
-  const last = recent[recent.length-1].c;
-  // Find nearest support (below price) and resistance (above price)
-  const supports = pivotLows.filter(v => v < last * 0.995).sort((a,b) => b-a);
-  const resistances = pivotHighs.filter(v => v > last * 1.005).sort((a,b) => a-b);
-  return {
-    support1: supports[0] ? parseFloat(supports[0].toFixed(2)) : null,
-    support2: supports[1] ? parseFloat(supports[1].toFixed(2)) : null,
-    resistance1: resistances[0] ? parseFloat(resistances[0].toFixed(2)) : null,
-    resistance2: resistances[1] ? parseFloat(resistances[1].toFixed(2)) : null,
-  };
-}
-
-function calcATR(data, period=14) {
-  if (data.length < period + 1) return null;
-  const recent = data.slice(-(period + 1));
-  const trs = [];
-  for (let i = 1; i < recent.length; i++) {
-    const prev = recent[i-1].c;
-    trs.push(Math.max(recent[i].h - recent[i].l, Math.abs(recent[i].h - prev), Math.abs(recent[i].l - prev)));
-  }
-  return parseFloat((trs.reduce((a,b)=>a+b,0)/period).toFixed(4));
-}
-
-function calcVolumeAnalysis(data, period=20) {
-  if (data.length < period) return null;
-  const recent = data.slice(-period);
-  const avgVol = recent.reduce((s,d)=>s+(d.v||0),0)/period;
-  const lastVol = data[data.length-1].v || 0;
-  const lastClose = data[data.length-1].c;
-  const prevClose = data[data.length-2]?.c;
-  const priceUp = prevClose && lastClose > prevClose;
-  return {
-    avgVolume: Math.round(avgVol),
-    lastVolume: lastVol,
-    relativeVolume: parseFloat((lastVol/avgVol).toFixed(2)),
-    confirmation: priceUp && lastVol > avgVol * 1.2 ? 'bullish_volume' :
-                  !priceUp && lastVol > avgVol * 1.2 ? 'bearish_volume' : 'neutral'
-  };
-}
-
-function detectPattern(data) {
-  if (data.length < 5) return 'insufficient data';
-  const last = data[data.length-1];
-  const prev = data[data.length-2];
-  const body = Math.abs(last.c - last.o);
-  const range = last.h - last.l;
-  const upperWick = last.h - Math.max(last.o, last.c);
-  const lowerWick = Math.min(last.o, last.c) - last.l;
-  if (body < range * 0.1) return range > 0.02 * last.c ? 'Doji (indecision)' : 'Small Doji';
-  if (last.c > last.o && last.c > prev.c * 1.005 && body > prev.h - prev.l) return 'Bullish Engulfing';
-  if (last.c < last.o && last.c < prev.c * 0.995 && body > prev.h - prev.l) return 'Bearish Engulfing';
-  if (lowerWick > body * 2 && upperWick < body * 0.5) return last.c > last.o ? 'Hammer (bullish)' : 'Hanging Man';
-  if (upperWick > body * 2 && lowerWick < body * 0.5) return last.c < last.o ? 'Shooting Star (bearish)' : 'Inverted Hammer';
-  return last.c > last.o ? 'Bullish candle' : 'Bearish candle';
-}
-
-function calcTrend(data, period=20) {
-  if (data.length < period) return 'unknown';
-  const recent = data.slice(-period);
-  const first = recent[0].c, last = recent[recent.length-1].c;
-  const change = (last - first) / first;
-  // Linear regression slope
-  const n = recent.length;
-  const x = Array.from({length:n},(_,i)=>i);
-  const y = recent.map(d=>d.c);
-  const meanX = (n-1)/2, meanY = y.reduce((a,b)=>a+b,0)/n;
-  const slope = x.reduce((s,xi,i)=>s+(xi-meanX)*(y[i]-meanY),0) / x.reduce((s,xi)=>s+(xi-meanX)**2,0);
-  const slopePct = slope / first * 100;
-  if (slopePct > 0.3) return 'uptrend';
-  if (slopePct < -0.3) return 'downtrend';
-  return 'sideways';
-}
-
-// Cache technicals for 15 minutes
-const techCache = new Map();
-const TECH_TTL = 15 * 60 * 1000;
-
-app.get('/api/technicals/:symbol', async (req, res) => {
-  const symbol = req.params.symbol;
-  const cacheKey = symbol;
-  const cached = techCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < TECH_TTL) {
-    return res.json(cached.data);
-  }
-  try {
-    const [daily, weekly] = await Promise.all([
-      fetchOHLCV(symbol, '6mo', '1d'),
-      fetchOHLCV(symbol, '2y', '1wk').catch(() => null)
-    ]);
-    if (!daily || daily.length < 20) return res.status(404).json({ error: 'Insufficient data' });
-    const closes = daily.map(d => d.c);
-    const currentPrice = closes[closes.length - 1];
-    const ma20 = calcSMA(closes, 20);
-    const ma50 = calcSMA(closes, 50);
-    const ma200 = closes.length >= 200 ? calcSMA(closes, 200) : null;
-    const ema9 = calcEMA(closes, 9);
-    const ema21 = calcEMA(closes, 21);
-    const rsi = calcRSI(closes, 14);
-    const rsi5 = calcRSI(closes, 5); // Short-term RSI
-    const macd = calcMACD(closes);
-    const bb = calcBollinger(closes, 20);
-    const atr = calcATR(daily, 14);
-    const atrPct = atr ? parseFloat((atr / currentPrice * 100).toFixed(2)) : null;
-    const { support1, support2, resistance1, resistance2 } = findSupportResistance(daily, 60);
-    const volume = calcVolumeAnalysis(daily, 20);
-    const pattern = detectPattern(daily);
-    const trend20 = calcTrend(daily, 20);
-    const trend50 = closes.length >= 50 ? calcTrend(daily.slice(-50), 50) : null;
-
-    // Weekly indicators for medium/long term
-    let weeklyRSI = null, weeklyTrend = null, weeklyMA20 = null;
-    if (weekly && weekly.length >= 14) {
-      const wCloses = weekly.map(d => d.c);
-      weeklyRSI = calcRSI(wCloses, 14);
-      weeklyTrend = calcTrend(weekly.slice(-20), 20);
-      weeklyMA20 = calcSMA(wCloses, 20);
+    let qs = await quoteSummary(sym, 'calendarEvents,earnings,earningsHistory');
+    let fromCal = nextEarningsFromCalendar(qs);
+    if ((!fromCal.nextDate || fromCal.nextDate < todayISO) && (sym === 'GOOGL' || sym === 'GOOG')) {
+      const altQs = await quoteSummary(sym === 'GOOGL' ? 'GOOG' : 'GOOGL', 'calendarEvents,earnings,earningsHistory');
+      const altCal = nextEarningsFromCalendar(altQs);
+      if (altCal.nextDate && (!fromCal.nextDate || fromCal.nextDate < todayISO)) fromCal = altCal;
+    }
+    if (!nextDate && fromCal.nextDate && fromCal.nextDate >= todayISO) {
+      nextDate = fromCal.nextDate;
+      epsEst = epsEst || fromCal.epsEstimate || null;
+      calendarPrimary = calendarPrimary || 'yahoo_quoteSummary';
+    } else if (fromCal.epsEstimate && !epsEst) {
+      epsEst = fromCal.epsEstimate;
     }
 
-    // Price position relative to MAs
-    const aboveMa20 = ma20 ? currentPrice > ma20 : null;
-    const aboveMa50 = ma50 ? currentPrice > ma50 : null;
-    const aboveMa200 = ma200 ? currentPrice > ma200 : null;
-    const maAlignment = [aboveMa20, aboveMa50, aboveMa200].filter(x=>x!==null);
-    const bullishMAs = maAlignment.filter(Boolean).length;
-    const totalMAs = maAlignment.length;
+    let historySource = 'yahoo_chart_events';
+    epsHistory = earningsHistoryFromQuoteSummary(qs);
+    if (epsHistory.length) historySource = 'yahoo_quoteSummary_earningsHistory';
+    else if (sym === 'GOOGL' || sym === 'GOOG') {
+      const altQsHist = await quoteSummary(sym === 'GOOGL' ? 'GOOG' : 'GOOGL', 'earningsHistory');
+      const altH = earningsHistoryFromQuoteSummary(altQsHist);
+      if (altH.length) {
+        epsHistory = altH;
+        historySource = 'yahoo_quoteSummary_earningsHistory';
+      }
+    }
 
-    // Distance to support/resistance (for TP/SL guidance)
-    const distToRes1 = resistance1 ? parseFloat(((resistance1-currentPrice)/currentPrice*100).toFixed(2)) : null;
-    const distToSup1 = support1 ? parseFloat(((currentPrice-support1)/currentPrice*100).toFixed(2)) : null;
+    const symbolsForChart =
+      sym === 'GOOGL' || sym === 'GOOG' ? ['GOOGL', 'GOOG'] : [sym];
+    const rangeQs = ['range=3y&interval=3mo', 'range=8y&interval=1wk'];
+    for (const host of ['query1', 'query2']) {
+      for (const cs of symbolsForChart) {
+        for (const rq of rangeQs) {
+          try {
+            const url = `https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(cs)}?${rq}&events=earnings&includePrePost=false`;
+            const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(12000) });
+            if (!r.ok) continue;
+            const d = await r.json();
+            const result = d?.chart?.result?.[0];
+            if (!result) continue;
+            const chunk = earningsHistoryFromChart(result);
+            if (chunk.length > epsHistory.length) {
+              epsHistory = chunk;
+              historySource = 'yahoo_chart_events';
+            }
+            if (!nextDate) {
+              const nowTs = Date.now() / 1000;
+              const evts = Object.values(result.events?.earnings || {}).sort((a, b) => a.date - b.date);
+              const fut = evts.filter((e) => e.date > nowTs).sort((a, b) => a.date - b.date);
+              if (fut.length) {
+                const nx = fut[0].date;
+                nextDate = new Date(nx * 1000).toISOString().slice(0, 10);
+                if (!calendarPrimary) calendarPrimary = 'yahoo_chart';
+              }
+            }
+          } catch (e) {
+            console.log('Yahoo chart earnings:', sym, e.message);
+          }
+        }
+      }
+    }
+    if (!epsHistory.length) {
+      const histSyms =
+        sym === 'GOOGL' || sym === 'GOOG' ? ['GOOGL', 'GOOG'] : symbolsForChart;
+      for (const cs of histSyms) {
+        const qHist = await quoteSummary(cs, 'earningsHistory');
+        const chunk = earningsHistoryFromQuoteSummary(qHist);
+        if (chunk.length) {
+          epsHistory = chunk;
+          historySource = 'yahoo_quoteSummary_earningsHistory';
+          break;
+        }
+      }
+    }
+    const sourcesUsed = {};
+    if (process.env.FINNHUB_API_KEY) sourcesUsed.finnhub = true;
+    if (process.env.FMP_API_KEY) sourcesUsed.fmp = true;
+    sourcesUsed.yahoo = true;
 
-    // Signal quality score (0-100) based on alignment
-    let signalScore = 50;
-    if (rsi >= 40 && rsi <= 65 && aboveMa20 && aboveMa50 && trend20 === 'uptrend') signalScore = 80;
-    else if (rsi >= 55 && rsi <= 80 && !aboveMa20 && !aboveMa50 && trend20 === 'downtrend') signalScore = 75;
-    else if (rsi > 70 || rsi < 30) signalScore = 35; // Extreme — avoid
-
-    const result = {
-      symbol, currentPrice,
-      // Moving averages
-      ma20, ma50, ma200, ema9, ema21,
-      aboveMa20, aboveMa50, aboveMa200,
-      bullishMAs, totalMAs,
-      maAlignmentStr: `${bullishMAs}/${totalMAs} MAs bullish`,
-      // Momentum
-      rsi, rsi5,
-      rsiSignal: rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : rsi > 55 ? 'bullish' : rsi < 45 ? 'bearish' : 'neutral',
-      macd,
-      // Trend
-      trend20, trend50,
-      // Volatility
-      atr, atrPct,
-      bb,
-      bbSignal: bb ? (bb.pct > 80 ? 'near_upper_band' : bb.pct < 20 ? 'near_lower_band' : 'mid_band') : null,
-      // Support / Resistance (REAL levels from pivot analysis)
-      support1, support2, resistance1, resistance2,
-      distToRes1Pct: distToRes1,
-      distToSup1Pct: distToSup1,
-      // Volume
-      volume,
-      // Pattern
-      candlePattern: pattern,
-      // Weekly (for medium/long)
-      weeklyRSI, weeklyTrend, weeklyMA20,
-      // Summary
-      signalScore,
-      trend: trend20,
-      summary: `RSI ${rsi} (${rsi>70?'overbought':rsi<30?'oversold':'neutral'}), ${bullishMAs}/${totalMAs} MAs bullish, ${trend20}, S1@${support1}, R1@${resistance1}`
-    };
-    techCache.set(cacheKey, { ts: Date.now(), data: result });
-    res.json(result);
-  } catch(e) {
-    console.error('Technicals error:', symbol, e.message);
+    res.json({
+      symbol: sym,
+      nextEarningsDate: nextDate,
+      nextEarningsDateEnd: nextDateEnd,
+      epsEstimate: epsEst,
+      earningsTime: callTime || null,
+      quarter,
+      calendarPrimarySource: calendarPrimary || null,
+      calendarSourcesConsulted: sourcesUsed,
+      history: Array.isArray(epsHistory) ? epsHistory.slice(0, 4) : [],
+      historySource
+    });
+  } catch (e) {
+    console.error('Earnings err:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
 
-// Batch technicals for dashboard scan
-app.post('/api/technicals/batch', async (req, res) => {
-  const { symbols } = req.body;
-  if (!symbols?.length) return res.json({});
-  const results = {};
-  await Promise.allSettled(symbols.map(async sym => {
+// ── Single-ticker / batch analysis (Claude + server-computed levels) ───────
+
+function extractAnthropicText(data) {
+  if (!data || !Array.isArray(data.content)) return '';
+  let raw = '';
+  for (const b of data.content) {
+    if (b.type === 'text') raw += b.text;
+    if (b.type === 'tool_result' && b.content) {
+      (Array.isArray(b.content) ? b.content : [b.content]).forEach(tc => {
+        if (tc && tc.type === 'text') raw += tc.text;
+      });
+    }
+  }
+  return raw.replace(/```json/gi, '').replace(/```/g, '').trim().replace(/^json\s*/i, '').trim();
+}
+
+function tryParseJsonArray(str) {
+  if (!str) return null;
+  let raw = String(str)
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim()
+    .replace(/^\uFEFF/, '');
+  raw = raw.replace(/^json\s*/i, '').trim();
+  const fi = raw.indexOf('[');
+  const li = raw.lastIndexOf(']');
+  if (fi !== -1 && li > fi) {
     try {
-      const cached = techCache.get(sym);
-      if (cached && Date.now() - cached.ts < TECH_TTL) { results[sym] = cached.data; return; }
-      const daily = await fetchOHLCV(sym, '3mo', '1d');
-      if (!daily || daily.length < 20) return;
-      const closes = daily.map(d => d.c);
-      const cp = closes[closes.length-1];
-      const ma20 = calcSMA(closes, 20), ma50 = calcSMA(closes, 50);
-      const rsi = calcRSI(closes, 14);
-      const macd = calcMACD(closes);
-      const { support1, resistance1 } = findSupportResistance(daily, 40);
-      const atr = calcATR(daily, 14);
-      const volume = calcVolumeAnalysis(daily, 20);
-      const trend20 = calcTrend(daily, 20);
-      const data = { symbol: sym, currentPrice: cp, ma20, ma50, rsi, macd,
-        support1, resistance1, atr, atrPct: atr?parseFloat((atr/cp*100).toFixed(2)):null,
-        volume, trend20, aboveMa20: ma20?cp>ma20:null, aboveMa50: ma50?cp>ma50:null,
-        candlePattern: detectPattern(daily),
-        summary: `RSI ${rsi}, ${cp>ma20?'above':'below'} MA20, ${trend20}, S@${support1}, R@${resistance1}` };
-      techCache.set(sym, { ts: Date.now(), data });
-      results[sym] = data;
-    } catch(e) { console.warn('Batch tech fail:', sym, e.message); }
-  }));
-  res.json(results);
+      const r = JSON.parse(raw.slice(fi, li + 1).replace(/,\s*([}\]])/g, '$1'));
+      if (Array.isArray(r) && r.length) return r;
+    } catch (_) {}
+  }
+  const oi = raw.indexOf('{');
+  const oe = raw.lastIndexOf('}');
+  if (oi !== -1 && oe > oi) {
+    try {
+      const wrapped = '[' + raw.slice(oi, oe + 1) + ']';
+      const multi = JSON.parse(wrapped.replace(/,\s*([}\]])/g, '$1'));
+      if (Array.isArray(multi) && multi.length) return multi;
+    } catch (_) {}
+    try {
+      const one = JSON.parse(raw.slice(oi, oe + 1).replace(/,\s*([}\]])/g, '$1'));
+      if (one && typeof one === 'object') return [one];
+    } catch (_) {}
+  }
+  return null;
+}
+
+function ratingImpliesSell(rating) {
+  const v = (rating || '').toLowerCase();
+  return v.includes('sell');
+}
+
+/** Mid-range % moves per horizon (aligned with dashboard prompt + mkRecord fallbacks) */
+const HORIZON_PCT = {
+  short: {
+    buy: { tp1: 0.025, tp2: 0.045, sl: -0.015 },
+    sell: { tp1: -0.025, tp2: -0.045, sl: 0.015 }
+  },
+  medium: {
+    buy: { tp1: 0.07, tp2: 0.13, sl: -0.04 },
+    sell: { tp1: -0.07, tp2: -0.13, sl: 0.04 }
+  },
+  long: {
+    buy: { tp1: 0.18, tp2: 0.35, sl: -0.10 },
+    sell: { tp1: -0.18, tp2: -0.35, sl: 0.10 }
+  }
+};
+
+function roundPrice(x) {
+  if (x == null || Number.isNaN(x)) return x;
+  const a = Math.abs(x);
+  const d = a >= 100 ? 2 : a >= 10 ? 2 : a >= 1 ? 3 : 4;
+  return +x.toFixed(d);
+}
+
+/**
+ * Overwrite all entry / TP / SL fields from live price so horizons always differ mathematically.
+ */
+function applyServerPriceLevels(row, livePrice) {
+  if (!row || !livePrice || livePrice <= 0) return row;
+  const hzKeys = ['short', 'medium', 'long'];
+  const ratingKeys = { short: 'shortRating', medium: 'mediumRating', long: 'longRating' };
+  for (const hz of hzKeys) {
+    const sell = ratingImpliesSell(row[ratingKeys[hz]]);
+    const p = HORIZON_PCT[hz][sell ? 'sell' : 'buy'];
+    const e = livePrice;
+    row[hz + 'Entry'] = String(roundPrice(e));
+    row[hz + 'Target1'] = String(roundPrice(e * (1 + p.tp1)));
+    row[hz + 'Target2'] = String(roundPrice(e * (1 + p.tp2)));
+    row[hz + 'StopLoss'] = String(roundPrice(e * (1 + p.sl)));
+  }
+  // Back-compat aliases (short horizon)
+  row.entry = row.shortEntry;
+  row.target1 = row.shortTarget1;
+  row.target2 = row.shortTarget2;
+  row.stopLoss = row.shortStopLoss;
+  // Chart / sell overlay: if primary action is sell, mirror short-horizon sell levels
+  const mainSell = String(row.action || '').toLowerCase() === 'sell' || ratingImpliesSell(row.shortRating);
+  if (mainSell) {
+    row.sellEntry = row.shortEntry;
+    row.sellTarget1 = row.shortTarget1;
+    row.sellTarget2 = row.shortTarget2;
+    row.sellStopLoss = row.shortStopLoss;
+  } else {
+    row.sellEntry = row.sellEntry || '';
+    row.sellTarget1 = row.sellTarget1 || '';
+    row.sellTarget2 = row.sellTarget2 || '';
+    row.sellStopLoss = row.sellStopLoss || '';
+  }
+  return row;
+}
+
+const ANALYSIS_SCHEMA_HINT = `{"ticker":"AAPL","name":"Apple Inc","sector":"Technology","price":"","change":"","action":"Buy",
+"shortRating":"Strong Buy","mediumRating":"Buy","longRating":"Hold","shortConf":82,"mediumConf":75,"longConf":68,
+"shortAction":"Buy","mediumAction":"Buy","longAction":"Hold",
+"shortAnalysis":"","mediumAnalysis":"","longAnalysis":"","sellReason":"",
+"rsi":"","macd":"","trend":"","support":"","resistance":"","ma20":"above","ma50":"above","ma200":"above","volume":"","pattern":"","candlePattern":"","candleSignal":"Bullish","candleConf":75,"backtestedWinRate":62,
+"shortWeighting":"100% Technical","mediumWeighting":"70% Technical 30% News","longWeighting":"60% Technical 20% Fundamental 20% News",
+"newsImpact":"","momentum":"Bullish","bollingerPos":"","pe":"","peg":"","revenueGrowth":"","earningsGrowth":"","catalyst":"","financialHealth":"Strong","industryPos":"Leader",
+"risks":["","",""],"techSummary":"","fundSummary":"","nextEarningsDate":"","earningsTime":"","epsEstimate":"","epsPrior":""}`;
+
+app.post('/api/analyze', async (req, res) => {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+
+  const tickers = Array.isArray(req.body?.tickers) ? req.body.tickers : req.body?.ticker ? [req.body.ticker] : [];
+  const clean = [...new Set(tickers.map(t => String(t || '').trim().toUpperCase()).filter(Boolean))];
+  if (!clean.length) return res.status(400).json({ error: 'tickers required' });
+
+  const dashHint = req.body?.dashHint || null;
+
+  const priceBySym = {};
+  for (const sym of clean) {
+    const p = await fetchSinglePrice(sym);
+    if (p?.price) priceBySym[sym] = p;
+  }
+  if (!Object.keys(priceBySym).length) {
+    return res.status(502).json({ error: 'Could not fetch live prices for requested symbols' });
+  }
+
+  const priceLines = clean
+    .filter(s => priceBySym[s])
+    .map(s => {
+      const p = priceBySym[s];
+      return `${s}: price=${p.price} ${p.currency || 'USD'}, chg=${p.change ?? 0}%`;
+    });
+
+  let hintBlock = '';
+  if (dashHint && dashHint.ticker) {
+    hintBlock = `\n\nDashboard context for ${dashHint.ticker}: keep ratings broadly consistent — Short=${dashHint.shortRating || '—'}, Medium=${dashHint.mediumRating || '—'}, Long=${dashHint.longRating || '—'}.`;
+  }
+
+  const prompt =
+    `Analyze these tickers for active traders: ${clean.join(', ')}.\n`
+    + `LIVE PRICES (from Yahoo Finance — reference only for context; do NOT output price levels):\n${priceLines.join('\n')}`
+    + hintBlock
+    + `\n\nReturn ONE JSON array (start with [) with one object per ticker. Use this shape (omit entry, target, stop, sellEntry, sellTarget — server fills those):\n${ANALYSIS_SCHEMA_HINT}`
+    + `\n\nRules: action = Buy | Sell | Hold from short-term (1–3d) bias. shortAction/mediumAction/longAction = Buy | Sell | Hold per horizon. Ratings = Strong Buy | Buy | Hold | Sell | Strong Sell.`
+    + `\nInclude realistic backtestedWinRate 45–72. risks = array of 3 strings. Output ONLY the JSON array.`;
+
+  try {
+    const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 2500,
+        system:
+          'You are a professional equities analyst. Output ONLY a valid JSON array. First character must be [. No markdown, no code fences, no commentary.',
+        messages: [{ role: 'user', content: prompt }]
+      }),
+      signal: AbortSignal.timeout(120000)
+    });
+
+    const rawText = await upstream.text();
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      return res.status(upstream.status >= 400 ? upstream.status : 500).json({
+        error: 'Anthropic response not JSON',
+        preview: rawText.slice(0, 200)
+      });
+    }
+
+    if (!upstream.ok) {
+      const msg = data?.error?.message || data?.message || rawText.slice(0, 300);
+      return res.status(upstream.status).json({ error: msg });
+    }
+
+    const aiText = extractAnthropicText(data);
+    let stocks = tryParseJsonArray(aiText);
+    if (!stocks || !stocks.length) {
+      console.warn('Analyze parse fail. Snippet:', aiText.slice(0, 400));
+      return res.status(500).json({ error: 'Could not parse analysis JSON', preview: aiText.slice(0, 200) });
+    }
+
+    // Merge live quote fields + deterministic levels
+    stocks = stocks.map(row => {
+      const sym = (row.ticker || '').toUpperCase();
+      const pq = priceBySym[sym];
+      if (!pq) return row;
+      row.price = String(pq.price);
+      row.change = pq.change != null ? String(pq.change) : row.change;
+      return applyServerPriceLevels(row, +pq.price);
+    });
+
+    res.json({ stocks });
+  } catch (e) {
+    console.error('Analyze error:', e.message);
+    res.status(500).json({ error: e.message || 'analyze failed' });
+  }
 });
-
-
 
 // ── Claude proxy ─────────────────────────────────────────────────────────
 
-// ── Earnings calendar (server-side with 6h cache) ──────────────────────
-let calCache=null, calTs=0;
-app.get('/api/earnings-calendar', async (req,res) => {
-  const todayISO=new Date().toISOString().slice(0,10);
-  const apiKey=process.env.ANTHROPIC_API_KEY;
-  if(!req.query.force && calCache && (Date.now()-calTs)<21600000) return res.json(calCache);
-  if(!apiKey) return res.status(500).json({error:'No API key configured'});
+// ── Earnings calendar — merged Finnhub/FMP/Yahoo (6h cache) ───────────────
+let calCache = null;
+let calTs = 0;
+let calEndISO = '';
+
+app.get('/api/earnings-calendar', async (req, res) => {
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const days = Math.min(45, Math.max(7, parseInt(String(req.query.days || ''), 10) || 14));
+  const horizon = new Date();
+  horizon.setDate(horizon.getDate() + days);
+  const endISO = horizon.toISOString().slice(0, 10);
+
+  if (
+    !req.query.force &&
+    calCache &&
+    calEndISO === endISO &&
+    Date.now() - calTs < 21600000
+  ) {
+    return res.json(calCache);
+  }
+
   try {
-    const weekEnd=new Date(); weekEnd.setDate(weekEnd.getDate()+10);
-    const weISO=weekEnd.toISOString().slice(0,10);
-    const r=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json','x-api-key':apiKey,
-        'anthropic-version':'2023-06-01','anthropic-beta':'web-search-2025-03-05'
-      },
-      body:JSON.stringify({
-        model:'claude-haiku-4-5-20251001',max_tokens:1500,
-        tools:[{type:'web_search_20250305',name:'web_search'}],
-        system:'Today='+todayISO+'. Use web search to find real upcoming earnings. Return ONLY a JSON array starting with [. No markdown.',
-        messages:[{role:'user',content:'Search: "earnings this week" stock results announcements from '+todayISO+' to '+weISO+'. Include S&P500 NASDAQ FTSE DAX Nikkei companies. Return ONLY JSON array: [{"ticker":"AMZN","name":"Amazon.com Inc","date":"YYYY-MM-DD","time":"post-market","epsEst":"1.36","epsPrior":"0.98","note":"Q1 2026","market":"US"}] Dates must be >= '+todayISO+'.'}]
-      }),
-      signal:AbortSignal.timeout(30000)
-    });
-    if(!r.ok){
-      const t=await r.text();
-      console.log('Earnings cal API err:',r.status,t.slice(0,150));
-      return res.status(r.status).json({error:'API error '+r.status});
+    const merged = await mergedEarningsCalendarWidget(todayISO, endISO);
+    if (merged.length) {
+      calCache = merged;
+      calTs = Date.now();
+      calEndISO = endISO;
+    } else {
+      calCache = null;
+      calTs = 0;
+      calEndISO = '';
     }
-    const d=await r.json();
-    console.log('Earnings cal blocks:', d.content?.map(b=>b.type).join(','));
-    let raw='';
-    if(d.content) d.content.forEach(b=>{
-      if(b.type==='text') raw+=b.text;
-      if(b.type==='tool_result'&&b.content)
-        (Array.isArray(b.content)?b.content:[b.content]).forEach(tc=>{if(tc&&tc.type==='text')raw+=tc.text;});
-    });
-    raw=raw.replace(/```json/gi,'').replace(/```/g,'').trim();
-    console.log('Earnings cal raw len:', raw.length, raw.slice(0,100));
-    const si=raw.indexOf('['),ei=raw.lastIndexOf(']');
-    if(si===-1||ei<=si) {
-      console.log('No JSON array. Raw:', raw.slice(0,400));
-      return res.status(500).json({error:'No JSON array in response', preview: raw.slice(0,200)});
-    }
-    let arr;
-    try { arr=JSON.parse(raw.slice(si,ei+1)); }
-    catch(pe) { return res.status(500).json({error:'Parse failed: '+pe.message}); }
-    arr=arr.filter(e=>e.date&&e.date>=todayISO).sort((a,b)=>a.date.localeCompare(b.date));
-    calCache=arr; calTs=Date.now();
-    console.log('Earnings cal cached:',arr.length,'events');
-    res.json(arr);
-  } catch(e){
-    console.error('Earnings cal:',e.message);
-    res.status(500).json({error:e.message});
+    const src = `${process.env.FINNHUB_API_KEY ? 'finnhub ' : ''}${process.env.FMP_API_KEY ? 'fmp ' : ''}yahoo`;
+    console.log('Earnings calendar merged:', merged.length, 'events', src.trim());
+    res.json(merged);
+  } catch (e) {
+    console.error('Calendar merge:', e.message);
+    res.status(500).json({ error: e.message || 'calendar failed' });
   }
 });
 
@@ -829,9 +1358,7 @@ app.post('/api/claude', async (req, res) => {
   }
 });
 
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-
-// One-time cleanup: fix impossible entries in server history
+// One-time cleanup: fix impossible entries in server history (must be before SPA GET *)
 app.post('/api/history/cleanup-entries', async (req, res) => {
   let fixed = 0;
   tradeHistory = tradeHistory.map(h => {
@@ -841,32 +1368,19 @@ app.post('/api/history/cleanup-entries', async (req, res) => {
     const isSell = (h.action||'').toLowerCase() === 'sell';
     const entry = parseFloat(h.entry || h[hz+'Entry'] || 0);
     if(!entry) return h;
-    // Detect AI-generated entries: sell entry that's unrealistically high
-    // AAPL sell entry 305 when it was trading at ~273 = AI resistance zone
-    // Heuristic: if sell entry > 110% of target1, it's wrong (TP should be below entry for sells)
     const tp1 = parseFloat(h.target1 || h[hz+'Target1'] || 0);
-    const sl = parseFloat(h.stopLoss || h[hz+'StopLoss'] || 0);
     let isBadEntry = false;
     if(isSell && tp1 && entry > 0) {
-      // For a valid sell: entry > tp1 (target below entry)
-      // Bad sell: entry < tp1 (AI set entry above current price as resistance)
       if(entry < tp1 * 0.98) isBadEntry = true;
     } else if(!isSell && tp1 && entry > 0) {
-      // For a valid buy: entry < tp1
-      // Bad buy: entry > tp1 * 1.02
       if(entry > tp1 * 1.02) isBadEntry = true;
     }
     if(!isBadEntry) return h;
-    // Fix: calculate proper entry from tp1/sl percentages
-    // For sell: if tp1=285 and sl=325, typical range is 5-15% moves
-    // Use midpoint approach or just clear the bad data
     const newH = {...h};
-    // Reset to recalculate - set entry to null so client re-fetches
     newH.entry = null;
     newH[hz+'Entry'] = null;
     newH[hz+'PnlDollar'] = null;
     newH[hz+'PnlPct'] = null;
-    // Reset status if it was a fake TP hit
     if(status === 'tp1_hit' || status === 'tp2_hit') newH[hz+'Status'] = 'open';
     fixed++;
     return newH;
@@ -876,6 +1390,10 @@ app.post('/api/history/cleanup-entries', async (req, res) => {
   res.json({ fixed, total: tradeHistory.length });
 });
 
+// Static files AFTER /api routes so `/api/*` never gets swallowed by filesystem lookup
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.listen(PORT, () => {
   console.log('AlphaSignal on port', PORT);

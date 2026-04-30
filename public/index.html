@@ -1250,7 +1250,8 @@ async function runDashScan(){
       + '\n- Medium (1-3 weeks): entry = live price, TP1 ≈ +7%,   TP2 ≈ +13%,  SL ≈ −4%'
       + '\n- Long (1-6 months):  entry = live price, TP1 ≈ +18%, TP2 ≈ +35%, SL ≈ −10%'
       + '\nshortTarget1 MUST numerically differ from mediumTarget1 MUST differ from longTarget1 (different % from same live base).'
-      + '\n\nQUALITY: backtestedWinRate 45-72% (realistic). Only Strong Buy/Sell with R:R > 2.5x. Give Sell scores freely for bearish setups.'
+      + '\n\nQUALITY: backtestedWinRate 45-72% (realistic). Only Strong Buy/Sell with R:R > 2.5x. Give Sell scores for genuinely bearish horizons.'
+      + '\n\nCONSISTENCY: Never treat the same ticker as both a flagship long pick and a short-setup pick. If shortRating is Strong Buy or Buy, set shortSellScore under 22. If mediumRating is bullish, keep mediumSellScore under 22 unless the medium bias is clearly bearish.'
       + '\n\nReturn ONLY raw JSON array. No markdown, no backticks, no "json" prefix. Start immediately with ['
       + '\n\nFormat: ' + exampleJson
       + '\n\nInclude all ' + batch.length + ' instruments. [';
@@ -1336,6 +1337,8 @@ async function runDashScan(){
               if(buySc>0 && buySc<52) v = Math.max(v, 38 + Math.round(52-buySc));
               if(buySc>0 && buySc<45) v = Math.max(v, 45);
               r[sk]=Math.min(100,Math.round(v));
+              var bull = rat.includes('strong buy') || (rat.includes('buy') && !rat.includes('sell'));
+              if (bull && (r[hz+'Score']||0) >= 58) r[sk] = Math.min(r[sk], 20);
             });
           });
           console.log('✓ Batch parsed', res.length, 'items');
@@ -1391,19 +1394,25 @@ async function runDashScan(){
   const shortTop5=[...deduped].sort((a,b)=>(b.shortScore||0)-(a.shortScore||0)).slice(0,5);
   const medTop5=[...deduped].sort((a,b)=>(b.mediumScore||0)-(a.mediumScore||0)).slice(0,5);
   const longTop5=[...deduped].sort((a,b)=>(b.longScore||0)-(a.longScore||0)).slice(0,5);
+  const shortBuys = new Set(shortTop5.map(s=>s.ticker));
+  const medBuys = new Set(medTop5.map(s=>s.ticker));
+  const longBuys = new Set(longTop5.map(s=>s.ticker));
   const SELL_MIN = 22;
-  let shortSell5=[...deduped].filter(s=>(s.shortSellScore||0)>=SELL_MIN).sort((a,b)=>(b.shortSellScore||0)-(a.shortSellScore||0)).slice(0,5);
-  let medSell5=[...deduped].filter(s=>(s.mediumSellScore||0)>=SELL_MIN).sort((a,b)=>(b.mediumSellScore||0)-(a.mediumSellScore||0)).slice(0,5);
-  let longSell5=[...deduped].filter(s=>(s.longSellScore||0)>=SELL_MIN).sort((a,b)=>(b.longSellScore||0)-(a.longSellScore||0)).slice(0,5);
+  let shortSell5=[...deduped].filter(s=>!shortBuys.has(s.ticker)&&(s.shortSellScore||0)>=SELL_MIN).sort((a,b)=>(b.shortSellScore||0)-(a.shortSellScore||0)).slice(0,5);
+  let medSell5=[...deduped].filter(s=>!medBuys.has(s.ticker)&&(s.mediumSellScore||0)>=SELL_MIN).sort((a,b)=>(b.mediumSellScore||0)-(a.mediumSellScore||0)).slice(0,5);
+  let longSell5=[...deduped].filter(s=>!longBuys.has(s.ticker)&&(s.longSellScore||0)>=SELL_MIN).sort((a,b)=>(b.longSellScore||0)-(a.longSellScore||0)).slice(0,5);
 
-  function fillSellFallback(hz, arr) {
+  function fillSellFallback(hz, arr, buySet) {
     if (arr && arr.length) return arr;
     const sk = hz+'Score';
     let pool = [...deduped]
-      .filter(s => (s[sk] || 0) < 58)
+      .filter(s => !buySet.has(s.ticker) && (s[sk] || 0) < 58)
       .sort((a, b) => (a[sk] || 99) - (b[sk] || 99));
     if (!pool.length) {
-      pool = [...deduped].sort((a, b) => (a[sk] || 99) - (b[sk] || 99)).slice(0, 5);
+      pool = [...deduped]
+        .filter(s => !buySet.has(s.ticker))
+        .sort((a, b) => (a[sk] || 99) - (b[sk] || 99))
+        .slice(0, 5);
     }
     if (!pool.length) return [];
     return pool.slice(0, 5).map(s => {
@@ -1414,9 +1423,9 @@ async function runDashScan(){
       return c;
     });
   }
-  shortSell5 = fillSellFallback('short', shortSell5);
-  medSell5 = fillSellFallback('medium', medSell5);
-  longSell5 = fillSellFallback('long', longSell5);
+  shortSell5 = fillSellFallback('short', shortSell5, shortBuys);
+  medSell5 = fillSellFallback('medium', medSell5, medBuys);
+  longSell5 = fillSellFallback('long', longSell5, longBuys);
 
   const dashData={short:shortTop5,medium:medTop5,long:longTop5,shortSell:shortSell5,medSell:medSell5,longSell:longSell5};
   ST.dashData=dashData;ST.dashTs=Date.now();ss();
@@ -2926,6 +2935,28 @@ const TRACKED_TICKERS = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','JPM'
   'RELIANCE.NS','TCS.NS','HDFCBANK.NS','INFY.NS','ICICIBANK.NS','BAJFINANCE.NS',
   'ASML.AS','SAP.DE','MC.PA','AZN.L','SHEL.L','0700.HK','9988.HK','7203.T'];
 
+function localCalendarISO() {
+  const d = new Date();
+  var p=function(n){ return String(n).padStart(2,'0'); };
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
+}
+function addCalendarDaysISO(startISO, days) {
+  var p=function(n){ return String(n).padStart(2,'0'); };
+  var pts = String(startISO).slice(0,10).split('-');
+  var dt = new Date(+pts[0], +pts[1]-1, +pts[2]);
+  dt.setDate(dt.getDate() + days);
+  return dt.getFullYear() + '-' + p(dt.getMonth()+1) + '-' + p(dt.getDate());
+}
+function normTickerTier(s) {
+  return String(s||'').trim().toUpperCase().replace(/^BRK-B$/i,'BRK.B').replace(/-/g,'.');
+}
+/** Lower = listed earlier in TRACKED_TICKERS */
+function trackedTierForEarnings(t) {
+  var k = normTickerTier(t), i, best = 9999;
+  for (i=0;i<TRACKED_TICKERS.length;i++) if (normTickerTier(TRACKED_TICKERS[i])===k){ best=i; break; }
+  return best;
+}
+
 // Earnings calendar — cached, date-sorted, grouped by day
 let earningsCache = null;
 let earningsCacheTs = 0;
@@ -2942,14 +2973,11 @@ async function loadEarningsCalendar(force) {
   // Don't auto-open - user clicks to expand
   elContent.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--m1);font-size:11px"><div class="sp"></div><span>Loading earnings calendar...</span></div>';
   try {
-    const today = new Date();
-    const todayStr = today.toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
-    const weekEnd = new Date(today); weekEnd.setDate(today.getDate()+7);
-    const weekEndStr = weekEnd.toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'});
-    const todayISO_cal = today.toISOString().slice(0,10);
-    // Use server-side endpoint (avoids client rate limits, has 6h cache)
-    const cacheParam = force ? '?force=1' : '';
-    const resp = await fetch('/api/earnings-calendar'+cacheParam);
+    // Use server-side endpoint (defaults to 14 days); local calendar matching for "today"
+    var calParams=new URLSearchParams();
+    calParams.set('days','14');
+    if(force) calParams.set('force','1');
+    const resp = await fetch('/api/earnings-calendar?'+calParams.toString());
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     let earnings = await resp.json();
     if (earnings && typeof earnings === 'object' && !Array.isArray(earnings)) {
@@ -2957,13 +2985,21 @@ async function loadEarningsCalendar(force) {
       earnings = [];
     }
     if(!Array.isArray(earnings)) earnings = [];
-    const todayISO = today.toISOString().slice(0,10);
+    const todayISO = localCalendarISO();
+    const end2Weeks = addCalendarDaysISO(todayISO,14);
     earnings = earnings.filter(e=>{
       if(!e||!e.date) return false;
       if(e.date<todayISO) return false;
+      if(e.date>end2Weeks) return false;
       if(e.reported===true) return false;
       return true;
-    }).sort((a,b)=>a.date.localeCompare(b.date));
+    }).sort(function(a,b){
+      var c=a.date.localeCompare(b.date);
+      if(c!==0)return c;
+      var ta=trackedTierForEarnings(a.ticker), tb=trackedTierForEarnings(b.ticker);
+      if(ta!==tb)return ta-tb;
+      return a.ticker.localeCompare(b.ticker);
+    });
     if(!earnings.length) { elContent.innerHTML='<span style="color:var(--m1)">No upcoming rows in the server window. Open browser devtools → Network → <code>/api/earnings-calendar</code> (should be a JSON array). Check Render logs for <code>FMP calendar</code> / <code>Finnhub calendar</code> errors. Regenerate API keys if they were exposed. Try ↻ Retry with force.</span>'; return; }
     earningsCache=earnings; earningsCacheTs=Date.now();
     renderEarningsWidget(earnings, elContent);
@@ -2977,12 +3013,12 @@ async function loadEarningsCalendar(force) {
 function renderEarningsWidget(earnings, elContent) {
   const timeColor = t => t==='pre-market'?'var(--buy)':t==='post-market'?'var(--sell)':'var(--ac)';
   const timeLabel = t => t==='pre-market'?'Pre-mkt':t==='post-market'?'Post-mkt':'During';
-  const todayISO = new Date().toISOString().slice(0,10);
-  const tomorrowISO = new Date(Date.now()+86400000).toISOString().slice(0,10);
+  const todayISO = localCalendarISO();
+  const tomorrowISO = addCalendarDaysISO(todayISO, 1);
   // Update pill in header
   const todayCnt = earnings.filter(e=>e.date===todayISO).length;
   const pill = document.getElementById('earningsSummaryPill');
-  if(pill) pill.textContent = (todayCnt?todayCnt+' today · ':'')+earnings.length+' upcoming';
+  if(pill) pill.textContent = (todayCnt?todayCnt+' today · ':'')+earnings.length+' upcoming (next 14 days)';
   // Keep collapsed - user expands manually
   // Group by date
   const byDate = {};
