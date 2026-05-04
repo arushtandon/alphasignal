@@ -1291,6 +1291,15 @@ async function runDashScan(){
             const attempt = str.slice(fi, li+1).replace(/,\s*([}\]])/g,'$1');
             try{ const r=JSON.parse(attempt); if(Array.isArray(r)) return r; }catch(e){}
           }
+          // Strategy 1b: single JSON object (model sometimes returns one instrument without [ ])
+          const oi1 = str.indexOf('{');
+          const oe1 = str.lastIndexOf('}');
+          if (oi1 !== -1 && oe1 > oi1) {
+            try {
+              const one = JSON.parse(str.slice(oi1, oe1 + 1).replace(/,\s*([}\]])/g, '$1'));
+              if (one && typeof one === 'object' && !Array.isArray(one) && one.ticker) return [one];
+            } catch (e) {}
+          }
           // Strategy 2: wrap in [] if text starts with {
           const trimmed = str.replace(/^[^{[]+/,'').replace(/[^}\]]+$/,'');
           if(trimmed.startsWith('{')){

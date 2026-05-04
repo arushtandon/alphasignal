@@ -788,12 +788,49 @@ function isUpcomingCalRow(e, fromISO, toISO) {
   return true;
 }
 
+/**
+ * Next upcoming earnings date from Yahoo chart events=earnings (works when quoteSummary calendar is empty).
+ */
+async function yahooNextEarningsFromChart(sym) {
+  const variants = [sym];
+  if (sym.includes('.') && !sym.includes('.HK')) {
+    const hy = sym.replace(/\./g, '-');
+    if (hy !== sym) variants.push(hy);
+  }
+  const uniq = [...new Set(variants)];
+  const nowTs = Date.now() / 1000;
+  for (const host of ['query2', 'query1']) {
+    for (const cs of uniq) {
+      for (const rq of ['range=2y&interval=1d', 'range=5y&interval=1wk']) {
+        try {
+          const url = `https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(cs)}?${rq}&events=earnings&includePrePost=false`;
+          const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(14000) });
+          if (!r.ok) continue;
+          const d = await r.json();
+          const result = d?.chart?.result?.[0];
+          if (!result) continue;
+          const evts = Object.values(result.events?.earnings || {}).sort((a, b) => a.date - b.date);
+          const fut = evts.filter((e) => e.date > nowTs);
+          if (fut.length) {
+            return new Date(fut[0].date * 1000).toISOString().slice(0, 10);
+          }
+        } catch (_) {}
+      }
+    }
+  }
+  return null;
+}
+
 async function yahooEarningsGapRow(ticker) {
   const tryOne = async (t) => {
     try {
       const qs = await quoteSummary(t, 'calendarEvents,summaryProfile');
       const cal = nextEarningsFromCalendar(qs);
-      if (!cal.nextDate) return null;
+      let nextD = cal.nextDate || null;
+      if (!nextD) {
+        nextD = await yahooNextEarningsFromChart(t);
+      }
+      if (!nextD) return null;
       const nm =
         qs?.quoteSummary?.result?.[0]?.summaryProfile?.longName ||
         qs?.quoteSummary?.result?.[0]?.summaryProfile?.shortName ||
@@ -809,9 +846,9 @@ async function yahooEarningsGapRow(ticker) {
       return {
         ticker: t.replace(/-/g, '.'),
         name: nm,
-        date: cal.nextDate,
+        date: nextD,
         time: 'during-market',
-        epsEst: cal.epsEstimate || '',
+        epsEst: (cal && cal.epsEstimate) || '',
         epsPrior: '',
         note: '',
         market,
@@ -868,21 +905,29 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
     }
   }
 
-  await Promise.all(
-    EARNINGS_CAL_SYMBOLS.map(async (tick) => {
-      const nk = normalizeTickerMatch(tick);
-      if (byTicker.has(nk)) return;
-      const gap = await yahooEarningsGapRow(tick);
-      if (
-        gap &&
-        gap.date &&
-        gap.date >= fromISO &&
-        gap.date <= toISO
-      ) {
-        byTicker.set(nk, gap);
-      }
-    })
-  );
+  await (async function yahooGapBatch() {
+    const ticks = EARNINGS_CAL_SYMBOLS;
+    const chunk = 10;
+    for (let i = 0; i < ticks.length; i += chunk) {
+      const part = ticks.slice(i, i + chunk);
+      await Promise.all(
+        part.map(async (tick) => {
+          const nk = normalizeTickerMatch(tick);
+          if (byTicker.has(nk)) return;
+          const gap = await yahooEarningsGapRow(tick);
+          if (
+            gap &&
+            gap.date &&
+            gap.date >= fromISO &&
+            gap.date <= toISO
+          ) {
+            byTicker.set(nk, gap);
+          }
+        })
+      );
+      if (i + chunk < ticks.length) await new Promise((r) => setTimeout(r, 60));
+    }
+  })();
 
   const sorted = [...byTicker.values()]
     .filter((row) =>
@@ -942,11 +987,11 @@ app.get('/api/earnings/:symbol', async (req, res) => {
     if (!nextDate && process.env.FMP_API_KEY) {
       const fmpArr = await fmpEarningCalendarByRange(todayISO, toISOsym);
       const hit =
-        fmpArr.find((r) => normalizeTickerMatch(r.symbol) === normalizeTickerMatch(sym)) ||
+        fmpArr.find((r) => normalizeTickerMatch(fmpSymbol(r)) === normalizeTickerMatch(sym)) ||
         (sym === 'GOOGL'
-          ? fmpArr.find((r) => normalizeTickerMatch(r.symbol) === 'GOOG')
+          ? fmpArr.find((r) => normalizeTickerMatch(fmpSymbol(r)) === 'GOOG')
           : sym === 'GOOG'
-            ? fmpArr.find((r) => normalizeTickerMatch(r.symbol) === 'GOOGL')
+            ? fmpArr.find((r) => normalizeTickerMatch(fmpSymbol(r)) === 'GOOGL')
             : null);
       if (hit?.date) {
         nextDate = String(hit.date).slice(0, 10);
@@ -1028,6 +1073,13 @@ app.get('/api/earnings/:symbol', async (req, res) => {
           historySource = 'yahoo_quoteSummary_earningsHistory';
           break;
         }
+      }
+    }
+    if (!nextDate) {
+      const chartOnly = await yahooNextEarningsFromChart(sym);
+      if (chartOnly) {
+        nextDate = chartOnly;
+        calendarPrimary = calendarPrimary || 'yahoo_chart_next';
       }
     }
     const sourcesUsed = {};
@@ -1281,9 +1333,10 @@ let calEndISO = '';
 
 app.get('/api/earnings-calendar', async (req, res) => {
   const todayISO = new Date().toISOString().slice(0, 10);
-  const days = Math.min(45, Math.max(7, parseInt(String(req.query.days || ''), 10) || 14));
+  const displayDays = Math.min(45, Math.max(7, parseInt(String(req.query.days || ''), 10) || 14));
+  const mergeDays = Math.max(displayDays, 90);
   const horizon = new Date();
-  horizon.setDate(horizon.getDate() + days);
+  horizon.setDate(horizon.getDate() + mergeDays);
   const endISO = horizon.toISOString().slice(0, 10);
 
   if (
