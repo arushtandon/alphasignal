@@ -300,6 +300,175 @@ app.get('/api/chart', async (req, res) => {
   res.status(500).json({ error: 'Chart data unavailable for ' + symbol });
 });
 
+// ── Quantitative Technical Indicator Engine ───────────────────────────────
+// Hedge-fund grade: ATR, RSI, MACD, Bollinger, Volume, MA regime scoring
+
+async function fetchOHLCVForAnalysis(symbol) {
+  const symVariants = [symbol];
+  if (symbol.includes('.') && !symbol.match(/\.(HK|L|T|DE|PA|AS|NS|SW|MC|BR|MI)$/)
+      && !symbol.includes('=F') && !symbol.includes('-USD')) {
+    symVariants.push(symbol.replace('.', '-'));
+  }
+  for (const sym of symVariants) {
+    const urls = [
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=12mo&interval=1d&includePrePost=false`,
+      `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=12mo&interval=1d&includePrePost=false`
+    ];
+    for (const url of urls) {
+      try {
+        const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(12000) });
+        if (!r.ok) continue;
+        const json = await r.json();
+        const result = json?.chart?.result?.[0];
+        if (!result) continue;
+        const q = result.indicators?.quote?.[0] || {};
+        const closes = q.close || [];
+        const valid = closes.map((c, i) => ({
+          close: c, high: q.high?.[i], low: q.low?.[i], volume: q.volume?.[i] || 0
+        })).filter(d => d.close != null && d.high != null && d.low != null);
+        if (valid.length >= 20) return valid;
+      } catch(e) { console.log(`OHLCV ${sym}: ${e.message}`); }
+    }
+  }
+  return null;
+}
+
+function computeEMAArray(values, period) {
+  const k = 2 / (period + 1);
+  const result = [values[0]];
+  for (let i = 1; i < values.length; i++) {
+    result.push(values[i] * k + result[i - 1] * (1 - k));
+  }
+  return result;
+}
+
+function computeTechnicals(ohlcv) {
+  if (!ohlcv || ohlcv.length < 20) return null;
+  const closes = ohlcv.map(d => d.close);
+  const highs  = ohlcv.map(d => d.high);
+  const lows   = ohlcv.map(d => d.low);
+  const vols   = ohlcv.map(d => d.volume || 0);
+  const n = closes.length;
+  const price = closes[n - 1];
+
+  // ── ATR(14) — True Range average ──────────────────────────────────────────
+  const trueRanges = [];
+  for (let i = 1; i < n; i++) {
+    trueRanges.push(Math.max(
+      highs[i] - lows[i],
+      Math.abs(highs[i] - closes[i - 1]),
+      Math.abs(lows[i]  - closes[i - 1])
+    ));
+  }
+  const atr14 = trueRanges.slice(-14).reduce((a, b) => a + b, 0) / Math.min(14, trueRanges.length);
+  const atrPct = (atr14 / price) * 100;
+
+  // ── RSI(14) ───────────────────────────────────────────────────────────────
+  const rsi14 = (() => {
+    const deltas = closes.slice(-15).slice(1).map((c, i, arr) => c - (i === 0 ? closes[n - 15] : arr[i - 1]));
+    const gains = deltas.map(d => Math.max(0, d));
+    const losses = deltas.map(d => Math.max(0, -d));
+    const avgG = gains.reduce((a, b) => a + b, 0) / gains.length;
+    const avgL = losses.reduce((a, b) => a + b, 0) / losses.length;
+    if (avgL === 0) return 100;
+    return +(100 - 100 / (1 + avgG / avgL)).toFixed(1);
+  })();
+
+  // ── Moving Averages ───────────────────────────────────────────────────────
+  const ma = (p) => n >= p ? +(closes.slice(-p).reduce((a, b) => a + b, 0) / p).toFixed(4) : null;
+  const ma20  = ma(20);
+  const ma50  = ma(50);
+  const ma200 = ma(200);
+
+  // ── MACD(12,26,9) ─────────────────────────────────────────────────────────
+  let macdHistogram = null, macdBullish = null;
+  if (n >= 35) {
+    const ema12 = computeEMAArray(closes, 12);
+    const ema26 = computeEMAArray(closes, 26);
+    const macdArr = ema12.slice(25).map((v, i) => v - ema26[i + 25]);
+    if (macdArr.length >= 9) {
+      const sigArr = computeEMAArray(macdArr, 9);
+      macdHistogram = +(macdArr[macdArr.length - 1] - sigArr[sigArr.length - 1]).toFixed(4);
+      macdBullish = macdHistogram > 0;
+    }
+  }
+
+  // ── Bollinger Bands(20,2) ─────────────────────────────────────────────────
+  let bollingerPos = null;
+  if (ma20 != null) {
+    const sl20 = closes.slice(-20);
+    const std20 = Math.sqrt(sl20.reduce((acc, c) => acc + Math.pow(c - ma20, 2), 0) / 20);
+    const upper = ma20 + 2 * std20;
+    const lower = ma20 - 2 * std20;
+    if (upper !== lower) bollingerPos = +((price - lower) / (upper - lower)).toFixed(3);
+  }
+
+  // ── Volume ratio (today vs 20-day avg) ───────────────────────────────────
+  const avgVol20 = vols.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
+  const volRatio = avgVol20 > 0 ? +(vols[n - 1] / avgVol20).toFixed(2) : 1;
+
+  // ── Trend regime ──────────────────────────────────────────────────────────
+  const aboveMa20  = ma20  != null ? price > ma20  : null;
+  const aboveMa50  = ma50  != null ? price > ma50  : null;
+  const aboveMa200 = ma200 != null ? price > ma200 : null;
+  const goldenCross = ma50 != null && ma200 != null ? ma50 > ma200 : null;
+
+  // ── Quantitative Signal Score (hedge-fund multi-factor) ───────────────────
+  // Each gate is justified by industry-standard quant research
+  let score = 10; // neutral baseline
+
+  // Factor 1: Long-term trend (MA200) — most important regime filter
+  if (aboveMa200 === true)  score += 3;
+  if (aboveMa200 === false) score -= 4; // bear regime penalty is asymmetric
+
+  // Factor 2: Medium trend (golden/death cross MA50 vs MA200)
+  if (goldenCross === true)  score += 2;
+  if (goldenCross === false) score -= 2;
+
+  // Factor 3: Short-term momentum (price vs MA50, MA20)
+  if (aboveMa50 === true)   score += 1;
+  if (aboveMa50 === false)  score -= 1;
+  if (aboveMa20 === true)   score += 1;
+  if (aboveMa20 === false)  score -= 1;
+
+  // Factor 4: RSI momentum — sweet spot 45-65 for longs
+  if (rsi14 >= 45 && rsi14 <= 65) score += 2;       // ideal momentum window
+  else if (rsi14 >= 35 && rsi14 < 45) score += 1;   // oversold recovery candidate
+  else if (rsi14 > 70 && rsi14 <= 78) score -= 2;   // overbought warning
+  else if (rsi14 > 78) score -= 4;                   // extreme overbought: high reversal risk
+  else if (rsi14 < 25) score -= 1;                   // deeply oversold: potential bounce
+
+  // Factor 5: MACD histogram (momentum direction)
+  if (macdBullish === true)  score += 2;
+  if (macdBullish === false) score -= 1;
+
+  // Factor 6: Volume confirmation
+  if (volRatio > 1.5)       score += 1;  // above-avg volume = conviction
+  else if (volRatio < 0.7)  score -= 1;  // thin volume = weak signal
+
+  // Factor 7: Bollinger Band position (avoid chasing extended moves)
+  if (bollingerPos != null) {
+    if (bollingerPos > 0.88) score -= 2; // near upper band, overextended
+    if (bollingerPos < 0.15) score += 1; // near lower band, potential mean-reversion
+  }
+
+  // ── Quant recommendation derived from score ───────────────────────────────
+  let quantAction, signalStrength;
+  if      (score >= 18) { quantAction = 'Strong Buy';  signalStrength = 'very_strong'; }
+  else if (score >= 15) { quantAction = 'Buy';          signalStrength = 'strong'; }
+  else if (score >= 12) { quantAction = 'Buy';          signalStrength = 'moderate'; }
+  else if (score >= 9)  { quantAction = 'Hold';         signalStrength = 'neutral'; }
+  else if (score >= 6)  { quantAction = 'Sell';         signalStrength = 'bearish'; }
+  else                  { quantAction = 'Strong Sell';  signalStrength = 'very_bearish'; }
+
+  return {
+    price, atr14: +atr14.toFixed(4), atrPct: +atrPct.toFixed(2),
+    rsi14, ma20, ma50, ma200, macdHistogram, macdBullish,
+    bollingerPos, volRatio, score, quantAction, signalStrength,
+    aboveMa20, aboveMa50, aboveMa200, goldenCross
+  };
+}
+
 // ── Server-side trade history (shared across devices) ──────────────────────
 // In-memory store (persists while server is running, resets on redeploy)
 // Use a simple JSON file for persistence on Render disk
@@ -463,10 +632,7 @@ function nextEarningsFromCalendar(qs) {
     for (const ed of slots) {
       let ms = null;
       if (typeof ed === 'number') ms = ed > 1e12 ? ed : ed * 1000;
-      else if (typeof ed === 'string') {
-        const parsed = Date.parse(ed.trim());
-        if (!Number.isNaN(parsed)) ms = parsed;
-      } else if (ed && typeof ed === 'object') {
+      else if (ed && typeof ed === 'object') {
         if (ed.raw != null && Number.isFinite(Number(ed.raw))) {
           const n = Number(ed.raw);
           ms = n > 1e12 ? n : n * 1000;
@@ -791,72 +957,12 @@ function isUpcomingCalRow(e, fromISO, toISO) {
   return true;
 }
 
-/**
- * Next upcoming earnings date from Yahoo chart events=earnings (works when quoteSummary calendar is empty).
- */
-async function yahooNextEarningsFromChart(sym) {
-  const variants = [sym];
-  if (sym.includes('.') && !sym.includes('.HK')) {
-    const hy = sym.replace(/\./g, '-');
-    if (hy !== sym) variants.push(hy);
-  }
-  const uniq = [...new Set(variants)];
-  const nowTs = Date.now() / 1000;
-  const period2 = Math.floor(nowTs + 86400 * 400);
-  const period1 = Math.floor(nowTs - 86400 * 800);
-  for (const host of ['query2', 'query1']) {
-    for (const cs of uniq) {
-      const rqList = [
-        'range=2y&interval=1d',
-        'range=5y&interval=1wk',
-        'range=1y&interval=1d',
-        'range=max&interval=1wk',
-        `period1=${period1}&period2=${period2}&interval=1d`
-      ];
-      for (const rq of rqList) {
-        try {
-          const url = `https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(cs)}?${rq}&events=earnings&includePrePost=false`;
-          const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(14000) });
-          if (!r.ok) continue;
-          const d = await r.json();
-          const result = d?.chart?.result?.[0];
-          if (!result) continue;
-          const evts = Object.values(result.events?.earnings || {}).sort((a, b) => a.date - b.date);
-          const fut = evts.filter((e) => e.date > nowTs);
-          if (fut.length) {
-            return new Date(fut[0].date * 1000).toISOString().slice(0, 10);
-          }
-        } catch (_) {}
-      }
-    }
-  }
-  return null;
-}
-
 async function yahooEarningsGapRow(ticker) {
   const tryOne = async (t) => {
     try {
-      const qs1 = await quoteSummary(t, 'calendarEvents,summaryProfile');
-      let cal = nextEarningsFromCalendar(qs1);
-      let nextD = cal.nextDate || null;
-      let qs = qs1;
-      if (!nextD) {
-        const qs2 = await quoteSummary(t, 'calendarEvents,earnings,earningsHistory,summaryProfile');
-        if (qs2) {
-          const cal2 = nextEarningsFromCalendar(qs2);
-          if (cal2.nextDate) {
-            cal = cal2;
-            nextD = cal2.nextDate;
-            qs = qs2;
-          } else {
-            qs = qs2;
-          }
-        }
-      }
-      if (!nextD) {
-        nextD = await yahooNextEarningsFromChart(t);
-      }
-      if (!nextD) return null;
+      const qs = await quoteSummary(t, 'calendarEvents,summaryProfile');
+      const cal = nextEarningsFromCalendar(qs);
+      if (!cal.nextDate) return null;
       const nm =
         qs?.quoteSummary?.result?.[0]?.summaryProfile?.longName ||
         qs?.quoteSummary?.result?.[0]?.summaryProfile?.shortName ||
@@ -872,9 +978,9 @@ async function yahooEarningsGapRow(ticker) {
       return {
         ticker: t.replace(/-/g, '.'),
         name: nm,
-        date: nextD,
+        date: cal.nextDate,
         time: 'during-market',
-        epsEst: (cal && cal.epsEstimate) || '',
+        epsEst: cal.epsEstimate || '',
         epsPrior: '',
         note: '',
         market,
@@ -931,29 +1037,21 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
     }
   }
 
-  await (async function yahooGapBatch() {
-    const ticks = EARNINGS_CAL_SYMBOLS;
-    const chunk = 10;
-    for (let i = 0; i < ticks.length; i += chunk) {
-      const part = ticks.slice(i, i + chunk);
-      await Promise.all(
-        part.map(async (tick) => {
-          const nk = normalizeTickerMatch(tick);
-          if (byTicker.has(nk)) return;
-          const gap = await yahooEarningsGapRow(tick);
-          if (
-            gap &&
-            gap.date &&
-            gap.date >= fromISO &&
-            gap.date <= toISO
-          ) {
-            byTicker.set(nk, gap);
-          }
-        })
-      );
-      if (i + chunk < ticks.length) await new Promise((r) => setTimeout(r, 60));
-    }
-  })();
+  await Promise.all(
+    EARNINGS_CAL_SYMBOLS.map(async (tick) => {
+      const nk = normalizeTickerMatch(tick);
+      if (byTicker.has(nk)) return;
+      const gap = await yahooEarningsGapRow(tick);
+      if (
+        gap &&
+        gap.date &&
+        gap.date >= fromISO &&
+        gap.date <= toISO
+      ) {
+        byTicker.set(nk, gap);
+      }
+    })
+  );
 
   const sorted = [...byTicker.values()]
     .filter((row) =>
@@ -1013,11 +1111,11 @@ app.get('/api/earnings/:symbol', async (req, res) => {
     if (!nextDate && process.env.FMP_API_KEY) {
       const fmpArr = await fmpEarningCalendarByRange(todayISO, toISOsym);
       const hit =
-        fmpArr.find((r) => normalizeTickerMatch(fmpSymbol(r)) === normalizeTickerMatch(sym)) ||
+        fmpArr.find((r) => normalizeTickerMatch(r.symbol) === normalizeTickerMatch(sym)) ||
         (sym === 'GOOGL'
-          ? fmpArr.find((r) => normalizeTickerMatch(fmpSymbol(r)) === 'GOOG')
+          ? fmpArr.find((r) => normalizeTickerMatch(r.symbol) === 'GOOG')
           : sym === 'GOOG'
-            ? fmpArr.find((r) => normalizeTickerMatch(fmpSymbol(r)) === 'GOOGL')
+            ? fmpArr.find((r) => normalizeTickerMatch(r.symbol) === 'GOOGL')
             : null);
       if (hit?.date) {
         nextDate = String(hit.date).slice(0, 10);
@@ -1027,10 +1125,10 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
 
-    let qs = await quoteSummary(sym, 'calendarEvents,earnings,earningsHistory,summaryProfile');
+    let qs = await quoteSummary(sym, 'calendarEvents,earnings,earningsHistory');
     let fromCal = nextEarningsFromCalendar(qs);
     if ((!fromCal.nextDate || fromCal.nextDate < todayISO) && (sym === 'GOOGL' || sym === 'GOOG')) {
-      const altQs = await quoteSummary(sym === 'GOOGL' ? 'GOOG' : 'GOOGL', 'calendarEvents,earnings,earningsHistory,summaryProfile');
+      const altQs = await quoteSummary(sym === 'GOOGL' ? 'GOOG' : 'GOOGL', 'calendarEvents,earnings,earningsHistory');
       const altCal = nextEarningsFromCalendar(altQs);
       if (altCal.nextDate && (!fromCal.nextDate || fromCal.nextDate < todayISO)) fromCal = altCal;
     }
@@ -1099,13 +1197,6 @@ app.get('/api/earnings/:symbol', async (req, res) => {
           historySource = 'yahoo_quoteSummary_earningsHistory';
           break;
         }
-      }
-    }
-    if (!nextDate) {
-      const chartOnly = await yahooNextEarningsFromChart(sym);
-      if (chartOnly) {
-        nextDate = chartOnly;
-        calendarPrimary = calendarPrimary || 'yahoo_chart_next';
       }
     }
     const sourcesUsed = {};
@@ -1184,20 +1275,24 @@ function ratingImpliesSell(rating) {
   return v.includes('sell');
 }
 
-/** Mid-range % moves per horizon (aligned with dashboard prompt + mkRecord fallbacks) */
+/**
+ * ATR-based TP/SL multipliers — hedge fund standard.
+ * SL must clear daily noise (min 2×ATR). R:R ≥ 1.5:1 on TP1.
+ *   Short  (1-3d):  SL=-2×ATR, TP1=+3×ATR  → R:R 1.5:1
+ *   Medium (1-3w):  SL=-3×ATR, TP1=+5×ATR  → R:R 1.67:1
+ *   Long   (1-6m):  SL=-5×ATR, TP1=+10×ATR → R:R 2.0:1
+ */
+const HORIZON_ATR = {
+  short:  { buy: { tp1: 3.0, tp2: 5.0,  sl: -2.0 }, sell: { tp1: -3.0, tp2: -5.0,  sl: 2.0 } },
+  medium: { buy: { tp1: 5.0, tp2: 8.5,  sl: -3.0 }, sell: { tp1: -5.0, tp2: -8.5,  sl: 3.0 } },
+  long:   { buy: { tp1: 10.0, tp2: 17.0, sl: -5.0 }, sell: { tp1: -10.0, tp2: -17.0, sl: 5.0 } }
+};
+
+/** Fallback % levels when ATR unavailable — wider than v75 to survive daily volatility */
 const HORIZON_PCT = {
-  short: {
-    buy: { tp1: 0.025, tp2: 0.045, sl: -0.015 },
-    sell: { tp1: -0.025, tp2: -0.045, sl: 0.015 }
-  },
-  medium: {
-    buy: { tp1: 0.07, tp2: 0.13, sl: -0.04 },
-    sell: { tp1: -0.07, tp2: -0.13, sl: 0.04 }
-  },
-  long: {
-    buy: { tp1: 0.18, tp2: 0.35, sl: -0.10 },
-    sell: { tp1: -0.18, tp2: -0.35, sl: 0.10 }
-  }
+  short:  { buy: { tp1: 0.04,  tp2: 0.07,  sl: -0.025 }, sell: { tp1: -0.04,  tp2: -0.07,  sl: 0.025 } },
+  medium: { buy: { tp1: 0.10,  tp2: 0.17,  sl: -0.06  }, sell: { tp1: -0.10,  tp2: -0.17,  sl: 0.06  } },
+  long:   { buy: { tp1: 0.22,  tp2: 0.38,  sl: -0.12  }, sell: { tp1: -0.22,  tp2: -0.38,  sl: 0.12  } }
 };
 
 function roundPrice(x) {
@@ -1208,38 +1303,55 @@ function roundPrice(x) {
 }
 
 /**
- * Overwrite all entry / TP / SL fields from live price so horizons always differ mathematically.
+ * Overwrite all entry / TP / SL fields using ATR-based levels (preferred)
+ * or % fallback if ATR unavailable. Horizons always mathematically distinct.
  */
-function applyServerPriceLevels(row, livePrice) {
+function applyServerPriceLevels(row, livePrice, atr14 = null) {
   if (!row || !livePrice || livePrice <= 0) return row;
   const hzKeys = ['short', 'medium', 'long'];
   const ratingKeys = { short: 'shortRating', medium: 'mediumRating', long: 'longRating' };
+
   for (const hz of hzKeys) {
     const sell = ratingImpliesSell(row[ratingKeys[hz]]);
-    const p = HORIZON_PCT[hz][sell ? 'sell' : 'buy'];
+    const side = sell ? 'sell' : 'buy';
     const e = livePrice;
-    row[hz + 'Entry'] = String(roundPrice(e));
-    row[hz + 'Target1'] = String(roundPrice(e * (1 + p.tp1)));
-    row[hz + 'Target2'] = String(roundPrice(e * (1 + p.tp2)));
-    row[hz + 'StopLoss'] = String(roundPrice(e * (1 + p.sl)));
+    let tp1, tp2, sl;
+
+    if (atr14 && atr14 > 0) {
+      // ATR-based: stops clear daily noise, R:R guaranteed ≥1.5:1
+      const m = HORIZON_ATR[hz][side];
+      tp1 = e + m.tp1 * atr14;
+      tp2 = e + m.tp2 * atr14;
+      sl  = e + m.sl  * atr14;
+    } else {
+      // % fallback (wider than old v75 defaults)
+      const p = HORIZON_PCT[hz][side];
+      tp1 = e * (1 + p.tp1);
+      tp2 = e * (1 + p.tp2);
+      sl  = e * (1 + p.sl);
+    }
+
+    row[hz + 'Entry']    = String(roundPrice(e));
+    row[hz + 'Target1']  = String(roundPrice(tp1));
+    row[hz + 'Target2']  = String(roundPrice(tp2));
+    row[hz + 'StopLoss'] = String(roundPrice(sl));
   }
+
   // Back-compat aliases (short horizon)
-  row.entry = row.shortEntry;
-  row.target1 = row.shortTarget1;
-  row.target2 = row.shortTarget2;
+  row.entry    = row.shortEntry;
+  row.target1  = row.shortTarget1;
+  row.target2  = row.shortTarget2;
   row.stopLoss = row.shortStopLoss;
-  // Chart / sell overlay: if primary action is sell, mirror short-horizon sell levels
+
+  // Sell overlay: mirror short-horizon sell levels
   const mainSell = String(row.action || '').toLowerCase() === 'sell' || ratingImpliesSell(row.shortRating);
   if (mainSell) {
-    row.sellEntry = row.shortEntry;
-    row.sellTarget1 = row.shortTarget1;
-    row.sellTarget2 = row.shortTarget2;
+    row.sellEntry    = row.shortEntry;
+    row.sellTarget1  = row.shortTarget1;
+    row.sellTarget2  = row.shortTarget2;
     row.sellStopLoss = row.shortStopLoss;
   } else {
-    row.sellEntry = row.sellEntry || '';
-    row.sellTarget1 = row.sellTarget1 || '';
-    row.sellTarget2 = row.sellTarget2 || '';
-    row.sellStopLoss = row.sellStopLoss || '';
+    row.sellEntry = row.sellTarget1 = row.sellTarget2 = row.sellStopLoss = '';
   }
   return row;
 }
@@ -1263,6 +1375,7 @@ app.post('/api/analyze', async (req, res) => {
 
   const dashHint = req.body?.dashHint || null;
 
+  // ── Step 1: Live prices ────────────────────────────────────────────────────
   const priceBySym = {};
   for (const sym of clean) {
     const p = await fetchSinglePrice(sym);
@@ -1272,25 +1385,72 @@ app.post('/api/analyze', async (req, res) => {
     return res.status(502).json({ error: 'Could not fetch live prices for requested symbols' });
   }
 
-  const priceLines = clean
-    .filter(s => priceBySym[s])
-    .map(s => {
-      const p = priceBySym[s];
-      return `${s}: price=${p.price} ${p.currency || 'USD'}, chg=${p.change ?? 0}%`;
-    });
+  // ── Step 2: OHLCV → real technical indicators (parallel) ──────────────────
+  const techBySym = {};
+  await Promise.all(
+    clean.filter(s => priceBySym[s]).map(async sym => {
+      const ohlcv = await fetchOHLCVForAnalysis(sym);
+      if (ohlcv) {
+        const tech = computeTechnicals(ohlcv);
+        if (tech) techBySym[sym] = tech;
+      }
+    })
+  );
+
+  // ── Step 3: Build rich quantitative prompt ────────────────────────────────
+  const tickerBlocks = clean.filter(s => priceBySym[s]).map(s => {
+    const p = priceBySym[s];
+    const t = techBySym[s];
+    let block = `### ${s}  price=${p.price} ${p.currency || 'USD'}  chg=${p.change ?? 0}%`;
+    if (t) {
+      const maStatus = [
+        t.aboveMa20  != null ? (t.aboveMa20  ? 'Above MA20'  : 'Below MA20')  : '',
+        t.aboveMa50  != null ? (t.aboveMa50  ? 'Above MA50'  : 'Below MA50')  : '',
+        t.aboveMa200 != null ? (t.aboveMa200 ? 'Above MA200' : 'Below MA200') : ''
+      ].filter(Boolean).join(' | ');
+      block += `
+  ATR(14)=${t.atr14} (${t.atrPct}% daily range)
+  RSI(14)=${t.rsi14}${t.rsi14 > 70 ? ' ⚠ OVERBOUGHT' : t.rsi14 < 30 ? ' ⚠ OVERSOLD' : ''}
+  MA Status: ${maStatus}
+  MA20=${t.ma20 ?? 'N/A'} | MA50=${t.ma50 ?? 'N/A'} | MA200=${t.ma200 ?? 'N/A'}
+  Golden Cross: ${t.goldenCross === true ? 'YES (bullish)' : t.goldenCross === false ? 'NO — Death Cross (bearish)' : 'N/A'}
+  MACD Histogram=${t.macdHistogram ?? 'N/A'} → ${t.macdBullish === true ? 'BULLISH momentum' : t.macdBullish === false ? 'BEARISH momentum' : 'N/A'}
+  Bollinger Position=${t.bollingerPos ?? 'N/A'} (0.0=lower band, 1.0=upper band${t.bollingerPos != null && t.bollingerPos > 0.85 ? ' ⚠ OVEREXTENDED' : ''})
+  Volume Ratio=${t.volRatio}x vs 20d avg${t.volRatio > 1.5 ? ' ✓ strong' : t.volRatio < 0.7 ? ' ⚠ weak' : ''}
+  ── QUANT SCORE: ${t.score}/20 → ${t.quantAction} (${t.signalStrength}) ──`;
+    } else {
+      block += '\n  [Technical data unavailable — use price context only]';
+    }
+    return block;
+  }).join('\n\n');
 
   let hintBlock = '';
-  if (dashHint && dashHint.ticker) {
-    hintBlock = `\n\nDashboard context for ${dashHint.ticker}: keep ratings broadly consistent — Short=${dashHint.shortRating || '—'}, Medium=${dashHint.mediumRating || '—'}, Long=${dashHint.longRating || '—'}.`;
+  if (dashHint?.ticker) {
+    hintBlock = `\n\nDashboard context for ${dashHint.ticker}: keep ratings broadly consistent with prior analysis — Short=${dashHint.shortRating || '—'}, Medium=${dashHint.mediumRating || '—'}, Long=${dashHint.longRating || '—'}.`;
   }
 
   const prompt =
-    `Analyze these tickers for active traders: ${clean.join(', ')}.\n`
-    + `LIVE PRICES (from Yahoo Finance — reference only for context; do NOT output price levels):\n${priceLines.join('\n')}`
+    `You are a quantitative analyst at a top-tier hedge fund (think Renaissance Technologies / Two Sigma methodology). `
+    + `Analyze the instruments below using ONLY the provided quantitative data. Do NOT guess or fabricate values.\n\n`
+    + `INSTRUMENT DATA:\n${tickerBlocks}`
     + hintBlock
-    + `\n\nReturn ONE JSON array (start with [) with one object per ticker. Use this shape (omit entry, target, stop, sellEntry, sellTarget — server fills those):\n${ANALYSIS_SCHEMA_HINT}`
-    + `\n\nRules: action = Buy | Sell | Hold from short-term (1–3d) bias. shortAction/mediumAction/longAction = Buy | Sell | Hold per horizon. Ratings = Strong Buy | Buy | Hold | Sell | Strong Sell.`
-    + `\nInclude realistic backtestedWinRate 45–72. risks = array of 3 strings. Output ONLY the JSON array.`;
+    + `\n\n`
+    + `MANDATORY ANALYSIS RULES — violating these disqualifies the analysis:\n`
+    + `1. TREND GATE: Only rate Buy/Strong Buy if price is Above MA50 AND MA50 > MA200 (uptrend regime). If either fails → Hold or Sell.\n`
+    + `2. RSI GATE: RSI > 75 → CANNOT rate Buy (overbought, immediate pullback risk). RSI < 25 → CANNOT rate Sell (oversold bounce risk).\n`
+    + `3. MACD GATE: MACD Histogram must be positive (bullish momentum) for any Buy rating in short/medium horizon.\n`
+    + `4. BOLLINGER GATE: Bollinger Position > 0.88 → do NOT add new longs (price overextended above mean).\n`
+    + `5. SCORE MAPPING — your ratings MUST align with the Quant Score:\n`
+    + `   20-18: Strong Buy | 17-15: Buy | 14-9: Hold | 8-6: Sell | 5-0: Strong Sell\n`
+    + `   You may adjust ±1 tier for strong fundamental catalysts, but NEVER override poor scores with generic optimism.\n`
+    + `6. DIFFERENT HORIZONS: Short (1-3d) = pure technical momentum. Medium (1-3wk) = trend + momentum. Long (1-6mo) = trend + fundamentals.\n`
+    + `   Each horizon MUST be independently justified — don't just clone the short rating.\n`
+    + `7. backtestedWinRate: 60-72 only for score≥15, 50-59 for score 12-14, 40-49 for score 9-11, 30-39 for weaker setups. Be CONSERVATIVE.\n`
+    + `8. risks: provide 3 SPECIFIC risks (not generic ones like "market volatility") based on the actual indicator readings.\n`
+    + `\nReturn ONE JSON array (start with [) with one object per ticker. `
+    + `Omit entry/target/stop/sellEntry/sellTarget fields — server computes those from ATR.\n`
+    + `Schema:\n${ANALYSIS_SCHEMA_HINT}\n`
+    + `Output ONLY the JSON array. No markdown, no code fences, no commentary.`;
 
   try {
     const upstream = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1304,7 +1464,8 @@ app.post('/api/analyze', async (req, res) => {
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 2500,
         system:
-          'You are a professional equities analyst. Output ONLY a valid JSON array. First character must be [. No markdown, no code fences, no commentary.',
+          'You are a quantitative equities analyst. Follow ALL mandatory analysis rules. '
+          + 'Output ONLY a valid JSON array starting with [. No markdown, no code fences, no commentary.',
         messages: [{ role: 'user', content: prompt }]
       }),
       signal: AbortSignal.timeout(120000)
@@ -1312,12 +1473,10 @@ app.post('/api/analyze', async (req, res) => {
 
     const rawText = await upstream.text();
     let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch {
+    try { data = JSON.parse(rawText); }
+    catch {
       return res.status(upstream.status >= 400 ? upstream.status : 500).json({
-        error: 'Anthropic response not JSON',
-        preview: rawText.slice(0, 200)
+        error: 'Anthropic response not JSON', preview: rawText.slice(0, 200)
       });
     }
 
@@ -1328,21 +1487,29 @@ app.post('/api/analyze', async (req, res) => {
 
     const aiText = extractAnthropicText(data);
     let stocks = tryParseJsonArray(aiText);
-    if (!stocks || !stocks.length) {
+    if (!stocks?.length) {
       console.warn('Analyze parse fail. Snippet:', aiText.slice(0, 400));
       return res.status(500).json({ error: 'Could not parse analysis JSON', preview: aiText.slice(0, 200) });
     }
 
-    // Merge live quote fields + deterministic levels
+    // ── Step 4: Merge prices + ATR-based deterministic levels ─────────────────
     stocks = stocks.map(row => {
       const sym = (row.ticker || '').toUpperCase();
       const pq = priceBySym[sym];
       if (!pq) return row;
-      row.price = String(pq.price);
+      const tech = techBySym[sym];
+      row.price  = String(pq.price);
       row.change = pq.change != null ? String(pq.change) : row.change;
-      return applyServerPriceLevels(row, +pq.price);
+      // Attach quant score metadata for UI display
+      if (tech) {
+        row.quantScore = tech.score;
+        row.atr14      = tech.atr14;
+        row.atrPct     = tech.atrPct;
+      }
+      return applyServerPriceLevels(row, +pq.price, tech?.atr14 || null);
     });
 
+    console.log(`Analyze: ${stocks.length} tickers, ATR data for ${Object.keys(techBySym).length}`);
     res.json({ stocks });
   } catch (e) {
     console.error('Analyze error:', e.message);
@@ -1359,10 +1526,9 @@ let calEndISO = '';
 
 app.get('/api/earnings-calendar', async (req, res) => {
   const todayISO = new Date().toISOString().slice(0, 10);
-  const displayDays = Math.min(45, Math.max(7, parseInt(String(req.query.days || ''), 10) || 14));
-  const mergeDays = Math.max(displayDays, 120);
+  const days = Math.min(45, Math.max(7, parseInt(String(req.query.days || ''), 10) || 14));
   const horizon = new Date();
-  horizon.setDate(horizon.getDate() + mergeDays);
+  horizon.setDate(horizon.getDate() + days);
   const endISO = horizon.toISOString().slice(0, 10);
 
   if (
@@ -1435,6 +1601,74 @@ app.post('/api/claude', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: { message: err.message } });
   }
+});
+
+// Recalibrate existing history TP/SL levels using current ATR (fixes legacy tight stops)
+app.post('/api/history/recalibrate-levels', async (req, res) => {
+  const updated = [];
+  const failed = [];
+
+  // Get unique tickers from history that are still open or recent
+  const tickers = [...new Set(
+    tradeHistory
+      .filter(h => {
+        const hz = h.hz || 'short';
+        const status = h[hz + 'Status'] || h.status || 'open';
+        return status === 'open';
+      })
+      .map(h => h.ticker)
+      .filter(Boolean)
+  )];
+
+  console.log('Recalibrate: fetching ATR for', tickers.length, 'open tickers');
+
+  // Fetch ATR for each open ticker
+  const atrMap = {};
+  await Promise.all(tickers.map(async ticker => {
+    try {
+      const ohlcv = await fetchOHLCVForAnalysis(ticker);
+      if (ohlcv) {
+        const tech = computeTechnicals(ohlcv);
+        if (tech?.atr14) atrMap[ticker] = tech.atr14;
+      }
+    } catch(e) { console.log('Recalibrate ATR err', ticker, e.message); }
+  }));
+
+  // Update open trades with new ATR-based levels
+  tradeHistory = tradeHistory.map(h => {
+    const hz = h.hz || 'short';
+    const status = h[hz + 'Status'] || h.status || 'open';
+    if (status !== 'open') return h; // don't touch closed/SL-hit trades
+
+    const ticker = h.ticker;
+    const atr14 = atrMap[ticker];
+    const entryPrice = parseFloat(h.entry || h[hz + 'Entry'] || 0);
+    if (!entryPrice || !atr14) { failed.push(ticker); return h; }
+
+    const isSell = (h.action || '').toLowerCase() === 'sell';
+    const side = isSell ? 'sell' : 'buy';
+
+    const newH = { ...h };
+    // Recalibrate all horizons
+    for (const hzKey of ['short', 'medium', 'long']) {
+      const hzStatus = h[hzKey + 'Status'] || (hzKey === hz ? status : 'open');
+      if (hzStatus !== 'open') continue;
+      const m = HORIZON_ATR[hzKey][side];
+      newH[hzKey + 'Target1']  = String(roundPrice(entryPrice + m.tp1 * atr14));
+      newH[hzKey + 'Target2']  = String(roundPrice(entryPrice + m.tp2 * atr14));
+      newH[hzKey + 'StopLoss'] = String(roundPrice(entryPrice + m.sl  * atr14));
+    }
+    // Back-compat
+    newH.target1  = newH.shortTarget1;
+    newH.target2  = newH.shortTarget2;
+    newH.stopLoss = newH.shortStopLoss;
+    updated.push(ticker);
+    return newH;
+  });
+
+  saveHistoryFile(tradeHistory);
+  console.log('Recalibrate: updated', updated.length, 'trades, failed:', failed.length);
+  res.json({ updated: updated.length, failed: failed.length, failedTickers: [...new Set(failed)] });
 });
 
 // One-time cleanup: fix impossible entries in server history (must be before SPA GET *)
