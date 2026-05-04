@@ -463,7 +463,10 @@ function nextEarningsFromCalendar(qs) {
     for (const ed of slots) {
       let ms = null;
       if (typeof ed === 'number') ms = ed > 1e12 ? ed : ed * 1000;
-      else if (ed && typeof ed === 'object') {
+      else if (typeof ed === 'string') {
+        const parsed = Date.parse(ed.trim());
+        if (!Number.isNaN(parsed)) ms = parsed;
+      } else if (ed && typeof ed === 'object') {
         if (ed.raw != null && Number.isFinite(Number(ed.raw))) {
           const n = Number(ed.raw);
           ms = n > 1e12 ? n : n * 1000;
@@ -799,9 +802,18 @@ async function yahooNextEarningsFromChart(sym) {
   }
   const uniq = [...new Set(variants)];
   const nowTs = Date.now() / 1000;
+  const period2 = Math.floor(nowTs + 86400 * 400);
+  const period1 = Math.floor(nowTs - 86400 * 800);
   for (const host of ['query2', 'query1']) {
     for (const cs of uniq) {
-      for (const rq of ['range=2y&interval=1d', 'range=5y&interval=1wk']) {
+      const rqList = [
+        'range=2y&interval=1d',
+        'range=5y&interval=1wk',
+        'range=1y&interval=1d',
+        'range=max&interval=1wk',
+        `period1=${period1}&period2=${period2}&interval=1d`
+      ];
+      for (const rq of rqList) {
         try {
           const url = `https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(cs)}?${rq}&events=earnings&includePrePost=false`;
           const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(14000) });
@@ -824,9 +836,23 @@ async function yahooNextEarningsFromChart(sym) {
 async function yahooEarningsGapRow(ticker) {
   const tryOne = async (t) => {
     try {
-      const qs = await quoteSummary(t, 'calendarEvents,summaryProfile');
-      const cal = nextEarningsFromCalendar(qs);
+      const qs1 = await quoteSummary(t, 'calendarEvents,summaryProfile');
+      let cal = nextEarningsFromCalendar(qs1);
       let nextD = cal.nextDate || null;
+      let qs = qs1;
+      if (!nextD) {
+        const qs2 = await quoteSummary(t, 'calendarEvents,earnings,earningsHistory,summaryProfile');
+        if (qs2) {
+          const cal2 = nextEarningsFromCalendar(qs2);
+          if (cal2.nextDate) {
+            cal = cal2;
+            nextD = cal2.nextDate;
+            qs = qs2;
+          } else {
+            qs = qs2;
+          }
+        }
+      }
       if (!nextD) {
         nextD = await yahooNextEarningsFromChart(t);
       }
@@ -1001,10 +1027,10 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
 
-    let qs = await quoteSummary(sym, 'calendarEvents,earnings,earningsHistory');
+    let qs = await quoteSummary(sym, 'calendarEvents,earnings,earningsHistory,summaryProfile');
     let fromCal = nextEarningsFromCalendar(qs);
     if ((!fromCal.nextDate || fromCal.nextDate < todayISO) && (sym === 'GOOGL' || sym === 'GOOG')) {
-      const altQs = await quoteSummary(sym === 'GOOGL' ? 'GOOG' : 'GOOGL', 'calendarEvents,earnings,earningsHistory');
+      const altQs = await quoteSummary(sym === 'GOOGL' ? 'GOOG' : 'GOOGL', 'calendarEvents,earnings,earningsHistory,summaryProfile');
       const altCal = nextEarningsFromCalendar(altQs);
       if (altCal.nextDate && (!fromCal.nextDate || fromCal.nextDate < todayISO)) fromCal = altCal;
     }
@@ -1334,7 +1360,7 @@ let calEndISO = '';
 app.get('/api/earnings-calendar', async (req, res) => {
   const todayISO = new Date().toISOString().slice(0, 10);
   const displayDays = Math.min(45, Math.max(7, parseInt(String(req.query.days || ''), 10) || 14));
-  const mergeDays = Math.max(displayDays, 90);
+  const mergeDays = Math.max(displayDays, 120);
   const horizon = new Date();
   horizon.setDate(horizon.getDate() + mergeDays);
   const endISO = horizon.toISOString().slice(0, 10);

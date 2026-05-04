@@ -2996,13 +2996,19 @@ async function loadEarningsCalendar(force) {
     if(!Array.isArray(earnings)) earnings = [];
     const todayISO = localCalendarISO();
     const end2Weeks = addCalendarDaysISO(todayISO,14);
-    earnings = earnings.filter(e=>{
+    function inWin(e, endD) {
       if(!e||!e.date) return false;
       if(e.date<todayISO) return false;
-      if(e.date>end2Weeks) return false;
+      if(e.date>endD) return false;
       if(e.reported===true) return false;
       return true;
-    }).sort(function(a,b){
+    }
+    var filtered = earnings.filter(function(e){ return inWin(e, end2Weeks); });
+    if (!filtered.length && earnings.length) {
+      var endWide = addCalendarDaysISO(todayISO, 90);
+      filtered = earnings.filter(function(e){ return inWin(e, endWide); }).slice(0, 120);
+    }
+    earnings = filtered.sort(function(a,b){
       var c=a.date.localeCompare(b.date);
       if(c!==0)return c;
       var ta=trackedTierForEarnings(a.ticker), tb=trackedTierForEarnings(b.ticker);
