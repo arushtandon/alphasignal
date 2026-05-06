@@ -2201,9 +2201,10 @@ async function fetchEarningsForTicker(ticker) {
         const tl=(data.earningsTime||'').toLowerCase();
         const tc=tl.includes('after')||tl.includes('post')?'var(--sell)':tl.includes('before')||tl.includes('pre')?'var(--buy)':'var(--ac)';
         const tb=tl.includes('after')||tl.includes('post')?'var(--sellb)':tl.includes('before')||tl.includes('pre')?'var(--buyb)':'var(--holdb)';
+        const src = (data.calendarPrimarySource||'yahoo').replace(/_/g,' ');
         nextEl.innerHTML='<div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px">'
           +'<div><div style="font-size:15px;font-weight:500;font-family:DM Mono,monospace">'+ds+eds+'</div>'
-          +'<div style="font-size:9px;color:var(--buy);margin-top:2px">Source: Yahoo Finance</div></div>'
+          +'<div style="font-size:9px;color:var(--buy);margin-top:2px">Source: '+src+'</div></div>'
           +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
           +(data.earningsTime?'<span style="font-size:10px;padding:2px 8px;border-radius:10px;font-family:DM Mono,monospace;background:'+tb+';color:'+tc+'">'+data.earningsTime+'</span>':'')
           +(data.epsEstimate?'<span style="font-size:11px;color:var(--m1)">EPS est: <strong>'+data.epsEstimate+'</strong></span>':'')

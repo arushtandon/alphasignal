@@ -677,15 +677,25 @@ function buildFullTechResult(sym, daily, weekly) {
     weeklyTrend = calcTrend(weekly.slice(-20), 20);
   }
 
+  const ema9 = closes.length >= 10 ? calcEMA(closes, 9) : null;
+  const ema21 = closes.length >= 22 ? calcEMA(closes, 21) : null;
+  const trend50 = daily.length >= 50 ? calcTrend(daily.slice(-50), 20) : null;
+  const distToSup1Pct =
+    support1 != null && cp ? +(((cp - support1) / cp) * 100).toFixed(2) : null;
+  const distToRes1Pct =
+    resistance1 != null && cp ? +(((resistance1 - cp) / cp) * 100).toFixed(2) : null;
+
   return {
     symbol: sym, currentPrice: cp, ma20, ma50, ma200,
+    ema9, ema21,
     aboveMa20, aboveMa50, aboveMa200, bullishMAs, totalMAs,
     maAlignmentStr: `${bullishMAs}/${totalMAs} MAs bullish`,
     rsi, rsiSignal: rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : rsi > 55 ? 'bullish' : rsi < 45 ? 'bearish' : 'neutral',
-    macd, trend20, trend: trend20,
+    macd, trend20, trend50, trend: trend20,
     atr, atrPct, bb,
     bbSignal: bb ? (bb.pct > 80 ? 'near_upper_band' : bb.pct < 20 ? 'near_lower_band' : 'mid_band') : null,
     support1, support2, resistance1, resistance2,
+    distToSup1Pct, distToRes1Pct,
     volume, candlePattern: pattern,
     weeklyRSI, weeklyTrend,
     summary: `RSI ${rsi} (${rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : 'neutral'}), ${bullishMAs}/${totalMAs} MAs bullish, ${trend20}, S1@${support1}, R1@${resistance1}`
@@ -1127,7 +1137,13 @@ async function fmpEarningCalendarByRange(fromISO, toISO) {
 
   async function fetchOne(label, urlStr) {
     try {
-      const r = await fetch(urlStr, { signal: AbortSignal.timeout(24000) });
+      const r = await fetch(urlStr, {
+        signal: AbortSignal.timeout(24000),
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'Mozilla/5.0 (compatible; AlphaSignal/1.0)'
+        }
+      });
       const txt = await r.text();
       let parsed;
       try {
@@ -1171,26 +1187,74 @@ function fmpSymbol(raw) {
   return s ? String(s).trim().toUpperCase() : '';
 }
 
+/** Normalize vendor date (YYYY-MM-DD string, unix sec/ms, textual) — required for Finnhub/FMP rows */
+function normalizeVendorDate(raw) {
+  if (raw == null || raw === '') return '';
+  const n = Number(raw);
+  if (Number.isFinite(n) && !Number.isNaN(n)) {
+    if (n > 1e12) return new Date(Math.floor(n)).toISOString().slice(0, 10);
+    if (n > 1e9) return new Date(Math.floor(n * 1000)).toISOString().slice(0, 10);
+  }
+  const s = String(raw).trim();
+  if (/^\d{10}$/.test(s)) return new Date(parseInt(s, 10) * 1000).toISOString().slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const p = Date.parse(s.replace(/,/g, ''));
+  if (!Number.isNaN(p)) return new Date(p).toISOString().slice(0, 10);
+  return s.slice(0, 10);
+}
+
+function parseFinnhubEarningsPayload(j) {
+  if (!j || typeof j !== 'object') return [];
+  let arr = [];
+  if (Array.isArray(j.earningsCalendar)) arr = j.earningsCalendar;
+  else if (Array.isArray(j.data)) arr = j.data;
+  else if (j.earningsCalendar && typeof j.earningsCalendar === 'object' && !Array.isArray(j.earningsCalendar)) {
+    arr = Object.values(j.earningsCalendar).filter(Boolean);
+  }
+  return arr;
+}
+
 async function finnhubEarningsCalendar(fromISO, toISO, opts = {}) {
   const token = finnhubToken();
   if (!token) return [];
-  const u = new URLSearchParams({ from: fromISO, to: toISO, token, international: 'true' });
-  if (opts.symbol) u.set('symbol', opts.symbol);
-  try {
-    const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?${u}`, {
-      signal: AbortSignal.timeout(25000)
-    });
-    if (!r.ok) {
-      console.warn('Finnhub calendar', r.status);
+
+  async function fetchOne(intlFlag) {
+    const u = new URLSearchParams({ from: fromISO, to: toISO, token });
+    if (intlFlag !== '') u.set('international', intlFlag);
+    if (opts.symbol) u.set('symbol', opts.symbol);
+    try {
+      const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?${u}`, {
+        signal: AbortSignal.timeout(25000)
+      });
+      if (!r.ok) {
+        console.warn('Finnhub calendar', r.status, intlFlag || 'no-flag');
+        return [];
+      }
+      const j = await r.json();
+      if (j && typeof j.error === 'string') console.warn('Finnhub calendar error:', j.error.slice(0, 200));
+      return parseFinnhubEarningsPayload(j);
+    } catch (e) {
+      console.warn('Finnhub calendar', e.message);
       return [];
     }
-    const j = await r.json();
-    if (j && typeof j.error === 'string') console.warn('Finnhub calendar error:', j.error.slice(0, 200));
-    return Array.isArray(j.earningsCalendar) ? j.earningsCalendar : [];
-  } catch (e) {
-    console.warn('Finnhub calendar', e.message);
-    return [];
   }
+
+  if (opts.symbol) {
+    const one = await fetchOne(opts.international === false ? 'false' : 'true');
+    return one.length ? one : fetchOne(opts.international === false ? 'true' : 'false');
+  }
+
+  const a = await fetchOne('true');
+  const b = await fetchOne('false');
+  const merged = [...a, ...b];
+  const byKey = new Map();
+  merged.forEach((e) => {
+    if (!e || !e.symbol) return;
+    const dk = normalizeVendorDate(e.date).slice(0, 10) || String(e.date || '').slice(0, 10);
+    const k = normalizeTickerMatch(String(e.symbol)) + '_' + dk;
+    if (!byKey.has(k)) byKey.set(k, e);
+  });
+  return [...byKey.values()];
 }
 
 function mapFinnhubCalRow(e) {
@@ -1202,7 +1266,7 @@ function mapFinnhubCalRow(e) {
   return {
     ticker: String(e.symbol || '').replace(/^BRK-B$/i, 'BRK.B'),
     name: String(e.symbol || ''),
-    date: String(e.date || '').slice(0, 10),
+    date: normalizeVendorDate(e.date).slice(0, 10),
     time: finnhubHourToUi(e.hour),
     epsEst: est,
     epsPrior: act,
@@ -1244,7 +1308,7 @@ const EARNINGS_CALENDAR_MAX = 400;
 function calRowDateISO(e) {
   if (!e) return '';
   const d = e.date ?? e.earningDate ?? e.earningsDate ?? e.earning_date;
-  return d ? String(d).slice(0, 10) : '';
+  return d ? normalizeVendorDate(d).slice(0, 10) : '';
 }
 
 function isUpcomingCalRow(e, fromISO, toISO) {
@@ -1414,17 +1478,17 @@ app.get('/api/earnings/:symbol', async (req, res) => {
             ? fmpArr.find((r) => normalizeTickerMatch(fmpSymbol(r)) === 'GOOGL')
             : null);
       if (hit?.date) {
-        nextDate = String(hit.date).slice(0, 10);
+        nextDate = normalizeVendorDate(hit.date).slice(0, 10);
         if (hit.epsEstimated != null) epsEst = String(hit.epsEstimated);
         else if (hit.eps != null) epsEst = String(hit.eps);
         calendarPrimary = 'fmp';
       }
     }
 
-    let qs = await quoteSummary(sym, 'calendarEvents,earnings,earningsHistory');
+    let qs = await quoteSummary(sym, 'calendarEvents,earnings,earningsHistory,summaryProfile');
     let fromCal = nextEarningsFromCalendar(qs);
     if ((!fromCal.nextDate || fromCal.nextDate < todayISO) && (sym === 'GOOGL' || sym === 'GOOG')) {
-      const altQs = await quoteSummary(sym === 'GOOGL' ? 'GOOG' : 'GOOGL', 'calendarEvents,earnings,earningsHistory');
+      const altQs = await quoteSummary(sym === 'GOOGL' ? 'GOOG' : 'GOOGL', 'calendarEvents,earnings,earningsHistory,summaryProfile');
       const altCal = nextEarningsFromCalendar(altQs);
       if (altCal.nextDate && (!fromCal.nextDate || fromCal.nextDate < todayISO)) fromCal = altCal;
     }
