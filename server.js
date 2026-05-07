@@ -2003,10 +2003,12 @@ let calTs = 0;
 let calEndISO = '';
 
 app.get('/api/earnings-calendar', async (req, res) => {
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const pad = new Date();
+  pad.setUTCDate(pad.getUTCDate() - 1);
+  const fromISO = pad.toISOString().slice(0, 10);
   const days = Math.min(45, Math.max(7, parseInt(String(req.query.days || ''), 10) || 14));
   const horizon = new Date();
-  horizon.setDate(horizon.getDate() + days);
+  horizon.setUTCDate(horizon.getUTCDate() + days);
   const endISO = horizon.toISOString().slice(0, 10);
 
   if (
@@ -2019,7 +2021,7 @@ app.get('/api/earnings-calendar', async (req, res) => {
   }
 
   try {
-    const merged = await mergedEarningsCalendarWidget(todayISO, endISO);
+    const merged = await mergedEarningsCalendarWidget(fromISO, endISO);
     if (merged.length) {
       calCache = merged;
       calTs = Date.now();
@@ -2030,7 +2032,7 @@ app.get('/api/earnings-calendar', async (req, res) => {
       calEndISO = '';
     }
     const src = `${process.env.FINNHUB_API_KEY ? 'finnhub ' : ''}${process.env.FMP_API_KEY ? 'fmp ' : ''}yahoo`;
-    console.log('Earnings calendar merged:', merged.length, 'events', src.trim());
+    console.log('Earnings calendar merged:', merged.length, 'events', src.trim(), `${fromISO}→${endISO}`);
     res.json(merged);
   } catch (e) {
     console.error('Calendar merge:', e.message);
