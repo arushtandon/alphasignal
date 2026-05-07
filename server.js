@@ -2055,9 +2055,21 @@ app.get('/api/test-claude', async (req, res) => {
   }
 });
 
+function resolveAnthropicApiKey(req) {
+  const raw = req.headers['x-anthropic-key'];
+  const fromHeader = typeof raw === 'string' ? raw.trim() : '';
+  if (fromHeader.startsWith('sk-ant-') && fromHeader.length > 24) return fromHeader;
+  const env = (process.env.ANTHROPIC_API_KEY || '').trim();
+  return env || '';
+}
+
 app.post('/api/claude', async (req, res) => {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: { message: 'ANTHROPIC_API_KEY not configured.' } });
+  const apiKey = resolveAnthropicApiKey(req);
+  if (!apiKey) {
+    return res.status(500).json({
+      error: { message: 'No Anthropic API key. Paste your key in the app or set ANTHROPIC_API_KEY on the server.' }
+    });
+  }
   try {
     // Only send web-search beta header if the request actually uses the web_search tool
     const usesWebSearch = Array.isArray(req.body?.tools) && req.body.tools.some(t => t.type === 'web_search_20250305');

@@ -1064,6 +1064,15 @@ const SCHEMA=`{"ticker":"","name":"","sector":"","price":"","change":"","shortRa
 "rsi":"","macd":"","trend":"","support":"","resistance":"","ma20":"above","ma50":"above","ma200":"above","volume":"","pattern":"","candlePattern":"Bullish Engulfing","candleSignal":"Bullish","candleConf":75,"backtestedWinRate":62,"shortWeighting":"100% Technical","mediumWeighting":"70% Technical 30% News","longWeighting":"60% Technical 20% Fundamental 20% News","newsImpact":"","momentum":"Bullish","bollingerPos":"","pe":"","peg":"","revenueGrowth":"","earningsGrowth":"","catalyst":"","financialHealth":"Strong","industryPos":"Leader","risks":["","",""],"techSummary":"","fundSummary":"","nextEarningsDate":"","earningsTime":"pre-market|post-market|during-market","epsEstimate":"","epsPrior":""}`;
 
 // ══════════════════════════════════════════════
+function claudeFetchHeaders() {
+  var h = { 'Content-Type': 'application/json' };
+  try {
+    var k = (localStorage.getItem('as_apikey') || '').trim();
+    if (k.length >= 20 && k.startsWith('sk-ant-')) h['x-anthropic-key'] = k;
+  } catch (e) { /* private mode */ }
+  return h;
+}
+
 // DASHBOARD — AUTO-LOAD ON PAGE OPEN
 // ══════════════════════════════════════════════
 function waitForEl(id, cb, attempts=0){
@@ -1159,9 +1168,7 @@ async function runDashScan(){
         line += ` | FUND: fPE=${fund.forwardPE||'N/A'} PEG=${fund.pegRatio||'N/A'} RevGrowth=${fund.revenueGrowth!=null?fund.revenueGrowth+'%':'N/A'} EpsGrowth=${fund.earningsGrowth!=null?fund.earningsGrowth+'%':'N/A'} Analyst=${fund.recommendationKey||'N/A'} Target=$${fund.targetMeanPrice||'N/A'}(${upside}up)`;
       }
       return line;
-    }).join('
-');
-
+    }).join('\n');
     const prompt = `You are a senior portfolio manager at a top hedge fund. Analyze these instruments across 3 time horizons using the EXACT methodology below.${batchPriceCtx}
 
 REAL MARKET DATA (Yahoo Finance OHLCV + Fundamentals):
@@ -1200,7 +1207,7 @@ Format: ${exampleJson}
 Instruments: ${batch.join(', ')} [`
 
     try{
-      const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:window.CLAUDE_MODEL||'claude-haiku-4-5-20251001',max_tokens:8192,system:'You are a quantitative analyst. Output ONLY a valid JSON array starting with [. No markdown, no backticks, no explanations. Score each stock honestly using the technical data provided — bullish setups score high on shortScore, bearish setups score high on shortSellScore. A stock CANNOT have both shortScore and shortSellScore above 55.',messages:[{role:'user',content:prompt}]})});
+      const resp=await fetch('/api/claude',{method:'POST',headers:claudeFetchHeaders(),body:JSON.stringify({model:window.CLAUDE_MODEL||'claude-haiku-4-5-20251001',max_tokens:8192,system:'You are a quantitative analyst. Output ONLY a valid JSON array starting with [. No markdown, no backticks, no explanations. Score each stock honestly using the technical data provided — bullish setups score high on shortScore, bearish setups score high on shortSellScore. A stock CANNOT have both shortScore and shortSellScore above 55.',messages:[{role:'user',content:prompt}]})});
       if(resp.status===401||resp.status===403){
         document.getElementById('dashStatus').innerHTML='<div class="eb"><strong>Invalid API key.</strong> Use the green key bar at the top to update your key, then click Refresh picks.</div>';
         document.getElementById('pBar') && (document.getElementById('pBar').style.width='0%');
@@ -1997,7 +2004,7 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
     + ratingHint
     + '\nRatings: Strong Buy|Buy|Hold|Sell|Strong Sell';
   try{
-    const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:window.CLAUDE_MODEL||'claude-haiku-4-5-20251001',max_tokens:8192,system:'You are a financial analyst API. Start response with [ and end with ]. Raw JSON only. Output ONLY valid JSON array starting with [. No markdown fences, no "json" prefix, no backticks, no explanation. Pure JSON only.',messages:[{role:'user',content:prompt}]})});
+    const resp=await fetch('/api/claude',{method:'POST',headers:claudeFetchHeaders(),body:JSON.stringify({model:window.CLAUDE_MODEL||'claude-haiku-4-5-20251001',max_tokens:8192,system:'You are a financial analyst API. Start response with [ and end with ]. Raw JSON only. Output ONLY valid JSON array starting with [. No markdown fences, no "json" prefix, no backticks, no explanation. Pure JSON only.',messages:[{role:'user',content:prompt}]})});
     if(resp.status===401||resp.status===403){
       if(!isTop5) sEl.innerHTML='<div class="eb"><strong>Invalid API key.</strong> Use the key bar at the top to update your key.</div>';
       if(btn) btn.disabled=false;
@@ -3081,15 +3088,18 @@ async function startApp() {
     const d = await r.json();
     const dot = document.getElementById('keyDot');
     const lbl = document.getElementById('keyLabel');
-    if(d.hasKey) {
+    var browserKey = '';
+    try { browserKey = (localStorage.getItem('as_apikey') || '').trim(); } catch (e) {}
+    var aiOk = !!d.hasKey || (browserKey.length >= 20 && browserKey.indexOf('sk-ant-') === 0);
+    if(aiOk) {
       if(dot) { dot.style.background='var(--buy)'; dot.classList.add('set'); }
-      if(lbl) lbl.textContent = 'API Ready ✓';
+      if(lbl) lbl.textContent = !d.hasKey && browserKey ? 'AI: your key' : 'API Ready ✓';
       loadDashboard();
     } else {
       if(dot) dot.style.background='var(--sell)';
       if(lbl) lbl.textContent = 'Key not configured';
       const ds = document.getElementById('dashStatus');
-      if(ds) ds.innerHTML = '<div class="eb"><strong>ANTHROPIC_API_KEY not set on server.</strong> Add it in Render → Environment, then redeploy.</div>';
+      if(ds) ds.innerHTML = '<div class="eb"><strong>No Anthropic key.</strong> Paste your API key in the modal (stored in this browser only) or set <strong>ANTHROPIC_API_KEY</strong> on the server.</div>';
     }
   } catch(e) { loadDashboard(); }
 }
@@ -3109,7 +3119,7 @@ if(_inp) _inp.addEventListener('keydown', e => { if(e.key==='Enter') saveApiKey(
 const _modal = document.getElementById('apiModal');
 if(_modal) _modal.style.display = 'none';
 
-document.getElementById('tickerInput').addEventListener('keydown', e => { if(e.key==='Enter') analyze(); });
+(function(){ var _ti = document.getElementById('tickerInput'); if(_ti) _ti.addEventListener('keydown', e => { if(e.key==='Enter') analyze(); }); })();
 startApp();
 
 function pnlBadge(dollar, pct) {
