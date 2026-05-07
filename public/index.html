@@ -1200,7 +1200,7 @@ Format: ${exampleJson}
 Instruments: ${batch.join(', ')} [`
 
     try{
-      const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:window.CLAUDE_MODEL||'claude-haiku-4-5-20251001',max_tokens:1200,system:'You are a quantitative analyst. Output ONLY a valid JSON array starting with [. No markdown, no backticks, no explanations. Score each stock honestly using the technical data provided — bullish setups score high on shortScore, bearish setups score high on shortSellScore. A stock CANNOT have both shortScore and shortSellScore above 55.',messages:[{role:'user',content:prompt}]})});
+      const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:window.CLAUDE_MODEL||'claude-haiku-4-5-20251001',max_tokens:8192,system:'You are a quantitative analyst. Output ONLY a valid JSON array starting with [. No markdown, no backticks, no explanations. Score each stock honestly using the technical data provided — bullish setups score high on shortScore, bearish setups score high on shortSellScore. A stock CANNOT have both shortScore and shortSellScore above 55.',messages:[{role:'user',content:prompt}]})});
       if(resp.status===401||resp.status===403){
         document.getElementById('dashStatus').innerHTML='<div class="eb"><strong>Invalid API key.</strong> Use the green key bar at the top to update your key, then click Refresh picks.</div>';
         document.getElementById('pBar') && (document.getElementById('pBar').style.width='0%');
@@ -1997,7 +1997,7 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
     + ratingHint
     + '\nRatings: Strong Buy|Buy|Hold|Sell|Strong Sell';
   try{
-    const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:window.CLAUDE_MODEL||'claude-haiku-4-5-20251001',max_tokens:2000,system:'You are a financial analyst API. Start response with [ and end with ]. Raw JSON only. Output ONLY valid JSON array starting with [. No markdown fences, no "json" prefix, no backticks, no explanation. Pure JSON only.',messages:[{role:'user',content:prompt}]})});
+    const resp=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:window.CLAUDE_MODEL||'claude-haiku-4-5-20251001',max_tokens:8192,system:'You are a financial analyst API. Start response with [ and end with ]. Raw JSON only. Output ONLY valid JSON array starting with [. No markdown fences, no "json" prefix, no backticks, no explanation. Pure JSON only.',messages:[{role:'user',content:prompt}]})});
     if(resp.status===401||resp.status===403){
       if(!isTop5) sEl.innerHTML='<div class="eb"><strong>Invalid API key.</strong> Use the key bar at the top to update your key.</div>';
       if(btn) btn.disabled=false;
@@ -2231,9 +2231,10 @@ async function fetchEarningsForTicker(ticker) {
         const tl=(data.earningsTime||'').toLowerCase();
         const tc=tl.includes('after')||tl.includes('post')?'var(--sell)':tl.includes('before')||tl.includes('pre')?'var(--buy)':'var(--ac)';
         const tb=tl.includes('after')||tl.includes('post')?'var(--sellb)':tl.includes('before')||tl.includes('pre')?'var(--buyb)':'var(--holdb)';
+        const src = (data.calendarPrimarySource||'yahoo').replace(/_/g,' ');
         nextEl.innerHTML='<div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px">'
           +'<div><div style="font-size:15px;font-weight:500;font-family:DM Mono,monospace">'+ds+eds+'</div>'
-          +'<div style="font-size:9px;color:var(--buy);margin-top:2px">Source: Yahoo Finance</div></div>'
+          +'<div style="font-size:9px;color:var(--buy);margin-top:2px">Source: '+src+'</div></div>'
           +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
           +(data.earningsTime?'<span style="font-size:10px;padding:2px 8px;border-radius:10px;font-family:DM Mono,monospace;background:'+tb+';color:'+tc+'">'+data.earningsTime+'</span>':'')
           +(data.epsEstimate?'<span style="font-size:11px;color:var(--m1)">EPS est: <strong>'+data.epsEstimate+'</strong></span>':'')
