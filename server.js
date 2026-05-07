@@ -15,14 +15,6 @@ const YF_HEADERS = {
   'Connection': 'keep-alive'
 };
 
-function finnhubToken() {
-  return (process.env.FINNHUB_API_KEY || process.env.FINNHUB_TOKEN || '').trim();
-}
-
-function fmpApiKey() {
-  return (process.env.FMP_API_KEY || process.env.FMP_KEY || '').trim().replace(/^["']+|["']+$/g, '');
-}
-
 // ── Fetch price for a single symbol via Yahoo Finance ─────────────────────
 // Normalize symbol for Yahoo Finance (BRK.B -> BRK-B for some endpoints)
 function yfSymbol(s) {
@@ -646,9 +638,81 @@ function calcTrend(data, period = 20) {
   return 'sideways';
 }
 
+// ── ADX(14): trend strength — >25 = trending, >40 = strong trend ──────────
+function calcADX(data, period = 14) {
+  if (!data || data.length < period * 2) return null;
+  const rec = data.slice(-(period * 2 + 1));
+  let plusDM = [], minusDM = [], trArr = [];
+  for (let i = 1; i < rec.length; i++) {
+    const prev = rec[i - 1];
+    const curr = rec[i];
+    const upMove   = curr.h - prev.h;
+    const downMove = prev.l - curr.l;
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+    trArr.push(Math.max(curr.h - curr.l, Math.abs(curr.h - prev.c), Math.abs(curr.l - prev.c)));
+  }
+  // Wilder smoothing
+  const smooth = (arr, p) => {
+    let v = arr.slice(0, p).reduce((a, b) => a + b, 0);
+    const out = [v];
+    for (let i = p; i < arr.length; i++) { v = v - v / p + arr[i]; out.push(v); }
+    return out;
+  };
+  const sTR   = smooth(trArr,   period);
+  const sPDM  = smooth(plusDM,  period);
+  const sMDM  = smooth(minusDM, period);
+  const dxArr = sTR.map((tr, i) => {
+    if (!tr) return 0;
+    const pdi = 100 * sPDM[i] / tr;
+    const mdi = 100 * sMDM[i] / tr;
+    const sum = pdi + mdi;
+    return sum ? 100 * Math.abs(pdi - mdi) / sum : 0;
+  });
+  const adx = parseFloat((dxArr.slice(-period).reduce((a, b) => a + b, 0) / period).toFixed(1));
+  return adx;
+}
+
+// ── Fetch fundamentals: P/E, EPS growth, analyst target ──────────────────
+async function fetchFundamentals(symbol) {
+  try {
+    const qs = await quoteSummary(symbol, 'financialData,defaultKeyStatistics,summaryDetail');
+    const res = qs?.quoteSummary?.result?.[0];
+    if (!res) return null;
+    const fd = res.financialData || {};
+    const ks = res.defaultKeyStatistics || {};
+    const sd = res.summaryDetail || {};
+    const num = v => { const n = v?.raw ?? v; return Number.isFinite(+n) ? +n : null; };
+    const pct = v => { const n = num(v); return n != null ? +(n * 100).toFixed(1) : null; };
+    const fmt = (v, dec = 2) => { const n = num(v); return n != null ? +n.toFixed(dec) : null; };
+    return {
+      targetMeanPrice:    fmt(fd.targetMeanPrice),
+      targetHighPrice:    fmt(fd.targetHighPrice),
+      targetLowPrice:     fmt(fd.targetLowPrice),
+      analystCount:       num(fd.numberOfAnalystOpinions),
+      recommendationMean: fmt(fd.recommendationMean, 1), // 1=Strong Buy…5=Strong Sell
+      recommendationKey:  fd.recommendationKey || null,
+      revenueGrowth:      pct(fd.revenueGrowth),
+      earningsGrowth:     pct(fd.earningsGrowth),
+      grossMargins:       pct(fd.grossMargins),
+      operatingMargins:   pct(fd.operatingMargins),
+      currentRatio:       fmt(fd.currentRatio, 2),
+      debtToEquity:       fmt(fd.debtToEquity, 1),
+      forwardPE:          fmt(ks.forwardPE, 1),
+      pegRatio:           fmt(ks.pegRatio, 2),
+      trailingEps:        fmt(ks.trailingEps),
+      forwardEps:         fmt(ks.forwardEps),
+      trailingPE:         fmt(sd.trailingPE, 1),
+      dividendYield:      pct(sd.dividendYield),
+      marketCap:          num(sd.marketCap)
+    };
+  } catch(e) { console.warn('fetchFundamentals', symbol, e.message); return null; }
+}
+
 // Cache technicals — 15 min TTL
-const techCache = new Map();
-const TECH_TTL  = 15 * 60 * 1000;
+const techCache  = new Map();
+const fundCache  = new Map();
+const TECH_TTL   = 15 * 60 * 1000;
 
 function buildFullTechResult(sym, daily, weekly) {
   const closes = daily.map(d => d.c);
@@ -671,34 +735,28 @@ function buildFullTechResult(sym, daily, weekly) {
   const bullishMAs = [aboveMa20, aboveMa50, aboveMa200].filter(Boolean).length;
   const totalMAs   = [aboveMa20, aboveMa50, aboveMa200].filter(x => x !== null).length;
 
-  let weeklyRSI = null, weeklyTrend = null;
+  const adx = calcADX(daily, 14);
+  let weeklyRSI = null, weeklyTrend = null, weeklyMA50 = null;
   if (weekly && weekly.length >= 14) {
-    weeklyRSI   = calcRSI(weekly.map(d => d.c), 14);
+    const wc = weekly.map(d => d.c);
+    weeklyRSI   = calcRSI(wc, 14);
     weeklyTrend = calcTrend(weekly.slice(-20), 20);
+    weeklyMA50  = calcSMA(wc, 50);
   }
-
-  const ema9 = closes.length >= 10 ? calcEMA(closes, 9) : null;
-  const ema21 = closes.length >= 22 ? calcEMA(closes, 21) : null;
-  const trend50 = daily.length >= 50 ? calcTrend(daily.slice(-50), 20) : null;
-  const distToSup1Pct =
-    support1 != null && cp ? +(((cp - support1) / cp) * 100).toFixed(2) : null;
-  const distToRes1Pct =
-    resistance1 != null && cp ? +(((resistance1 - cp) / cp) * 100).toFixed(2) : null;
 
   return {
     symbol: sym, currentPrice: cp, ma20, ma50, ma200,
-    ema9, ema21,
     aboveMa20, aboveMa50, aboveMa200, bullishMAs, totalMAs,
     maAlignmentStr: `${bullishMAs}/${totalMAs} MAs bullish`,
     rsi, rsiSignal: rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : rsi > 55 ? 'bullish' : rsi < 45 ? 'bearish' : 'neutral',
-    macd, trend20, trend50, trend: trend20,
-    atr, atrPct, bb,
+    macd, trend20, trend: trend20,
+    atr, atrPct, bb, adx,
+    adxSignal: adx ? (adx > 40 ? 'strong_trend' : adx > 25 ? 'trending' : 'weak/ranging') : null,
     bbSignal: bb ? (bb.pct > 80 ? 'near_upper_band' : bb.pct < 20 ? 'near_lower_band' : 'mid_band') : null,
     support1, support2, resistance1, resistance2,
-    distToSup1Pct, distToRes1Pct,
     volume, candlePattern: pattern,
-    weeklyRSI, weeklyTrend,
-    summary: `RSI ${rsi} (${rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : 'neutral'}), ${bullishMAs}/${totalMAs} MAs bullish, ${trend20}, S1@${support1}, R1@${resistance1}`
+    weeklyRSI, weeklyTrend, weeklyMA50,
+    summary: `RSI ${rsi} (${rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : 'neutral'}), ADX ${adx ?? 'N/A'}, ${bullishMAs}/${totalMAs} MAs bullish, ${trend20}, S1@${support1}, R1@${resistance1}`
   };
 }
 
@@ -743,32 +801,46 @@ app.post('/api/technicals/batch', async (req, res) => {
       const volume = calcVolumeAnalysis(daily, 20);
       const trend20 = calcTrend(daily, 20);
       const { support1, support2, resistance1, resistance2 } = findSupportResistance(daily, 40);
+      const adx   = calcADX(daily, 14);
+      const ma200b = calcSMA(closes, 200);
       const data = {
         symbol: sym, currentPrice: cp,
-        ma20, ma50, rsi, macd, atr,
+        ma20, ma50, ma200: ma200b, rsi, macd, atr,
         atrPct: atr ? parseFloat((atr / cp * 100).toFixed(2)) : null,
+        adx, adxSignal: adx ? (adx > 40 ? 'strong_trend' : adx > 25 ? 'trending' : 'weak/ranging') : null,
         volume, trend20, trend: trend20,
-        aboveMa20: ma20 != null ? cp > ma20 : null,
-        aboveMa50: ma50 != null ? cp > ma50 : null,
+        aboveMa20:  ma20   != null ? cp > ma20   : null,
+        aboveMa50:  ma50   != null ? cp > ma50   : null,
+        aboveMa200: ma200b != null ? cp > ma200b : null,
         support1, support2, resistance1, resistance2,
         candlePattern: detectCandlePattern(daily),
         rsiSignal: rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : rsi > 55 ? 'bullish' : rsi < 45 ? 'bearish' : 'neutral',
-        summary: `RSI ${rsi}, ${cp > ma20 ? 'above' : 'below'} MA20, ${trend20}, S@${support1}, R@${resistance1}`
+        summary: `RSI ${rsi}, ADX ${adx ?? '?'}, ${cp > ma20 ? 'above' : 'below'} MA20, ${trend20}, S@${support1}, R@${resistance1}`
       };
-      const ohlcvQ = daily
-        .filter((d) => d.c != null && d.h != null && d.l != null)
-        .map((d) => ({ close: d.c, high: d.h, low: d.l, volume: d.v || 0 }));
-      const qc = ohlcvQ.length >= 20 ? computeTechnicals(ohlcvQ) : null;
-      if (qc) {
-        data.quantScore = qc.score;
-        data.quantAction = qc.quantAction;
-        data.quantSignalStrength = qc.signalStrength;
-      }
       techCache.set(sym, { ts: Date.now(), data });
       results[sym] = data;
     } catch(e) { console.warn('Batch tech fail:', sym, e.message); }
   }));
   console.log(`Technicals batch: ${Object.keys(results).length}/${symbols.length} succeeded`);
+  res.json(results);
+});
+
+// POST /api/fundamentals/batch — fundamental data for long-term analysis
+app.post('/api/fundamentals/batch', async (req, res) => {
+  const { symbols } = req.body;
+  if (!symbols?.length) return res.json({});
+  const results = {};
+  // Only fetch for equity symbols (skip BTC-USD, GC=F etc.)
+  const equities = symbols.filter(s => !s.includes('=F') && !s.includes('-USD') && !s.includes('-EUR'));
+  await Promise.allSettled(equities.map(async sym => {
+    try {
+      const cached = fundCache.get(sym);
+      if (cached && Date.now() - cached.ts < TECH_TTL * 4) { results[sym] = cached.data; return; }
+      const data = await fetchFundamentals(sym);
+      if (data) { fundCache.set(sym, { ts: Date.now(), data }); results[sym] = data; }
+    } catch(e) { console.warn('Fund batch fail:', sym, e.message); }
+  }));
+  console.log(`Fundamentals batch: ${Object.keys(results).length}/${equities.length} succeeded`);
   res.json(results);
 });
 
@@ -834,8 +906,8 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     quotes: 'yahoo_finance',
     earnings: {
-      finnhub_calendar: !!finnhubToken(),
-      fmp_calendar: !!fmpApiKey(),
+      finnhub_calendar: !!process.env.FINNHUB_API_KEY,
+      fmp_calendar: !!process.env.FMP_API_KEY,
       yahoo_fallback: true
     },
     hasKey: !!process.env.ANTHROPIC_API_KEY,
@@ -935,10 +1007,7 @@ function nextEarningsFromCalendar(qs) {
     for (const ed of slots) {
       let ms = null;
       if (typeof ed === 'number') ms = ed > 1e12 ? ed : ed * 1000;
-      else if (typeof ed === 'string') {
-        const parsed = Date.parse(ed.trim());
-        if (!Number.isNaN(parsed)) ms = parsed;
-      } else if (ed && typeof ed === 'object') {
+      else if (ed && typeof ed === 'object') {
         if (ed.raw != null && Number.isFinite(Number(ed.raw))) {
           const n = Number(ed.raw);
           ms = n > 1e12 ? n : n * 1000;
@@ -1122,7 +1191,7 @@ function fmpTimeToUi(row) {
 let fmpCalCacheAll = { key: '', from: '', to: '', ts: 0, rows: [] };
 
 async function fmpEarningCalendarByRange(fromISO, toISO) {
-  const k = fmpApiKey();
+  const k = (process.env.FMP_API_KEY || '').trim();
   if (!k) return [];
   const t = Date.now();
   const ttlMs = 45 * 60 * 1000;
@@ -1137,13 +1206,7 @@ async function fmpEarningCalendarByRange(fromISO, toISO) {
 
   async function fetchOne(label, urlStr) {
     try {
-      const r = await fetch(urlStr, {
-        signal: AbortSignal.timeout(24000),
-        headers: {
-          Accept: 'application/json',
-          'User-Agent': 'Mozilla/5.0 (compatible; AlphaSignal/1.0)'
-        }
-      });
+      const r = await fetch(urlStr, { signal: AbortSignal.timeout(24000) });
       const txt = await r.text();
       let parsed;
       try {
@@ -1187,74 +1250,26 @@ function fmpSymbol(raw) {
   return s ? String(s).trim().toUpperCase() : '';
 }
 
-/** Normalize vendor date (YYYY-MM-DD string, unix sec/ms, textual) — required for Finnhub/FMP rows */
-function normalizeVendorDate(raw) {
-  if (raw == null || raw === '') return '';
-  const n = Number(raw);
-  if (Number.isFinite(n) && !Number.isNaN(n)) {
-    if (n > 1e12) return new Date(Math.floor(n)).toISOString().slice(0, 10);
-    if (n > 1e9) return new Date(Math.floor(n * 1000)).toISOString().slice(0, 10);
-  }
-  const s = String(raw).trim();
-  if (/^\d{10}$/.test(s)) return new Date(parseInt(s, 10) * 1000).toISOString().slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  const p = Date.parse(s.replace(/,/g, ''));
-  if (!Number.isNaN(p)) return new Date(p).toISOString().slice(0, 10);
-  return s.slice(0, 10);
-}
-
-function parseFinnhubEarningsPayload(j) {
-  if (!j || typeof j !== 'object') return [];
-  let arr = [];
-  if (Array.isArray(j.earningsCalendar)) arr = j.earningsCalendar;
-  else if (Array.isArray(j.data)) arr = j.data;
-  else if (j.earningsCalendar && typeof j.earningsCalendar === 'object' && !Array.isArray(j.earningsCalendar)) {
-    arr = Object.values(j.earningsCalendar).filter(Boolean);
-  }
-  return arr;
-}
-
 async function finnhubEarningsCalendar(fromISO, toISO, opts = {}) {
-  const token = finnhubToken();
+  const token = (process.env.FINNHUB_API_KEY || '').trim();
   if (!token) return [];
-
-  async function fetchOne(intlFlag) {
-    const u = new URLSearchParams({ from: fromISO, to: toISO, token });
-    if (intlFlag !== '') u.set('international', intlFlag);
-    if (opts.symbol) u.set('symbol', opts.symbol);
-    try {
-      const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?${u}`, {
-        signal: AbortSignal.timeout(25000)
-      });
-      if (!r.ok) {
-        console.warn('Finnhub calendar', r.status, intlFlag || 'no-flag');
-        return [];
-      }
-      const j = await r.json();
-      if (j && typeof j.error === 'string') console.warn('Finnhub calendar error:', j.error.slice(0, 200));
-      return parseFinnhubEarningsPayload(j);
-    } catch (e) {
-      console.warn('Finnhub calendar', e.message);
+  const u = new URLSearchParams({ from: fromISO, to: toISO, token, international: 'true' });
+  if (opts.symbol) u.set('symbol', opts.symbol);
+  try {
+    const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?${u}`, {
+      signal: AbortSignal.timeout(25000)
+    });
+    if (!r.ok) {
+      console.warn('Finnhub calendar', r.status);
       return [];
     }
+    const j = await r.json();
+    if (j && typeof j.error === 'string') console.warn('Finnhub calendar error:', j.error.slice(0, 200));
+    return Array.isArray(j.earningsCalendar) ? j.earningsCalendar : [];
+  } catch (e) {
+    console.warn('Finnhub calendar', e.message);
+    return [];
   }
-
-  if (opts.symbol) {
-    const one = await fetchOne(opts.international === false ? 'false' : 'true');
-    return one.length ? one : fetchOne(opts.international === false ? 'true' : 'false');
-  }
-
-  const a = await fetchOne('true');
-  const b = await fetchOne('false');
-  const merged = [...a, ...b];
-  const byKey = new Map();
-  merged.forEach((e) => {
-    if (!e || !e.symbol) return;
-    const dk = normalizeVendorDate(e.date).slice(0, 10) || String(e.date || '').slice(0, 10);
-    const k = normalizeTickerMatch(String(e.symbol)) + '_' + dk;
-    if (!byKey.has(k)) byKey.set(k, e);
-  });
-  return [...byKey.values()];
 }
 
 function mapFinnhubCalRow(e) {
@@ -1266,7 +1281,7 @@ function mapFinnhubCalRow(e) {
   return {
     ticker: String(e.symbol || '').replace(/^BRK-B$/i, 'BRK.B'),
     name: String(e.symbol || ''),
-    date: normalizeVendorDate(e.date).slice(0, 10),
+    date: String(e.date || '').slice(0, 10),
     time: finnhubHourToUi(e.hour),
     epsEst: est,
     epsPrior: act,
@@ -1308,7 +1323,7 @@ const EARNINGS_CALENDAR_MAX = 400;
 function calRowDateISO(e) {
   if (!e) return '';
   const d = e.date ?? e.earningDate ?? e.earningsDate ?? e.earning_date;
-  return d ? normalizeVendorDate(d).slice(0, 10) : '';
+  return d ? String(d).slice(0, 10) : '';
 }
 
 function isUpcomingCalRow(e, fromISO, toISO) {
@@ -1455,40 +1470,40 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       fhRows = await finnhubEarningsCalendar(todayISO, toISOsym, { symbol: fv });
       if (fhRows.length) break;
     }
-    const fhFuture = fhRows.filter((r) => normalizeVendorDate(r.date).slice(0, 10) >= todayISO);
-    fhFuture.sort((a, b) => normalizeVendorDate(a.date).localeCompare(normalizeVendorDate(b.date)));
+    const fhFuture = fhRows.filter((r) => String(r.date).slice(0, 10) >= todayISO);
+    fhFuture.sort((a, b) => String(a.date).localeCompare(String(b.date)));
     let calendarPrimary = '';
 
     if (fhFuture.length) {
       const e = fhFuture[0];
-      nextDate = normalizeVendorDate(e.date).slice(0, 10);
+      nextDate = String(e.date).slice(0, 10);
       if (e.epsEstimate != null && Number.isFinite(+e.epsEstimate)) epsEst = String(e.epsEstimate);
       if (finnhubHourToUi(e.hour) !== 'during-market') callTime = finnhubHourToUi(e.hour);
       if (e.quarter != null && e.year != null) quarter = `Q${e.quarter} FY${e.year}`;
       calendarPrimary = 'finnhub';
     }
 
-    if (!nextDate && fmpApiKey()) {
+    if (!nextDate && process.env.FMP_API_KEY) {
       const fmpArr = await fmpEarningCalendarByRange(todayISO, toISOsym);
       const hit =
-        fmpArr.find((r) => normalizeTickerMatch(fmpSymbol(r)) === normalizeTickerMatch(sym)) ||
+        fmpArr.find((r) => normalizeTickerMatch(r.symbol) === normalizeTickerMatch(sym)) ||
         (sym === 'GOOGL'
-          ? fmpArr.find((r) => normalizeTickerMatch(fmpSymbol(r)) === 'GOOG')
+          ? fmpArr.find((r) => normalizeTickerMatch(r.symbol) === 'GOOG')
           : sym === 'GOOG'
-            ? fmpArr.find((r) => normalizeTickerMatch(fmpSymbol(r)) === 'GOOGL')
+            ? fmpArr.find((r) => normalizeTickerMatch(r.symbol) === 'GOOGL')
             : null);
       if (hit?.date) {
-        nextDate = normalizeVendorDate(hit.date).slice(0, 10);
+        nextDate = String(hit.date).slice(0, 10);
         if (hit.epsEstimated != null) epsEst = String(hit.epsEstimated);
         else if (hit.eps != null) epsEst = String(hit.eps);
         calendarPrimary = 'fmp';
       }
     }
 
-    let qs = await quoteSummary(sym, 'calendarEvents,earnings,earningsHistory,summaryProfile');
+    let qs = await quoteSummary(sym, 'calendarEvents,earnings,earningsHistory');
     let fromCal = nextEarningsFromCalendar(qs);
     if ((!fromCal.nextDate || fromCal.nextDate < todayISO) && (sym === 'GOOGL' || sym === 'GOOG')) {
-      const altQs = await quoteSummary(sym === 'GOOGL' ? 'GOOG' : 'GOOGL', 'calendarEvents,earnings,earningsHistory,summaryProfile');
+      const altQs = await quoteSummary(sym === 'GOOGL' ? 'GOOG' : 'GOOGL', 'calendarEvents,earnings,earningsHistory');
       const altCal = nextEarningsFromCalendar(altQs);
       if (altCal.nextDate && (!fromCal.nextDate || fromCal.nextDate < todayISO)) fromCal = altCal;
     }
@@ -1560,8 +1575,8 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
     const sourcesUsed = {};
-    if (finnhubToken()) sourcesUsed.finnhub = true;
-    if (fmpApiKey()) sourcesUsed.fmp = true;
+    if (process.env.FINNHUB_API_KEY) sourcesUsed.finnhub = true;
+    if (process.env.FMP_API_KEY) sourcesUsed.fmp = true;
     sourcesUsed.yahoo = true;
 
     res.json({
@@ -1663,47 +1678,109 @@ function roundPrice(x) {
 }
 
 /**
- * Overwrite all entry / TP / SL fields using ATR-based levels (preferred)
- * or % fallback if ATR unavailable. Horizons always mathematically distinct.
+ * Professional entry/exit levels using real S/R levels as TP and SL anchors.
+ * ATR used as minimum buffer and fallback. Analyst target used for long-term TP.
+ *
+ * SHORT  (1-3d):  SL = just below support1; TP1 = resistance1; TP2 = resistance2
+ * MEDIUM (1-3wk): SL = below support2 or MA50; TP1 = resistance1-2; TP2 = prior high
+ * LONG   (1-6mo): SL = below MA200; TP1 = analyst target (or resistance); TP2 = extended
  */
-function applyServerPriceLevels(row, livePrice, atr14 = null) {
+function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
   if (!row || !livePrice || livePrice <= 0) return row;
-  const hzKeys = ['short', 'medium', 'long'];
+  const e = livePrice;
+  const atr = tech?.atr14 || tech?.atr || null;
+  const s1  = tech?.support1    || null;
+  const s2  = tech?.support2    || null;
+  const r1  = tech?.resistance1 || null;
+  const r2  = tech?.resistance2 || null;
+  const ma50  = tech?.ma50  || null;
+  const ma200 = tech?.ma200 || null;
+  const analystTarget = fund?.targetMeanPrice || null;
+
   const ratingKeys = { short: 'shortRating', medium: 'mediumRating', long: 'longRating' };
 
-  for (const hz of hzKeys) {
-    const sell = ratingImpliesSell(row[ratingKeys[hz]]);
-    const side = sell ? 'sell' : 'buy';
-    const e = livePrice;
+  for (const hz of ['short', 'medium', 'long']) {
+    const isSell = ratingImpliesSell(row[ratingKeys[hz]]);
     let tp1, tp2, sl;
 
-    if (atr14 && atr14 > 0) {
-      // ATR-based: stops clear daily noise, R:R guaranteed ≥1.5:1
-      const m = HORIZON_ATR[hz][side];
-      tp1 = e + m.tp1 * atr14;
-      tp2 = e + m.tp2 * atr14;
-      sl  = e + m.sl  * atr14;
+    if (!isSell) {
+      // ── BUY LEVELS ──────────────────────────────────────────────────────────
+      if (hz === 'short') {
+        // SL: just below nearest support (within 3% of entry), else 2×ATR
+        const s1ok = s1 && s1 < e * 0.999 && s1 > e * 0.97;
+        sl  = s1ok ? roundPrice(s1 * 0.995) : atr ? roundPrice(e - 2*atr) : roundPrice(e * 0.975);
+        // TP1: nearest resistance (within 8% of entry)
+        const r1ok = r1 && r1 > e * 1.005 && r1 < e * 1.08;
+        tp1 = r1ok ? roundPrice(r1 * 0.999) : atr ? roundPrice(e + 3*atr) : roundPrice(e * 1.04);
+        // TP2: next resistance or extend
+        const r2ok = r2 && r2 > tp1;
+        tp2 = r2ok ? roundPrice(r2 * 0.999) : atr ? roundPrice(e + 5*atr) : roundPrice(e * 1.07);
+      } else if (hz === 'medium') {
+        // SL: below deeper support or MA50
+        const s2ok = s2 && s2 < e * 0.995 && s2 > e * 0.93;
+        const ma50ok = ma50 && ma50 < e * 0.99 && ma50 > e * 0.93;
+        const slBase = s2ok ? s2 : (ma50ok ? ma50 : null);
+        sl  = slBase ? roundPrice(slBase * 0.99) : atr ? roundPrice(e - 3*atr) : roundPrice(e * 0.94);
+        // TP1: resistance1 or resistance2
+        const r1ok = r1 && r1 > e * 1.01;
+        const r2ok = r2 && r2 > e * 1.01;
+        tp1 = r1ok ? roundPrice(r1) : (r2ok ? roundPrice(r2 * 0.95) : (atr ? roundPrice(e + 5*atr) : roundPrice(e * 1.10)));
+        tp2 = r2ok && r2 > tp1 ? roundPrice(r2) : (atr ? roundPrice(e + 9*atr) : roundPrice(e * 1.17));
+      } else { // long
+        // SL: below MA200 (best long-term floor) or deep support
+        const ma200ok = ma200 && ma200 < e * 0.995 && ma200 > e * 0.85;
+        sl  = ma200ok ? roundPrice(ma200 * 0.97) : (s2 && s2 < e * 0.99 ? roundPrice(s2 * 0.97) : (atr ? roundPrice(e - 5*atr) : roundPrice(e * 0.88)));
+        // TP1: analyst consensus target (primary), else S/R extension
+        const targetOk = analystTarget && analystTarget > e * 1.08 && analystTarget < e * 2.5;
+        tp1 = targetOk ? roundPrice(analystTarget) : (atr ? roundPrice(e + 10*atr) : roundPrice(e * 1.22));
+        tp2 = targetOk ? roundPrice(analystTarget * 1.15) : (atr ? roundPrice(e + 17*atr) : roundPrice(e * 1.38));
+      }
     } else {
-      // % fallback (wider than old v75 defaults)
-      const p = HORIZON_PCT[hz][side];
-      tp1 = e * (1 + p.tp1);
-      tp2 = e * (1 + p.tp2);
-      sl  = e * (1 + p.sl);
+      // ── SELL/SHORT LEVELS ──────────────────────────────────────────────────
+      if (hz === 'short') {
+        const r1ok = r1 && r1 > e * 1.001 && r1 < e * 1.03;
+        sl  = r1ok ? roundPrice(r1 * 1.005) : atr ? roundPrice(e + 2*atr) : roundPrice(e * 1.025);
+        const s1ok = s1 && s1 < e * 0.995 && s1 > e * 0.92;
+        tp1 = s1ok ? roundPrice(s1 * 1.002) : atr ? roundPrice(e - 3*atr) : roundPrice(e * 0.96);
+        const s2ok = s2 && s2 < tp1;
+        tp2 = s2ok ? roundPrice(s2 * 1.002) : atr ? roundPrice(e - 5*atr) : roundPrice(e * 0.93);
+      } else if (hz === 'medium') {
+        const r1ok = r1 && r1 > e * 1.001 && r1 < e * 1.06;
+        sl  = r1ok ? roundPrice(r1 * 1.005) : atr ? roundPrice(e + 3*atr) : roundPrice(e * 1.06);
+        const s1ok = s1 && s1 < e * 0.99;
+        tp1 = s1ok ? roundPrice(s1) : atr ? roundPrice(e - 5*atr) : roundPrice(e * 0.90);
+        const s2ok = s2 && s2 < tp1;
+        tp2 = s2ok ? roundPrice(s2) : atr ? roundPrice(e - 9*atr) : roundPrice(e * 0.83);
+      } else { // long short
+        sl  = r2 && r2 > e * 1.01 && r2 < e * 1.15 ? roundPrice(r2 * 1.005) : (atr ? roundPrice(e + 5*atr) : roundPrice(e * 1.12));
+        tp1 = ma200 && ma200 < e * 0.99 ? roundPrice(ma200 * 1.01) : (atr ? roundPrice(e - 10*atr) : roundPrice(e * 0.78));
+        tp2 = atr ? roundPrice(e - 17*atr) : roundPrice(e * 0.62);
+      }
+    }
+
+    // Sanity check: ensure direction is correct
+    if (!isSell) {
+      if (sl  >= e)   sl  = atr ? roundPrice(e - 2*atr) : roundPrice(e * 0.975);
+      if (tp1 <= e)   tp1 = atr ? roundPrice(e + 3*atr) : roundPrice(e * 1.04);
+      if (tp2 <= tp1) tp2 = roundPrice(tp1 * 1.04);
+    } else {
+      if (sl  <= e)   sl  = atr ? roundPrice(e + 2*atr) : roundPrice(e * 1.025);
+      if (tp1 >= e)   tp1 = atr ? roundPrice(e - 3*atr) : roundPrice(e * 0.96);
+      if (tp2 >= tp1) tp2 = roundPrice(tp1 * 0.96);
     }
 
     row[hz + 'Entry']    = String(roundPrice(e));
-    row[hz + 'Target1']  = String(roundPrice(tp1));
-    row[hz + 'Target2']  = String(roundPrice(tp2));
-    row[hz + 'StopLoss'] = String(roundPrice(sl));
+    row[hz + 'Target1']  = String(tp1);
+    row[hz + 'Target2']  = String(tp2);
+    row[hz + 'StopLoss'] = String(sl);
   }
 
-  // Back-compat aliases (short horizon)
+  // Back-compat aliases
   row.entry    = row.shortEntry;
   row.target1  = row.shortTarget1;
   row.target2  = row.shortTarget2;
   row.stopLoss = row.shortStopLoss;
 
-  // Sell overlay: mirror short-horizon sell levels
   const mainSell = String(row.action || '').toLowerCase() === 'sell' || ratingImpliesSell(row.shortRating);
   if (mainSell) {
     row.sellEntry    = row.shortEntry;
@@ -1745,72 +1822,109 @@ app.post('/api/analyze', async (req, res) => {
     return res.status(502).json({ error: 'Could not fetch live prices for requested symbols' });
   }
 
-  // ── Step 2: OHLCV → real technical indicators (parallel) ──────────────────
+  // ── Step 2: OHLCV → full technicals (parallel with 6mo data) ───────────────
   const techBySym = {};
   await Promise.all(
     clean.filter(s => priceBySym[s]).map(async sym => {
-      const ohlcv = await fetchOHLCVForAnalysis(sym);
-      if (ohlcv) {
-        const tech = computeTechnicals(ohlcv);
-        if (tech) techBySym[sym] = tech;
-      }
+      try {
+        const daily = await fetchOHLCV(sym, '6mo', '1d');
+        const weekly = await fetchOHLCV(sym, '2y', '1wk').catch(() => null);
+        if (daily && daily.length >= 20) {
+          techBySym[sym] = buildFullTechResult(sym, daily, weekly);
+        }
+      } catch(e) { console.warn('analyze tech', sym, e.message); }
     })
   );
 
-  // ── Step 3: Build rich quantitative prompt ────────────────────────────────
-  const tickerBlocks = clean.filter(s => priceBySym[s]).map(s => {
-    const p = priceBySym[s];
-    const t = techBySym[s];
-    let block = `### ${s}  price=${p.price} ${p.currency || 'USD'}  chg=${p.change ?? 0}%`;
+  // ── Step 3: Fundamentals (parallel — equities only) ───────────────────────
+  const fundBySym = {};
+  await Promise.all(
+    clean.filter(s => priceBySym[s] && !s.includes('=F') && !s.includes('-USD')).map(async sym => {
+      try {
+        const f = await fetchFundamentals(sym);
+        if (f) fundBySym[sym] = f;
+      } catch(e) {}
+    })
+  );
+
+  // ── Step 4: Build professional multi-factor prompt ────────────────────────
+  const tickerBlocks = clean.filter(s => priceBySym[s]).map(sym => {
+    const p = priceBySym[sym];
+    const t = techBySym[sym];
+    const f = fundBySym[sym];
+    let block = `### ${sym}  Price: ${p.price} ${p.currency || 'USD'}  Change: ${p.change ?? 0}%`;
+
     if (t) {
-      const maStatus = [
-        t.aboveMa20  != null ? (t.aboveMa20  ? 'Above MA20'  : 'Below MA20')  : '',
-        t.aboveMa50  != null ? (t.aboveMa50  ? 'Above MA50'  : 'Below MA50')  : '',
-        t.aboveMa200 != null ? (t.aboveMa200 ? 'Above MA200' : 'Below MA200') : ''
-      ].filter(Boolean).join(' | ');
+      // Trend structure
+      const maStr = [
+        t.aboveMa20  != null ? (t.aboveMa20  ? '✓above MA20'  : '✗below MA20')  : '',
+        t.aboveMa50  != null ? (t.aboveMa50  ? '✓above MA50'  : '✗below MA50')  : '',
+        t.aboveMa200 != null ? (t.aboveMa200 ? '✓above MA200' : '✗below MA200') : ''
+      ].filter(Boolean).join(', ');
+      const goldenCross = t.ma50 && t.ma200 ? (t.ma50 > t.ma200 ? '✓ Golden Cross (MA50>MA200)' : '✗ Death Cross (MA50<MA200)') : 'N/A';
       block += `
-  ATR(14)=${t.atr14} (${t.atrPct}% daily range)
-  RSI(14)=${t.rsi14}${t.rsi14 > 70 ? ' ⚠ OVERBOUGHT' : t.rsi14 < 30 ? ' ⚠ OVERSOLD' : ''}
-  MA Status: ${maStatus}
-  MA20=${t.ma20 ?? 'N/A'} | MA50=${t.ma50 ?? 'N/A'} | MA200=${t.ma200 ?? 'N/A'}
-  Golden Cross: ${t.goldenCross === true ? 'YES (bullish)' : t.goldenCross === false ? 'NO — Death Cross (bearish)' : 'N/A'}
-  MACD Histogram=${t.macdHistogram ?? 'N/A'} → ${t.macdBullish === true ? 'BULLISH momentum' : t.macdBullish === false ? 'BEARISH momentum' : 'N/A'}
-  Bollinger Position=${t.bollingerPos ?? 'N/A'} (0.0=lower band, 1.0=upper band${t.bollingerPos != null && t.bollingerPos > 0.85 ? ' ⚠ OVEREXTENDED' : ''})
-  Volume Ratio=${t.volRatio}x vs 20d avg${t.volRatio > 1.5 ? ' ✓ strong' : t.volRatio < 0.7 ? ' ⚠ weak' : ''}
-  ── QUANT SCORE: ${t.score}/20 → ${t.quantAction} (${t.signalStrength}) ──`;
+  TREND: ${t.trend20} | ${maStr} | ${goldenCross}
+  MA VALUES: MA20=${t.ma20} | MA50=${t.ma50} | MA200=${t.ma200 ?? 'N/A'}
+  MOMENTUM: RSI(14)=${t.rsi} [${t.rsiSignal}] | MACD=${t.macd?.trend || '?'} (hist=${t.macd?.histogram ?? '?'})
+  TREND STRENGTH: ADX=${t.adx ?? 'N/A'} [${t.adxSignal ?? 'N/A'}] (>25=trending, >40=strong)
+  VOLATILITY: ATR=${t.atr} (${t.atrPct}%/day) | Bollinger=${t.bbSignal ?? 'N/A'}
+  KEY LEVELS: Support1=${t.support1} | Support2=${t.support2} | Resistance1=${t.resistance1} | Resistance2=${t.resistance2}
+  VOLUME: ${t.volume?.confirmation || 'neutral'} (${t.volume?.relativeVolume ?? 1}x avg)
+  PATTERN: ${t.candlePattern} | Weekly trend: ${t.weeklyTrend ?? 'N/A'} | Weekly RSI: ${t.weeklyRSI ?? 'N/A'}`;
     } else {
-      block += '\n  [Technical data unavailable — use price context only]';
+      block += '\n  [Technical data unavailable]';
+    }
+
+    if (f) {
+      const recMap = { strongBuy: 'Strong Buy', buy: 'Buy', hold: 'Hold', sell: 'Sell', strongSell: 'Strong Sell' };
+      const rec = f.recommendationKey ? (recMap[f.recommendationKey] || f.recommendationKey) : 'N/A';
+      const targetUpside = f.targetMeanPrice && p.price ? (((f.targetMeanPrice - p.price) / p.price) * 100).toFixed(1) : null;
+      block += `
+  FUNDAMENTALS: ForwardPE=${f.forwardPE ?? 'N/A'} | PEG=${f.pegRatio ?? 'N/A'} | EPS(fwd)=${f.forwardEps ?? 'N/A'}
+  GROWTH: Revenue=${f.revenueGrowth != null ? f.revenueGrowth + '%' : 'N/A'} YoY | Earnings=${f.earningsGrowth != null ? f.earningsGrowth + '%' : 'N/A'} YoY
+  MARGINS: Gross=${f.grossMargins != null ? f.grossMargins + '%' : 'N/A'} | Operating=${f.operatingMargins != null ? f.operatingMargins + '%' : 'N/A'}
+  ANALYSTS: ${f.analystCount ?? '?'} analysts → Consensus: ${rec} | Target: $${f.targetMeanPrice ?? 'N/A'} (${targetUpside != null ? targetUpside + '% upside' : 'N/A'})`;
     }
     return block;
   }).join('\n\n');
 
   let hintBlock = '';
   if (dashHint?.ticker) {
-    hintBlock = `\n\nDashboard context for ${dashHint.ticker}: keep ratings broadly consistent with prior analysis — Short=${dashHint.shortRating || '—'}, Medium=${dashHint.mediumRating || '—'}, Long=${dashHint.longRating || '—'}.`;
+    hintBlock = `\n\nPrior ratings for ${dashHint.ticker}: Short=${dashHint.shortRating || '—'}, Medium=${dashHint.mediumRating || '—'}, Long=${dashHint.longRating || '—'} — keep broadly consistent unless indicators have changed.`;
   }
 
-  const prompt =
-    `You are a quantitative analyst at a top-tier hedge fund (think Renaissance Technologies / Two Sigma methodology). `
-    + `Analyze the instruments below using ONLY the provided quantitative data. Do NOT guess or fabricate values.\n\n`
-    + `INSTRUMENT DATA:\n${tickerBlocks}`
-    + hintBlock
-    + `\n\n`
-    + `MANDATORY ANALYSIS RULES — violating these disqualifies the analysis:\n`
-    + `1. TREND GATE: Only rate Buy/Strong Buy if price is Above MA50 AND MA50 > MA200 (uptrend regime). If either fails → Hold or Sell.\n`
-    + `2. RSI GATE: RSI > 75 → CANNOT rate Buy (overbought, immediate pullback risk). RSI < 25 → CANNOT rate Sell (oversold bounce risk).\n`
-    + `3. MACD GATE: MACD Histogram must be positive (bullish momentum) for any Buy rating in short/medium horizon.\n`
-    + `4. BOLLINGER GATE: Bollinger Position > 0.88 → do NOT add new longs (price overextended above mean).\n`
-    + `5. SCORE MAPPING — your ratings MUST align with the Quant Score:\n`
-    + `   20-18: Strong Buy | 17-15: Buy | 14-9: Hold | 8-6: Sell | 5-0: Strong Sell\n`
-    + `   You may adjust ±1 tier for strong fundamental catalysts, but NEVER override poor scores with generic optimism.\n`
-    + `6. DIFFERENT HORIZONS: Short (1-3d) = pure technical momentum. Medium (1-3wk) = trend + momentum. Long (1-6mo) = trend + fundamentals.\n`
-    + `   Each horizon MUST be independently justified — don't just clone the short rating.\n`
-    + `7. backtestedWinRate: 60-72 only for score≥15, 50-59 for score 12-14, 40-49 for score 9-11, 30-39 for weaker setups. Be CONSERVATIVE.\n`
-    + `8. risks: provide 3 SPECIFIC risks (not generic ones like "market volatility") based on the actual indicator readings.\n`
-    + `\nReturn ONE JSON array (start with [) with one object per ticker. `
-    + `Omit entry/target/stop/sellEntry/sellTarget fields — server computes those from ATR.\n`
-    + `Schema:\n${ANALYSIS_SCHEMA_HINT}\n`
-    + `Output ONLY the JSON array. No markdown, no code fences, no commentary.`;
+  const prompt = `You are a senior portfolio manager at a multi-strategy hedge fund. Analyze these instruments using the exact methodology below for each time horizon.
+
+INSTRUMENT DATA:
+${tickerBlocks}${hintBlock}
+
+ANALYSIS METHODOLOGY — apply each horizon independently:
+
+SHORT (1-3 days) — Pure price action & momentum:
+• BUY signal: Price near/bouncing off Support1 with RSI 35-65, bullish candle (Hammer/Engulfing), MACD turning up, OR price breaking above Resistance1 with volume >1.2x avg
+• SELL signal: Price rejected at Resistance1/2 with RSI >65 and bearish candle, OR breaking below Support1 with increasing volume
+• Skip if: ADX <15 (no trend), RSI >78 (overbought for longs), RSI <22 (oversold for shorts), price mid-range with no catalyst
+• shortAnalysis: Reference specific S/R levels and candle patterns
+
+MEDIUM (1-3 weeks) — Trend following with MA structure:
+• BUY signal: Above MA50 + MA50 trending up + pullback to MA20/MA50 in uptrend + MACD bullish + ADX >20
+• SELL signal: Below MA50 + downtrend + bounce to MA20 (resistance) + MACD bearish
+• Weekly RSI and trend must confirm the daily setup
+• mediumAnalysis: Reference MA levels, trend structure, weekly alignment
+
+LONG (1-6 months) — Fundamental + Technical confluence:
+• BUY signal: Above MA200 (primary uptrend) + EPS growth >10% OR revenue growth >8% + analyst consensus Buy/Strong Buy + target price >10% upside + forward PE reasonable vs sector
+• SELL signal: Below MA200 + deteriorating fundamentals (negative earnings/revenue growth) + analyst consensus Hold/Sell + high PE vs growth (PEG >3)
+• Long signals require fundamental backing — technical alone insufficient
+• longAnalysis: Must cite specific fundamentals (P/E, growth rates, analyst target)
+
+RATINGS: Strong Buy | Buy | Hold | Sell | Strong Sell (must differ across horizons when data warrants)
+backtestedWinRate: Be honest — 62-70 for high-quality setups with all conditions met, 50-61 for partial, 38-49 for weak
+risks: 3 specific risks based on actual readings (e.g. "RSI 72 approaching overbought — limited upside before pullback")
+
+Return ONE JSON array. Omit all entry/target/stop fields (server computes from S/R levels).
+Schema: ${ANALYSIS_SCHEMA_HINT}
+Output ONLY the JSON array. No markdown. No commentary.`;
 
   try {
     const upstream = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1822,7 +1936,7 @@ app.post('/api/analyze', async (req, res) => {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8192,
+        max_tokens: 2500,
         system:
           'You are a quantitative equities analyst. Follow ALL mandatory analysis rules. '
           + 'Output ONLY a valid JSON array starting with [. No markdown, no code fences, no commentary.',
@@ -1861,12 +1975,16 @@ app.post('/api/analyze', async (req, res) => {
       row.price  = String(pq.price);
       row.change = pq.change != null ? String(pq.change) : row.change;
       // Attach quant score metadata for UI display
+      const fund = fundBySym[sym] || null;
       if (tech) {
-        row.quantScore = tech.score;
-        row.atr14      = tech.atr14;
-        row.atrPct     = tech.atrPct;
+        row.quantScore   = tech.score;
+        row.atr14        = tech.atr14 || tech.atr;
+        row.atrPct       = tech.atrPct;
+        row.support1     = tech.support1;
+        row.resistance1  = tech.resistance1;
+        row.analystTarget = fund?.targetMeanPrice || null;
       }
-      return applyServerPriceLevels(row, +pq.price, tech?.atr14 || null);
+      return applyServerPriceLevels(row, +pq.price, tech || null, fund || null);
     });
 
     console.log(`Analyze: ${stocks.length} tickers, ATR data for ${Object.keys(techBySym).length}`);
@@ -1911,7 +2029,7 @@ app.get('/api/earnings-calendar', async (req, res) => {
       calTs = 0;
       calEndISO = '';
     }
-    const src = `${finnhubToken() ? 'finnhub ' : ''}${fmpApiKey() ? 'fmp ' : ''}yahoo`;
+    const src = `${process.env.FINNHUB_API_KEY ? 'finnhub ' : ''}${process.env.FMP_API_KEY ? 'fmp ' : ''}yahoo`;
     console.log('Earnings calendar merged:', merged.length, 'events', src.trim());
     res.json(merged);
   } catch (e) {
