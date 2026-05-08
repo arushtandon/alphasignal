@@ -3021,7 +3021,7 @@ async function loadEarningsCalendar(force) {
     const filterFrom = addCalendarDaysISO(utcToday, -1);
     const end2Weeks = addCalendarDaysISO(utcToday, 14);
     function inWin(e, endD) {
-      if(!e||!e.date) return false;
+      if(!e||e.reported===true||!e.date) return false;
       const d = String(e.date).slice(0, 10);
       if(d < filterFrom) return false;
       if(d > endD) return false;
