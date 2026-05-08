@@ -2160,7 +2160,7 @@ async function fetchEarningsForTicker(ticker) {
   }
   if(nextEl) nextEl.innerHTML='<div style="color:var(--m1);font-size:11px">Fetching earnings…</div>';
   if(histEl) histEl.innerHTML='<div style="color:var(--m1);font-size:11px">Loading...</div>';
-  const today=new Date(), todayISO=today.toISOString().slice(0,10);
+  const todayISO = localCalendarISO();
   try {
     const r = await fetch('/api/earnings/'+encodeURIComponent(ticker));
     if(!r.ok) throw new Error('Server error '+r.status);
