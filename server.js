@@ -1352,7 +1352,9 @@ function mergeFundamentalsForUi(row, fund) {
     v == null ||
     v === '' ||
     (typeof v === 'string' &&
-      /\b(not\s+provided|n\/a|unknown|omit|dataset)\b/i.test(String(v).trim()));
+      /\b(not\s+provided|not\s+specified|unspecified|n\/a|tbd|placeholder|unknown|omit|dataset|no\s+data)\b/i.test(
+        String(v).trim()
+      ));
   const set = (k, v) => {
     if (!gap(row[k])) return;
     if (v === null || v === undefined || v === '') return;
@@ -2224,13 +2226,7 @@ async function fmpEarningsSurprisesHistory(sym) {
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   }
-  try {
-    const enc = encodeURIComponent(sym);
-    const url = `https://financialmodelingprep.com/api/v3/earnings-surprises/${enc}?apikey=${encodeURIComponent(k)}`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(12000) });
-    if (!r.ok) return [];
-    const arr = await r.json();
-    if (!Array.isArray(arr) || !arr.length) return [];
+  function normalizeRows(arr) {
     const sorted = [...arr].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     return sorted
       .slice(0, 4)
@@ -2262,10 +2258,23 @@ async function fmpEarningsSurprisesHistory(sym) {
         };
       })
       .filter((r) => r.date || r.quarter);
-  } catch (e) {
-    console.warn('fmpEarningsSurprisesHistory', sym, e.message);
-    return [];
   }
+  const variants = [...new Set([sym, sym.replace(/\./g, '-')])].filter(Boolean);
+  for (const v of variants) {
+    try {
+      const enc = encodeURIComponent(v);
+      const url = `https://financialmodelingprep.com/api/v3/earnings-surprises/${enc}?apikey=${encodeURIComponent(k)}`;
+      const r = await fetch(url, { signal: AbortSignal.timeout(12000) });
+      if (!r.ok) continue;
+      const arr = await r.json();
+      if (!Array.isArray(arr) || !arr.length) continue;
+      const out = normalizeRows(arr);
+      if (out.length) return out;
+    } catch (e) {
+      console.warn('fmpEarningsSurprisesHistory', v, e.message);
+    }
+  }
+  return [];
 }
 
 // ── Earnings data — multi-source calendar (Finnhub / FMP preferred; Yahoo fallback) ─
@@ -2358,7 +2367,11 @@ app.get('/api/earnings/:symbol', async (req, res) => {
     }
 
     const symbolsForChart =
-      sym === 'GOOGL' || sym === 'GOOG' ? ['GOOGL', 'GOOG'] : [sym];
+      sym === 'GOOGL' || sym === 'GOOG'
+        ? ['GOOGL', 'GOOG']
+        : sym.includes('.')
+          ? [...new Set([sym, sym.replace(/\./g, '-')])].filter(Boolean)
+          : [sym];
     const rangeQs = ['range=3y&interval=3mo', 'range=8y&interval=1wk'];
     for (const host of ['query1', 'query2']) {
       for (const cs of symbolsForChart) {

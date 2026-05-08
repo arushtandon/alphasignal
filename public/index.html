@@ -1213,6 +1213,16 @@ function waitForEl(id, cb, attempts=0){
   else { console.error('Element',id,'never appeared'); }
 }
 
+/** Headers for POST /api/claude — Content-Type plus optional browser key (server env used when omitted). */
+function claudeFetchHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  try {
+    const k = (localStorage.getItem('as_apikey') || '').trim();
+    if (k.startsWith('sk-ant-')) headers['x-anthropic-key'] = k;
+  } catch (_) {}
+  return headers;
+}
+
 async function loadDashboard(force=false){
   if(!force&&ST.dashData&&ST.dashTs){
     const age=(Date.now()-ST.dashTs)/1000/3600;
