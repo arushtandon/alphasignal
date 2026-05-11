@@ -1781,6 +1781,9 @@ app.get('/api/health', (req, res) => {
       merged_before_cap: earningsMergeDiag.uniqBeforeCap,
       bloomberg_tracked_symbols_with_date: earningsMergeDiag.bloombergTrackedHits,
       finnhub_query_path: earningsMergeDiag.finnhubPath || null,
+      yahoo_seed_hits: earningsMergeDiag.yahooSeedHits,
+      calendar_display_through: earningsMergeDiag.displayEndISO || null,
+      vendor_calendar_fetch_through: earningsMergeDiag.vendor_fetch_through || null,
       /** true if last merge was >24h ago — values may not reflect current calendar settings */
       stats_stale:
         earningsMergeDiag.ts > 0 && Date.now() - earningsMergeDiag.ts > 86400000
@@ -2157,23 +2160,39 @@ function fmpSymbol(raw) {
 async function finnhubEarningsCalendar(fromISO, toISO, opts = {}) {
   const token = (process.env.FINNHUB_API_KEY || '').trim();
   if (!token) return [];
-  const u = new URLSearchParams({ from: fromISO, to: toISO, token, international: 'true' });
-  if (opts.symbol) u.set('symbol', opts.symbol);
-  try {
-    const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?${u}`, {
-      signal: AbortSignal.timeout(25000)
-    });
-    if (!r.ok) {
-      console.warn('Finnhub calendar', r.status);
-      return [];
-    }
-    const j = await r.json();
-    if (j && typeof j.error === 'string') console.warn('Finnhub calendar error:', j.error.slice(0, 200));
-    return Array.isArray(j.earningsCalendar) ? j.earningsCalendar : [];
-  } catch (e) {
-    console.warn('Finnhub calendar', e.message);
+
+  function extractCalendar(j) {
+    if (!j || typeof j !== 'object') return [];
+    if (Array.isArray(j.earningsCalendar)) return j.earningsCalendar;
+    if (Array.isArray(j.data)) return j.data;
     return [];
   }
+
+  async function fetchOnce(useInternational) {
+    const u = new URLSearchParams({ from: fromISO, to: toISO, token });
+    if (useInternational) u.set('international', 'true');
+    if (opts.symbol) u.set('symbol', opts.symbol);
+    try {
+      const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?${u}`, {
+        signal: AbortSignal.timeout(25000)
+      });
+      if (!r.ok) {
+        console.warn('Finnhub calendar', r.status);
+        return [];
+      }
+      const j = await r.json();
+      if (j && typeof j.error === 'string')
+        console.warn('Finnhub calendar error:', j.error.slice(0, 200));
+      return extractCalendar(j);
+    } catch (e) {
+      console.warn('Finnhub calendar', e.message);
+      return [];
+    }
+  }
+
+  let rows = await fetchOnce(true);
+  if (!rows.length) rows = await fetchOnce(false);
+  return rows;
 }
 
 function mapFinnhubCalRow(e) {
@@ -2357,13 +2376,48 @@ let earningsMergeDiag = {
   fmpIn: -1,
   uniqBeforeCap: -1,
   bloombergTrackedHits: -1,
-  finnhubPath: ''
+  finnhubPath: '',
+  yahooSeedHits: -1,
+  displayEndISO: '',
+  vendor_fetch_through: ''
 };
 
 async function mergedEarningsCalendarWidget(fromISO, toISO) {
   const byTicker = new Map();
-  /** Next report can sit just outside a short UI window; keep BB (and Yahoo gap in API-outage mode) visible. */
-  const bridgeListEndISO = addUTCISODays(toISO, 90);
+  /**
+   * Vendors are queried for [fromISO, toISO]; "next earnings" from Yahoo/Bloomberg often lands after toISO.
+   * Keep merged rows through displayEndISO so the calendar is not empty while keys are valid.
+   */
+  const displayEndISO = addUTCISODays(toISO, 135);
+  /** Widen Finnhub/FMP *request* range so bulk calendars include names whose next report is after the UI horizon. */
+  const vendorEndISO = addUTCISODays(toISO, 90);
+
+  let yahooSeedHits = 0;
+  const SEED_CHUNK = 5;
+  for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i += SEED_CHUNK) {
+    const chunk = EARNINGS_CAL_SYMBOLS.slice(i, i + SEED_CHUNK);
+    await Promise.all(
+      chunk.map(async (tick) => {
+        try {
+          const nk = normalizeTickerMatch(tick);
+          if (!nk || byTicker.has(nk)) return;
+          const gap = await yahooEarningsGapRow(tick);
+          if (
+            gap &&
+            gap.date &&
+            gap.date >= fromISO &&
+            gap.date <= displayEndISO
+          ) {
+            byTicker.set(nk, gap);
+            yahooSeedHits++;
+          }
+        } catch (_) {}
+      })
+    );
+    if (i + SEED_CHUNK < EARNINGS_CAL_SYMBOLS.length) {
+      await new Promise((r) => setTimeout(r, 140));
+    }
+  }
 
   let bloombergTrackedHits = 0;
   if (bloombergBridgeUrl()) {
@@ -2375,7 +2429,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
           try {
             const bb = await fetchBloombergBridgeEarnings(tick);
             const row = bridgeEarningsToCalendarRow(bb, tick);
-            if (!row || !isUpcomingCalRow(row, fromISO, bridgeListEndISO)) return;
+            if (!row || !isUpcomingCalRow(row, fromISO, displayEndISO)) return;
             const k = normalizeTickerMatch(tick);
             if (!k) return;
             byTicker.set(k, row);
@@ -2391,7 +2445,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
     }
   }
 
-  let fhRaw = await finnhubEarningsCalendar(fromISO, toISO);
+  let fhRaw = await finnhubEarningsCalendar(fromISO, vendorEndISO);
   let finnhubPath = fhRaw.length ? 'global' : 'none';
   if (!fhRaw.length && (process.env.FINNHUB_API_KEY || '').trim()) {
     finnhubPath = 'symbol_fallback';
@@ -2402,7 +2456,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
       await Promise.all(
         chunk.map(async (tick) => {
           for (const fv of finnhubTickerVariants(tick)) {
-            const rows = await finnhubEarningsCalendar(fromISO, toISO, { symbol: fv });
+            const rows = await finnhubEarningsCalendar(fromISO, vendorEndISO, { symbol: fv });
             if (rows.length) {
               acc.push(...rows);
               break;
@@ -2417,24 +2471,28 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
     fhRaw = acc;
   }
 
-  const fmpRows = await fmpEarningCalendarByRange(fromISO, toISO);
+  const fmpRows = await fmpEarningCalendarByRange(fromISO, vendorEndISO);
 
   // Full-window merge (not limited to ~55 watchlist names) so the widget reflects the real market.
   fhRaw
-    .filter((x) => x && x.symbol && isUpcomingCalRow(x, fromISO, toISO))
+    .filter((x) => x && x.symbol && isUpcomingCalRow(x, fromISO, displayEndISO))
     .forEach((e) => {
       const row = mapFinnhubCalRow(e);
       const k = normalizeTickerMatch(row.ticker);
       if (!k) return;
-      if (!byTicker.has(k)) byTicker.set(k, row);
+      const prev = byTicker.get(k);
+      if (prev && prev.source === 'bloomberg_bridge') return;
+      byTicker.set(k, row);
     });
 
   fmpRows.forEach((e) => {
     const sym = fmpSymbol(e);
-    if (!sym || !isUpcomingCalRow(e, fromISO, toISO)) return;
+    if (!sym || !isUpcomingCalRow(e, fromISO, displayEndISO)) return;
     const k = normalizeTickerMatch(sym);
     if (!k) return;
-    if (!byTicker.has(k)) byTicker.set(k, mapFmpCalRow(e));
+    const prev = byTicker.get(k);
+    if (prev && (prev.source === 'bloomberg_bridge' || prev.source === 'finnhub')) return;
+    byTicker.set(k, mapFmpCalRow(e));
   });
 
   for (const [, row] of byTicker) {
@@ -2453,9 +2511,6 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
     }
   }
 
-  const degradedNoVendorCal = !fhRaw.length && !fmpRows.length;
-  const yahooGapEndISO = degradedNoVendorCal ? bridgeListEndISO : toISO;
-
   const GAP_CHUNK = 6;
   for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i += GAP_CHUNK) {
     const chunk = EARNINGS_CAL_SYMBOLS.slice(i, i + GAP_CHUNK);
@@ -2464,7 +2519,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
         const nk = normalizeTickerMatch(tick);
         if (byTicker.has(nk)) return;
         const gap = await yahooEarningsGapRow(tick);
-        if (gap && gap.date && gap.date >= fromISO && gap.date <= yahooGapEndISO) {
+        if (gap && gap.date && gap.date >= fromISO && gap.date <= displayEndISO) {
           byTicker.set(nk, gap);
         }
       })
@@ -2475,14 +2530,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
   }
 
   const sorted = [...byTicker.values()]
-    .filter((row) => {
-      if (!row?.date) return false;
-      let end = toISO;
-      if (row.source === 'bloomberg_bridge') end = bridgeListEndISO;
-      else if (degradedNoVendorCal && /yahoo/i.test(String(row.source || '')))
-        end = yahooGapEndISO;
-      return isValidEarningsCalendarRow(row.date, fromISO, end);
-    })
+    .filter((row) => row?.date && isValidEarningsCalendarRow(row.date, fromISO, displayEndISO))
     .sort((a, b) => {
       const da = a.date.localeCompare(b.date);
       if (da !== 0) return da;
@@ -2500,7 +2548,10 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
     fmpIn: fmpRows.length,
     uniqBeforeCap: sorted.length,
     bloombergTrackedHits,
-    finnhubPath
+    finnhubPath,
+    yahooSeedHits,
+    displayEndISO,
+    vendor_fetch_through: vendorEndISO
   };
   return capped;
 }
