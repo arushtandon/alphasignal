@@ -37,7 +37,9 @@ try:
     from pdblp import BCon
 except Exception as exc:  # ImportError / missing Bloomberg blpapi binaries
     BCon = None  # type: ignore
-    _PDBLP_IMPORT_ERROR = repr(exc)app = Flask(__name__)
+    _PDBLP_IMPORT_ERROR = repr(exc)
+
+app = Flask(__name__)
 PORT = int(os.environ.get("BRIDGE_PORT", os.environ.get("PORT", "5055")))
 # Listen address: 127.0.0.1 = this PC only; 0.0.0.0 = LAN/VPN (bridge must run on the PC that has Terminal)
 BRIDGE_BIND = os.environ.get("BRIDGE_BIND", "127.0.0.1").strip() or "127.0.0.1"
