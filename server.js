@@ -15,7 +15,9 @@ const YF_HEADERS = {
   'Accept': 'application/json,text/html,*/*',
   'Accept-Language': 'en-US,en;q=0.9',
   'Accept-Encoding': 'gzip, deflate, br',
-  'Connection': 'keep-alive'
+  'Connection': 'keep-alive',
+  'Referer': 'https://finance.yahoo.com/',
+  'Origin': 'https://finance.yahoo.com'
 };
 
 // ── Fetch price for a single symbol via Yahoo Finance ─────────────────────
@@ -1013,8 +1015,17 @@ async function fetchYahooQuotePE(symbol) {
   return null;
 }
 
+function fmpAnyApiKey() {
+  return (
+    process.env.FMP_API_KEY ||
+    process.env.FMP_KEY ||
+    process.env.FINANCIAL_MODELING_PREP_API_KEY ||
+    ''
+  ).trim();
+}
+
 function fmpEnvKeyFund() {
-  return (process.env.FMP_API_KEY || '').trim();
+  return fmpAnyApiKey();
 }
 
 async function fetchFundamentalsFMP(symbol) {
@@ -1768,7 +1779,12 @@ app.get('/api/health', (req, res) => {
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!process.env.FINNHUB_API_KEY,
-      fmp_calendar: !!process.env.FMP_API_KEY,
+      fmp_calendar: !!(
+        process.env.FMP_API_KEY ||
+        process.env.FMP_KEY ||
+        process.env.FINANCIAL_MODELING_PREP_API_KEY ||
+        ''
+      ).trim(),
       yahoo_fallback: true
     },
     /** After first /api/earnings-calendar request: how many rows the merge produced (-1 = not run yet). */
@@ -1807,6 +1823,8 @@ app.get('/api/health', (req, res) => {
       bloombergBridgeUrl() && bloombergBridgeUrlIsUnreachableFromInternet()
         ? 'Bridge URL is loopback/LAN-only; hosts like Render cannot reach it — use HTTPS tunnel URL or deploy API on same LAN.'
         : '',
+    bloomberg_bridge_manual_test_hint:
+      '401 on /snapshot or /earnings via browser: Bloomberg bridge expects HTTP header Authorization: Bearer <BLOOMBERG_BRIDGE_SECRET> when that env var is set on the Terminal PC. Use curl/Postman, or temporarily unset secret for local debugging. AlphaSignal sends this header automatically when Render BLOOMBERG_BRIDGE_SECRET matches.',
     bloomberg_enterprise_configured: Boolean(bloombergEnterpriseBase()),
     ts: Date.now(),
     historyVersion: HISTORY_VERSION,
@@ -2097,7 +2115,7 @@ function fmpTimeToUi(row) {
 let fmpCalCacheAll = { key: '', from: '', to: '', ts: 0, rows: [] };
 
 async function fmpEarningCalendarByRange(fromISO, toISO) {
-  const k = (process.env.FMP_API_KEY || '').trim();
+  const k = fmpAnyApiKey();
   if (!k) return [];
   const t = Date.now();
   const ttlMs = 45 * 60 * 1000;
@@ -2112,7 +2130,13 @@ async function fmpEarningCalendarByRange(fromISO, toISO) {
 
   async function fetchOne(label, urlStr) {
     try {
-      const r = await fetch(urlStr, { signal: AbortSignal.timeout(24000) });
+      const r = await fetch(urlStr, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': YF_HEADERS['User-Agent']
+        },
+        signal: AbortSignal.timeout(24000)
+      });
       const txt = await r.text();
       let parsed;
       try {
@@ -2125,6 +2149,13 @@ async function fmpEarningCalendarByRange(fromISO, toISO) {
         const errMsg = parsed['Error Message'] || parsed.error || parsed.message;
         if (errMsg) console.warn(`FMP calendar ${label}:`, String(errMsg).slice(0, 200));
       }
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        !Array.isArray(parsed) &&
+        Array.isArray(parsed.data)
+      )
+        parsed = parsed.data;
       if (!Array.isArray(parsed)) return [];
       return parsed;
     } catch (e) {
@@ -2137,7 +2168,9 @@ async function fmpEarningCalendarByRange(fromISO, toISO) {
   const urls = [
     ['v3_underscore', `https://financialmodelingprep.com/api/v3/earning_calendar?${q}`],
     ['stable_underscore', `https://financialmodelingprep.com/stable/earning_calendar?${q}`],
-    ['stable_hyphen', `https://financialmodelingprep.com/stable/earning-calendar?${q}`]
+    ['stable_hyphen', `https://financialmodelingprep.com/stable/earning-calendar?${q}`],
+    ['stable_confirmed', `https://financialmodelingprep.com/stable/earning-calendar-confirmed?${q}`],
+    ['v4_calendar', `https://financialmodelingprep.com/api/v4/earning-calendar?${q}`]
   ];
 
   let rows = [];
@@ -2279,6 +2312,61 @@ function isUpcomingCalRow(e, fromISO, toISO) {
   return true;
 }
 
+/**
+ * Yahoo chart earnings events in calendar merge window (avoids server-"today" filter that breaks bad clocks).
+ */
+async function yahooChartFirstEarningsBetween(ticker, fromISO, endISO) {
+  const lo = String(fromISO || '').slice(0, 10);
+  const hi = String(endISO || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(lo) || !/^\d{4}-\d{2}-\d{2}$/.test(hi) || lo > hi)
+    return null;
+  const extra = ticker === 'BRK.B' ? ['BRK-B'] : [];
+  const variants = [...new Set([ticker, String(ticker).replace(/\./g, '-'), ...extra])].filter(
+    Boolean
+  );
+  const ranges = ['2y', '5y', '1y'];
+  const hosts = ['query2', 'query1'];
+  for (const t of variants) {
+    for (const host of hosts) {
+      for (const range of ranges) {
+        try {
+          const url = `https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+            t
+          )}?range=${range}&interval=1d&events=earnings&includePrePost=false`;
+          const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(22000) });
+          if (!r.ok) continue;
+          const d = await r.json();
+          const result = d?.chart?.result?.[0];
+          const raw = result?.events?.earnings;
+          if (!raw) continue;
+          const evts = Object.values(raw).sort((a, b) => a.date - b.date);
+          const meta = result.meta || {};
+          const nm = meta.longName || meta.shortName || meta.symbol || t;
+          for (const e of evts) {
+            const ds = new Date(e.date * 1000).toISOString().slice(0, 10);
+            if (ds >= lo && ds <= hi) {
+              return {
+                ticker: String(t).replace(/-/g, '.'),
+                name: nm,
+                date: ds,
+                time: 'during-market',
+                epsEst: '',
+                epsPrior: '',
+                note: '',
+                market: '',
+                source: 'yahoo_chart'
+              };
+            }
+          }
+        } catch (err) {
+          console.warn('yahooChartFirstEarningsBetween', ticker, err.message);
+        }
+      }
+    }
+  }
+  return null;
+}
+
 /** When quoteSummary omits calendarEvents (common from datacenter IPs), chart `events=earnings` often still lists the next report. */
 async function yahooNextEarningsFromChartEvents(ticker) {
   const extra = ticker === 'BRK.B' ? ['BRK-B'] : [];
@@ -2322,12 +2410,27 @@ async function yahooNextEarningsFromChartEvents(ticker) {
   return null;
 }
 
-async function yahooEarningsGapRow(ticker) {
+async function yahooEarningsGapRow(ticker, mergeFromISO = null, mergeEndISO = null) {
+  const calBounds =
+    mergeFromISO &&
+    mergeEndISO &&
+    /^\d{4}-\d{2}-\d{2}$/.test(String(mergeFromISO).slice(0, 10)) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(String(mergeEndISO).slice(0, 10));
+  const mf = calBounds ? String(mergeFromISO).slice(0, 10) : null;
+  const mt = calBounds ? String(mergeEndISO).slice(0, 10) : null;
+
+  if (mf && mt) {
+    const ch = await yahooChartFirstEarningsBetween(ticker, mf, mt);
+    if (ch) return ch;
+  }
+
   const tryOne = async (t) => {
     try {
       const qs = await quoteSummary(t, 'calendarEvents,summaryProfile');
       const cal = nextEarningsFromCalendar(qs);
       if (!cal.nextDate) return null;
+      const dStr = String(cal.nextDate).slice(0, 10);
+      if (mf && mt && (!/^\d{4}-\d{2}-\d{2}$/.test(dStr) || dStr < mf || dStr > mt)) return null;
       const nm =
         qs?.quoteSummary?.result?.[0]?.summaryProfile?.longName ||
         qs?.quoteSummary?.result?.[0]?.summaryProfile?.shortName ||
@@ -2360,10 +2463,13 @@ async function yahooEarningsGapRow(ticker) {
   if (ticker === 'GOOGL') row = await tryOne('GOOG');
   else if (ticker === 'GOOG') row = await tryOne('GOOGL');
   if (row) return row;
-  row = await yahooNextEarningsFromChartEvents(ticker);
-  if (row) return row;
-  if (ticker === 'GOOGL') return yahooNextEarningsFromChartEvents('GOOG');
-  if (ticker === 'GOOG') return yahooNextEarningsFromChartEvents('GOOGL');
+  /* Uncalibrated fallback (uses server UTC "today"); skip when merging an explicit date window */
+  if (!mf || !mt) {
+    row = await yahooNextEarningsFromChartEvents(ticker);
+    if (row) return row;
+    if (ticker === 'GOOGL') return yahooNextEarningsFromChartEvents('GOOG');
+    if (ticker === 'GOOG') return yahooNextEarningsFromChartEvents('GOOGL');
+  }
   return null;
 }
 
@@ -2401,7 +2507,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
         try {
           const nk = normalizeTickerMatch(tick);
           if (!nk || byTicker.has(nk)) return;
-          const gap = await yahooEarningsGapRow(tick);
+          const gap = await yahooEarningsGapRow(tick, fromISO, displayEndISO);
           if (
             gap &&
             gap.date &&
@@ -2518,7 +2624,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
       chunk.map(async (tick) => {
         const nk = normalizeTickerMatch(tick);
         if (byTicker.has(nk)) return;
-        const gap = await yahooEarningsGapRow(tick);
+        const gap = await yahooEarningsGapRow(tick, fromISO, displayEndISO);
         if (gap && gap.date && gap.date >= fromISO && gap.date <= displayEndISO) {
           byTicker.set(nk, gap);
         }
@@ -2558,7 +2664,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
 
 /** Last quarters EPS actual vs estimate when Yahoo earnings modules are blocked (same shape as other history helpers). */
 async function fmpEarningsSurprisesHistory(sym) {
-  const k = process.env.FMP_API_KEY;
+  const k = fmpAnyApiKey();
   if (!k) return [];
   function pickNum(v) {
     if (v == null || v === '') return null;
@@ -2812,7 +2918,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
         }
       }
     }
-    if (!epsHistory.length && process.env.FMP_API_KEY) {
+    if (!epsHistory.length && fmpAnyApiKey()) {
       const fmpH = await fmpEarningsSurprisesHistory(sym);
       if (fmpH.length) {
         epsHistory = fmpH;
@@ -2846,7 +2952,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
 
-    if (!nextDate && process.env.FMP_API_KEY) {
+    if (!nextDate && fmpAnyApiKey()) {
       const fmpArr = await fmpEarningCalendarByRange(todayISO, toISOsym);
       const symMatch = normalizeTickerMatch(sym);
       let fmpHits = fmpArr.filter(
@@ -2877,7 +2983,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
 
     const sourcesUsed = {};
     if (process.env.FINNHUB_API_KEY) sourcesUsed.finnhub = true;
-    if (process.env.FMP_API_KEY) sourcesUsed.fmp = true;
+    if (fmpAnyApiKey()) sourcesUsed.fmp = true;
     sourcesUsed.yahoo = true;
     if (bloombergBridgeUrl()) sourcesUsed.bloomberg_bridge = true;
 
@@ -3391,7 +3497,7 @@ app.get('/api/earnings-calendar', async (req, res) => {
       calTs = 0;
       calRangeKey = '';
     }
-    const src = `${process.env.FINNHUB_API_KEY ? 'finnhub ' : ''}${process.env.FMP_API_KEY ? 'fmp ' : ''}yahoo`;
+    const src = `${process.env.FINNHUB_API_KEY ? 'finnhub ' : ''}${fmpAnyApiKey() ? 'fmp ' : ''}yahoo`;
     console.log(
       'Earnings calendar merged:',
       merged.length,

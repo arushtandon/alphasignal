@@ -121,17 +121,26 @@ def first_float(val):
 
 @app.get("/health")
 def health():
-    return jsonify(
-        {
-            "ok": True,
-            "pdblp_installed": BCon is not None,
-            "listen": "http://%s:%s" % (BRIDGE_BIND, PORT),
-            "routes": ["/health", "/snapshot", "/earnings"],
-            "hint_url_other_pc": None
-            if BRIDGE_BIND == "127.0.0.1"
-            else "http://%s:%s" % (_guess_lan_ip(), PORT),
-        }
-    )
+    out = {
+        "ok": True,
+        "pdblp_installed": BCon is not None,
+        "listen": "http://%s:%s" % (BRIDGE_BIND, PORT),
+        "routes": ["/health", "/snapshot", "/earnings"],
+        "hint_url_other_pc": None
+        if BRIDGE_BIND == "127.0.0.1"
+        else "http://%s:%s" % (_guess_lan_ip(), PORT),
+    }
+    if SECRET:
+        out["auth_required_for_data_routes"] = True
+        out[
+            "auth_hint"
+        ] = "Use header: Authorization: Bearer <same value as BLOOMBERG_BRIDGE_SECRET>. Browser address bar GET returns 401 if secret is set."
+    else:
+        out["auth_required_for_data_routes"] = False
+        out[
+            "auth_hint"
+        ] = "No BLOOMBERG_BRIDGE_SECRET on server — /snapshot and /earnings are open."
+    return jsonify(out)
 
 
 @app.get("/snapshot")
