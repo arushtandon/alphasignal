@@ -26,15 +26,9 @@ function yfSymbol(s) {
 }
 
 async function fetchSinglePrice(symbol) {
-  // Try both the original symbol and hyphen variant (for BRK.B -> BRK-B)
-  const symVariants = [symbol];
-  if (symbol.includes('.') && !symbol.includes('.HK') && !symbol.includes('.L') 
-      && !symbol.includes('.T') && !symbol.includes('.DE') && !symbol.includes('.PA')
-      && !symbol.includes('.AS') && !symbol.includes('.SW') && !symbol.includes('.MC')
-      && !symbol.includes('.BR') && !symbol.includes('.MI') && !symbol.includes('.=F')
-      && symbol !== 'BTC-USD' && symbol !== 'ETH-USD') {
-    symVariants.push(symbol.replace('.', '-'));
-  }
+  const base = String(symbol || '').trim();
+  /** Yahoo often serves VOW3-DE vs VOW3.DE interchangeably depending on endpoint. */
+  const symVariants = [...new Set([base, base.replace(/\./g, '-')])].filter(Boolean);
 
   for (const sym of symVariants) {
     const endpoints = [
@@ -152,17 +146,13 @@ async function fetchQuotesV7Bulk(symbols) {
 }
 
 async function quoteSummary(symbol, modules) {
-  const symVariants = [
-    symbol,
-    ...(symbol.includes('.') &&
-    !/[=-]/.test(symbol) &&
-    !symbol.includes('.HK') &&
-    !symbol.includes('.NS')
-      ? [symbol.replace('.', '-')]
-      : [])
-  ];
+  const symVariants = [symbol];
+  if (symbol.includes('.') && !String(symbol).includes('=')) {
+    symVariants.push(String(symbol).replace(/\./g, '-'));
+  }
+  const uniq = [...new Set(symVariants)];
   const hosts = ['query2', 'query1'];
-  for (const sym of symVariants) {
+  for (const sym of uniq) {
     for (const host of hosts) {
       const url = `https://${host}.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}?modules=${modules}`;
       try {
@@ -214,24 +204,28 @@ app.get('/api/prices', async (req, res) => {
   if (stillMissing.length > 0) {
     console.log(`Trying chart fallback for: ${stillMissing.join(',')}`);
     const chartFallbacks = await Promise.allSettled(stillMissing.map(async sym => {
-      try {
-        const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=1d&interval=1m`;
-        const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(8000) });
-        if (!r.ok) return null;
-        const json = await r.json();
-        const meta = json?.chart?.result?.[0]?.meta;
-        if (meta?.regularMarketPrice) {
-          return { sym, data: {
-            price: meta.regularMarketPrice,
-            change: meta.regularMarketPrice && meta.chartPreviousClose
-              ? +((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose * 100).toFixed(2)
-              : 0,
-            prevClose: meta.chartPreviousClose,
-            currency: meta.currency || 'USD',
-            source: 'chart_fallback'
-          }};
-        }
-      } catch(e) { return null; }
+      const variants = [...new Set([sym, String(sym).replace(/\./g, '-')])].filter(Boolean);
+      for (const vs of variants) {
+        try {
+          const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(vs)}?range=1d&interval=1m`;
+          const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(8000) });
+          if (!r.ok) continue;
+          const json = await r.json();
+          const meta = json?.chart?.result?.[0]?.meta;
+          if (meta?.regularMarketPrice) {
+            return { sym, data: {
+              price: meta.regularMarketPrice,
+              change: meta.regularMarketPrice && meta.chartPreviousClose
+                ? +((meta.regularMarketPrice - meta.chartPreviousClose) / meta.chartPreviousClose * 100).toFixed(2)
+                : 0,
+              prevClose: meta.chartPreviousClose,
+              currency: meta.currency || 'USD',
+              source: 'chart_fallback'
+            }};
+          }
+        } catch(e) { /* try next variant */ }
+      }
+      return null;
     }));
     chartFallbacks.forEach(r => {
       if (r.status === 'fulfilled' && r.value) results[r.value.sym] = r.value.data;
@@ -257,14 +251,15 @@ app.get('/api/chart', async (req, res) => {
   const { symbol, range = '1mo', interval = '1d' } = req.query;
   if (!symbol) return res.status(400).json({ error: 'symbol required' });
 
-  // Try original and hyphen variant for BRK.B etc
-  const chartSym = symbol;
-  const chartSymAlt = (symbol.match(/^[A-Z]+\.[A-Z]$/)) ? symbol.replace('.', '-') : symbol;
-  const urls = [
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(chartSym)}?range=${range}&interval=${interval}&includePrePost=false`,
-    `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(chartSym)}?range=${range}&interval=${interval}&includePrePost=false`,
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(chartSymAlt)}?range=${range}&interval=${interval}&includePrePost=false`,
-  ];
+  const chartVariants = [...new Set([symbol, String(symbol).replace(/\./g, '-')])].filter(Boolean);
+  const urls = [];
+  for (const cs of chartVariants) {
+    const enc = encodeURIComponent(cs);
+    urls.push(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${enc}?range=${range}&interval=${interval}&includePrePost=false`,
+      `https://query2.finance.yahoo.com/v8/finance/chart/${enc}?range=${range}&interval=${interval}&includePrePost=false`
+    );
+  }
 
   for (const url of urls) {
     try {
@@ -307,11 +302,8 @@ app.get('/api/chart', async (req, res) => {
 // Hedge-fund grade: ATR, RSI, MACD, Bollinger, Volume, MA regime scoring
 
 async function fetchOHLCVForAnalysis(symbol) {
-  const symVariants = [symbol];
-  if (symbol.includes('.') && !symbol.match(/\.(HK|L|T|DE|PA|AS|NS|SW|MC|BR|MI)$/)
-      && !symbol.includes('=F') && !symbol.includes('-USD')) {
-    symVariants.push(symbol.replace('.', '-'));
-  }
+  /** Match fetchOHLCV: Yahoo often keys intl listings as VOW3-DE vs VOW3.DE */
+  const symVariants = [...new Set([symbol, String(symbol).replace(/\./g, '-')])].filter(Boolean);
   for (const sym of symVariants) {
     const urls = [
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=12mo&interval=1d&includePrePost=false`,
@@ -1125,6 +1117,7 @@ function toBloombergEquity(sym) {
   if (/\.DE$/i.test(s)) return `${s.replace(/\.DE$/i, '')} GR Equity`;
   if (/\.AS$/i.test(s)) return `${s.replace(/\.AS$/i, '')} NA Equity`;
   if (/\.NS$/i.test(s)) return `${s.replace(/\.NS$/i, '')} IS Equity`;
+  if (/\.T$/i.test(s)) return `${s.replace(/\.T$/i, '')} JT Equity`;
   if (/^[A-Z]{1,5}$/.test(s.replace(/\./g, '')) && !s.includes('.')) return `${s} US Equity`;
   return `${s.replace(/\./g, '/')} US Equity`;
 }
@@ -1260,6 +1253,22 @@ function bloombergBridgeUrl() {
   return (process.env.BLOOMBERG_BRIDGE_URL || '').trim().replace(/\/$/, '');
 }
 
+/** LAN/loopback bridge URLs are never reachable from public cloud (e.g. Render). */
+function bloombergBridgeUrlIsUnreachableFromInternet() {
+  const base = bloombergBridgeUrl();
+  if (!base) return false;
+  try {
+    const h = new URL(base).hostname.toLowerCase();
+    if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+    if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+    return false;
+  } catch (_) {
+    return false;
+  }
+}
+
 /**
  * Local Bloomberg Desktop API bridge (Terminal on your PC). Set BLOOMBERG_BRIDGE_URL=http://127.0.0.1:5055
  * See bloomberg-bridge/README.md. Bloomberg fields override Yahoo/FMP when present.
@@ -1307,6 +1316,131 @@ async function fetchBloombergBridgeFundamentals(symbol) {
     console.warn('Bloomberg bridge', symbol, e.message);
     return null;
   }
+}
+
+/**
+ * Earnings snapshot from LAN Bloomberg bridge (/earnings).
+ * See bloomberg-bridge/README.md — run bridge on the PC where Terminal is logged in.
+ */
+async function fetchBloombergBridgeEarnings(symbol) {
+  const base = bloombergBridgeUrl();
+  if (!base) return null;
+  const bb = toBloombergEquity(symbol);
+  if (!bb) return null;
+  try {
+    const u = new URL('/earnings', base + '/');
+    u.searchParams.set('symbol', String(symbol || '').trim());
+    u.searchParams.set('bb', bb);
+    const secret = (process.env.BLOOMBERG_BRIDGE_SECRET || '').trim();
+    const headers = { Accept: 'application/json' };
+    if (secret) headers.Authorization = `Bearer ${secret}`;
+    const r = await fetch(u.toString(), { headers, signal: AbortSignal.timeout(22000) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || (j && typeof j === 'object' && j.error))
+      return j && typeof j === 'object' ? { ...j, _httpStatus: r.status } : null;
+    return j && typeof j === 'object' ? j : null;
+  } catch (e) {
+    console.warn('Bloomberg bridge earnings', symbol, e.message);
+    return null;
+  }
+}
+
+function normalizeBbBridgeHistRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return [];
+  return rows
+    .map((row) => {
+      const ds = row?.date != null ? String(row.date).trim().slice(0, 10) : '';
+      const quarter = row?.quarter != null ? String(row.quarter).trim() : '';
+      const epsA = row?.epsActual != null ? String(row.epsActual).trim() : null;
+      const epsE = row?.epsEstimate != null ? String(row.epsEstimate).trim() : null;
+      let beat = typeof row.beat === 'boolean' ? row.beat : null;
+      let surp = row?.epsSurprise != null ? String(row.epsSurprise) : null;
+      if ((!surp || surp === 'null') && epsA != null && epsE != null) {
+        const a = Number(epsA);
+        const e = Number(epsE);
+        if (Number.isFinite(a) && Number.isFinite(e) && Math.abs(e) > 1e-12) {
+          const p = ((a - e) / Math.abs(e)) * 100;
+          surp = (p >= 0 ? '+' : '') + p.toFixed(1) + '%';
+          if (beat === null) beat = p >= 0;
+        }
+      }
+      return {
+        quarter: quarter || ds,
+        date: /^\d{4}-\d{2}-\d{2}$/.test(ds) ? ds : '',
+        epsActual: epsA,
+        epsEstimate: epsE,
+        epsSurprise: surp,
+        beat,
+        revenueActual: row?.revenueActual ?? null,
+        stockReaction: null
+      };
+    })
+    .filter((r) => r.date || r.quarter);
+}
+
+/** Merge Bloomberg bridge earnings into computed fields (priority configurable). */
+function applyBloombergBridgeEarningsOverlay(
+  { nextDate, epsEst, callTime, quarter, epsHistory, historySource, calendarPrimary },
+  bbEarn
+) {
+  if (!bbEarn || bbEarn.error) {
+    return {
+      nextDate,
+      epsEst,
+      callTime,
+      quarter,
+      epsHistory,
+      historySource,
+      calendarPrimary
+    };
+  }
+  const gap =
+    String(process.env.BLOOMBERG_BRIDGE_EARNINGS_PRIORITY || '1').trim() === '0';
+  const candDate =
+    bbEarn.nextEarningsDate != null ? String(bbEarn.nextEarningsDate).trim().slice(0, 10) : '';
+  const dateOk = /^\d{4}-\d{2}-\d{2}$/.test(candDate);
+  let outNext = nextDate;
+  let outCal = calendarPrimary;
+  let outEst = epsEst;
+  let outCall = callTime;
+  let outQ = quarter;
+  if (dateOk) {
+    if (!gap || !outNext) {
+      outNext = candDate;
+      outCal = 'bloomberg_bridge';
+    }
+  }
+  if ((!gap || outEst == null || String(outEst).trim() === '') && bbEarn.epsEstimate != null) {
+    const e = String(bbEarn.epsEstimate).trim();
+    if (e) outEst = e;
+  }
+  if (
+    bbEarn.earningsTime &&
+    ['pre-market', 'post-market', 'during-market'].includes(String(bbEarn.earningsTime))
+  ) {
+    if (!gap || !outCall) outCall = bbEarn.earningsTime;
+  }
+  if ((!gap || !outQ) && bbEarn.quarter != null && String(bbEarn.quarter).trim())
+    outQ = String(bbEarn.quarter).trim();
+
+  let outHist = epsHistory;
+  let outHistSrc = historySource;
+  const norm = normalizeBbBridgeHistRows(bbEarn.history);
+  if (norm.length) {
+    if (!gap || !Array.isArray(outHist) || outHist.length === 0) {
+      outHist = norm.slice(0, 4);
+      outHistSrc = 'bloomberg_bridge';
+    }
+  }
+  return {
+    nextDate: outNext,
+    epsEst: outEst,
+    callTime: outCall,
+    quarter: outQ,
+    epsHistory: Array.isArray(outHist) ? outHist : epsHistory,
+    historySource: outHistSrc,
+    calendarPrimary: outCal
+  };
 }
 
 /** Prefer Bloomberg values over existing when bridge returns numbers/strings. */
@@ -1632,8 +1766,23 @@ app.get('/api/health', (req, res) => {
       fmp_calendar: !!process.env.FMP_API_KEY,
       yahoo_fallback: true
     },
+    /** After first /api/earnings-calendar request: how many rows the merge produced (-1 = not run yet). */
+    earnings_calendar_merge: {
+      last_event_count: earningsMergeDiag.eventsOut,
+      last_merge_at_ms: earningsMergeDiag.ts,
+      window: earningsMergeDiag.window || null,
+      finnhub_raw_rows: earningsMergeDiag.finnhubIn,
+      fmp_raw_rows: earningsMergeDiag.fmpIn,
+      merged_before_cap: earningsMergeDiag.uniqBeforeCap
+    },
     hasKey: !!process.env.ANTHROPIC_API_KEY,
     bloomberg_bridge_configured: Boolean(bloombergBridgeUrl()),
+    bloomberg_bridge_lan_unreachable_from_cloud:
+      bloombergBridgeUrlIsUnreachableFromInternet(),
+    bloomberg_bridge_hint:
+      bloombergBridgeUrl() && bloombergBridgeUrlIsUnreachableFromInternet()
+        ? 'Bridge URL is loopback/LAN-only; hosts like Render cannot reach it — use HTTPS tunnel URL or deploy API on same LAN.'
+        : '',
     bloomberg_enterprise_configured: Boolean(bloombergEnterpriseBase()),
     ts: Date.now(),
     historyVersion: HISTORY_VERSION,
@@ -2144,6 +2293,16 @@ async function yahooEarningsGapRow(ticker) {
   return null;
 }
 
+/** Last merge stats for /api/health (keys set ≠ rows returned). */
+let earningsMergeDiag = {
+  eventsOut: -1,
+  ts: 0,
+  window: '',
+  finnhubIn: -1,
+  fmpIn: -1,
+  uniqBeforeCap: -1
+};
+
 async function mergedEarningsCalendarWidget(fromISO, toISO) {
   const fhRaw = await finnhubEarningsCalendar(fromISO, toISO);
   const fmpRows = await fmpEarningCalendarByRange(fromISO, toISO);
@@ -2214,7 +2373,16 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
       if (pa !== pb) return pa - pb;
       return normalizeTickerMatch(a.ticker).localeCompare(normalizeTickerMatch(b.ticker));
     });
-  return sorted.slice(0, EARNINGS_CALENDAR_MAX);
+  const capped = sorted.slice(0, EARNINGS_CALENDAR_MAX);
+  earningsMergeDiag = {
+    eventsOut: capped.length,
+    ts: Date.now(),
+    window: `${fromISO}→${toISO}`,
+    finnhubIn: fhRaw.length,
+    fmpIn: fmpRows.length,
+    uniqBeforeCap: sorted.length
+  };
+  return capped;
 }
 
 /** Last quarters EPS actual vs estimate when Yahoo earnings modules are blocked (same shape as other history helpers). */
@@ -2277,10 +2445,25 @@ async function fmpEarningsSurprisesHistory(sym) {
   return [];
 }
 
+/** Calendar-day arithmetic in UTC (for earnings cutoffs vs vendor date strings). */
+function addUTCISODays(iso, days) {
+  const s = String(iso || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const [y, m, d] = s.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
 // ── Earnings data — multi-source calendar (Finnhub / FMP preferred; Yahoo fallback) ─
 app.get('/api/earnings/:symbol', async (req, res) => {
   const sym = req.params.symbol.toUpperCase();
   const todayISO = new Date().toISOString().slice(0, 10);
+  /** One-day grace: avoid dropping "today" rows on timezone / feed lag vs strict UTC midnight */
+  const upcomingCutoff = addUTCISODays(todayISO, -1);
+  const bbEarnPromise = bloombergBridgeUrl()
+    ? fetchBloombergBridgeEarnings(sym)
+    : Promise.resolve(null);
   try {
     let nextDate = null;
     let nextDateEnd = null;
@@ -2304,7 +2487,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       fhRows = await finnhubEarningsCalendar(todayISO, toISOsym, { symbol: fv });
       if (fhRows.length) break;
     }
-    const fhFuture = fhRows.filter((r) => String(r.date).slice(0, 10) >= todayISO);
+    const fhFuture = fhRows.filter((r) => String(r.date).slice(0, 10) >= upcomingCutoff);
     fhFuture.sort((a, b) => String(a.date).localeCompare(String(b.date)));
     let calendarPrimary = '';
 
@@ -2320,9 +2503,16 @@ app.get('/api/earnings/:symbol', async (req, res) => {
     if (!nextDate && process.env.FMP_API_KEY) {
       const fmpArr = await fmpEarningCalendarByRange(todayISO, toISOsym);
       const symMatch = normalizeTickerMatch(sym);
-      const fmpHits = fmpArr.filter(
+      let fmpHits = fmpArr.filter(
         (r) => fmpSymbol(r) && normalizeTickerMatch(fmpSymbol(r)) === symMatch
       );
+      const compact = symMatch.replace(/\./g, '');
+      if (!fmpHits.length && compact.length >= 2) {
+        fmpHits = fmpArr.filter((r) => {
+          const fs = fmpSymbol(r);
+          return fs && normalizeTickerMatch(fs).replace(/\./g, '') === compact;
+        });
+      }
       fmpHits.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
       const hit =
         fmpHits[0] ||
@@ -2346,7 +2536,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       const altCal = nextEarningsFromCalendar(altQs);
       if (altCal.nextDate && (!fromCal.nextDate || fromCal.nextDate < todayISO)) fromCal = altCal;
     }
-    if (!nextDate && fromCal.nextDate && fromCal.nextDate >= todayISO) {
+    if (!nextDate && fromCal.nextDate && fromCal.nextDate >= upcomingCutoff) {
       nextDate = fromCal.nextDate;
       epsEst = epsEst || fromCal.epsEstimate || null;
       calendarPrimary = calendarPrimary || 'yahoo_quoteSummary';
@@ -2389,7 +2579,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
               historySource = 'yahoo_chart_events';
             }
             if (!nextDate) {
-              const cutoffISO = todayISO;
+              const cutoffISO = upcomingCutoff;
               const evts = Object.values(result.events?.earnings || {}).sort((a, b) => a.date - b.date);
               const fut = evts.filter((e) => {
                 const d = new Date(e.date * 1000).toISOString().slice(0, 10);
@@ -2411,7 +2601,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       let g = await yahooNextEarningsFromChartEvents(sym);
       if (!g && (sym === 'GOOGL' || sym === 'GOOG'))
         g = await yahooNextEarningsFromChartEvents(sym === 'GOOGL' ? 'GOOG' : 'GOOGL');
-      if (g?.date && String(g.date).slice(0, 10) >= todayISO) {
+      if (g?.date && String(g.date).slice(0, 10) >= upcomingCutoff) {
         nextDate = String(g.date).slice(0, 10);
         if (!calendarPrimary) calendarPrimary = 'yahoo_chart_gap';
       }
@@ -2440,24 +2630,56 @@ app.get('/api/earnings/:symbol', async (req, res) => {
     if (process.env.FINNHUB_API_KEY) sourcesUsed.finnhub = true;
     if (process.env.FMP_API_KEY) sourcesUsed.fmp = true;
     sourcesUsed.yahoo = true;
+    if (bloombergBridgeUrl()) sourcesUsed.bloomberg_bridge = true;
+
+    const bbEarn = await bbEarnPromise.catch(() => null);
+    const merged = applyBloombergBridgeEarningsOverlay(
+      {
+        nextDate,
+        epsEst,
+        callTime,
+        quarter,
+        epsHistory,
+        historySource,
+        calendarPrimary
+      },
+      bbEarn
+    );
 
     res.json({
       symbol: sym,
-      nextEarningsDate: nextDate,
+      nextEarningsDate: merged.nextDate,
       nextEarningsDateEnd: nextDateEnd,
-      epsEstimate: epsEst,
-      earningsTime: callTime || null,
-      quarter,
-      calendarPrimarySource: calendarPrimary || null,
+      epsEstimate: merged.epsEst,
+      earningsTime: merged.callTime || null,
+      quarter: merged.quarter,
+      calendarPrimarySource: merged.calendarPrimary || null,
       calendarSourcesConsulted: sourcesUsed,
-      history: Array.isArray(epsHistory) ? epsHistory.slice(0, 4) : [],
-      historySource
+      history: Array.isArray(merged.epsHistory) ? merged.epsHistory.slice(0, 4) : [],
+      historySource: merged.historySource
     });
   } catch (e) {
     console.error('Earnings err:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
+
+async function pickDailyWeeklyForAnalyze(sym) {
+  /** Aligned with fetchOHLCV (≥15 bars); thin listings need longer ranges first */
+  const MIN = 15;
+  const ranges = ['12mo', '2y', '5y', 'max', '6mo', '3mo'];
+  let bestDaily = null;
+  for (const range of ranges) {
+    const daily = await fetchOHLCV(sym, range, '1d');
+    if (daily && daily.length >= MIN && (!bestDaily || daily.length > bestDaily.length)) {
+      bestDaily = daily;
+      if (daily.length >= 260) break;
+    }
+  }
+  if (!bestDaily || bestDaily.length < MIN) return null;
+  const weekly = await fetchOHLCV(sym, '2y', '1wk').catch(() => null);
+  return { daily: bestDaily, weekly };
+}
 
 // ── Single-ticker / batch analysis (Claude + server-computed levels) ───────
 
@@ -2689,15 +2911,23 @@ app.post('/api/analyze', async (req, res) => {
   await Promise.all(
     clean.filter(s => priceBySym[s]).map(async sym => {
       try {
-        const daily  = await fetchOHLCV(sym, '12mo', '1d');
-        const weekly = await fetchOHLCV(sym, '2y', '1wk').catch(() => null);
-        if (daily && daily.length >= 30) {
-          techBySym[sym]  = buildFullTechResult(sym, daily, weekly);
-          ohlcvBySym[sym] = daily;
+        const got = await pickDailyWeeklyForAnalyze(sym);
+        if (got?.daily) {
+          techBySym[sym]  = buildFullTechResult(sym, got.daily, got.weekly);
+          ohlcvBySym[sym] = got.daily;
         }
       } catch(e) { console.warn('analyze tech', sym, e.message); }
     })
   );
+
+  const requestedWithPrice = clean.filter(s => priceBySym[s]);
+  const withTechCount = requestedWithPrice.filter(s => techBySym[s]).length;
+  if (!withTechCount) {
+    return res.status(502).json({
+      error:
+        'Could not load enough daily price history from Yahoo for this symbol (need ~15+ sessions). Try another exchange suffix or retry.'
+    });
+  }
 
   // ── Step 3: Fundamentals (parallel — equities only) ───────────────────────
   const fundBySym = {};
@@ -3090,6 +3320,17 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 app.listen(PORT, () => {
   console.log('AlphaSignal on port', PORT);
   console.log('API key set:', !!process.env.ANTHROPIC_API_KEY);
+  const likelyRender =
+    String(process.env.RENDER || '').toLowerCase() === 'true' ||
+    /\bonrender\.com\b/i.test(
+      String(process.env.RENDER_EXTERNAL_URL || process.env.RENDER_EXTERNAL_HOSTNAME || '')
+    );
+  if (likelyRender && bloombergBridgeUrlIsUnreachableFromInternet()) {
+    console.warn(
+      '→ BLOOMBERG_BRIDGE_URL is private/localhost — this host cannot reach your Bloomberg PC on the LAN.'
+    );
+    console.warn('  Use Cloudflare Tunnel / ngrok to expose the bridge HTTPS URL, or self-host API on-premises.');
+  }
   // Test price fetch on startup
   fetchSinglePrice('AAPL').then(p => {
     if (p) console.log('✓ Yahoo Finance working - AAPL:', p.price, p.currency);

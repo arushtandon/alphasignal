@@ -537,9 +537,41 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
 const priceCache = {};
 const PRICE_TTL = 60000; // 1 minute cache
 
+function localCalendarISO() {
+  const d = new Date();
+  const p = function(n){ return String(n).padStart(2,'0'); };
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
+}
+function addCalendarDaysISO(startISO, days) {
+  const p = function(n){ return String(n).padStart(2,'0'); };
+  const pts = String(startISO).slice(0,10).split('-');
+  const dt = new Date(+pts[0], +pts[1]-1, +pts[2]);
+  dt.setDate(dt.getDate() + days);
+  return dt.getFullYear() + '-' + p(dt.getMonth()+1) + '-' + p(dt.getDate());
+}
+/** Align with Yahoo /api/prices keys (dot vs hyphen). */
+function getPriceQuoteFromMap(livePrices, ticker) {
+  if (!livePrices || !ticker) return null;
+  const u = String(ticker).trim().toUpperCase();
+  if (livePrices[u]) return livePrices[u];
+  if (u.includes('.')) {
+    const hy = u.replace(/\./g, '-');
+    if (livePrices[hy]) return livePrices[hy];
+  }
+  if (u.includes('-') && !u.includes('=')) {
+    const dot = u.replace(/-/g, '.');
+    if (dot !== u && livePrices[dot]) return livePrices[dot];
+  }
+  for (const k of Object.keys(livePrices)) {
+    const ku = String(k).toUpperCase();
+    if (ku.replace(/\./g, '-') === u.replace(/\./g, '-')) return livePrices[k];
+  }
+  return null;
+}
+
 async function fetchLivePrices(symbols) {
   const toFetch = symbols.filter(s => {
-    const c = priceCache[s];
+    const c = getPriceQuoteFromMap(priceCache, s);
     return !c || (Date.now() - c.ts) > PRICE_TTL;
   });
   if (!toFetch.length) return;
@@ -548,14 +580,22 @@ async function fetchLivePrices(symbols) {
     if (r.ok) {
       const data = await r.json();
       Object.entries(data).forEach(([sym, info]) => {
-        priceCache[sym] = { ...info, ts: Date.now() };
+        const entry = { ...info, ts: Date.now() };
+        const k = String(sym || '').trim().toUpperCase();
+        if (!k) return;
+        priceCache[k] = entry;
+        if (k.includes('.')) priceCache[k.replace(/\./g, '-')] = entry;
+        else {
+          const m = k.match(/^(.+)-([A-Z]{1,5})$/);
+          if (m && m[2] !== 'USD') priceCache[`${m[1]}.${m[2]}`] = entry;
+        }
       });
     }
   } catch(e) { console.warn('Price fetch failed:', e.message); }
 }
 
 function formatPrice(sym) {
-  const p = priceCache[sym];
+  const p = getPriceQuoteFromMap(priceCache, sym);
   if (!p || !p.price) return '<span class="price-loading">fetching...</span>';
   const chg = parseFloat(p.change);
   const dir = chg > 0 ? 'up' : chg < 0 ? 'dn' : 'flat';
@@ -584,7 +624,7 @@ async function updatePrices() {
     if(syms2.length) await fetchLivePrices(syms2);
     sbElems.forEach(el => {
       const sym = el.getAttribute('data-price-sym');
-      const p = priceCache[sym];
+      const p = getPriceQuoteFromMap(priceCache, sym);
       if(p && p.price) {
         const chg = parseFloat(p.change||0);
         const curr = p.currency==='USD'?'$':p.currency==='GBp'?'p':p.currency==='GBP'?'£':p.currency==='EUR'?'€':p.currency==='JPY'?'¥':p.currency==='HKD'?'HK$':'';
@@ -1146,7 +1186,8 @@ function ratingImpliesSellDash(rating) {
 /** Robust live price from cache (Yahoo may return number or numeric string). */
 function dashLivePx(ticker) {
   if (!ticker) return null;
-  const raw = priceCache[ticker] && priceCache[ticker].price;
+  const row = getPriceQuoteFromMap(priceCache, ticker);
+  const raw = row && row.price;
   const n = typeof raw === 'number' ? raw : parseFloat(String(raw).replace(/,/g, ''));
   return Number.isFinite(n) && n > 0 ? n : null;
 }
@@ -1270,7 +1311,7 @@ async function runDashScan(){
       const bpr = await fetch('/api/prices?symbols='+encodeURIComponent(batch.join(',')));
       if(bpr.ok){
         const bpd = await bpr.json();
-        const lines = batch.map(t => { const p=bpd[t]; return p&&p.price?`${t}=${p.price}${p.currency||''}`:null; }).filter(Boolean);
+        const lines = batch.map(t => { const p=getPriceQuoteFromMap(bpd,t); return p&&p.price?`${t}=${p.price}${p.currency||''}`:null; }).filter(Boolean);
         if(lines.length) batchPriceCtx = `\nLive prices: ${lines.join(', ')}. Base all entry/target/stop levels on these prices.`;
       }
     } catch(e){}
@@ -1504,7 +1545,7 @@ async function saveDashPicksToHistory(data) {
     const rating = s[hz+'Rating'] || (isSell ? 'Sell' : 'Buy');
 
     // Always use live market price as entry — AI entry levels are just reference zones
-    const liveP = priceCache[s.ticker]?.price;
+    const liveP = getPriceQuoteFromMap(priceCache, s.ticker)?.price;
     const aiEntryRaw = isSell ? (s.sellEntry||s[hz+'Entry']||s.entry) : (s[hz+'Entry']||s.entry);
     const entry = liveP ? parseFloat(liveP.toFixed(2)) : parseFloat(aiEntryRaw);
     if(!entry) return null;
@@ -1665,7 +1706,7 @@ async function fixHistoryPrices(silent) {
     const hz=h.hz;
     const status=h[hz+'Status']||'open';
     // Declare these FIRST before any usage
-    const live=priceCache[h.ticker]?.price;
+    const live=getPriceQuoteFromMap(priceCache,h.ticker)?.price;
     if(!live) return;
     const isSell=(h.action||'').toLowerCase()==='sell';
     const oldEntry=parseFloat(h.entry||h[hz+'Entry']||0);
@@ -1962,7 +2003,7 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
   } catch(e) { console.warn('Price fetch failed:', e.message); }
 
   const priceLines = tickers.map(t => {
-    const p = livePrices[t];
+    const p = getPriceQuoteFromMap(livePrices, t);
     return p && p.price ? (t+': price='+p.price+' '+(p.currency||'USD')+', chg='+(p.change||0)+'%, H='+( p.high||p.price)+', L='+(p.low||p.price)) : null;
   }).filter(Boolean);
 
@@ -2170,7 +2211,6 @@ async function fetchEarningsForTicker(ticker) {
   }
   if(nextEl) nextEl.innerHTML='<div style="color:var(--m1);font-size:11px">Fetching earnings…</div>';
   if(histEl) histEl.innerHTML='<div style="color:var(--m1);font-size:11px">Loading...</div>';
-  const todayISO = localCalendarISO();
   try {
     const r = await fetch('/api/earnings/'+encodeURIComponent(ticker));
     if(!r.ok) throw new Error('Server error '+r.status);
@@ -2178,7 +2218,9 @@ async function fetchEarningsForTicker(ticker) {
     if(data.error) throw new Error(data.error);
     if(nextEl) {
       const srcTag = (data.calendarPrimarySource || 'multi-source').replace(/_/g, ' ');
-      if(data.nextEarningsDate && data.nextEarningsDate >= todayISO) {
+      const todayISO = localCalendarISO();
+      const earliestUpcoming = addCalendarDaysISO(todayISO, -1);
+      if(data.nextEarningsDate && data.nextEarningsDate >= earliestUpcoming) {
         const d=new Date(data.nextEarningsDate+'T12:00:00');
         const ds=d.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});
         const eds=data.nextEarningsDateEnd&&data.nextEarningsDateEnd!==data.nextEarningsDate?' to '+new Date(data.nextEarningsDateEnd+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long'}):'';
@@ -2202,8 +2244,8 @@ async function fetchEarningsForTicker(ticker) {
     }
     if(histEl) {
       if(data.history&&data.history.length) {
-        renderEarningsHistTable(histEl,data.history);
-        fetchAndAddStockReactions(ticker,data.history,histEl);
+        renderEarningsHistTable(histEl,data.history,data.historySource);
+        fetchAndAddStockReactions(ticker,data.history,histEl,data.historySource);
       } else {
         histEl.innerHTML='<div style="font-size:11px;color:var(--m1)">No historical data for '+ticker+'</div>';
       }
@@ -2215,7 +2257,7 @@ async function fetchEarningsForTicker(ticker) {
   }
 }
 
-async function fetchAndAddStockReactions(ticker,history,histEl) {
+async function fetchAndAddStockReactions(ticker,history,histEl,historySource) {
   try {
     const r=await fetch('/api/chart?symbol='+encodeURIComponent(ticker)+'&range=2y&interval=1d');
     if(!r.ok) return;
@@ -2236,12 +2278,12 @@ async function fetchAndAddStockReactions(ticker,history,histEl) {
         changed=true;
       }
     });
-    if(changed) renderEarningsHistTable(histEl,history);
+    if(changed) renderEarningsHistTable(histEl,history,historySource);
   } catch(e){}
 }
 
 
-function renderEarningsHistTable(el, history) {
+function renderEarningsHistTable(el, history, historySource) {
   if(!history||!history.length){el.innerHTML='<span style="font-size:11px;color:var(--m1)">No data</span>';return;}
   const th='padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--b1);font-family:DM Mono,monospace;font-weight:400;white-space:nowrap';
   const rows=history.map(q=>{
@@ -2252,10 +2294,17 @@ function renderEarningsHistTable(el, history) {
     if(q.date){try{dateStr=new Date(q.date+'T12:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'});}catch(e){dateStr=q.date;}}
     return '<tr>'+td(q.quarter)+td(dateStr,'left','var(--m2)')+td(q.epsActual,'right')+td(q.epsEstimate,'right','var(--m1)')+td(q.epsSurprise||'—','right',q.epsSurprise?(beat?'var(--buy)':'var(--sell)'):'var(--m1)')+td(q.revenueActual||'—','right','var(--m1)')+td(q.stockReaction||'N/A','right',rxnCol)+'</tr>';
   }).join('');
+  const src = historySource === 'bloomberg_bridge'
+    ? 'Bloomberg Terminal (desktop bridge)'
+    : (historySource && String(historySource).indexOf('yahoo')>=0 ? 'Yahoo Finance'
+    : historySource === 'fmp_earnings_surprises' ? 'Financial Modeling Prep'
+    : historySource === 'yahoo_quoteSummary_earningsHistory' ? 'Yahoo Finance'
+    : historySource === 'yahoo_chart_events' ? 'Yahoo Finance'
+    : 'Finnhub · FMP · Yahoo');
   el.innerHTML='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
     +'<thead><tr><th style="text-align:left;'+th+'">Quarter</th><th style="text-align:left;'+th+'">Date</th><th style="text-align:right;'+th+'">EPS Act.</th><th style="text-align:right;'+th+'">EPS Est.</th><th style="text-align:right;'+th+'">Surprise</th><th style="text-align:right;'+th+'">Revenue</th><th style="text-align:right;'+th+'">Rxn</th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table></div>'
-    +'<div style="font-size:9px;color:var(--m1);margin-top:4px;font-family:DM Mono,monospace">Data: Yahoo Finance</div>';
+    +'<div style="font-size:9px;color:var(--m1);margin-top:4px;font-family:DM Mono,monospace">Data: '+src+'</div>';
 }
 
 
@@ -2976,18 +3025,6 @@ const TRACKED_TICKERS = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','JPM'
   'RELIANCE.NS','TCS.NS','HDFCBANK.NS','INFY.NS','ICICIBANK.NS','BAJFINANCE.NS',
   'ASML.AS','SAP.DE','MC.PA','AZN.L','SHEL.L','0700.HK','9988.HK','7203.T'];
 
-function localCalendarISO() {
-  const d = new Date();
-  var p=function(n){ return String(n).padStart(2,'0'); };
-  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate());
-}
-function addCalendarDaysISO(startISO, days) {
-  var p=function(n){ return String(n).padStart(2,'0'); };
-  var pts = String(startISO).slice(0,10).split('-');
-  var dt = new Date(+pts[0], +pts[1]-1, +pts[2]);
-  dt.setDate(dt.getDate() + days);
-  return dt.getFullYear() + '-' + p(dt.getMonth()+1) + '-' + p(dt.getDate());
-}
 function normTickerTier(s) {
   return String(s||'').trim().toUpperCase().replace(/^BRK-B$/i,'BRK.B').replace(/-/g,'.');
 }
@@ -2996,6 +3033,15 @@ function trackedTierForEarnings(t) {
   var k = normTickerTier(t), i, best = 9999;
   for (i=0;i<TRACKED_TICKERS.length;i++) if (normTickerTier(TRACKED_TICKERS[i])===k){ best=i; break; }
   return best;
+}
+
+/** Shift YYYY-MM-DD by N days in UTC (server merge uses UTC windows; avoids local-vs-UTC wiping rows). */
+function addUtcCalendarDaysISO(isoDate, days) {
+  var pts = String(isoDate).slice(0, 10).split('-');
+  var u = Date.UTC(+pts[0], +pts[1] - 1, +pts[2]) + days * 86400000;
+  var d = new Date(u);
+  var pad = function(n){ return String(n).padStart(2,'0'); };
+  return d.getUTCFullYear() + '-' + pad(d.getUTCMonth()+1) + '-' + pad(d.getUTCDate());
 }
 
 // Earnings calendar — cached, date-sorted, grouped by day
@@ -3026,12 +3072,12 @@ async function loadEarningsCalendar(force) {
       earnings = [];
     }
     if(!Array.isArray(earnings)) earnings = [];
-    /* Server builds the window from UTC calendar day; match that so rows are not all filtered out. */
+    /* Server merge uses UTC day bounds; filter in UTC — do not skip rows on bogus reported flags. */
     const utcToday = new Date().toISOString().slice(0, 10);
-    const filterFrom = addCalendarDaysISO(utcToday, -1);
-    const end2Weeks = addCalendarDaysISO(utcToday, 14);
+    const filterFrom = addUtcCalendarDaysISO(utcToday, -2);
+    const end2Weeks = addUtcCalendarDaysISO(utcToday, 14);
     function inWin(e, endD) {
-      if(!e||e.reported===true||!e.date) return false;
+      if(!e||!e.date) return false;
       const d = String(e.date).slice(0, 10);
       if(d < filterFrom) return false;
       if(d > endD) return false;
@@ -3039,7 +3085,7 @@ async function loadEarningsCalendar(force) {
     }
     var filtered = earnings.filter(function(e){ return inWin(e, end2Weeks); });
     if (!filtered.length && earnings.length) {
-      var endWide = addCalendarDaysISO(utcToday, 90);
+      var endWide = addUtcCalendarDaysISO(utcToday, 90);
       filtered = earnings.filter(function(e){ return inWin(e, endWide); }).slice(0, 120);
     }
     earnings = filtered.sort(function(a,b){
@@ -3049,7 +3095,7 @@ async function loadEarningsCalendar(force) {
       if(ta!==tb)return ta-tb;
       return a.ticker.localeCompare(b.ticker);
     });
-    if(!earnings.length) { elContent.innerHTML='<span style="color:var(--m1)">No upcoming rows in the server window. Open browser devtools → Network → <code>/api/earnings-calendar</code> (should be a JSON array). Check Render logs for <code>FMP calendar</code> / <code>Finnhub calendar</code> errors. Regenerate API keys if they were exposed. Try ↻ Retry with force.</span>'; return; }
+    if(!earnings.length) { elContent.innerHTML='<span style="color:var(--m1)">No upcoming rows loaded. First open <code>/api/health</code> → check <code>earnings_calendar_merge.last_event_count</code> after loading this widget (hint: −1 means merge not run yet). Open Network → <code>/api/earnings-calendar</code>?force=1 — array should not be empty. Check Render logs for Finnhub/FMP; rotate keys if exposed.</span>'; return; }
     earningsCache=earnings; earningsCacheTs=Date.now();
     renderEarningsWidget(earnings, elContent);
   } catch(e) {

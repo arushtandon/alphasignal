@@ -27,14 +27,50 @@ See the **Environment reference** table at the bottom of this file. Enterprise o
 
 **On the Terminal PC** (where Bloomberg is open):
 
+If you see **“path not found”**, you are not inside the `bloomberg-bridge` folder (or the folder was never copied there). Unzip/copy the whole `bloomberg-bridge` directory to a simple path, e.g. `C:\alpha\bloomberg-bridge`, then run the launcher below from **that** folder.
+
+If you see **“python not found”**, install Python and reopen PowerShell — see **Python on Windows** below.
+
+**Easiest (recommended):** open PowerShell **in the `bloomberg-bridge` folder**, then:
+
 ```powershell
-cd bloomberg-bridge
-.\.venv\Scripts\activate
-set BRIDGE_BIND=0.0.0.0
-set BRIDGE_PORT=5055
-set BLOOMBERG_BRIDGE_SECRET=choose-a-long-random-string
-python bridge.py
+$env:BRIDGE_BIND = "0.0.0.0"
+$env:BRIDGE_PORT = "5055"
+$env:BLOOMBERG_BRIDGE_SECRET = "paste-a-long-random-secret-here"
+powershell -ExecutionPolicy Bypass -File .\run-bridge.ps1
 ```
+
+**Manual (if you already have Python on PATH):**
+
+```powershell
+cd C:\path\to\bloomberg-bridge
+py -3 -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+$env:BRIDGE_BIND = "0.0.0.0"
+$env:BLOOMBERG_BRIDGE_SECRET = "your-secret"
+.\.venv\Scripts\python bridge.py
+```
+
+### Python on Windows
+
+1. From [python.org/downloads](https://www.python.org/downloads/) — during setup, enable **“Add python.exe to PATH”**, then **log out/in** or open a **new** PowerShell window.
+2. Or install **Python 3.12+** from the **Microsoft Store**, then open a new PowerShell and run `python --version`.
+3. On locked-down machines, use **`py -3`** (Python Launcher) if IT installed it: `py -3 --version`.
+
+Test: `py -3 --version` **or** `python --version` — one of them should print a version.
+
+### “Terminal is running” but the bridge exits (pdblp / blpapi)
+
+The bridge needs Bloomberg’s **`blpapi`** wheel in your `.venv`; **opening Terminal does not put that inside Python for you.**
+
+**Fix** (already automated in **`run-bridge.bat`**):
+
+```text
+pip install --index-url=https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
+pip install -r requirements.txt
+```
+
+Use **64-bit Python** if your Bloomberg install is 64-bit. If the URL is blocked, use **[API Library](https://www.bloomberg.com/professional/support/api-library/)** or IT-provided wheels.
 
 **Windows Firewall** on the Terminal PC: allow **inbound TCP** on port `5055` (scope: your LAN or VPN only if you can).
 
@@ -60,6 +96,8 @@ Same as (A), but devices use **VPN private IPs** (e.g. `10.x.x.x`). The machine 
 ---
 
 ## C) Internet / cloud (Render) reaching a home office Terminal
+
+Setting **`BLOOMBERG_BRIDGE_URL=http://10.0.0.x:5055`** (or `192.168.*`, etc.) **on Render will never work.** Cloud servers cannot open TCP routes into your LAN. Recent AlphaSignal **`/api/health`** includes **`bloomberg_bridge_lan_unreachable_from_cloud`** when your URL looks private.
 
 A cloud host **cannot** open a raw connection to a random home PC. You need a **tunnel** from the **Terminal PC** outbound:
 
@@ -94,9 +132,26 @@ That is **Bloomberg Enterprise** (e.g. **B-Pipe**, **Data License**, **Server AP
 | `BRIDGE_PORT` | Terminal PC | HTTP port (default `5055`) |
 | `BLOOMBERG_BRIDGE_SECRET` | Terminal PC **and** Node app | Same value; `Authorization: Bearer …` |
 | `BLOOMBERG_BRIDGE_URL` | Node (Render / dev PC) | Full base URL, e.g. `http://192.168.1.80:5055` or `https://…ngrok-free.app` |
+| `BLOOMBERG_BRIDGE_EARNINGS_PRIORITY` | Node | `1` (default) = Bloomberg overrides free feeds when present; `0` = only fill empty fields |
 
 ---
 
 ## Fields (editable in `bridge.py`)
 
 `BEST_PE_NTM`, `PE_RATIO`, `BEST_PEG_RATIO`, `BEST_TARGET_MEDIAN`, `SALES_YOY_GR`, `BEST_EPS_GROWTH`.
+
+### `/earnings?symbol=AAPL` (and optional `&bb=AAPL US Equity`)
+
+Returns next report date and EPS context for the AlphaSignal **earnings** card:
+
+- **Ref data:** `EXPECTED_REPORT_DT`, `EXPECTED_REPORT_TYP`, `BEST_EPS`, `BEST_FPERIOD_END_DT`
+- **History (best effort):** BDH series `IS_COMP_EPS` — field availability differs by listing; some names return an empty history.
+
+The Node server merges this automatically when **`BLOOMBERG_BRIDGE_URL`** is set (same secret as `/snapshot`).
+
+**Merge behaviour (Node env):**
+
+- Default (`BLOOMBERG_BRIDGE_EARNINGS_PRIORITY=1` or unset): Bloomberg bridge overrides Finnhub/Yahoo/FMP when it returns dates or history rows.
+- `BLOOMBERG_BRIDGE_EARNINGS_PRIORITY=0`: Bloomberg fills **only gaps** (e.g. Yahoo empty).
+
+---
