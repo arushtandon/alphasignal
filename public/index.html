@@ -3060,10 +3060,12 @@ async function loadEarningsCalendar(force) {
   // Don't auto-open - user clicks to expand
   elContent.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--m1);font-size:11px"><div class="sp"></div><span>Loading earnings calendar...</span></div>';
   try {
-    // Use server-side endpoint (defaults to 14 days); local calendar matching for "today"
-    var calParams=new URLSearchParams();
-    calParams.set('days','14');
-    if(force) calParams.set('force','1');
+    // Browser UTC anchor: fixes empty calendar when Render/container clock is wrong (still querying 2024).
+    var utcAnchor = new Date().toISOString().slice(0, 10);
+    var calParams = new URLSearchParams();
+    calParams.set('anchor', utcAnchor);
+    calParams.set('days', '45');
+    if (force) calParams.set('force', '1');
     const resp = await fetch('/api/earnings-calendar?'+calParams.toString());
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     let earnings = await resp.json();

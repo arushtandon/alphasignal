@@ -1104,7 +1104,7 @@ function mergeFundSnapshots(y, f) {
   return out;
 }
 
-/** Map app ticker to Bloomberg equity string (Terminal must recognize it). */
+/** Map app ticker to Bloomberg equity string for Desktop API ref() (examples: `AAPL US Equity`, `ASML NA Equity`, `9988 HK Equity`). */
 function toBloombergEquity(sym) {
   const s = String(sym || '')
     .trim()
@@ -1785,15 +1785,17 @@ app.get('/api/health', (req, res) => {
       stats_stale:
         earningsMergeDiag.ts > 0 && Date.now() - earningsMergeDiag.ts > 86400000
     },
-    /** What the next /api/earnings-calendar call uses (default horizon); not the same as merge.*.window if that field is old. */
+    /** Prefer passing ?anchor / ?from & ?to from the browser — wrong host clocks otherwise query the wrong year */
     earnings_calendar_default_window: (() => {
-      const pad = new Date();
-      pad.setUTCDate(pad.getUTCDate() - 1);
-      const from = pad.toISOString().slice(0, 10);
-      const h = new Date();
-      h.setUTCDate(h.getUTCDate() + 28);
-      return `${from}→${h.toISOString().slice(0, 10)}`;
+      const anchor = new Date().toISOString().slice(0, 10);
+      return `${addUTCISODays(anchor, -1)}→${addUTCISODays(anchor, 45)}`;
     })(),
+    server_now_utc: new Date().toISOString(),
+    bloomberg_equity_example_samples: {
+      AAPL: toBloombergEquity('AAPL'),
+      ASML_AS: toBloombergEquity('ASML.AS'),
+      HK9988: toBloombergEquity('9988.HK')
+    },
     hasKey: !!process.env.ANTHROPIC_API_KEY,
     bloomberg_bridge_configured: Boolean(bloombergBridgeUrl()),
     bloomberg_bridge_lan_unreachable_from_cloud:
@@ -2573,6 +2575,51 @@ function addUTCISODays(iso, days) {
   return dt.toISOString().slice(0, 10);
 }
 
+function parseQueryCalendarISODate(v) {
+  const s = String(v ?? '')
+    .trim()
+    .slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const y = +s.slice(0, 4);
+  const mo = +s.slice(5, 7);
+  const d = +s.slice(8, 10);
+  if (!Number.isFinite(y) || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const chk = new Date(Date.UTC(y, mo - 1, d));
+  if (chk.getUTCFullYear() !== y || chk.getUTCMonth() !== mo - 1 || chk.getUTCDate() !== d) return null;
+  return s;
+}
+
+/**
+ * Calendar fetch window — prefer explicit from/to or anchor from the browser so a wrong server clock does not fetch 2024 dates while vendors return 2025+ rows.
+ */
+function resolveEarningsCalendarWindow(req) {
+  const days = Math.min(120, Math.max(7, parseInt(String(req.query.days || ''), 10) || 45));
+  const explicitFrom = parseQueryCalendarISODate(req.query.from);
+  const explicitTo = parseQueryCalendarISODate(req.query.to);
+  if (explicitFrom && explicitTo && explicitFrom <= explicitTo) {
+    const ms0 = Date.UTC(
+      +explicitFrom.slice(0, 4),
+      +explicitFrom.slice(5, 7) - 1,
+      +explicitFrom.slice(8, 10)
+    );
+    const ms1 = Date.UTC(
+      +explicitTo.slice(0, 4),
+      +explicitTo.slice(5, 7) - 1,
+      +explicitTo.slice(8, 10)
+    );
+    const spanInclusive = Math.floor((ms1 - ms0) / 86400000) + 1;
+    if (spanInclusive >= 1 && spanInclusive <= 120)
+      return { fromISO: explicitFrom, endISO: explicitTo, windowSource: 'query_from_to' };
+  }
+  const anchor =
+    parseQueryCalendarISODate(req.query.anchor) || new Date().toISOString().slice(0, 10);
+  return {
+    fromISO: addUTCISODays(anchor, -1),
+    endISO: addUTCISODays(anchor, days),
+    windowSource: parseQueryCalendarISODate(req.query.anchor) ? 'client_anchor' : 'server_anchor'
+  };
+}
+
 // ── Earnings data — Bloomberg bridge first, Yahoo fallback, Finnhub/FMP last ─
 app.get('/api/earnings/:symbol', async (req, res) => {
   const sym = req.params.symbol.toUpperCase();
@@ -3267,21 +3314,16 @@ Output ONLY the JSON array. No markdown.`;
 // ── Earnings calendar — merged Finnhub/FMP/Yahoo (6h cache) ───────────────
 let calCache = null;
 let calTs = 0;
-let calEndISO = '';
+let calRangeKey = '';
 
 app.get('/api/earnings-calendar', async (req, res) => {
-  const pad = new Date();
-  pad.setUTCDate(pad.getUTCDate() - 1);
-  const fromISO = pad.toISOString().slice(0, 10);
-  const days = Math.min(45, Math.max(7, parseInt(String(req.query.days || ''), 10) || 28));
-  const horizon = new Date();
-  horizon.setUTCDate(horizon.getUTCDate() + days);
-  const endISO = horizon.toISOString().slice(0, 10);
+  const { fromISO, endISO, windowSource } = resolveEarningsCalendarWindow(req);
+  const rangeKey = `${fromISO}|${endISO}`;
 
   if (
     !req.query.force &&
     calCache &&
-    calEndISO === endISO &&
+    calRangeKey === rangeKey &&
     Date.now() - calTs < 21600000
   ) {
     return res.json(calCache);
@@ -3292,14 +3334,21 @@ app.get('/api/earnings-calendar', async (req, res) => {
     if (merged.length) {
       calCache = merged;
       calTs = Date.now();
-      calEndISO = endISO;
+      calRangeKey = rangeKey;
     } else {
       calCache = null;
       calTs = 0;
-      calEndISO = '';
+      calRangeKey = '';
     }
     const src = `${process.env.FINNHUB_API_KEY ? 'finnhub ' : ''}${process.env.FMP_API_KEY ? 'fmp ' : ''}yahoo`;
-    console.log('Earnings calendar merged:', merged.length, 'events', src.trim(), `${fromISO}→${endISO}`);
+    console.log(
+      'Earnings calendar merged:',
+      merged.length,
+      'events',
+      src.trim(),
+      `${fromISO}→${endISO}`,
+      `(${windowSource})`
+    );
     res.json(merged);
   } catch (e) {
     console.error('Calendar merge:', e.message);
