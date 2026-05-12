@@ -1404,6 +1404,43 @@ function normalizeBbBridgeHistRows(rows) {
     .filter((r) => r.date || r.quarter);
 }
 
+/** Bloomberg quarter row wins non-empty fields; keep Yahoo/FMP estimates when BB omits them. */
+function overlayQuarterYyWithBloomberg(existingRow, bbRow) {
+  const a = existingRow || {};
+  const merged = { ...a };
+  for (const [k, v] of Object.entries(bbRow || {})) {
+    if (v === null || v === undefined || v === '') continue;
+    merged[k] = v;
+  }
+  const fillIfEmpty = (...keys) => {
+    for (const k of keys) {
+      const cur = merged[k];
+      const prev = a[k];
+      const empty = cur == null || cur === '';
+      const back = prev != null && prev !== '';
+      if (empty && back) merged[k] = prev;
+    }
+  };
+  fillIfEmpty('epsEstimate', 'epsSurprise', 'beat');
+  fillIfEmpty('revenueActual');
+  return merged;
+}
+
+function blendBloombergEarningsHistories(existingSlice, bloombergNorm) {
+  if (!Array.isArray(bloombergNorm) || !bloombergNorm.length) return existingSlice.slice(0, 4);
+  const byDate = {};
+  for (const r of existingSlice) {
+    const d = r?.date ? String(r.date).trim().slice(0, 10) : '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) byDate[d] = r;
+  }
+  const out = [];
+  for (const bb of bloombergNorm.slice(0, 4)) {
+    const d = bb?.date ? String(bb.date).trim().slice(0, 10) : '';
+    out.push(overlayQuarterYyWithBloomberg(byDate[d] || null, bb));
+  }
+  return out;
+}
+
 /** Merge Bloomberg bridge earnings into computed fields (priority configurable). */
 function applyBloombergBridgeEarningsOverlay(
   { nextDate, epsEst, callTime, quarter, epsHistory, historySource, calendarPrimary },
@@ -1453,9 +1490,11 @@ function applyBloombergBridgeEarningsOverlay(
   let outHistSrc = historySource;
   const norm = normalizeBbBridgeHistRows(bbEarn.history);
   if (norm.length) {
-    if (!gap || !Array.isArray(outHist) || outHist.length === 0) {
-      outHist = norm.slice(0, 4);
-      outHistSrc = 'bloomberg_bridge';
+    const prior = Array.isArray(outHist) ? outHist.slice(0, 8) : [];
+    if (!(gap && prior.length)) {
+      const blended = prior.length ? blendBloombergEarningsHistories(prior, norm) : norm.slice(0, 4);
+      outHist = blended.slice(0, 4);
+      outHistSrc = prior.length ? 'bloomberg_bridge+yahoo_fallback' : 'bloomberg_bridge';
     }
   }
   return {
@@ -2843,11 +2882,6 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
       const bq = bbEarn.quarter != null ? String(bbEarn.quarter).trim() : '';
       if (bq) quarter = quarter || bq;
-      const normBb = normalizeBbBridgeHistRows(bbEarn.history);
-      if (normBb.length) {
-        epsHistory = normBb;
-        historySource = 'bloomberg_bridge';
-      }
     }
 
     const toFar = new Date();
