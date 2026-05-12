@@ -1280,6 +1280,20 @@ function bloombergBridgeUrlIsUnreachableFromInternet() {
   }
 }
 
+/** Ngrok free tiers may return an HTML interstitial unless this header is sent. */
+function bloombergBridgeFetchHeaders() {
+  const headers = { Accept: 'application/json' };
+  try {
+    const host = new URL(bloombergBridgeUrl()).hostname.toLowerCase();
+    if (host.includes('ngrok')) {
+      headers['ngrok-skip-browser-warning'] = '69420';
+    }
+  } catch (_) {}
+  const secret = (process.env.BLOOMBERG_BRIDGE_SECRET || '').trim();
+  if (secret) headers.Authorization = `Bearer ${secret}`;
+  return headers;
+}
+
 /**
  * Local Bloomberg Desktop API bridge (Terminal on your PC). Set BLOOMBERG_BRIDGE_URL=http://127.0.0.1:5055
  * See bloomberg-bridge/README.md. Bloomberg fields override Yahoo/FMP when present.
@@ -1293,10 +1307,7 @@ async function fetchBloombergBridgeFundamentals(symbol) {
     const u = new URL('/snapshot', base + '/');
     u.searchParams.set('symbol', symbol);
     u.searchParams.set('bb', sec);
-    const secret = (process.env.BLOOMBERG_BRIDGE_SECRET || '').trim();
-    const headers = { Accept: 'application/json' };
-    if (secret) headers.Authorization = `Bearer ${secret}`;
-    const r = await fetch(u.toString(), { headers, signal: AbortSignal.timeout(15000) });
+    const r = await fetch(u.toString(), { headers: bloombergBridgeFetchHeaders(), signal: AbortSignal.timeout(15000) });
     if (!r.ok) {
       console.warn('Bloomberg bridge HTTP', r.status, symbol);
       return null;
@@ -1353,10 +1364,7 @@ async function fetchBloombergBridgeEarnings(symbol) {
     const u = new URL('/earnings', base + '/');
     u.searchParams.set('symbol', String(symbol || '').trim());
     u.searchParams.set('bb', bb);
-    const secret = (process.env.BLOOMBERG_BRIDGE_SECRET || '').trim();
-    const headers = { Accept: 'application/json' };
-    if (secret) headers.Authorization = `Bearer ${secret}`;
-    const r = await fetch(u.toString(), { headers, signal: AbortSignal.timeout(22000) });
+    const r = await fetch(u.toString(), { headers: bloombergBridgeFetchHeaders(), signal: AbortSignal.timeout(22000) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || (j && typeof j === 'object' && j.error))
       return j && typeof j === 'object' ? { ...j, _httpStatus: r.status } : null;
