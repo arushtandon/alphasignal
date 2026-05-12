@@ -29,17 +29,15 @@ from datetime import datetime, timedelta, timezone
 
 from flask import Flask, jsonify, request
 
-import pandas as pd
 import numpy as np
 
-# pdblp (and some pandas paths) still reference np.NaN → removed in NumPy 2.0
+# pdblp still references np.NaN (removed in NumPy 2.0) — patch before pandas/pdblp.
 try:
-    np.NaN  # type: ignore[attr-defined]
+    setattr(np, "NaN", np.nan)
 except Exception:
-    try:
-        setattr(np, "NaN", np.nan)
-    except Exception:
-        pass
+    pass
+
+import pandas as pd
 
 _PDBLP_IMPORT_ERROR = ""
 
