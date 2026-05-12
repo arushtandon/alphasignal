@@ -104,6 +104,12 @@ BB_QUARTERLY_ELMS_VARIANTS = [
 _bcon = None
 
 
+def clean_bridge_symbol(raw: str) -> str:
+    """Strip stray `^` from query params (Windows CMD / copy-paste artifacts)."""
+    s = (raw or "").strip().replace("^", "")
+    return s.strip()
+
+
 def map_to_bb_security(symbol: str, bb_hint: str | None) -> str:
     if bb_hint and bb_hint.strip():
         return bb_hint.strip()
@@ -619,7 +625,7 @@ def snapshot():
         return jsonify(
             {"error": "unauthorized", "hint": "Authorization: Bearer <exact BLOOMBERG_BRIDGE_SECRET>; CMD: curl.exe ^ before &"}
         ), 401
-    sym = request.args.get("symbol", "").strip()
+    sym = clean_bridge_symbol(request.args.get("symbol", ""))
     bb_arg = request.args.get("bb", "").strip()
     if not sym and not bb_arg:
         return jsonify({"error": "symbol or bb required"}), 400
@@ -667,7 +673,7 @@ def earnings():
         return jsonify(
             {"error": "unauthorized", "hint": "Authorization: Bearer <exact BLOOMBERG_BRIDGE_SECRET>; CMD: curl.exe ^ before &"}
         ), 401
-    sym = request.args.get("symbol", "").strip()
+    sym = clean_bridge_symbol(request.args.get("symbol", ""))
     bb_arg = request.args.get("bb", "").strip()
     if not sym and not bb_arg:
         return jsonify({"error": "symbol or bb required"}), 400

@@ -1044,7 +1044,10 @@ const U={
   ]
 };
 const IC={"S&P 500":"#3DDB7B","NASDAQ 100":"#5BA4F5","FTSE 100":"#F5C842","Hang Seng":"#F46C6C","Nikkei 225":"#A78BFA","DAX":"#34D399","CAC 40":"#FB923C","EuroStoxx 50":"#38BDF8","Nifty 500":"#FF9933","Commodities & Crypto":"#C9F14F"};
+/** Shown first in sidebar (clearer than scrolling 160+ names). Keep liquid US mega-caps. */
+const SIDEBAR_PINNED = ['NVDA','MSFT','AAPL','AMZN','GOOGL','META','TSLA','AMD','AVGO','JPM','V','BRK.B','LLY'];
 const SAMPLE=["NVDA","MSFT","AAPL","AMZN","META","TSLA","GOOGL","AMD","AZN.L","SHEL.L","0700.HK","9988.HK","7203.T","6758.T","SAP.DE","ASML.AS","MC.PA","AIR.PA","GC=F","BZ=F","BTC-USD","RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","BAJFINANCE.NS"];
+
 
 // ══════════════════════════════════════════════
 // STATE
@@ -1071,6 +1074,48 @@ ls();
 function buildSb(f=''){
   const el=document.getElementById('sbContent');
   const fl=f.toLowerCase();let html='',tot=0;
+  const pinTickers = SIDEBAR_PINNED.filter(t => {
+    if (!fl) return true;
+    const tl = t.toLowerCase();
+    if (tl.includes(fl)) return true;
+    let name = '';
+    try {
+      for (const k in U) {
+        const arr = U[k];
+        if (!Array.isArray(arr)) continue;
+        const hit = arr.find(x => x && x.t === t);
+        if (hit && hit.n) {
+          name = hit.n;
+          break;
+        }
+      }
+    } catch (e) {}
+    return name.toLowerCase().includes(fl);
+  });
+  if (!fl && pinTickers.length) {
+    html += `<div class="ig ig-pinned" style="margin-bottom:4px;padding-bottom:6px;border-bottom:1px solid var(--b1)"><div class="il"><span class="id" style="background:#C9F14F"></span>Pinned benchmarks</div>${pinTickers
+      .map(t => {
+        let meta = '';
+        try {
+          for (const k in U) {
+            const arr = U[k];
+            if (!Array.isArray(arr)) continue;
+            const hit = arr.find(x => x && x.t === t);
+            if (hit && hit.n) {
+              meta = hit.n.replace(/'/g, '&#39;');
+              break;
+            }
+          }
+        } catch (e) {}
+        const safe = t.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `<button class="tb" style="border-color:rgba(201,241,79,0.35)" id="sb-${t.replace(
+          /[^a-z0-9]/gi,
+          '_'
+        )}" onclick="sbAn('${safe}','${meta}','Pinned')">${t}<span class="sb-price" data-price-sym="${t}"></span></button>`;
+      })
+      .join('')}</div>`;
+    tot += pinTickers.length;
+  }
   for(const[idx,tickers] of Object.entries(U)){
     const filt=tickers.filter(t=>!fl||t.t.toLowerCase().includes(fl)||t.n.toLowerCase().includes(fl));
     if(!filt.length) continue;
@@ -1079,7 +1124,7 @@ function buildSb(f=''){
   }
   el.innerHTML=html+`<div class="sc">${tot} instruments</div>`;
   // Fetch prices for sidebar items
-  const sbSyms=[...el.querySelectorAll('.sb-price[data-price-sym]')].slice(0,40).map(e=>e.getAttribute('data-price-sym'));
+  const sbSyms=[...el.querySelectorAll('.sb-price[data-price-sym]')].slice(0,96).map(e=>e.getAttribute('data-price-sym'));
   if(sbSyms.length) setTimeout(()=>{ fetchLivePrices(sbSyms).then(updatePrices); },800);
 }
 function filterSb(v){buildSb(v)}
@@ -2199,6 +2244,33 @@ function buildEarningsRow(s) {
   return html;
 }
 
+function formatEarningsReactionDisplay(sr) {
+  if (sr == null || sr === '') return '—';
+  if (typeof sr === 'string') return sr.trim() ? sr : '—';
+  if (typeof sr !== 'object') return '—';
+  const nx = sr.fromPriorCloseToNextSessionClosePct;
+  const d0 = sr.fromPriorCloseToEventSessionClosePct;
+  const hg = sr.headlinePctVsPriorClose;
+  const pct = function (y) {
+    const n = Number(y);
+    if (!Number.isFinite(n)) return null;
+    return (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+  };
+  const bits = [];
+  const f1 = nx != null ? pct(nx) : null;
+  const f0 = d0 != null ? pct(d0) : null;
+  const fh = hg != null ? pct(hg) : null;
+  if (f1) bits.push('Next session vs prior close: ' + f1);
+  else if (f0) bits.push('Event session vs prior: ' + f0);
+  if (fh) bits.push('Headline: ' + fh);
+  return bits.length ? bits.join(' · ') : '—';
+}
+
+function epsOrDash(v) {
+  if (v == null || v === '') return '—';
+  return String(v);
+}
+
 async function fetchEarningsForTicker(ticker) {
   const tid = ticker.replace(/[^a-z0-9]/gi,'_');
   const nextEl = document.getElementById('earningsNextContent_'+tid);
@@ -2227,13 +2299,46 @@ async function fetchEarningsForTicker(ticker) {
         const tl=(data.earningsTime||'').toLowerCase();
         const tc=tl.includes('after')||tl.includes('post')?'var(--sell)':tl.includes('before')||tl.includes('pre')?'var(--buy)':'var(--ac)';
         const tb=tl.includes('after')||tl.includes('post')?'var(--sellb)':tl.includes('before')||tl.includes('pre')?'var(--buyb)':'var(--holdb)';
+        const bx = data.bloombergBridgeExtras || {};
+        const hint = bx.consensusEstimatesHint || {};
+        const consHtml = [];
+        if (hint.revenueConsensus)
+          consHtml.push('Rev <strong>' + hint.revenueConsensus + '</strong>');
+        if (hint.ebitdaConsensus)
+          consHtml.push('EBITDA <strong>' + hint.ebitdaConsensus + '</strong>');
+        if (hint.netIncomeConsensus)
+          consHtml.push('Net inc. <strong>' + hint.netIncomeConsensus + '</strong>');
+        const ph = bx.postEventPriceHintNext || {};
+        let priceHintHtml = '';
+        if (ph.headlinePctVsPriorClose != null && Number.isFinite(Number(ph.headlinePctVsPriorClose))) {
+          const n = Number(ph.headlinePctVsPriorClose);
+          priceHintHtml =
+            '<div style="font-size:10px;color:var(--m2);margin-top:6px;line-height:1.35;font-family:DM Mono,monospace">' +
+            'Bloomberg anchor move: ' +
+            (n >= 0 ? '+' : '') +
+            n.toFixed(2) +
+            '% vs prior session · <span style="color:var(--m1)">' +
+            String(ph.headlineLabel || '').replace(/</g, '') +
+            '</span></div>';
+        }
         nextEl.innerHTML='<div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px">'
           +'<div><div style="font-size:15px;font-weight:500;font-family:DM Mono,monospace">'+ds+eds+'</div>'
           +'<div style="font-size:9px;color:var(--m2);margin-top:2px;font-family:DM Mono,monospace">Source: '+srcTag+'</div></div>'
           +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
           +(data.earningsTime?'<span style="font-size:10px;padding:2px 8px;border-radius:10px;font-family:DM Mono,monospace;background:'+tb+';color:'+tc+'">'+data.earningsTime+'</span>':'')
           +(data.epsEstimate?'<span style="font-size:11px;color:var(--m1)">EPS est: <strong>'+data.epsEstimate+'</strong></span>':'')
-          +'</div></div>';
+          +'</div></div>'
+          +(consHtml.length
+            ? '<div style="font-size:10px;color:var(--m1);margin-top:8px;line-height:1.4;border-top:1px solid var(--b1);padding-top:6px"><span style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:var(--m2)">Bridge consensus</span><br>' +
+              consHtml.join(' · ') +
+              '</div>'
+            : '')
+          + priceHintHtml
+          +(bx.sourcesNote
+            ? '<div style="font-size:9px;color:var(--m1);margin-top:6px;opacity:.85">' +
+              String(bx.sourcesNote).slice(0, 280).replace(/</g, '') +
+              '</div>'
+            : '');
       } else if(data.nextEarningsDate) {
         nextEl.innerHTML='<div style="font-size:12px;color:var(--tx)">Next quarter not scheduled in feeds yet.</div>'
           +'<div style="font-size:10px;color:var(--m2);margin-top:4px">Last calendar date from data: '+new Date(data.nextEarningsDate+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})+' · '+srcTag+'</div>';
@@ -2269,7 +2374,12 @@ async function fetchAndAddStockReactions(ticker,history,histEl,historySource) {
     if(!dates.length||!closes||!closes.length) return;
     let changed=false;
     history.forEach(q=>{
-      if(!q.date||q.stockReaction) return;
+      if(!q.date) return;
+      const sr = q.stockReaction;
+      if (sr != null && sr !== '') {
+        if (typeof sr === 'string' && sr.trim()) return;
+        if (typeof sr === 'object') return;
+      }
       const idx=dates.indexOf(q.date);
       const useIdx=idx>=0?idx:dates.findIndex(d=>d>=q.date);
       if(useIdx>=0&&useIdx+1<closes.length&&closes[useIdx]!=null&&closes[useIdx+1]!=null) {
@@ -2287,22 +2397,33 @@ function renderEarningsHistTable(el, history, historySource) {
   if(!history||!history.length){el.innerHTML='<span style="font-size:11px;color:var(--m1)">No data</span>';return;}
   const th='padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--b1);font-family:DM Mono,monospace;font-weight:400;white-space:nowrap';
   const rows=history.map(q=>{
-    const beat=q.beat===true||(q.epsSurprise&&q.epsSurprise.startsWith('+'));
-    const rxnCol=!q.stockReaction?'var(--m1)':String(q.stockReaction).startsWith('+')?'var(--buy)':String(q.stockReaction).startsWith('-')?'var(--sell)':'var(--m1)';
-    const td=(v,a,c)=>'<td style="padding:5px 8px;border-bottom:1px solid var(--b1);font-family:DM Mono,monospace;font-size:10px;text-align:'+(a||'left')+';color:'+(c||'var(--tx)')+'">'+( v||'—')+'</td>';
+    const beat=q.beat===true||(q.epsSurprise&&String(q.epsSurprise).startsWith('+'));
+    const rxDisp = formatEarningsReactionDisplay(q.stockReaction);
+    let rxnCol = 'var(--m1)';
+    if (rxDisp && rxDisp.startsWith('+')) rxnCol = 'var(--buy)';
+    else if (rxDisp && rxDisp.startsWith('-')) rxnCol = 'var(--sell)';
+    else if (typeof q.stockReaction === 'object' && q.stockReaction && q.stockReaction.headlinePctVsPriorClose != null) {
+      rxnCol = Number(q.stockReaction.headlinePctVsPriorClose) >= 0 ? 'var(--buy)' : 'var(--sell)';
+    }
+    const td=(v,a,c)=>'<td style="padding:5px 8px;border-bottom:1px solid var(--b1);font-family:DM Mono,monospace;font-size:10px;text-align:'+(a||'left')+';color:'+(c||'var(--tx)')+'">'+(v!=null&&v!==''?v:'—')+'</td>';
     let dateStr='—';
     if(q.date){try{dateStr=new Date(q.date+'T12:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'});}catch(e){dateStr=q.date;}}
-    return '<tr>'+td(q.quarter)+td(dateStr,'left','var(--m2)')+td(q.epsActual,'right')+td(q.epsEstimate,'right','var(--m1)')+td(q.epsSurprise||'—','right',q.epsSurprise?(beat?'var(--buy)':'var(--sell)'):'var(--m1)')+td(q.revenueActual||'—','right','var(--m1)')+td(q.stockReaction||'N/A','right',rxnCol)+'</tr>';
+    return '<tr>'+td(q.quarter)+td(dateStr,'left','var(--m2)')+td(epsOrDash(q.epsActual),'right')+td(epsOrDash(q.epsEstimate),'right','var(--m1)')+td(q.epsSurprise||'—','right',q.epsSurprise?(beat?'var(--buy)':'var(--sell)'):'var(--m1)')+td(q.revenueActual||'—','right','var(--m1)')+td(rxDisp,'right',rxnCol)+'</tr>';
   }).join('');
-  const src = historySource === 'bloomberg_bridge'
-    ? 'Bloomberg Terminal (desktop bridge)'
-    : (historySource && String(historySource).indexOf('yahoo')>=0 ? 'Yahoo Finance'
-    : historySource === 'fmp_earnings_surprises' ? 'Financial Modeling Prep'
-    : historySource === 'yahoo_quoteSummary_earningsHistory' ? 'Yahoo Finance'
-    : historySource === 'yahoo_chart_events' ? 'Yahoo Finance'
-    : 'Finnhub · FMP · Yahoo');
+  const src =
+    historySource === 'bloomberg_bridge' || String(historySource || '').includes('bloomberg_bridge')
+      ? 'Bloomberg / Yahoo blend'
+      : historySource && String(historySource).indexOf('yahoo') >= 0
+        ? 'Yahoo Finance'
+        : historySource === 'fmp_earnings_surprises'
+          ? 'Financial Modeling Prep'
+          : historySource === 'yahoo_quoteSummary_earningsHistory'
+            ? 'Yahoo Finance'
+            : historySource === 'yahoo_chart_events'
+              ? 'Yahoo Finance'
+              : 'Finnhub · FMP · Yahoo';
   el.innerHTML='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
-    +'<thead><tr><th style="text-align:left;'+th+'">Quarter</th><th style="text-align:left;'+th+'">Date</th><th style="text-align:right;'+th+'">EPS Act.</th><th style="text-align:right;'+th+'">EPS Est.</th><th style="text-align:right;'+th+'">Surprise</th><th style="text-align:right;'+th+'">Revenue</th><th style="text-align:right;'+th+'">Rxn</th></tr></thead>'
+    +'<thead><tr><th style="text-align:left;'+th+'">Quarter</th><th style="text-align:left;'+th+'">Date</th><th style="text-align:right;'+th+'">EPS Act.</th><th style="text-align:right;'+th+'">EPS Est.</th><th style="text-align:right;'+th+'">Surprise</th><th style="text-align:right;'+th+'">Revenue</th><th style="text-align:right;'+th+'">Price move (N+1 / BB)</th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table></div>'
     +'<div style="font-size:9px;color:var(--m1);margin-top:4px;font-family:DM Mono,monospace">Data: '+src+'</div>';
 }
@@ -3142,7 +3263,9 @@ function renderEarningsWidget(earnings, elContent) {
           +'</div>'
           +'<div style="font-size:10px;color:var(--m2);margin-bottom:2px">'+(e.name||'')+'</div>'
           +'<div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace">'+(e.note||'')+'</div>'
-          +(e.epsEst?'<div style="font-size:9px;font-family:DM Mono,monospace;margin-top:2px;color:var(--m1)">Est: <span style="color:var(--tx)">'+e.epsEst+'</span> · Prev: '+(e.epsPrior||'—')+'</div>':'')
+          +(e.epsEst||e.epsPrior
+            ?'<div style="font-size:9px;font-family:DM Mono,monospace;margin-top:2px;color:var(--m1)">Est: <span style="color:var(--tx)">'+(e.epsEst||'—')+'</span> · Prev: <span style="color:var(--tx)">'+(e.epsPrior||'—')+'</span></div>'
+            :'')
           +'</div>';
       }).join('')
       +'</div></div>';

@@ -1549,16 +1549,20 @@ async function fetchFundamentals(symbol) {
   return hasAny ? merged : null;
 }
 
+/** Placeholder-ish UI values — treat like empty so server fundamentals can overwrite bad model output. */
+function isPlaceholderUiSlot(v) {
+  if (v == null || v === '') return true;
+  const t = String(v).trim();
+  if (/^null$/i.test(t)) return true;
+  if (/^[—\-–]+$/.test(t) || /^n\/?a$/i.test(t) || /^placeholder$/i.test(t)) return true;
+  if (/\b(not\s+provided|not\s+specified|unspecified|omit|dataset|no\s+data)\b/i.test(t)) return true;
+  return false;
+}
+
 /** Overlay server fundamentals; P/E and PEG always taken from snapshot when present. */
 function mergeFundamentalsForUi(row, fund) {
   if (!fund || !row || typeof row !== 'object') return row;
-  const gap = v =>
-    v == null ||
-    v === '' ||
-    (typeof v === 'string' &&
-      /\b(not\s+provided|not\s+specified|unspecified|n\/a|tbd|placeholder|unknown|omit|dataset|no\s+data)\b/i.test(
-        String(v).trim()
-      ));
+  const gap = v => isPlaceholderUiSlot(v);
   const set = (k, v) => {
     if (!gap(row[k])) return;
     if (v === null || v === undefined || v === '') return;
@@ -3075,9 +3079,12 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       if (Object.values(extras).some((x) => x != null)) bloombergBridgeExtras = extras;
     }
 
+    let nextOut = merged.nextDate;
+    if (nextOut && String(nextOut).slice(0, 10) < todayISO) nextOut = null;
+
     res.json({
       symbol: sym,
-      nextEarningsDate: merged.nextDate,
+      nextEarningsDate: nextOut,
       nextEarningsDateEnd: nextDateEnd,
       epsEstimate: merged.epsEst,
       earningsTime: merged.callTime || null,
@@ -3199,6 +3206,49 @@ function roundPrice(x) {
  * MEDIUM (1-3wk): SL = below support2 or MA50; TP1 = resistance1-2; TP2 = prior high
  * LONG   (1-6mo): SL = below MA200; TP1 = analyst target (or resistance); TP2 = extended
  */
+/**
+ * Populate analysis-card technical fields from server-computed OHLC indicators.
+ * Claude often omits RSI/MACD/volume/Bollinger even when prompts show them → UI showed "—".
+ */
+function injectAnalyzeRowFromServerTech(row, tech) {
+  if (!row || !tech) return row;
+  if (tech.rsi != null && Number.isFinite(+tech.rsi)) row.rsi = (+tech.rsi).toFixed(1);
+  if (tech.macd?.trend) {
+    const h =
+      tech.macd.histogram != null && tech.macd.histogram !== ''
+        ? ` (${+tech.macd.histogram})`
+        : '';
+    row.macd = `${String(tech.macd.trend).charAt(0).toUpperCase()}${String(tech.macd.trend).slice(1)}${h}`;
+  }
+  if (tech.trend20) row.trend = `${String(tech.trend20).charAt(0).toUpperCase()}${String(tech.trend20).slice(1)}`;
+  if (tech.volume?.lastVolume != null && tech.volume.avgVolume) {
+    const lv = tech.volume.lastVolume;
+    const dayV =
+      lv >= 1e9 ? `${(lv / 1e9).toFixed(2)}B` : lv >= 1e6 ? `${(lv / 1e6).toFixed(2)}M` : `${lv}`;
+    const rel =
+      tech.volume.relativeVolume != null ? `${tech.volume.relativeVolume}× avg` : 'rvol';
+    const conf =
+      tech.volume.confirmation && tech.volume.confirmation !== 'neutral'
+        ? tech.volume.confirmation.replace(/_/g, ' ')
+        : '';
+    row.volume = conf ? `${dayV} (${rel}; ${conf})` : `${dayV} (${rel})`;
+  }
+  const fPrice = x => (x != null && Number.isFinite(+x) ? `$${(+x).toFixed(2)}` : '');
+  row.support = fPrice(tech.support1) || row.support || '—';
+  row.resistance = fPrice(tech.resistance1) || row.resistance || '—';
+  const ma = ab =>
+    ab === true ? 'above' : ab === false ? 'below' : ab == null ? '—' : 'at';
+  row.ma20 = ma(tech.aboveMa20);
+  row.ma50 = ma(tech.aboveMa50);
+  row.ma200 = ma(tech.aboveMa200);
+  if (tech.bb != null && tech.bbSignal != null) {
+    const sig = String(tech.bbSignal).replace(/_/g, ' ');
+    row.bollingerPos = `%B ${tech.bb.pct}% (${sig}); width ${tech.bb.width}% · mid $${tech.bb.middle}`;
+  }
+  if (tech.candlePattern && isPlaceholderUiSlot(row.pattern)) row.pattern = tech.candlePattern;
+  return row;
+}
+
 function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
   if (!row || !livePrice || livePrice <= 0) return row;
   const e = livePrice;
@@ -3531,6 +3581,7 @@ Output ONLY the JSON array. No markdown.`;
 
       const mergedRow = applyServerPriceLevels(row, +pq.price, tech || null, fund || null);
       mergeFundamentalsForUi(mergedRow, fund || null);
+      injectAnalyzeRowFromServerTech(mergedRow, tech || null);
       return mergedRow;
     });
 
