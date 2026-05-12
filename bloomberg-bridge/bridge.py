@@ -96,9 +96,17 @@ def get_bcon():
 
 
 def check_secret() -> bool:
+    """Accept `Authorization: Bearer <token>`; ignore surrounding whitespace; Bearer case-insensitive."""
     if not SECRET:
         return True
-    return request.headers.get("Authorization", "") == f"Bearer {SECRET}"
+    raw = (request.headers.get("Authorization") or "").strip()
+    if not raw:
+        return False
+    low = raw.lower()
+    if not low.startswith("bearer "):
+        return False
+    token = raw[7:].strip()
+    return token == SECRET
 
 
 def first_float(val):
@@ -146,7 +154,7 @@ def health():
 @app.get("/snapshot")
 def snapshot():
     if not check_secret():
-        return jsonify({"error": "unauthorized"}), 401
+        return jsonify({"error": "unauthorized", "hint": "Authorization: Bearer <exact BLOOMBERG_BRIDGE_SECRET>; Windows CMD: use curl.exe and ^ before & in URL, or use bb=AAPL+US+Equity"}), 401
     sym = request.args.get("symbol", "").strip()
     bb_arg = request.args.get("bb", "").strip()
     if not sym and not bb_arg:
@@ -296,7 +304,7 @@ EARN_REF_FLDS = [
 @app.get("/earnings")
 def earnings():
     if not check_secret():
-        return jsonify({"error": "unauthorized"}), 401
+        return jsonify({"error": "unauthorized", "hint": "Authorization: Bearer <exact BLOOMBERG_BRIDGE_SECRET>; Windows CMD: use curl.exe and ^ before & in URL, or use bb=AAPL+US+Equity"}), 401
     sym = request.args.get("symbol", "").strip()
     bb_arg = request.args.get("bb", "").strip()
     if not sym and not bb_arg:
