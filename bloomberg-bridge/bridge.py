@@ -45,6 +45,7 @@ PORT = int(os.environ.get("BRIDGE_PORT", os.environ.get("PORT", "5055")))
 BRIDGE_BIND = os.environ.get("BRIDGE_BIND", "127.0.0.1").strip() or "127.0.0.1"
 SECRET = os.environ.get("BLOOMBERG_BRIDGE_SECRET", "").strip()
 
+# Legacy name retained for README references.
 FLDS = [
     "BEST_PE_NTM",
     "PE_RATIO",
@@ -52,6 +53,52 @@ FLDS = [
     "BEST_TARGET_MEDIAN",
     "SALES_YOY_GR",
     "BEST_EPS_GROWTH",
+]
+
+SAFE_SNAPSHOT_BB_FIELDS = [
+    ("BEST_PE_NTM", "forwardPE"),
+    ("PE_RATIO", "trailingPE"),
+    ("BEST_PEG_RATIO", "pegRatio"),
+    ("BEST_TARGET_MEDIAN", "targetMeanPrice"),
+    ("SALES_YOY_GR", "revenueGrowth"),
+    ("BEST_EPS_GROWTH", "earningsGrowth"),
+    ("DEBT_TO_EQ_RATIO", "debtToEquity"),
+    ("RETURN_ON_CAPITAL_ADJ", "returnOnCapital"),
+    ("RETURN_ON_COMMON_EQUITY_ADJUSTED", "returnOnEquity"),
+    ("RETURN_ON_ASSET_PERCENT", "returnOnAssets"),
+    ("CURRENT_RATIO", "currentRatio"),
+    ("OPER_MARGIN", "operatingMargins"),
+    ("GROSS_MARGIN", "grossMargins"),
+    ("FREE_CASH_FLOW_YIELD_CURR", "freeCashFlowYield"),
+    ("SHORT_INT_RATIO", "shortInterestRatio"),
+]
+
+EARN_HEADER_REF_FIELDS = [
+    "EXPECTED_REPORT_DT",
+    "EXPECTED_REPORT_TYP",
+    "BEST_EPS",
+    "BEST_SALES",
+    "BEST_EBITDA",
+    "BEST_NET_INCOME",
+    "BEST_FFQ",
+    "BEST_FPERIOD_END_DT",
+]
+
+QUARTERLY_METRIC_GROUPS = [
+    (["IS_COMP_EPS"], "epsActual"),
+    (["SALES_REV_TURN"], "revenueActual"),
+    (["EBITDA"], "ebitdaActual"),
+    (["NET_INCOME"], "netIncomeActual"),
+    (["EBIT_ADJ_TOT", "EBIT"], "operatingProfitActual"),
+]
+
+QUARTERLY_SURPRISE_FIELDS = ["FQ_EPS_PERCENT_SURPRISE", "FQ_EPS_SURPRISE", "EPS_PERCENT_SURPRISE"]
+
+QUARTERLY_ANCHOR_FIELDS = ["EARN_REPORT_DT", "ECO_RELEASE_DT"]
+
+BB_QUARTERLY_ELMS_VARIANTS = [
+    [("periodicitySelection", "QUARTERLY"), ("adjustmentFollowDPDF", "N")],
+    [("periodicitySelection", "QUARTERLY")],
 ]
 
 _bcon = None
@@ -124,69 +171,16 @@ def first_float(val):
             return None
         return x
     except Exception:
-        return None
+        try:
+            s = str(val).strip().replace(",", "").replace("%", "")
+            x = float(s)
+            import math
 
-
-@app.get("/health")
-def health():
-    out = {
-        "ok": True,
-        "pdblp_installed": BCon is not None,
-        "listen": "http://%s:%s" % (BRIDGE_BIND, PORT),
-        "routes": ["/health", "/snapshot", "/earnings"],
-        "hint_url_other_pc": None
-        if BRIDGE_BIND == "127.0.0.1"
-        else "http://%s:%s" % (_guess_lan_ip(), PORT),
-    }
-    if SECRET:
-        out["auth_required_for_data_routes"] = True
-        out[
-            "auth_hint"
-        ] = "Use header: Authorization: Bearer <same value as BLOOMBERG_BRIDGE_SECRET>. Browser address bar GET returns 401 if secret is set."
-    else:
-        out["auth_required_for_data_routes"] = False
-        out[
-            "auth_hint"
-        ] = "No BLOOMBERG_BRIDGE_SECRET on server — /snapshot and /earnings are open."
-    return jsonify(out)
-
-
-@app.get("/snapshot")
-def snapshot():
-    if not check_secret():
-        return jsonify({"error": "unauthorized", "hint": "Authorization: Bearer <exact BLOOMBERG_BRIDGE_SECRET>; Windows CMD: use curl.exe and ^ before & in URL, or use bb=AAPL+US+Equity"}), 401
-    sym = request.args.get("symbol", "").strip()
-    bb_arg = request.args.get("bb", "").strip()
-    if not sym and not bb_arg:
-        return jsonify({"error": "symbol or bb required"}), 400
-    sec = map_to_bb_security(sym or bb_arg.split()[0], bb_arg or None)
-    try:
-        con = get_bcon()
-        df = con.ref(sec, FLDS)
-    except Exception as e:
-        return jsonify({"error": str(e), "bbSecurity": sec}), 503
-
-    if df is None or getattr(df, "empty", True):
-        return jsonify({"error": "no data", "bbSecurity": sec}), 503
-
-    r = df.iloc[0]
-
-    def cell(name):
-        if name not in df.columns:
+            if math.isnan(x) or math.isinf(x):
+                return None
+            return x
+        except Exception:
             return None
-        return first_float(r[name])
-
-    out = {
-        "bbSecurity": sec,
-        "ticker": sym or sec.split()[0],
-        "forwardPE": cell("BEST_PE_NTM"),
-        "trailingPE": cell("PE_RATIO"),
-        "pegRatio": cell("BEST_PEG_RATIO"),
-        "targetMeanPrice": cell("BEST_TARGET_MEDIAN"),
-        "revenueGrowth": cell("SALES_YOY_GR"),
-        "earningsGrowth": cell("BEST_EPS_GROWTH"),
-    }
-    return jsonify(out)
 
 
 def _pandas_ts_to_iso(ts) -> str:
@@ -233,6 +227,61 @@ def _ref_get(row, fld: str):
     return None
 
 
+def _bloomberg_soft(exc: BaseException) -> bool:
+    s = str(exc).upper()
+    return any(
+        t in s
+        for t in (
+            "INVALID_FIELD",
+            "NOT_APPLICABLE",
+            "UNKNOWN_FIELD",
+            "INVALID_SECURITY",
+            "INVALID_REQUEST",
+            "UNSUPPORTED_OPERATION",
+            "BAD_FIELD",
+        )
+    )
+
+
+def ref_field_safe(con, sec: str, fld: str):
+    """Single-field ref(); INVALID_FIELD yields None instead of aborting."""
+    try:
+        df = con.ref(sec, [fld])
+        if df is None or getattr(df, "empty", True):
+            return None
+        r = df.iloc[0]
+        return _ref_get(r, fld)
+    except Exception as exc:
+        if _bloomberg_soft(exc):
+            return None
+        raise
+
+
+def fmt_trim_num(x: float | None, nd: int = 4):
+    if x is None:
+        return None
+    try:
+        s = str(round(float(x), nd)).rstrip("0").rstrip(".")
+        return s or None
+    except Exception:
+        return None
+
+
+def fmt_money_billions(x: float | None):
+    """Large income-statement figures; keep raw when modest."""
+    if x is None:
+        return None
+    try:
+        ax = abs(float(x))
+        if ax >= 1e9:
+            return str(round(ax / 1e9, 3)).rstrip("0").rstrip(".") + "B"
+        if ax >= 1e6:
+            return str(round(ax / 1e6, 3)).rstrip("0").rstrip(".") + "M"
+        return fmt_trim_num(float(x), 2)
+    except Exception:
+        return None
+
+
 def _report_typ_to_ui(raw) -> str | None:
     t = str(raw or "").strip().lower()
     if not t:
@@ -244,129 +293,289 @@ def _report_typ_to_ui(raw) -> str | None:
     return "during-market"
 
 
-def _bh_eps_history(con, sec: str, max_rows: int = 4):
-    """Best-effort quarterly comparable EPS trail via BDH (field availability varies by listing)."""
+def _bdh_optional(con, sec: str, fld: str, start_yyyymmdd: str, end_yyyymmdd: str, elms=None):
     try:
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(days=1100)
-        df = con.bdh(sec, ["IS_COMP_EPS"], start.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
-    except Exception:
-        return []
+        kw = dict(elms=elms) if elms else {}
+        df = con.bdh(sec, [fld], start_yyyymmdd, end_yyyymmdd, **kw)
+        return df if df is not None and not getattr(df, "empty", True) else None
+    except Exception as exc:
+        if _bloomberg_soft(exc):
+            return None
+        return None
+
+
+def _series_sorted_desc(df) -> list[tuple[str, float]]:
+    """Bloomberg historical frame -> newest-first (iso, value) pairs."""
     if df is None or getattr(df, "empty", True):
         return []
-    picked = []
-    seen_eps = set()
-    for col in df.columns:
-        cname = str(col[1] if isinstance(col, tuple) and len(col) > 1 else col)
-        if "IS_COMP_EPS" not in cname:
+    col = df.iloc[:, 0]
+    out = []
+    for idx, val in col.items():
+        if pd.isna(val):
             continue
-        ser = df[col].dropna()
-        tail = ser.tail(max(32, max_rows * 12))
-        for idx, val in tail.iloc[::-1].items():
-            try:
-                v = round(float(val), 6)
-            except Exception:
-                continue
-            if abs(v) > 1e6:
-                continue
-            iso = _pandas_ts_to_iso(idx)
-            if not iso:
-                continue
-            if v in seen_eps:
-                continue
-            seen_eps.add(v)
-            try:
-                q = datetime.strptime(iso, "%Y-%m-%d").strftime("%b %Y")
-            except Exception:
-                q = iso
-            picked.append(
-                {
-                    "quarter": q,
-                    "date": iso,
-                    "epsActual": str(round(v, 4)).rstrip("0").rstrip("."),
-                    "epsEstimate": None,
-                    "epsSurprise": None,
-                    "beat": None,
-                }
-            )
-            if len(picked) >= max_rows:
-                return picked
-        break
-    return picked
-
-
-EARN_REF_FLDS = [
-    "EXPECTED_REPORT_DT",
-    "EXPECTED_REPORT_TYP",
-    "BEST_EPS",
-    "BEST_FPERIOD_END_DT",
-]
-@app.get("/earnings")
-def earnings():
-    if not check_secret():
-        return jsonify({"error": "unauthorized", "hint": "Authorization: Bearer <exact BLOOMBERG_BRIDGE_SECRET>; Windows CMD: use curl.exe and ^ before & in URL, or use bb=AAPL+US+Equity"}), 401
-    sym = request.args.get("symbol", "").strip()
-    bb_arg = request.args.get("bb", "").strip()
-    if not sym and not bb_arg:
-        return jsonify({"error": "symbol or bb required"}), 400
-    sec = map_to_bb_security(sym or bb_arg.split()[0], bb_arg or None)
-    try:
-        con = get_bcon()
-        df = con.ref(sec, EARN_REF_FLDS)
-    except Exception as e:
-        return jsonify({"error": str(e), "bbSecurity": sec}), 503
-
-    if df is None or getattr(df, "empty", True):
-        return jsonify({"error": "no data", "bbSecurity": sec}), 503
-
-    r = df.iloc[0]
-
-    nxt_dt = _ref_get(r, "EXPECTED_REPORT_DT")
-    nxt_typ = _ref_get(r, "EXPECTED_REPORT_TYP")
-    best_eps = _ref_get(r, "BEST_EPS")
-    fped = _ref_get(r, "BEST_FPERIOD_END_DT")
-
-    next_iso = ""
-    if nxt_dt is not None:
+        iso = _pandas_ts_to_iso(idx)
+        if not iso:
+            continue
         try:
-            if not pd.isna(nxt_dt):
-                next_iso = pd.Timestamp(nxt_dt).strftime("%Y-%m-%d")
+            fv = float(val)
         except Exception:
-            next_iso = _pandas_ts_to_iso(nxt_dt)
+            continue
+        if abs(fv) > 1e18:
+            continue
+        out.append((iso, fv))
+    out.sort(key=lambda z: z[0], reverse=True)
+    uniq = []
+    seen = set()
+    for iso, fv in out:
+        if iso in seen:
+            continue
+        seen.add(iso)
+        uniq.append((iso, fv))
+    return uniq
 
-    est = None
-    be = first_float(best_eps)
-    if be is not None:
-        est = str(round(be, 4)).rstrip("0").rstrip(".")
 
-    earnings_time = _report_typ_to_ui(nxt_typ)
-    fq = ""
-    if fped is not None:
-        fq_iso = _pandas_ts_to_iso(fped)
-        if fq_iso:
-            try:
-                fq = "FY period end " + datetime.strptime(fq_iso, "%Y-%m-%d").strftime("%b %d, %Y")
-            except Exception:
-                fq = fq_iso
+def _bdh_series_quarterly(con, sec: str, fld: str):
+    """Try quarterly BDH; fall back to daily if needed."""
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=2200)
+    sy, ey = start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+    for elms in BB_QUARTERLY_ELMS_VARIANTS:
+        df = _bdh_optional(con, sec, fld, sy, ey, elms=tuple(elms))
+        pts = _series_sorted_desc(df)
+        if len(pts) >= 4:
+            return pts
+    df = _bdh_optional(con, sec, fld, sy, ey, elms=None)
+    return _series_sorted_desc(df)
 
-    hist = []
+
+def first_series_for_candidates(con, sec: str, candidates: list[str]) -> tuple[str | None, list[tuple[str, float]]]:
+    for c in candidates:
+        pts = _bdh_series_quarterly(con, sec, c)
+        if pts:
+            return c, pts
+    return None, []
+
+
+def _pct_change(prev: float | None, nxt: float | None):
     try:
-        hist = _bh_eps_history(con, sec, max_rows=4)
+        if prev is None or nxt is None or abs(prev) < 1e-12:
+            return None
+        return round(((nxt - prev) / abs(prev)) * 100, 4)
     except Exception:
-        hist = []
+        return None
 
-    return jsonify(
-        {
-            "bbSecurity": sec,
-            "ticker": sym or sec.split()[0],
-            "nextEarningsDate": next_iso or None,
-            "epsEstimate": est,
-            "earningsTime": earnings_time,
-            "quarter": fq or None,
-            "history": hist,
-            "calendarPrimarySource": "bloomberg_bridge",
-        }
-    )
+def _bbelem_to_iso(val):
+    """Turn Bloomberg ref/bdh scalar into YYYY-MM-DD when possible."""
+    if val is None or (isinstance(val, float) and pd.isna(val)):
+        return None
+    iso = _pandas_ts_to_iso(val)
+    if iso:
+        return iso
+    try:
+        fv = float(val)
+        if 30000 < fv < 65000:
+            d = datetime(1899, 12, 30) + timedelta(days=int(round(fv)))
+            return d.strftime("%Y-%m-%d")
+    except Exception:
+        pass
+    return None
+
+
+def _load_daily_px_asc(con, sec: str) -> list[tuple[str, float]]:
+    """Calendar-daily-ish PX_LAST, oldest first."""
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=8 * 365)
+    df = _bdh_optional(con, sec, "PX_LAST", start.strftime("%Y%m%d"), end.strftime("%Y%m%d"), None)
+    pts_desc = _series_sorted_desc(df)
+    return list(reversed(pts_desc))
+
+
+def _index_last_before(px_asc: list[tuple[str, float]], iso: str) -> int | None:
+    """Largest index with date strictly before iso (YYYY-MM-DD string compare OK)."""
+    lo = [i for i, (d, _) in enumerate(px_asc) if d < iso]
+    return lo[-1] if lo else None
+
+
+def _index_first_on_or_after(px_asc: list[tuple[str, float]], iso: str) -> int | None:
+    for i, (d, _) in enumerate(px_asc):
+        if d >= iso:
+            return i
+    return None
+
+
+def reaction_bundle_for_anchor(
+    px_asc: list[tuple[str, float]],
+    anchor_iso: str,
+    next_earnings_timing: str | None,
+) -> dict:
+    """
+    Price path around `anchor_iso` (often fiscal period end, not true press date).
+    next_earnings_timing guides which leg to prefer for display (pre / during / post).
+    """
+    ip = _index_last_before(px_asc, anchor_iso)
+    i0 = _index_first_on_or_after(px_asc, anchor_iso)
+    out: dict = {
+        "anchorDate": anchor_iso,
+        "note": "Dates are usually fiscal period ends from fundamentals history; may differ from press/ECO time.",
+    }
+    if ip is None or i0 is None:
+        return out
+    prior_close = px_asc[ip][1]
+    sess_close = px_asc[i0][1]
+    i1 = i0 + 1 if i0 + 1 < len(px_asc) else None
+    next_close = px_asc[i1][1] if i1 is not None else None
+    out["priorSessionCloseDate"] = px_asc[ip][0]
+    out["eventSessionDate"] = px_asc[i0][0]
+    out["fromPriorCloseToEventSessionClosePct"] = _pct_change(prior_close, sess_close)
+    if next_close is not None and i1 is not None:
+        out["nextSessionDate"] = px_asc[i1][0]
+        out["fromPriorCloseToNextSessionClosePct"] = _pct_change(prior_close, next_close)
+    # Emphasize one leg for "current" next earnings call-style reading
+    if next_earnings_timing == "post-market" and out.get("fromPriorCloseToNextSessionClosePct") is not None:
+        out["headlinePctVsPriorClose"] = out["fromPriorCloseToNextSessionClosePct"]
+        out["headlineLabel"] = "post-market: next full session vs prior close"
+    elif next_earnings_timing == "pre-market" and out.get("fromPriorCloseToEventSessionClosePct") is not None:
+        out["headlinePctVsPriorClose"] = out["fromPriorCloseToEventSessionClosePct"]
+        out["headlineLabel"] = "pre-market: event session close vs prior close (approximation)"
+    elif out.get("fromPriorCloseToEventSessionClosePct") is not None:
+        out["headlinePctVsPriorClose"] = out["fromPriorCloseToEventSessionClosePct"]
+        out["headlineLabel"] = "during market: event session vs prior close (approximation)"
+    return out
+
+
+def _build_quarter_rows(con, sec: str, next_tim_hint: str | None) -> list[dict]:
+    """Align last four fiscal quarter points across metrics (best effort)."""
+    series_by_key: dict[str, list[tuple[str, float]]] = {}
+    for cands, jkey in QUARTERLY_METRIC_GROUPS:
+        _, pts = first_series_for_candidates(con, sec, list(cands))
+        if pts:
+            series_by_key[jkey] = pts
+
+    surprise_pts: list[tuple[str, float]] = []
+    surprise_src = None
+    for sf in QUARTERLY_SURPRISE_FIELDS:
+        _, pts = first_series_for_candidates(con, sec, [sf])
+        if pts:
+            surprise_pts = pts
+            surprise_src = sf
+            break
+
+    anchor_pts: list[tuple[str, float]] = []
+    for af in QUARTERLY_ANCHOR_FIELDS:
+        _, pts = first_series_for_candidates(con, sec, [af])
+        if pts:
+            anchor_pts = pts
+            break
+
+    # Prefer IS_COMP_EPS dates as master period ends
+    master = series_by_key.get("epsActual") or next(iter(series_by_key.values()), [])
+    if not master:
+        return []
+    top = master[:32]
+    pick = [iso for iso, _ in top[:8]]
+    if not pick:
+        return []
+
+    def lookup(pts: list[tuple[str, float]], iso: str) -> float | None:
+        for d, v in pts:
+            if d == iso:
+                return v
+        return None
+
+    px_asc = _load_daily_px_asc(con, sec)
+    rows = []
+    for iso in pick:
+        row: dict = {"date": iso}
+        try:
+            row["quarter"] = datetime.strptime(iso, "%Y-%m-%d").strftime("%b %Y")
+        except Exception:
+            row["quarter"] = iso
+        # metrics
+        for jk, pts in series_by_key.items():
+            v = lookup(pts, iso)
+            if v is None:
+                continue
+            if jk == "epsActual":
+                row[jk] = fmt_trim_num(v, 4)
+            else:
+                row[jk] = fmt_money_billions(v)
+        sp = lookup(surprise_pts, iso)
+        if sp is not None:
+            pct = sp
+            if abs(pct) <= 1.0:
+                pct *= 100.0
+            row["epsSurprise"] = (("+" if pct >= 0 else "") + str(round(pct, 2)) + "%")
+            if surprise_src:
+                row["epsSurpriseField"] = surprise_src
+        row["epsEstimate"] = None
+        row["beat"] = None
+        anchor_val = lookup(anchor_pts, iso)
+        anchor_iso = None
+        if anchor_val is not None:
+            anchor_iso = _bbelem_to_iso(anchor_val)
+        anchor_for_px = anchor_iso if anchor_iso else iso
+        row["anchorDateUsedForReaction"] = anchor_for_px
+        if anchor_iso:
+            row["reportOrAnnounceDate"] = anchor_iso
+        if px_asc:
+            row["stockReaction"] = reaction_bundle_for_anchor(px_asc, anchor_for_px, next_tim_hint)
+        rows.append(row)
+        if len(rows) >= 4:
+            break
+    return rows
+
+
+def _financial_quality_hint(d: dict) -> dict | None:
+    """Lightweight label for UI; not investment advice."""
+    score = 0
+    reasons = []
+    de = d.get("debtToEquity")
+    if isinstance(de, (int, float)):
+        if de < 80:
+            score += 1
+            reasons.append("debt/equity moderate")
+        elif de > 180:
+            score -= 2
+            reasons.append("high debt/equity")
+    roe = d.get("returnOnEquity")
+    if isinstance(roe, (int, float)):
+        if roe > 15:
+            score += 1
+            reasons.append("ROE solid")
+        elif roe < 5:
+            score -= 1
+            reasons.append("weak ROE")
+    gm = d.get("grossMargins")
+    om = d.get("operatingMargins")
+    if isinstance(gm, (int, float)) and gm > 35:
+        score += 1
+        reasons.append("healthy gross margin")
+    if isinstance(om, (int, float)) and om > 15:
+        score += 1
+        reasons.append("operating margin respectable")
+    if isinstance(gm, (int, float)) and gm < 20:
+        score -= 1
+    cr = d.get("currentRatio")
+    if isinstance(cr, (int, float)):
+        if cr > 1.2:
+            score += 1
+            reasons.append("liquidity adequate")
+        elif cr < 0.8:
+            score -= 1
+            reasons.append("tight liquidity")
+    label = "Mixed"
+    if score >= 3:
+        label = "Strong"
+    elif score <= -2:
+        label = "Weak"
+    elif score <= 0:
+        label = "Moderate"
+    elif score >= 1:
+        label = "Solid"
+    if not reasons:
+        return None
+    return {"label": label, "score": score, "reasons": reasons[:8]}
+
 
 def _guess_lan_ip() -> str:
     try:
@@ -378,6 +587,179 @@ def _guess_lan_ip() -> str:
         return ip
     except Exception:
         return "127.0.0.1"
+
+
+@app.get("/health")
+def health():
+    out = {
+        "ok": True,
+        "pdblp_installed": BCon is not None,
+        "listen": "http://%s:%s" % (BRIDGE_BIND, PORT),
+        "routes": ["/health", "/snapshot", "/earnings"],
+        "hint_url_other_pc": None
+        if BRIDGE_BIND == "127.0.0.1"
+        else "http://%s:%s" % (_guess_lan_ip(), PORT),
+    }
+    if SECRET:
+        out["auth_required_for_data_routes"] = True
+        out[
+            "auth_hint"
+        ] = "Use header: Authorization: Bearer <same value as BLOOMBERG_BRIDGE_SECRET>. Browser address bar GET returns 401 if secret is set."
+    else:
+        out["auth_required_for_data_routes"] = False
+        out[
+            "auth_hint"
+        ] = "No BLOOMBERG_BRIDGE_SECRET on server — /snapshot and /earnings are open."
+    return jsonify(out)
+
+
+@app.get("/snapshot")
+def snapshot():
+    if not check_secret():
+        return jsonify(
+            {"error": "unauthorized", "hint": "Authorization: Bearer <exact BLOOMBERG_BRIDGE_SECRET>; CMD: curl.exe ^ before &"}
+        ), 401
+    sym = request.args.get("symbol", "").strip()
+    bb_arg = request.args.get("bb", "").strip()
+    if not sym and not bb_arg:
+        return jsonify({"error": "symbol or bb required"}), 400
+    sec = map_to_bb_security(sym or bb_arg.split()[0], bb_arg or None)
+    try:
+        con = get_bcon()
+    except Exception as e:
+        return jsonify({"error": str(e), "bbSecurity": sec}), 503
+
+    out: dict = {
+        "bbSecurity": sec,
+        "ticker": sym or sec.split()[0],
+    }
+
+    hits = 0
+    try:
+        for bb_field, js_key in SAFE_SNAPSHOT_BB_FIELDS:
+            v = ref_field_safe(con, sec, bb_field)
+            if v is None:
+                continue
+            n = first_float(v)
+            if n is not None:
+                out[js_key] = n
+                hits += 1
+            else:
+                ts = str(v).strip()
+                if ts and ts.upper() != "N/A":
+                    out[js_key] = ts
+                    hits += 1
+        qual = _financial_quality_hint(out)
+        if qual:
+            out["financialQualityHint"] = qual
+    except Exception as e:
+        return jsonify({"error": str(e), "bbSecurity": sec}), 503
+
+    if hits == 0:
+        return jsonify({"error": "no data", "bbSecurity": sec}), 503
+
+    return jsonify(out)
+
+
+@app.get("/earnings")
+def earnings():
+    if not check_secret():
+        return jsonify(
+            {"error": "unauthorized", "hint": "Authorization: Bearer <exact BLOOMBERG_BRIDGE_SECRET>; CMD: curl.exe ^ before &"}
+        ), 401
+    sym = request.args.get("symbol", "").strip()
+    bb_arg = request.args.get("bb", "").strip()
+    if not sym and not bb_arg:
+        return jsonify({"error": "symbol or bb required"}), 400
+    sec = map_to_bb_security(sym or bb_arg.split()[0], bb_arg or None)
+    try:
+        con = get_bcon()
+    except Exception as e:
+        return jsonify({"error": str(e), "bbSecurity": sec}), 503
+
+    header: dict = {}
+    for fld in EARN_HEADER_REF_FIELDS:
+        v = ref_field_safe(con, sec, fld)
+        if v is not None:
+            header[fld] = v
+
+    nxt_dt = header.get("EXPECTED_REPORT_DT")
+    nxt_typ = header.get("EXPECTED_REPORT_TYP")
+
+    next_iso = ""
+    if nxt_dt is not None:
+        try:
+            if not pd.isna(nxt_dt):
+                next_iso = pd.Timestamp(nxt_dt).strftime("%Y-%m-%d")
+        except Exception:
+            next_iso = _pandas_ts_to_iso(nxt_dt)
+
+    earnings_time = _report_typ_to_ui(nxt_typ)
+
+    px_asc_hint = []
+    headline_reaction = None
+    try:
+        px_asc_hint = _load_daily_px_asc(con, sec)
+        if px_asc_hint and next_iso:
+            headline_reaction = reaction_bundle_for_anchor(px_asc_hint, next_iso, earnings_time)
+    except Exception:
+        headline_reaction = None
+
+    est_from_best = fmt_trim_num(first_float(header.get("BEST_EPS")), 4)
+
+    fq = ""
+    ffq_txt = header.get("BEST_FFQ")
+    if ffq_txt is not None:
+        fts = str(ffq_txt).strip()
+        if fts and fts.upper() != "N/A":
+            fq = fts
+    fped = header.get("BEST_FPERIOD_END_DT")
+    if fped is not None:
+        fq_iso = _pandas_ts_to_iso(fped)
+        if fq_iso:
+            try:
+                tail = datetime.strptime(fq_iso, "%Y-%m-%d").strftime("%b %d, %Y")
+                fq = fq + (" · " if fq else "") + "period end %s" % tail
+            except Exception:
+                fq = fq + (" · " if fq else "") + fq_iso
+
+    rev_est = fmt_money_billions(first_float(header.get("BEST_SALES")))
+    ebd_est = fmt_money_billions(first_float(header.get("BEST_EBITDA")))
+    ni_est = fmt_money_billions(first_float(header.get("BEST_NET_INCOME")))
+
+    hist = []
+    try:
+        hist = _build_quarter_rows(con, sec, earnings_time)
+    except Exception:
+        hist = []
+
+    return jsonify(
+        {
+            "bbSecurity": sec,
+            "ticker": sym or sec.split()[0],
+            "nextEarningsDate": next_iso or None,
+            "epsEstimate": est_from_best,
+            "consensusEstimatesHint": (
+                {}
+                if (rev_est is None and ebd_est is None and ni_est is None)
+                else {
+                    "revenueConsensus": rev_est,
+                    "ebitdaConsensus": ebd_est,
+                    "netIncomeConsensus": ni_est,
+                }
+            ),
+            "earningsTime": earnings_time,
+            "postEventPriceHintNext": headline_reaction,
+            "primaryStockReactionInterpretationHint": earnings_time or "during-market",
+            "quarter": fq or None,
+            "history": hist,
+            "calendarPrimarySource": "bloomberg_bridge",
+            "sourcesNote": (
+                "History rows align quarterly fundamentals; EPS surprise fields vary by entitlement. "
+                "Use Yahoo/FMP overlays on AlphaSignal server for fuller estimate grids."
+            ),
+        }
+    )
 
 
 if __name__ == "__main__":

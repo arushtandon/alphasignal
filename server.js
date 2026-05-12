@@ -1315,6 +1315,17 @@ async function fetchBloombergBridgeFundamentals(symbol) {
       targetMeanPrice: num(j.targetMeanPrice),
       revenueGrowth: num(j.revenueGrowth),
       earningsGrowth: num(j.earningsGrowth),
+      debtToEquity: num(j.debtToEquity),
+      returnOnEquity: num(j.returnOnEquity),
+      returnOnAssets: num(j.returnOnAssets),
+      returnOnCapital: num(j.returnOnCapital),
+      currentRatio: num(j.currentRatio),
+      grossMargins: num(j.grossMargins),
+      operatingMargins: num(j.operatingMargins),
+      freeCashFlowYield: num(j.freeCashFlowYield),
+      shortInterestRatio: num(j.shortInterestRatio),
+      financialQualityHint:
+        j.financialQualityHint && typeof j.financialQualityHint === 'object' ? j.financialQualityHint : null,
       recommendationKey: j.recommendationKey || null,
       analystCount: num(j.analystCount),
       _bbSecurity: j.bbSecurity || sec
@@ -1382,8 +1393,12 @@ function normalizeBbBridgeHistRows(rows) {
         epsEstimate: epsE,
         epsSurprise: surp,
         beat,
-        revenueActual: row?.revenueActual ?? null,
-        stockReaction: null
+        revenueActual: row?.revenueActual != null ? row.revenueActual : null,
+        ebitdaActual: row?.ebitdaActual != null ? row.ebitdaActual : null,
+        netIncomeActual: row?.netIncomeActual != null ? row.netIncomeActual : null,
+        operatingProfitActual: row?.operatingProfitActual != null ? row.operatingProfitActual : null,
+        reportOrAnnounceDate: row?.reportOrAnnounceDate ?? null,
+        stockReaction: row?.stockReaction != null && typeof row.stockReaction === 'object' ? row.stockReaction : null
       };
     })
     .filter((r) => r.date || r.quarter);
@@ -1537,7 +1552,15 @@ function mergeFundamentalsForUi(row, fund) {
     finGuess = de > 200 ? 'Weak' : de > 100 ? 'Moderate' : 'Strong';
   if (fund.grossMargins != null && fund.grossMargins > 42) finGuess = finGuess || 'Strong';
   if (fund.grossMargins != null && fund.grossMargins < 22) finGuess = 'Weak';
-  if (finGuess) set('financialHealth', finGuess);
+  if (fund.financialQualityHint?.label != null && String(fund.financialQualityHint.label).trim()) {
+    const bbLabel = String(fund.financialQualityHint.label).trim();
+    finGuess = bbLabel;
+    set('financialHealth', bbLabel);
+    if (fund.financialQualityHint.reasons?.length && gap(row.fundSummary)) {
+      const brief = fund.financialQualityHint.reasons.slice(0, 4).join(' · ');
+      set('fundSummary', `Bloomberg quality hint (${bbLabel}): ${brief}`);
+    }
+  } else if (finGuess) set('financialHealth', finGuess);
   if (fund._fmpSector) set('industryPos', String(fund._fmpSector).slice(0, 72));
 
   const bits = [];
@@ -1549,6 +1572,12 @@ function mergeFundamentalsForUi(row, fund) {
   else if (fund.trailingPE != null) bits.push(`P/E ${fund.trailingPE} TTM`);
   if (fund.revenueGrowth != null) bits.push(`rev YoY ~${fund.revenueGrowth}%`);
   if (fund.earningsGrowth != null) bits.push(`EPS YoY ~${fund.earningsGrowth}%`);
+  if (fund.returnOnEquity != null && Number.isFinite(+fund.returnOnEquity))
+    bits.push(`ROE ~${fund.returnOnEquity}%`);
+  if (fund.currentRatio != null && Number.isFinite(+fund.currentRatio))
+    bits.push(`curr ratio ${Number(fund.currentRatio).toFixed(2)}`);
+  if (fund.debtToEquity != null && Number.isFinite(+fund.debtToEquity))
+    bits.push(`D/E ${Math.round(fund.debtToEquity)}`);
   if (fund.targetMeanPrice != null && fund.marketCap != null)
     bits.push(`mktCap data available · targetMean ${fund.targetMeanPrice}`);
   if (bits.length) set('fundSummary', `Fundamentals (server merge): ${bits.join(' · ')}`);
@@ -3000,6 +3029,18 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       bbEarn
     );
 
+    let bloombergBridgeExtras = null;
+    if (bbEarn && !bbEarn.error) {
+      const extras = {
+        consensusEstimatesHint: bbEarn.consensusEstimatesHint ?? null,
+        postEventPriceHintNext: bbEarn.postEventPriceHintNext ?? null,
+        primaryStockReactionInterpretationHint:
+          bbEarn.primaryStockReactionInterpretationHint ?? null,
+        sourcesNote: bbEarn.sourcesNote ?? null
+      };
+      if (Object.values(extras).some((x) => x != null)) bloombergBridgeExtras = extras;
+    }
+
     res.json({
       symbol: sym,
       nextEarningsDate: merged.nextDate,
@@ -3010,7 +3051,8 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       calendarPrimarySource: merged.calendarPrimary || null,
       calendarSourcesConsulted: sourcesUsed,
       history: Array.isArray(merged.epsHistory) ? merged.epsHistory.slice(0, 4) : [],
-      historySource: merged.historySource
+      historySource: merged.historySource,
+      bloombergBridgeExtras
     });
   } catch (e) {
     console.error('Earnings err:', e.message);
