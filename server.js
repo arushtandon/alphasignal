@@ -1307,17 +1307,26 @@ async function fetchBloombergBridgeFundamentals(symbol) {
     const u = new URL('/snapshot', base + '/');
     u.searchParams.set('symbol', symbol);
     u.searchParams.set('bb', sec);
-    const r = await fetch(u.toString(), { headers: bloombergBridgeFetchHeaders(), signal: AbortSignal.timeout(15000) });
+    const r = await fetch(u.toString(), { headers: bloombergBridgeFetchHeaders(), signal: AbortSignal.timeout(28000) });
     if (!r.ok) {
-      console.warn('Bloomberg bridge HTTP', r.status, symbol);
+      const t = await r.text().catch(() => '');
+      console.warn('Bloomberg bridge HTTP', r.status, symbol, t.slice(0, 120));
       return null;
     }
     const j = await r.json();
-    if (j?.error || !j || typeof j !== 'object') return null;
+    if (!j || typeof j !== 'object') return null;
     const num = v => {
       const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
       return Number.isFinite(n) ? n : null;
     };
+    const hasNumericPayload =
+      num(j.forwardPE) != null ||
+      num(j.trailingPE) != null ||
+      num(j.currentPrice) != null ||
+      num(j.marketCap) != null ||
+      num(j.revenueGrowth) != null ||
+      num(j.earningsGrowth) != null;
+    if (j.error && !hasNumericPayload) return null;
     const out = {
       _source: 'bloomberg_bridge',
       forwardPE: num(j.forwardPE),
@@ -1335,6 +1344,8 @@ async function fetchBloombergBridgeFundamentals(symbol) {
       operatingMargins: num(j.operatingMargins),
       freeCashFlowYield: num(j.freeCashFlowYield),
       shortInterestRatio: num(j.shortInterestRatio),
+      currentPrice: num(j.currentPrice),
+      marketCap: num(j.marketCap),
       financialQualityHint:
         j.financialQualityHint && typeof j.financialQualityHint === 'object' ? j.financialQualityHint : null,
       recommendationKey: j.recommendationKey || null,
@@ -1571,8 +1582,10 @@ function isPlaceholderUiSlot(v) {
 function mergeFundamentalsForUi(row, fund) {
   if (!fund || !row || typeof row !== 'object') return row;
   const gap = v => isPlaceholderUiSlot(v);
-  const set = (k, v) => {
-    if (!gap(row[k])) return;
+  /** When Bloomberg bridge supplied the row, always overwrite Claude text (even "Strong"/dashes). */
+  const forceBb = fund._source === 'bloomberg_bridge';
+  const set = (k, v, force) => {
+    if (!force && !gap(row[k])) return;
     if (v === null || v === undefined || v === '') return;
     row[k] = v;
   };
@@ -1595,8 +1608,8 @@ function mergeFundamentalsForUi(row, fund) {
   if (fund.pegRatio != null && Number.isFinite(+fund.pegRatio)) {
     row.peg = String(+Number(fund.pegRatio).toFixed(2));
   }
-  if (fund.revenueGrowth != null) set('revenueGrowth', `${fund.revenueGrowth}%`);
-  if (fund.earningsGrowth != null) set('earningsGrowth', `${fund.earningsGrowth}%`);
+  if (fund.revenueGrowth != null) set('revenueGrowth', `${fund.revenueGrowth}%`, forceBb);
+  if (fund.earningsGrowth != null) set('earningsGrowth', `${fund.earningsGrowth}%`, forceBb);
   let finGuess = '';
   const de = fund.debtToEquity;
   if (typeof de === 'number')
@@ -1606,13 +1619,13 @@ function mergeFundamentalsForUi(row, fund) {
   if (fund.financialQualityHint?.label != null && String(fund.financialQualityHint.label).trim()) {
     const bbLabel = String(fund.financialQualityHint.label).trim();
     finGuess = bbLabel;
-    set('financialHealth', bbLabel);
-    if (fund.financialQualityHint.reasons?.length && gap(row.fundSummary)) {
+    set('financialHealth', bbLabel, forceBb);
+    if (fund.financialQualityHint.reasons?.length && (forceBb || gap(row.fundSummary))) {
       const brief = fund.financialQualityHint.reasons.slice(0, 4).join(' · ');
-      set('fundSummary', `Bloomberg quality hint (${bbLabel}): ${brief}`);
+      set('fundSummary', `Bloomberg quality hint (${bbLabel}): ${brief}`, forceBb);
     }
-  } else if (finGuess) set('financialHealth', finGuess);
-  if (fund._fmpSector) set('industryPos', String(fund._fmpSector).slice(0, 72));
+  } else if (finGuess) set('financialHealth', finGuess, forceBb);
+  if (fund._fmpSector) set('industryPos', String(fund._fmpSector).slice(0, 72), forceBb);
 
   const bits = [];
   if (fund._source === 'bloomberg_enterprise')
@@ -1631,8 +1644,8 @@ function mergeFundamentalsForUi(row, fund) {
     bits.push(`D/E ${Math.round(fund.debtToEquity)}`);
   if (fund.targetMeanPrice != null && fund.marketCap != null)
     bits.push(`mktCap data available · targetMean ${fund.targetMeanPrice}`);
-  if (bits.length) set('fundSummary', `Fundamentals (server merge): ${bits.join(' · ')}`);
-  if (fund.analystCount != null && gap(row.newsImpact))
+  if (bits.length) set('fundSummary', `Fundamentals (server merge): ${bits.join(' · ')}`, forceBb);
+  if (fund.analystCount != null && (forceBb || gap(row.newsImpact)))
     row.newsImpact = `${fund.analystCount} analysts (consensus: ${fund.recommendationKey || 'n/a'})`;
   return row;
 }
@@ -1897,6 +1910,7 @@ app.get('/api/health', (req, res) => {
     },
     hasKey: !!process.env.ANTHROPIC_API_KEY,
     bloomberg_bridge_configured: Boolean(bloombergBridgeUrl()),
+    bloomberg_bridge_secret_configured_on_server: Boolean((process.env.BLOOMBERG_BRIDGE_SECRET || '').trim()),
     bloomberg_bridge_lan_unreachable_from_cloud:
       bloombergBridgeUrlIsUnreachableFromInternet(),
     bloomberg_bridge_hint:
