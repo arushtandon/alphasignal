@@ -1149,12 +1149,20 @@ async function fetchFundamentalsFMP(symbol) {
   return null;
 }
 
+/** Metadata keys preserved when layering Yahoo ⇄ FMP ⇄ Bloomberg (underscore keys were wrongly dropped before). */
+const FUNDAMENTAL_MERGE_META = new Set(['_source', '_bbSecurity', '_fmpSector']);
+
 function mergeFundSnapshots(y, f) {
   if (!y) return f;
   if (!f) return y;
   const out = { ...y };
   for (const k of Object.keys(f)) {
-    if (String(k).startsWith('_')) continue;
+    if (String(k).startsWith('_')) {
+      if (!FUNDAMENTAL_MERGE_META.has(k)) continue;
+      const fv = f[k];
+      if (fv != null && fv !== '') out[k] = fv;
+      continue;
+    }
     const yv = out[k];
     const fv = f[k];
     if ((yv === null || yv === undefined) && fv != null && fv !== undefined) out[k] = fv;
@@ -1311,6 +1319,18 @@ function bloombergBridgeUrl() {
   return (process.env.BLOOMBERG_BRIDGE_URL || '').trim().replace(/\/$/, '');
 }
 
+/** Last /snapshot fundamentals attempt — helps debug BB vs Yahoo vs FMP on cloud hosts. */
+let lastBloombergSnapshotProbe = {
+  ts: 0,
+  symbol: '',
+  ok: false,
+  httpStatus: null,
+  err: null,
+  numericFieldsSeen: 0,
+  bbSecurity: null,
+  elapsedMs: null
+};
+
 /** LAN/loopback bridge URLs are never reachable from public cloud (e.g. Render). */
 function bloombergBridgeUrlIsUnreachableFromInternet() {
   const base = bloombergBridgeUrl();
@@ -1329,7 +1349,10 @@ function bloombergBridgeUrlIsUnreachableFromInternet() {
 
 /** Ngrok free tiers may return an HTML interstitial unless this header is sent. */
 function bloombergBridgeFetchHeaders() {
-  const headers = { Accept: 'application/json' };
+  const headers = {
+    Accept: 'application/json',
+    'User-Agent': YF_HEADERS['User-Agent']
+  };
   try {
     const host = new URL(bloombergBridgeUrl()).hostname.toLowerCase();
     if (host.includes('ngrok')) {
@@ -1350,18 +1373,46 @@ async function fetchBloombergBridgeFundamentals(symbol) {
   if (!base) return null;
   const sec = toBloombergEquity(symbol);
   if (!sec) return null;
+  const t0 = Date.now();
   try {
     const u = new URL('/snapshot', base + '/');
     u.searchParams.set('symbol', symbol);
     u.searchParams.set('bb', sec);
     const r = await fetch(u.toString(), { headers: bloombergBridgeFetchHeaders(), signal: AbortSignal.timeout(28000) });
+    let j = {};
+    try {
+      j = await r.json();
+    } catch (_) {
+      j = {};
+    }
     if (!r.ok) {
-      const t = await r.text().catch(() => '');
-      console.warn('Bloomberg bridge HTTP', r.status, symbol, t.slice(0, 120));
+      const jErr = typeof j?.error === 'string' ? j.error : '';
+      console.warn('Bloomberg bridge HTTP', r.status, symbol, jErr.slice(0, 160));
+      lastBloombergSnapshotProbe = {
+        ts: Date.now(),
+        symbol: String(symbol),
+        ok: false,
+        httpStatus: r.status,
+        err: typeof j?.error === 'string' ? j.error : `HTTP ${r.status}`,
+        numericFieldsSeen: 0,
+        bbSecurity: j?.bbSecurity || sec || null,
+        elapsedMs: Date.now() - t0
+      };
       return null;
     }
-    const j = await r.json();
-    if (!j || typeof j !== 'object') return null;
+    if (!j || typeof j !== 'object') {
+      lastBloombergSnapshotProbe = {
+        ts: Date.now(),
+        symbol: String(symbol),
+        ok: false,
+        httpStatus: r.status,
+        err: 'invalid_snapshot_json_body',
+        numericFieldsSeen: 0,
+        bbSecurity: sec,
+        elapsedMs: Date.now() - t0
+      };
+      return null;
+    }
     const num = v => {
       const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
       return Number.isFinite(n) ? n : null;
@@ -1373,7 +1424,19 @@ async function fetchBloombergBridgeFundamentals(symbol) {
       num(j.marketCap) != null ||
       num(j.revenueGrowth) != null ||
       num(j.earningsGrowth) != null;
-    if (j.error && !hasNumericPayload) return null;
+    if (j.error && !hasNumericPayload) {
+      lastBloombergSnapshotProbe = {
+        ts: Date.now(),
+        symbol: String(symbol),
+        ok: false,
+        httpStatus: r.status,
+        err: String(j.error),
+        numericFieldsSeen: 0,
+        bbSecurity: j.bbSecurity || sec,
+        elapsedMs: Date.now() - t0
+      };
+      return null;
+    }
     const out = {
       _source: 'bloomberg_bridge',
       forwardPE: num(j.forwardPE),
@@ -1402,8 +1465,35 @@ async function fetchBloombergBridgeFundamentals(symbol) {
     const hasAny = Object.keys(out).some(
       k => !k.startsWith('_') && out[k] != null && out[k] !== ''
     );
+    const nNum = Object.keys(out).filter(
+      k =>
+        !k.startsWith('_') &&
+        out[k] != null &&
+        out[k] !== '' &&
+        (typeof out[k] === 'number' || Number.isFinite(+out[k]))
+    ).length;
+    lastBloombergSnapshotProbe = {
+      ts: Date.now(),
+      symbol: String(symbol),
+      ok: !!hasAny,
+      httpStatus: r.status,
+      err: null,
+      numericFieldsSeen: nNum,
+      bbSecurity: out._bbSecurity || sec,
+      elapsedMs: Date.now() - t0
+    };
     return hasAny ? out : null;
   } catch (e) {
+    lastBloombergSnapshotProbe = {
+      ts: Date.now(),
+      symbol: String(symbol),
+      ok: false,
+      httpStatus: null,
+      err: String(e.message || e),
+      numericFieldsSeen: 0,
+      bbSecurity: sec,
+      elapsedMs: Date.now() - t0
+    };
     console.warn('Bloomberg bridge', symbol, e.message);
     return null;
   }
@@ -1707,9 +1797,11 @@ function isPlaceholderUiSlot(v) {
   if (v == null || v === '') return true;
   const t = String(v).trim();
   if (/^null$/i.test(t)) return true;
-  if (/^[—\-–]+$/.test(t) || /^n\/?a$/i.test(t) || /^n\.a\.?$/i.test(t) || /^placeholder$/i.test(t))
+  if (/^[\u2012\u2013\u2014\u2015‐‑‒\-–—\u2212\s]+$/u.test(t))
     return true;
-  if (/\b(not\s+provided|not\s+specified|unspecified|omit|dataset|no\s+data)\b/i.test(t)) return true;
+  if (/^n\/?a$/i.test(t) || /^n\.a\.?$/i.test(t) || /^placeholder$/i.test(t)) return true;
+  if (/\b(not\s+provided|not\s+specified|unspecified|omit|dataset|no\s+data|unavailable|unknown|pending|tbd)\b/i.test(t))
+    return true;
   return false;
 }
 
@@ -1717,8 +1809,8 @@ function isPlaceholderUiSlot(v) {
 function mergeFundamentalsForUi(row, fund) {
   if (!fund || !row || typeof row !== 'object') return row;
   const gap = v => isPlaceholderUiSlot(v);
-  /** When Bloomberg bridge supplied the row, always overwrite Claude text (even "Strong"/dashes). */
-  const forceBb = fund._source === 'bloomberg_bridge';
+  /** When Bloomberg or FMP supplied the row, allow overwriting placeholder Claude text aggressively. */
+  const forceBb = fund._source === 'bloomberg_bridge' || fund._source === 'fmp';
   const set = (k, v, force) => {
     if (!force && !gap(row[k])) return;
     if (v === null || v === undefined || v === '') return;
@@ -2060,6 +2152,18 @@ app.get('/api/health', (req, res) => {
         : '',
     bloomberg_bridge_manual_test_hint:
       '401 on /snapshot or /earnings via browser: Bloomberg bridge expects HTTP header Authorization: Bearer <BLOOMBERG_BRIDGE_SECRET> when that env var is set on the Terminal PC. Use curl/Postman, or temporarily unset secret for local debugging. AlphaSignal sends this header automatically when Render BLOOMBERG_BRIDGE_SECRET matches.',
+    bloomberg_bridge_last_snapshot: lastBloombergSnapshotProbe.ts
+      ? {
+          ms_ago: Date.now() - lastBloombergSnapshotProbe.ts,
+          symbol: lastBloombergSnapshotProbe.symbol,
+          ok: lastBloombergSnapshotProbe.ok,
+          httpStatus: lastBloombergSnapshotProbe.httpStatus,
+          numericFieldsSeen: lastBloombergSnapshotProbe.numericFieldsSeen,
+          bbSecurity: lastBloombergSnapshotProbe.bbSecurity,
+          elapsedMs: lastBloombergSnapshotProbe.elapsedMs,
+          error: lastBloombergSnapshotProbe.err
+        }
+      : null,
     bloomberg_enterprise_configured: Boolean(bloombergEnterpriseBase()),
     ts: Date.now(),
     historyVersion: HISTORY_VERSION,
