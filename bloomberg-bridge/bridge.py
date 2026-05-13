@@ -74,7 +74,7 @@ BRIDGE_BIND = os.environ.get("BRIDGE_BIND", "127.0.0.1").strip() or "127.0.0.1"
 SECRET = os.environ.get("BLOOMBERG_BRIDGE_SECRET", "").strip()
 
 # Bump when changing ref parsing so /health proves which code is running on the Bloomberg PC.
-BRIDGE_BUILD = "20260513-ref-field-value"
+BRIDGE_BUILD = "20260513-quarter-union-hk-jt"
 
 # Legacy name retained for README references.
 FLDS = [
@@ -162,6 +162,12 @@ def map_to_bb_security(symbol: str, bb_hint: str | None) -> str:
         return ""
     if s in ("BRK.B", "BRK-B"):
         return "BRK/B US Equity"
+    m_space = re.match(r"^(\d+)\s+HK$", s, re.I)
+    if m_space:
+        return f"{m_space.group(1)} HK Equity"
+    m_space_j = re.match(r"^(\d+)\s+JT$", s, re.I)
+    if m_space_j:
+        return f"{m_space_j.group(1)} JT Equity"
     m = re.match(r"^(\d+)\.HK$", s, re.I)
     if m:
         return f"{m.group(1)} HK Equity"
@@ -584,12 +590,16 @@ def _build_quarter_rows(con, sec: str, next_tim_hint: str | None) -> list[dict]:
             anchor_pts = pts
             break
 
-    # Prefer IS_COMP_EPS dates as master period ends
-    master = series_by_key.get("epsActual") or next(iter(series_by_key.values()), [])
-    if not master:
-        return []
-    top = master[:32]
-    pick = [iso for iso, _ in top[:8]]
+    # Prefer IS_COMP_EPS dates, but revenue-only BDH can diverge — union quarter-ends so EPS can still match.
+    iso_set: list[str] = []
+    seen_iso: set[str] = set()
+    for pts in series_by_key.values():
+        for iso, _ in pts[:36]:
+            if iso not in seen_iso:
+                seen_iso.add(iso)
+                iso_set.append(iso)
+    iso_set.sort(reverse=True)
+    pick = iso_set[:10]
     if not pick:
         return []
 

@@ -153,8 +153,10 @@ async function fetchYahooMarketCapsBulk(symbols) {
   const uniq = [...new Set((symbols || []).map((s) => String(s || '').trim()).filter(Boolean))];
   if (!uniq.length) return map;
   const BATCH = 48;
-  for (let i = 0; i < uniq.length; i += BATCH) {
-    const batch = uniq.slice(i, i + BATCH);
+  const chunks = [];
+  for (let i = 0; i < uniq.length; i += BATCH) chunks.push(uniq.slice(i, i + BATCH));
+
+  async function oneBatch(batch) {
     const qs = batch.map((s) => encodeURIComponent(String(s))).join('%2C');
     const urls = [
       `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${qs}`,
@@ -175,11 +177,16 @@ async function fetchYahooMarketCapsBulk(symbols) {
           const orig = batch.find((b) => sameYahooSymbol(b, q.symbol));
           if (orig) map[orig] = mc;
         }
-        break;
+        return;
       } catch (e) {
         console.log('v7 mcap bulk err:', batch.slice(0, 4).join(','), e.message);
       }
     }
+  }
+
+  const CONCURRENCY = 5;
+  for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+    await Promise.all(chunks.slice(i, i + CONCURRENCY).map(oneBatch));
   }
   return map;
 }
@@ -1177,6 +1184,10 @@ function toBloombergEquity(sym) {
     .toUpperCase();
   if (!s) return '';
   if (s === 'BRK.B' || s === 'BRK-B') return 'BRK/B US Equity';
+  /** Bloomberg Terminal style: numeric + exchange mnemonic (already uppercased). */
+  let m;
+  if ((m = /^(\d+)\s+HK$/i.exec(s))) return `${m[1]} HK Equity`;
+  if ((m = /^(\d+)\s+JT$/i.exec(s))) return `${m[1]} JT Equity`;
   if (/^\d+\.HK$/i.test(s)) return `${s.replace(/\.HK$/i, '')} HK Equity`;
   if (/\.L$/i.test(s)) return `${s.replace(/\.L$/i, '')} LN Equity`;
   if (/\.PA$/i.test(s)) return `${s.replace(/\.PA$/i, '')} FP Equity`;
@@ -1549,21 +1560,43 @@ function isEmptyHistEps(v) {
   return v == null || v === '' || v === '—' || String(v).trim() === '';
 }
 
+function normalizeQuarterLabelForMatch(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** When Bloomberg rows omit estimates, copy EPS / surprise from nearest Yahoo quarter. */
 function enrichEarningsHistFromYahooRows(hist, yahooRows) {
   if (!Array.isArray(hist) || !Array.isArray(yahooRows) || !yahooRows.length) return hist;
+  const DATE_WIN = 200;
   for (const r of hist) {
     const d = r?.date ? String(r.date).slice(0, 10) : '';
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
     let best = null;
     let bestDx = 9999;
-    for (const y of yahooRows) {
-      const yd = y?.date ? String(y.date).slice(0, 10) : '';
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(yd)) continue;
-      const dx = calendarDayDiffIso(d, yd);
-      if (dx <= 120 && dx < bestDx) {
-        bestDx = dx;
-        best = y;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      for (const y of yahooRows) {
+        const yd = y?.date ? String(y.date).slice(0, 10) : '';
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(yd)) continue;
+        const dx = calendarDayDiffIso(d, yd);
+        if (dx <= DATE_WIN && dx < bestDx) {
+          bestDx = dx;
+          best = y;
+        }
+      }
+    }
+    if (!best && r.quarter) {
+      const rq = normalizeQuarterLabelForMatch(r.quarter);
+      if (rq) {
+        for (const y of yahooRows) {
+          const yq = normalizeQuarterLabelForMatch(y.quarter);
+          if (yq && yq === rq) {
+            best = y;
+            break;
+          }
+        }
       }
     }
     if (!best) continue;
@@ -1772,7 +1805,6 @@ async function fetchFundamentals(symbol) {
       )
     ];
     for (const v of variants) {
-      if (v === symbol) continue;
       try {
         const alt = await fetchFundamentalsYahoo(v);
         if (alt) merged = mergeFundSnapshots(merged, alt);
@@ -1785,6 +1817,20 @@ async function fetchFundamentals(symbol) {
       )
         break;
     }
+  }
+  /** Bloomberg snapshot often omits PEG / YoY growth fields; FMP is more reliable for those gaps on cloud hosts. */
+  if (
+    bb &&
+    fmpEnvKeyFund() &&
+    (merged.pegRatio == null ||
+      merged.revenueGrowth == null ||
+      merged.earningsGrowth == null ||
+      merged.forwardPE == null)
+  ) {
+    try {
+      const fGap = await fetchFundamentalsFMP(symbol);
+      if (fGap) merged = mergeFundSnapshots(merged, fGap);
+    } catch (_) {}
   }
   const hasAny = Object.keys(merged).some(
     k => !k.startsWith('_') && merged[k] != null && merged[k] !== ''
@@ -2414,7 +2460,7 @@ const EARNINGS_CAL_SYMBOLS = [
   'V', 'MA', 'JNJ', 'UNH', 'PG', 'HD', 'AVGO', 'LLY', 'XOM', 'CVX', 'ABBV', 'KO', 'PEP',
   'COST', 'WMT', 'NFLX', 'AMD', 'ADBE', 'CRM', 'TMO', 'ORCL', 'ACN', 'IBM', 'GS',
   'MS', 'BAC', 'MCD', 'ASML.AS', 'SAP.DE', 'MC.PA', 'AZN.L', 'SHEL.L',
-  '9988.HK', '7203.T',
+  '9988.HK', '9984.T', '7203.T',
   // India / HK names also on dashboard watchlist widget
   'RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS', 'BAJFINANCE.NS',
   '0700.HK'
