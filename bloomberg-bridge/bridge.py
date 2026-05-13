@@ -208,9 +208,13 @@ def reset_bloomberg_connection() -> None:
 def _exc_suggests_bloomberg_restart(exc: BaseException) -> bool:
     """True when the Bloomberg session likely needs a reconnect (e.g. after NumPy/API faults)."""
     m = str(exc).lower().replace("`", "").replace("'", "")
+    cls = getattr(exc.__class__, "__name__", "").lower()
     # pdblp stack: `'np.NaN' was removed in the NumPy 2.0 release`
     return (
-        "np.nan was removed in the numpy 2" in m
+        cls == "referencedataresponse"
+        or "referencedataresponse" in m
+        or "reference data response" in m
+        or "np.nan was removed in the numpy 2" in m
         or "numpy 2.0 release" in m
         or ("removed in the numpy 2" in m)
         or "attributeerror: module numpy has no attribute nan" in m
@@ -303,10 +307,18 @@ def _ref_get(row, fld: str):
 
 
 def _bloomberg_soft(exc: BaseException) -> bool:
+    cls = getattr(exc.__class__, "__name__", "").upper()
+    if cls in (
+        "REFERENCE_DATA_RESPONSE",
+        "REFERENCEDATARESPONSE",
+    ):
+        return True
     s = str(exc).upper()
     return any(
         t in s
         for t in (
+            "REFERENCE_DATA_RESPONSE",
+            "REFERENCEDATARESPONSE",
             "INVALID_FIELD",
             "NOT_APPLICABLE",
             "UNKNOWN_FIELD",
@@ -347,9 +359,19 @@ def ref_field_safe(con, sec: str, fld: str):
         r = df.iloc[0]
         return _ref_get(r, fld)
     except Exception as exc:
-        if _bloomberg_soft(exc):
-            return None
-        raise
+        # Per-field soft failures are common; never abort the whole /snapshot for one field.
+        if not _bloomberg_soft(exc):
+            try:
+                import sys
+
+                print(
+                    "ref_field_safe %s %s: %s: %s"
+                    % (sec, fld, exc.__class__.__name__, exc),
+                    file=sys.stderr,
+                )
+            except Exception:
+                pass
+        return None
 
 
 def fmt_trim_num(x: float | None, nd: int = 4):
