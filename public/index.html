@@ -2408,7 +2408,7 @@ function renderEarningsHistTable(el, history, historySource) {
     const td=(v,a,c)=>'<td style="padding:5px 8px;border-bottom:1px solid var(--b1);font-family:DM Mono,monospace;font-size:10px;text-align:'+(a||'left')+';color:'+(c||'var(--tx)')+'">'+(v!=null&&v!==''?v:'—')+'</td>';
     let dateStr='—';
     if(q.date){try{dateStr=new Date(q.date+'T12:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'});}catch(e){dateStr=q.date;}}
-    return '<tr>'+td(q.quarter)+td(dateStr,'left','var(--m2)')+td(epsOrDash(q.epsActual),'right')+td(epsOrDash(q.epsEstimate),'right','var(--m1)')+td(q.epsSurprise||'—','right',q.epsSurprise?(beat?'var(--buy)':'var(--sell)'):'var(--m1)')+td(q.revenueActual||'—','right','var(--m1)')+td(rxDisp,'right',rxnCol)+'</tr>';
+    return '<tr>'+td(q.quarter)+td(dateStr,'left','var(--m2)')+td(epsOrDash(q.epsActual),'right')+td(epsOrDash(q.epsEstimate),'right','var(--m1)')+td(q.epsSurprise||'—','right',q.epsSurprise?(beat?'var(--buy)':'var(--sell)'):'var(--m1)')+td(formatRevenueCell(q.revenueActual),'right','var(--m1)')+td(rxDisp,'right',rxnCol)+'</tr>';
   }).join('');
   const src =
     historySource === 'bloomberg_bridge' || String(historySource || '').includes('bloomberg_bridge')
@@ -2425,9 +2425,31 @@ function renderEarningsHistTable(el, history, historySource) {
   el.innerHTML='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
     +'<thead><tr><th style="text-align:left;'+th+'">Quarter</th><th style="text-align:left;'+th+'">Date</th><th style="text-align:right;'+th+'">EPS Act.</th><th style="text-align:right;'+th+'">EPS Est.</th><th style="text-align:right;'+th+'">Surprise</th><th style="text-align:right;'+th+'">Revenue</th><th style="text-align:right;'+th+'">Price move (N+1 / BB)</th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table></div>'
-    +'<div style="font-size:9px;color:var(--m1);margin-top:4px;font-family:DM Mono,monospace">Data: '+src+'</div>';
+    +'<div style="font-size:9px;color:var(--m1);margin-top:4px;font-family:DM Mono,monospace">Data: '+src+'</div>'
+    +'<div style="font-size:9px;color:var(--m2);margin-top:6px;line-height:1.35;font-family:DM Mono,monospace">Price move column: Bloomberg stockReaction fields (next session vs prior close / headline session) when the bridge sends them; if missing, the client estimates the close-to-close move on the first daily bar after each report date from Yahoo daily prices.</div>';
 }
 
+
+/** Safe text for innerHTML snippets built from API strings. */
+function escMinimalHtml(t) {
+  return String(t || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Revenue from vendors is often in millions; values already in USD as full dollars pass through. */
+function formatRevenueCell(v) {
+  if (v == null || v === '' || v === '—') return '—';
+  var n = Number(String(v).replace(/,/g, ''));
+  if (!Number.isFinite(n)) return String(v);
+  var dollars = Math.abs(n) >= 1e9 ? n : n * 1e6;
+  var a = Math.abs(dollars);
+  if (a >= 1e12) return (dollars / 1e12).toFixed(2) + 'T';
+  if (a >= 1e9) return (dollars / 1e9).toFixed(2) + 'B';
+  if (a >= 1e6) return (dollars / 1e6).toFixed(2) + 'M';
+  return dollars.toLocaleString('en-US', { maximumFractionDigits: 0 });
+}
 
 function renderCard(s){
   const ac=aCls(s.action);
@@ -2573,8 +2595,12 @@ function renderCard(s){
     +'<div class="mt"><div class="ml">20 EMA</div>'+maTag(s.ma20)+'</div>'
     +'<div class="mt"><div class="ml">50 SMA</div>'+maTag(s.ma50)+'</div>'
     +'<div class="mt"><div class="ml">200 SMA</div>'+maTag(s.ma200)+'</div>'
-    +'<div class="mt"><div class="ml">Bollinger</div><div class="mv">'+(s.bollingerPos||'—')+'</div></div>'
-    +'<div class="mt"><div class="ml">Pattern</div><div class="mv">'+(s.pattern||'—')+'</div></div>'
+    +'<div class="mt"><div class="ml">Bollinger</div><div class="mv'
+    +(s.bollingerTone==='bullish'?' g':s.bollingerTone==='bearish'?' r':'')
+    +'">'+(s.bollingerPos||'—')+'</div></div>'
+    +'<div class="mt"><div class="ml">Pattern</div><div class="mv'
+    +(s.patternTone==='bullish'?' g':s.patternTone==='bearish'?' r':'')
+    +'">'+(s.pattern||'—')+'</div></div>'
     +'<div class="mt"><div class="ml">Momentum</div>'+mTag(s.momentum)+'</div>'
     +'</div>'
     +(s.candlePattern?'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:7px;padding:8px 10px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div><div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Candlestick Pattern</div><div style="font-size:13px;font-weight:500">'+s.candlePattern+'</div></div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:10px;padding:2px 8px;border-radius:10px;font-family:DM Mono,monospace;background:'+(s.candleSignal==='Bullish'?'var(--buyb);color:var(--buy)':s.candleSignal==='Bearish'?'var(--sellb);color:var(--sell)':'var(--holdb);color:var(--hold)')+'">'+s.candleSignal+'</span><span style="font-size:10px;color:var(--m1);font-family:DM Mono,monospace">Conf: '+s.candleConf+'%</span></div></div>':'')
@@ -2582,7 +2608,7 @@ function renderCard(s){
     +'</div>'
 
     // Fundamental Analysis
-    +'<div class="section"><div class="sec-head"><span class="sec-label">Fundamental Analysis</span><span class="sec-weight">20%</span><div class="sec-line"></div></div>'
+    +'<div class="section"><div class="sec-head"><span class="sec-label">Fundamental Analysis</span><div class="sec-line"></div></div>'
     +'<div class="mets">'
     +'<div class="mt"><div class="ml">P/E</div><div class="mv">'+(s.pe||'—')+'</div></div>'
     +'<div class="mt"><div class="ml">PEG</div><div class="mv">'+(s.peg||'—')+'</div></div>'
@@ -2591,7 +2617,7 @@ function renderCard(s){
     +'<div class="mt"><div class="ml">Fin Health</div><div class="mv '+(s.financialHealth==='Strong'?'g':s.financialHealth==='Weak'?'r':'y')+'">'+(s.financialHealth||'—')+'</div></div>'
     +'<div class="mt"><div class="ml">Industry Pos</div><div class="mv">'+(s.industryPos||'—')+'</div></div>'
     +'</div>'
-    +(s.newsImpact?'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:7px;padding:8px 10px;margin-bottom:8px"><div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">News Impact</div><div style="font-size:12px;color:var(--tx)">'+s.newsImpact+'</div></div>':'')
+    +(s.newsImpact?'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:7px;padding:8px 10px;margin-bottom:8px"><div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">News Impact</div><div style="font-size:12px;color:'+(s.newsTone==='positive'?'var(--buy)':s.newsTone==='negative'?'var(--sell)':'var(--tx)')+'">'+escMinimalHtml(s.newsImpact)+'</div></div>':'')
     +buildEarningsRow(s)
 +(s.catalyst?'<div style="margin-bottom:6px"><span style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.1em">Catalyst: </span><span class="prose">'+s.catalyst+'</span></div>':'')
     +'<p class="prose">'+(s.fundSummary||'')+'</p></div>'
@@ -3168,6 +3194,8 @@ function addUtcCalendarDaysISO(isoDate, days) {
 // Earnings calendar — cached, date-sorted, grouped by day
 let earningsCache = null;
 let earningsCacheTs = 0;
+/** When set, must match dashboard query so we do not reuse an unfiltered payload. */
+let earningsCacheMcapMin = NaN;
 
 async function loadEarningsCalendar(force) {
   const widget = document.getElementById('earningsWidget');
@@ -3175,7 +3203,7 @@ async function loadEarningsCalendar(force) {
   if(!widget || !elContent) return;
   widget.style.display = 'block';
 
-  if(!force && earningsCache && (Date.now()-earningsCacheTs) < 3600000) {
+  if(!force && earningsCache && earningsCacheMcapMin === 50 && (Date.now()-earningsCacheTs) < 3600000) {
     renderEarningsWidget(earningsCache, elContent); return;
   }
   // Don't auto-open - user clicks to expand
@@ -3186,6 +3214,7 @@ async function loadEarningsCalendar(force) {
     var calParams = new URLSearchParams();
     calParams.set('anchor', utcAnchor);
     calParams.set('days', '45');
+    calParams.set('mcapMin', '50');
     if (force) calParams.set('force', '1');
     const resp = await fetch('/api/earnings-calendar?'+calParams.toString());
     if(!resp.ok) throw new Error('HTTP '+resp.status);
@@ -3219,7 +3248,7 @@ async function loadEarningsCalendar(force) {
       return a.ticker.localeCompare(b.ticker);
     });
     if(!earnings.length) { elContent.innerHTML='<span style="color:var(--m1)">No upcoming rows loaded. First open <code>/api/health</code> → check <code>earnings_calendar_merge.last_event_count</code> after loading this widget (hint: −1 means merge not run yet). Open Network → <code>/api/earnings-calendar</code>?force=1 — array should not be empty. Check Render logs for Finnhub/FMP; rotate keys if exposed.</span>'; return; }
-    earningsCache=earnings; earningsCacheTs=Date.now();
+    earningsCache=earnings; earningsCacheTs=Date.now(); earningsCacheMcapMin=50;
     renderEarningsWidget(earnings, elContent);
   } catch(e) {
     console.error('Earnings:',e);
@@ -3236,7 +3265,7 @@ function renderEarningsWidget(earnings, elContent) {
   // Update pill in header
   const todayCnt = earnings.filter(e=>e.date===todayISO).length;
   const pill = document.getElementById('earningsSummaryPill');
-  if(pill) pill.textContent = (todayCnt?todayCnt+' today · ':'')+earnings.length+' upcoming (next 14 days)';
+  if(pill) pill.textContent = '≥$50B mcap · '+(todayCnt?todayCnt+' today · ':'')+earnings.length+' upcoming (next 14 days)';
   // Keep collapsed - user expands manually
   // Group by date
   const byDate = {};

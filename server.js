@@ -147,6 +147,53 @@ async function fetchQuotesV7Bulk(symbols) {
   return map;
 }
 
+/** Market cap USD from Yahoo v7 bulk (used for dashboard earnings calendar filtering). */
+async function fetchYahooMarketCapsBulk(symbols) {
+  const map = {};
+  const uniq = [...new Set((symbols || []).map((s) => String(s || '').trim()).filter(Boolean))];
+  if (!uniq.length) return map;
+  const BATCH = 48;
+  for (let i = 0; i < uniq.length; i += BATCH) {
+    const batch = uniq.slice(i, i + BATCH);
+    const qs = batch.map((s) => encodeURIComponent(String(s))).join('%2C');
+    const urls = [
+      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${qs}`,
+      `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${qs}`
+    ];
+    for (const url of urls) {
+      try {
+        const r = await fetch(url, {
+          headers: YF_HEADERS,
+          signal: AbortSignal.timeout(14000)
+        });
+        if (!r.ok) continue;
+        const data = await r.json();
+        const arr = data?.quoteResponse?.result || [];
+        for (const q of arr) {
+          const mc = Number(q?.marketCap ?? q?.regularMarketMarketCap ?? q?.enterpriseValue);
+          if (!Number.isFinite(mc) || mc <= 0) continue;
+          const orig = batch.find((b) => sameYahooSymbol(b, q.symbol));
+          if (orig) map[orig] = mc;
+        }
+        break;
+      } catch (e) {
+        console.log('v7 mcap bulk err:', batch.slice(0, 4).join(','), e.message);
+      }
+    }
+  }
+  return map;
+}
+
+function marketCapUsdForTicker(sym, capMap) {
+  if (!sym || !capMap) return null;
+  const k = String(sym).trim();
+  let v = capMap[k];
+  if (v != null) return v;
+  const altDot = k.includes('.') ? k.replace(/\./g, '-') : k.replace(/-/g, '.');
+  v = capMap[altDot];
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
 async function quoteSummary(symbol, modules) {
   const symVariants = [symbol];
   if (symbol.includes('.') && !String(symbol).includes('=')) {
@@ -1386,6 +1433,58 @@ async function fetchBloombergBridgeEarnings(symbol) {
   }
 }
 
+/** Newest-first using fiscal / report dates when ISO strings exist. */
+function sortEarningsHistDesc(rows) {
+  if (!Array.isArray(rows) || !rows.length) return rows || [];
+  return [...rows].sort((a, b) => {
+    const da = String(a?.date || '').slice(0, 10);
+    const db = String(b?.date || '').slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(da) && /^\d{4}-\d{2}-\d{2}$/.test(db)) return db.localeCompare(da);
+    return String(b?.quarter || '').localeCompare(String(a?.quarter || ''));
+  });
+}
+
+function calendarDayDiffIso(a, b) {
+  if (!a || !b) return 9999;
+  try {
+    const t0 = Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8, 10));
+    const t1 = Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8, 10));
+    return Math.abs(Math.round((t0 - t1) / 86400000));
+  } catch (_) {
+    return 9999;
+  }
+}
+
+function isEmptyHistEps(v) {
+  return v == null || v === '' || v === '—' || String(v).trim() === '';
+}
+
+/** When Bloomberg rows omit estimates, copy EPS / surprise from nearest Yahoo quarter. */
+function enrichEarningsHistFromYahooRows(hist, yahooRows) {
+  if (!Array.isArray(hist) || !Array.isArray(yahooRows) || !yahooRows.length) return hist;
+  for (const r of hist) {
+    const d = r?.date ? String(r.date).slice(0, 10) : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+    let best = null;
+    let bestDx = 9999;
+    for (const y of yahooRows) {
+      const yd = y?.date ? String(y.date).slice(0, 10) : '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(yd)) continue;
+      const dx = calendarDayDiffIso(d, yd);
+      if (dx <= 120 && dx < bestDx) {
+        bestDx = dx;
+        best = y;
+      }
+    }
+    if (!best) continue;
+    if (isEmptyHistEps(r.epsActual) && !isEmptyHistEps(best.epsActual)) r.epsActual = best.epsActual;
+    if (isEmptyHistEps(r.epsEstimate) && !isEmptyHistEps(best.epsEstimate)) r.epsEstimate = best.epsEstimate;
+    if (isEmptyHistEps(r.epsSurprise) && !isEmptyHistEps(best.epsSurprise)) r.epsSurprise = best.epsSurprise;
+    if (r.beat == null && best.beat != null) r.beat = best.beat;
+  }
+  return hist;
+}
+
 function normalizeBbBridgeHistRows(rows) {
   if (!Array.isArray(rows) || !rows.length) return [];
   return rows
@@ -1440,7 +1539,7 @@ function overlayQuarterYyWithBloomberg(existingRow, bbRow) {
       if (empty && back) merged[k] = prev;
     }
   };
-  fillIfEmpty('epsEstimate', 'epsSurprise', 'beat');
+  fillIfEmpty('epsActual', 'epsEstimate', 'epsSurprise', 'beat');
   fillIfEmpty('revenueActual');
   return merged;
 }
@@ -1507,7 +1606,7 @@ function applyBloombergBridgeEarningsOverlay(
 
   let outHist = epsHistory;
   let outHistSrc = historySource;
-  const norm = normalizeBbBridgeHistRows(bbEarn.history);
+  const norm = sortEarningsHistDesc(normalizeBbBridgeHistRows(bbEarn.history));
   if (norm.length) {
     const prior = Array.isArray(outHist) ? outHist.slice(0, 8) : [];
     if (!(gap && prior.length)) {
@@ -1562,6 +1661,32 @@ async function fetchFundamentals(symbol) {
     if (ent) merged = mergeFundSnapshots(merged, bb);
     else merged = mergeBloombergPriority(merged, bb);
   }
+  const needYahooFill =
+    merged.revenueGrowth == null ||
+    merged.earningsGrowth == null ||
+    merged.pegRatio == null ||
+    merged.forwardPE == null;
+  if (needYahooFill) {
+    const variants = [
+      ...new Set(
+        [symbol, symbol.replace(/\./g, '-'), symbol.replace(/-/g, '.')].filter(Boolean)
+      )
+    ];
+    for (const v of variants) {
+      if (v === symbol) continue;
+      try {
+        const alt = await fetchFundamentalsYahoo(v);
+        if (alt) merged = mergeFundSnapshots(merged, alt);
+      } catch (_) {}
+      if (
+        merged.revenueGrowth != null &&
+        merged.earningsGrowth != null &&
+        merged.pegRatio != null &&
+        merged.forwardPE != null
+      )
+        break;
+    }
+  }
   const hasAny = Object.keys(merged).some(
     k => !k.startsWith('_') && merged[k] != null && merged[k] !== ''
   );
@@ -1573,7 +1698,8 @@ function isPlaceholderUiSlot(v) {
   if (v == null || v === '') return true;
   const t = String(v).trim();
   if (/^null$/i.test(t)) return true;
-  if (/^[—\-–]+$/.test(t) || /^n\/?a$/i.test(t) || /^placeholder$/i.test(t)) return true;
+  if (/^[—\-–]+$/.test(t) || /^n\/?a$/i.test(t) || /^n\.a\.?$/i.test(t) || /^placeholder$/i.test(t))
+    return true;
   if (/\b(not\s+provided|not\s+specified|unspecified|omit|dataset|no\s+data)\b/i.test(t)) return true;
   return false;
 }
@@ -1605,11 +1731,13 @@ function mergeFundamentalsForUi(row, fund) {
     const s = fmtPe(tr);
     if (s) row.pe = `${s} (TTM)`;
   }
-  if (fund.pegRatio != null && Number.isFinite(+fund.pegRatio)) {
+  if (fund.pegRatio != null && Number.isFinite(+fund.pegRatio) && (gap(row.peg) || forceBb)) {
     row.peg = String(+Number(fund.pegRatio).toFixed(2));
   }
-  if (fund.revenueGrowth != null) set('revenueGrowth', `${fund.revenueGrowth}%`, forceBb);
-  if (fund.earningsGrowth != null) set('earningsGrowth', `${fund.earningsGrowth}%`, forceBb);
+  if (fund.revenueGrowth != null)
+    set('revenueGrowth', `${fund.revenueGrowth}%`, forceBb || gap(row.revenueGrowth));
+  if (fund.earningsGrowth != null)
+    set('earningsGrowth', `${fund.earningsGrowth}%`, forceBb || gap(row.earningsGrowth));
   let finGuess = '';
   const de = fund.debtToEquity;
   if (typeof de === 'number')
@@ -1632,12 +1760,17 @@ function mergeFundamentalsForUi(row, fund) {
     bits.push(`Bloomberg Enterprise ${fund._bbSecurity ? '(' + fund._bbSecurity + ')' : ''}`.trim());
   else if (fund._source === 'bloomberg_bridge')
     bits.push(`Bloomberg ${fund._bbSecurity ? '(' + fund._bbSecurity + ')' : ''}`.trim());
-  if (fund.forwardPE != null) bits.push(`fP/E ${fund.forwardPE}`);
-  else if (fund.trailingPE != null) bits.push(`P/E ${fund.trailingPE} TTM`);
+  if (fund.forwardPE != null && Number.isFinite(+fund.forwardPE)) {
+    const s = fmtPe(fund.forwardPE);
+    if (s) bits.push(`fP/E ~${s}`);
+  } else if (fund.trailingPE != null && Number.isFinite(+fund.trailingPE)) {
+    const s = fmtPe(fund.trailingPE);
+    if (s) bits.push(`P/E ~${s} TTM`);
+  }
   if (fund.revenueGrowth != null) bits.push(`rev YoY ~${fund.revenueGrowth}%`);
   if (fund.earningsGrowth != null) bits.push(`EPS YoY ~${fund.earningsGrowth}%`);
   if (fund.returnOnEquity != null && Number.isFinite(+fund.returnOnEquity))
-    bits.push(`ROE ~${fund.returnOnEquity}%`);
+    bits.push(`ROE ~${Number(+fund.returnOnEquity).toFixed(1)}%`);
   if (fund.currentRatio != null && Number.isFinite(+fund.currentRatio))
     bits.push(`curr ratio ${Number(fund.currentRatio).toFixed(2)}`);
   if (fund.debtToEquity != null && Number.isFinite(+fund.debtToEquity))
@@ -2053,8 +2186,8 @@ function nextEarningsFromCalendar(qs) {
   return out;
 }
 
-/** Past quarters when chart `events=earnings` is empty — Yahoo quoteSummary earningsHistory module */
-function earningsHistoryFromQuoteSummary(qs) {
+/** Past quarters (up to `maxRows`) from Yahoo quoteSummary earningsHistory — newest first. */
+function earningsHistoryAllFromQuoteSummary(qs, maxRows = 24) {
   const hist = qs?.quoteSummary?.result?.[0]?.earningsHistory?.history;
   if (!Array.isArray(hist) || !hist.length) return [];
   function num(v) {
@@ -2084,7 +2217,8 @@ function earningsHistoryFromQuoteSummary(qs) {
     }
     return '';
   }
-  const pick = hist.slice(-8).reverse().slice(0, 4);
+  const nKeep = Math.min(32, Math.max(4, +maxRows || 24));
+  const pick = hist.slice(-Math.max(nKeep, 8)).reverse();
   return pick
     .map((row) => {
       const epsA = num(row.epsActual);
@@ -2113,6 +2247,11 @@ function earningsHistoryFromQuoteSummary(qs) {
       };
     })
     .filter((r) => r.date || r.quarter);
+}
+
+/** Last 4 quarters for primary UI table. */
+function earningsHistoryFromQuoteSummary(qs) {
+  return earningsHistoryAllFromQuoteSummary(qs, 4).slice(0, 4);
 }
 
 /** Past quarters from Yahoo chart earnings events — same logic as legacy fallback. */
@@ -2339,6 +2478,71 @@ function mapFinnhubCalRow(e) {
     market: 'US',
     source: 'finnhub'
   };
+}
+
+async function fetchFinnhubCompanyNewsForSymbol(sym) {
+  const token = (process.env.FINNHUB_API_KEY || '').trim();
+  if (!token) return [];
+  const to = new Date().toISOString().slice(0, 10);
+  const dt = new Date(`${to}T12:00:00Z`);
+  dt.setUTCDate(dt.getUTCDate() - 37);
+  const from = dt.toISOString().slice(0, 10);
+  const variants = [...new Set([sym, sym.replace(/\./g, '-')])].filter(Boolean);
+  for (const v of variants) {
+    try {
+      const u = new URL('https://finnhub.io/api/v1/company-news');
+      u.searchParams.set('symbol', v);
+      u.searchParams.set('from', from);
+      u.searchParams.set('to', to);
+      u.searchParams.set('token', token);
+      const r = await fetch(u.toString(), { signal: AbortSignal.timeout(3800) });
+      if (!r.ok) continue;
+      const arr = await r.json();
+      if (Array.isArray(arr) && arr.length) return arr.slice(0, 15);
+    } catch (_) {}
+  }
+  return [];
+}
+
+function finnhubNewsToImpactPack(articles) {
+  if (!Array.isArray(articles) || !articles.length) return null;
+  const posRe =
+    /\b(beats?\b|beat estimates|raised guidance|strong growth|surge|rally|upgrade|profit rose|revenue rose|approval|positive|buyback|dividend hike|record revenue|expansion)\b/i;
+  const negRe =
+    /\b(miss(es)?|lawsuit|probe|fine|bearish|downgrade|investigation|warned|warnings?|warns?|weak demand|charges|strike|halt|crash|sell-?off|layoffs?)\b/i;
+  const heads = articles.slice(0, 6).map(a => String(a.headline || '').trim()).filter(Boolean);
+  let score = 0;
+  for (const h of heads) {
+    if (negRe.test(h)) score--;
+    else if (posRe.test(h)) score++;
+  }
+  const tone = score > 0 ? 'positive' : score < 0 ? 'negative' : 'neutral';
+  const label =
+    score > 1
+      ? 'Likely supportive for sentiment'
+      : score < -1
+        ? 'Likely adverse for sentiment'
+        : tone === 'neutral'
+          ? 'Mixed / headline-neutral tone'
+          : score > 0
+            ? 'Mild positive skew vs recent headlines'
+            : 'Mild negative skew vs recent headlines';
+  const recap = heads.slice(0, 4).join(' · ');
+  const text = `${label} — recent headlines (${heads.length || articles.length} sampled): ${recap}`.slice(
+    0,
+    520
+  );
+  return { tone, text };
+}
+
+async function augmentNewsImpactFromFinnhub(sym, row) {
+  if (!row || !sym) return;
+  const arts = await fetchFinnhubCompanyNewsForSymbol(sym);
+  const pack = finnhubNewsToImpactPack(arts);
+  if (pack?.text) {
+    row.newsImpact = pack.text;
+    row.newsTone = pack.tone;
+  }
 }
 
 function mapFmpCalRow(e) {
@@ -2593,7 +2797,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
   const vendorEndISO = addUTCISODays(toISO, 90);
 
   let yahooSeedHits = 0;
-  const SEED_CHUNK = 5;
+  const SEED_CHUNK = 14;
   for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i += SEED_CHUNK) {
     const chunk = EARNINGS_CAL_SYMBOLS.slice(i, i + SEED_CHUNK);
     await Promise.all(
@@ -2615,13 +2819,13 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
       })
     );
     if (i + SEED_CHUNK < EARNINGS_CAL_SYMBOLS.length) {
-      await new Promise((r) => setTimeout(r, 140));
+      await new Promise((r) => setTimeout(r, 65));
     }
   }
 
   let bloombergTrackedHits = 0;
   if (bloombergBridgeUrl()) {
-    const BB_CHUNK = 5;
+    const BB_CHUNK = 10;
     for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i += BB_CHUNK) {
       const chunk = EARNINGS_CAL_SYMBOLS.slice(i, i + BB_CHUNK);
       await Promise.all(
@@ -2640,7 +2844,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
         })
       );
       if (i + BB_CHUNK < EARNINGS_CAL_SYMBOLS.length) {
-        await new Promise((r) => setTimeout(r, 120));
+        await new Promise((r) => setTimeout(r, 55));
       }
     }
   }
@@ -2650,7 +2854,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
   if (!fhRaw.length && (process.env.FINNHUB_API_KEY || '').trim()) {
     finnhubPath = 'symbol_fallback';
     const acc = [];
-    const FH_SYM_CHUNK = 10;
+    const FH_SYM_CHUNK = 14;
     for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i += FH_SYM_CHUNK) {
       const chunk = EARNINGS_CAL_SYMBOLS.slice(i, i + FH_SYM_CHUNK);
       await Promise.all(
@@ -2665,7 +2869,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
         })
       );
       if (i + FH_SYM_CHUNK < EARNINGS_CAL_SYMBOLS.length) {
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 90));
       }
     }
     fhRaw = acc;
@@ -2711,7 +2915,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
     }
   }
 
-  const GAP_CHUNK = 6;
+  const GAP_CHUNK = 14;
   for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i += GAP_CHUNK) {
     const chunk = EARNINGS_CAL_SYMBOLS.slice(i, i + GAP_CHUNK);
     await Promise.all(
@@ -2725,7 +2929,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
       })
     );
     if (i + GAP_CHUNK < EARNINGS_CAL_SYMBOLS.length) {
-      await new Promise((r) => setTimeout(r, 150));
+      await new Promise((r) => setTimeout(r, 65));
     }
   }
 
@@ -3089,6 +3293,34 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       bbEarn
     );
 
+    let yahooHistEnrichPool = earningsHistoryAllFromQuoteSummary(qs, 28);
+    if (sym.includes('.') && sym !== 'GOOGL' && sym !== 'GOOG') {
+      const altQsDot = await quoteSummary(sym.replace(/\./g, '-'), 'earningsHistory').catch(() => null);
+      if (altQsDot) {
+        const extraPool = earningsHistoryAllFromQuoteSummary(altQsDot, 28);
+        const uniq = new Map();
+        for (const row of yahooHistEnrichPool.concat(extraPool)) {
+          const k = String(row.date || '').slice(0, 10);
+          if (!k || !/^\d{4}-\d{2}-\d{2}$/.test(k)) continue;
+          if (!uniq.has(k)) uniq.set(k, row);
+        }
+        yahooHistEnrichPool = sortEarningsHistDesc([...uniq.values()]);
+      }
+    }
+
+    let histSend = Array.isArray(merged.epsHistory) ? merged.epsHistory.map((r) => ({ ...r })) : [];
+    histSend = enrichEarningsHistFromYahooRows(histSend, yahooHistEnrichPool);
+    const needFmp =
+      histSend.length &&
+      histSend.some(
+        (r) => isEmptyHistEps(r.epsActual) || isEmptyHistEps(r.epsEstimate) || isEmptyHistEps(r.epsSurprise)
+      );
+    if (needFmp && fmpAnyApiKey()) {
+      const fmpH = await fmpEarningsSurprisesHistory(sym);
+      if (fmpH.length) histSend = enrichEarningsHistFromYahooRows(histSend, fmpH);
+    }
+    histSend = sortEarningsHistDesc(histSend).slice(0, 4);
+
     let bloombergBridgeExtras = null;
     if (bbEarn && !bbEarn.error) {
       const extras = {
@@ -3113,7 +3345,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       quarter: merged.quarter,
       calendarPrimarySource: merged.calendarPrimary || null,
       calendarSourcesConsulted: sourcesUsed,
-      history: Array.isArray(merged.epsHistory) ? merged.epsHistory.slice(0, 4) : [],
+      history: histSend,
       historySource: merged.historySource,
       bloombergBridgeExtras
     });
@@ -3266,8 +3498,15 @@ function injectAnalyzeRowFromServerTech(row, tech) {
   if (tech.bb != null && tech.bbSignal != null) {
     const sig = String(tech.bbSignal).replace(/_/g, ' ');
     row.bollingerPos = `%B ${tech.bb.pct}% (${sig}); width ${tech.bb.width}% · mid $${tech.bb.middle}`;
+    if (tech.bbSignal === 'near_lower_band') row.bollingerTone = 'bullish';
+    else if (tech.bbSignal === 'near_upper_band') row.bollingerTone = 'bearish';
+    else row.bollingerTone = 'neutral';
   }
   if (tech.candlePattern && isPlaceholderUiSlot(row.pattern)) row.pattern = tech.candlePattern;
+  const pToneSrc = String(tech.candlePattern || row.pattern || '').toLowerCase();
+  if (/bearish/.test(pToneSrc)) row.patternTone = 'bearish';
+  else if (/bullish/.test(pToneSrc)) row.patternTone = 'bullish';
+  else row.patternTone = 'neutral';
   return row;
 }
 
@@ -3557,7 +3796,7 @@ Output ONLY the JSON array. No markdown.`;
     }
 
     // ── Merge server signals + prices — override Claude's scores ────────────────
-    stocks = stocks.map(row => {
+    stocks = await Promise.all(stocks.map(async row => {
       const sym  = (row.ticker || '').toUpperCase();
       const pq   = priceBySym[sym];
       const tech = techBySym[sym];
@@ -3604,8 +3843,9 @@ Output ONLY the JSON array. No markdown.`;
       const mergedRow = applyServerPriceLevels(row, +pq.price, tech || null, fund || null);
       mergeFundamentalsForUi(mergedRow, fund || null);
       injectAnalyzeRowFromServerTech(mergedRow, tech || null);
+      await augmentNewsImpactFromFinnhub(sym, mergedRow);
       return mergedRow;
-    });
+    }));
 
     console.log(`Analyze: ${stocks.length} tickers, ATR data for ${Object.keys(techBySym).length}`);
     res.json({ stocks });
@@ -3620,31 +3860,46 @@ Output ONLY the JSON array. No markdown.`;
 // ── Earnings calendar — merged Finnhub/FMP/Yahoo (6h cache) ───────────────
 let calCache = null;
 let calTs = 0;
-let calRangeKey = '';
+let calCacheKey = '';
 
 app.get('/api/earnings-calendar', async (req, res) => {
   const { fromISO, endISO, windowSource } = resolveEarningsCalendarWindow(req);
   const rangeKey = `${fromISO}|${endISO}`;
+  const mcapMinB = (() => {
+    const n = parseFloat(String(req.query.mcapMin ?? '').trim());
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.min(n, 2000);
+  })();
+  const cacheKey = `${rangeKey}|mcap:${mcapMinB}`;
 
   if (
     !req.query.force &&
     calCache &&
-    calRangeKey === rangeKey &&
+    calCacheKey === cacheKey &&
     Date.now() - calTs < 21600000
   ) {
     return res.json(calCache);
   }
 
   try {
-    const merged = await mergedEarningsCalendarWidget(fromISO, endISO);
+    let merged = await mergedEarningsCalendarWidget(fromISO, endISO);
+    if (mcapMinB > 0 && merged.length) {
+      const uniqTickers = [...new Set(merged.map((r) => r.ticker).filter(Boolean))];
+      const capMap = await fetchYahooMarketCapsBulk(uniqTickers);
+      const floorUsd = mcapMinB * 1e9;
+      merged = merged.filter((r) => {
+        const c = marketCapUsdForTicker(r.ticker, capMap);
+        return c != null && c >= floorUsd;
+      });
+    }
     if (merged.length) {
       calCache = merged;
       calTs = Date.now();
-      calRangeKey = rangeKey;
+      calCacheKey = cacheKey;
     } else {
       calCache = null;
       calTs = 0;
-      calRangeKey = '';
+      calCacheKey = '';
     }
     const src = `${process.env.FINNHUB_API_KEY ? 'finnhub ' : ''}${fmpAnyApiKey() ? 'fmp ' : ''}yahoo`;
     console.log(
