@@ -21,6 +21,31 @@ Point AlphaSignal at it (same machine as Terminal):
 """
 from __future__ import annotations
 
+
+def _numpy_pdblp_numeric_compat() -> None:
+    """pdblp parses Bloomberg responses using np.NaN (removed in NumPy 2.x). Patch the loaded module."""
+    import sys
+
+    try:
+        if "numpy" not in sys.modules:
+            __import__("numpy")
+        np_mod = sys.modules["numpy"]
+        nan = getattr(np_mod, "nan")
+        try:
+            d = getattr(np_mod, "__dict__", None)
+            if isinstance(d, dict):
+                d.setdefault("NaN", nan)
+                d.setdefault("NAN", nan)
+        except Exception:
+            pass
+        setattr(np_mod, "NaN", nan)
+        setattr(np_mod, "NAN", nan)
+    except Exception:
+        pass
+
+
+_numpy_pdblp_numeric_compat()
+
 import os
 import re
 import socket
@@ -29,17 +54,12 @@ from datetime import datetime, timedelta, timezone
 
 from flask import Flask, jsonify, request
 
-import numpy as np
-
-# pdblp still references np.NaN (removed in NumPy 2.0) — patch before pandas/pdblp.
-try:
-    setattr(np, "NaN", np.nan)
-except Exception:
-    pass
-
 import pandas as pd
 
 _PDBLP_IMPORT_ERROR = ""
+
+# pdblp imports `numpy as np` and assigns np.NaN when fields are missing; patch again post-pandas.
+_numpy_pdblp_numeric_compat()
 
 try:
     from pdblp import BCon
@@ -53,6 +73,9 @@ PORT = int(os.environ.get("BRIDGE_PORT", os.environ.get("PORT", "5055")))
 BRIDGE_BIND = os.environ.get("BRIDGE_BIND", "127.0.0.1").strip() or "127.0.0.1"
 SECRET = os.environ.get("BLOOMBERG_BRIDGE_SECRET", "").strip()
 
+# Bump when changing ref parsing so /health proves which code is running on the Bloomberg PC.
+BRIDGE_BUILD = "20260513-ref-field-value"
+
 # Legacy name retained for README references.
 FLDS = [
     "BEST_PE_NTM",
@@ -64,6 +87,8 @@ FLDS = [
 ]
 
 SAFE_SNAPSHOT_BB_FIELDS = [
+    ("PX_LAST", "currentPrice"),
+    ("CUR_MKT_CAP", "marketCap"),
     ("BEST_PE_NTM", "forwardPE"),
     ("PE_RATIO", "trailingPE"),
     ("BEST_PEG_RATIO", "pegRatio"),
@@ -118,9 +143,20 @@ def clean_bridge_symbol(raw: str) -> str:
     return s.strip()
 
 
+def normalize_bb_security_hint(raw: str | None) -> str | None:
+    """Bloomberg tickers use spaces (e.g. `AAPL US Equity`). Fix common pastes `AAPL:US:Equity`."""
+    if not raw or not str(raw).strip():
+        return None
+    s = str(raw).strip().replace("^", "")
+    if "://" not in s and ":" in s:
+        s = re.sub(r"\s*:\s*", " ", s)
+    return " ".join(s.split())
+
+
 def map_to_bb_security(symbol: str, bb_hint: str | None) -> str:
     if bb_hint and bb_hint.strip():
-        return bb_hint.strip()
+        norm = normalize_bb_security_hint(bb_hint)
+        return (norm or bb_hint).strip()
     s = symbol.strip().upper()
     if not s:
         return ""
@@ -154,6 +190,31 @@ def get_bcon():
         _bcon = BCon(timeout=20000, debug=False, port=8194)
         _bcon.start()
     return _bcon
+
+
+def reset_bloomberg_connection() -> None:
+    """Recover from a half-open BCon session (e.g. after API exceptions)."""
+    global _bcon
+    stale = _bcon
+    _bcon = None
+    if stale is None:
+        return
+    try:
+        stale.stop()
+    except Exception:
+        pass
+
+
+def _exc_suggests_bloomberg_restart(exc: BaseException) -> bool:
+    """True when the Bloomberg session likely needs a reconnect (e.g. after NumPy/API faults)."""
+    m = str(exc).lower().replace("`", "").replace("'", "")
+    # pdblp stack: `'np.NaN' was removed in the NumPy 2.0 release`
+    return (
+        "np.nan was removed in the numpy 2" in m
+        or "numpy 2.0 release" in m
+        or ("removed in the numpy 2" in m)
+        or "attributeerror: module numpy has no attribute nan" in m
+    )
 
 
 def check_secret() -> bool:
@@ -263,6 +324,26 @@ def ref_field_safe(con, sec: str, fld: str):
         df = con.ref(sec, [fld])
         if df is None or getattr(df, "empty", True):
             return None
+        # pdblp returns long-form columns [ticker, field, value], not wide keyed by mnemonic.
+        cmap = {str(c).strip().lower(): c for c in df.columns}
+        v_col = cmap.get("value")
+        f_col = cmap.get("field")
+        if v_col is not None:
+            want = str(fld).strip()
+            if f_col is not None:
+                mask = df[f_col].astype(str).str.strip() == want
+                hit = df.loc[mask]
+                # Single-field requests normally return one row; tolerate odd field-cell mismatches.
+                if hit.empty and len(df) == 1:
+                    hit = df
+                elif hit.empty:
+                    return None
+            else:
+                hit = df
+            v = hit.iloc[0][v_col]
+            if pd.isna(v):
+                return None
+            return v
         r = df.iloc[0]
         return _ref_get(r, fld)
     except Exception as exc:
@@ -603,10 +684,52 @@ def _guess_lan_ip() -> str:
         return "127.0.0.1"
 
 
+def _run_snapshot_refs(con, sec: str, sym: str) -> tuple[dict, int]:
+    out: dict = {
+        "bbSecurity": sec,
+        "ticker": sym or sec.split()[0],
+    }
+    hits = 0
+    for bb_field, js_key in SAFE_SNAPSHOT_BB_FIELDS:
+        v = ref_field_safe(con, sec, bb_field)
+        if v is None:
+            continue
+        n = first_float(v)
+        if n is not None:
+            out[js_key] = n
+            hits += 1
+        else:
+            ts = str(v).strip()
+            if ts and ts.upper() != "N/A":
+                out[js_key] = ts
+                hits += 1
+    qual = _financial_quality_hint(out)
+    if qual:
+        out["financialQualityHint"] = qual
+    return out, hits
+
+
 @app.get("/health")
 def health():
+    numpy_meta: dict = {}
+    try:
+        import numpy as _np
+
+        numpy_meta["numpy_version"] = getattr(_np, "__version__", "unknown")
+        # NaN == NaN is False in Python; test access for pdblp compatibility (np.NaN on NumPy 2).
+        try:
+            getattr(_np, "NaN")
+            numpy_meta["numpy_NaN_attr"] = True
+        except Exception:
+            numpy_meta["numpy_NaN_attr"] = False
+    except Exception as exc:
+        numpy_meta["numpy_version"] = "error"
+        numpy_meta["numpy_error"] = str(exc)
+
     out = {
         "ok": True,
+        "bridge_build": BRIDGE_BUILD,
+        **numpy_meta,
         "pdblp_installed": BCon is not None,
         "listen": "http://%s:%s" % (BRIDGE_BIND, PORT),
         "routes": ["/health", "/snapshot", "/earnings"],
@@ -614,6 +737,12 @@ def health():
         if BRIDGE_BIND == "127.0.0.1"
         else "http://%s:%s" % (_guess_lan_ip(), PORT),
     }
+    if BRIDGE_BIND == "127.0.0.1":
+        out["tunnel_hint"] = (
+            "Public URL is not shown here. Run ngrok (or similar) forwarding to 127.0.0.1:%s. "
+            "hint_url_other_pc is only set when BRIDGE_BIND is not 127.0.0.1 (LAN access)."
+            % PORT
+        )
     if SECRET:
         out["auth_required_for_data_routes"] = True
         out[
@@ -643,31 +772,29 @@ def snapshot():
     except Exception as e:
         return jsonify({"error": str(e), "bbSecurity": sec}), 503
 
-    out: dict = {
-        "bbSecurity": sec,
-        "ticker": sym or sec.split()[0],
-    }
+    tried_reset = False
+    while True:
+        try:
+            out, hits = _run_snapshot_refs(con, sec, sym)
+            break
+        except Exception as e:
+            if tried_reset or not _exc_suggests_bloomberg_restart(e):
+                return jsonify({"error": str(e), "bbSecurity": sec}), 503
+            reset_bloomberg_connection()
+            try:
+                con = get_bcon()
+            except Exception as e2:
+                return jsonify({"error": str(e2), "bbSecurity": sec}), 503
+            tried_reset = True
 
-    hits = 0
-    try:
-        for bb_field, js_key in SAFE_SNAPSHOT_BB_FIELDS:
-            v = ref_field_safe(con, sec, bb_field)
-            if v is None:
-                continue
-            n = first_float(v)
-            if n is not None:
-                out[js_key] = n
-                hits += 1
-            else:
-                ts = str(v).strip()
-                if ts and ts.upper() != "N/A":
-                    out[js_key] = ts
-                    hits += 1
-        qual = _financial_quality_hint(out)
-        if qual:
-            out["financialQualityHint"] = qual
-    except Exception as e:
-        return jsonify({"error": str(e), "bbSecurity": sec}), 503
+    if hits == 0 and (not tried_reset) and (" US Equity" in sec.upper()):
+        reset_bloomberg_connection()
+        tried_reset = True
+        try:
+            con = get_bcon()
+            out, hits = _run_snapshot_refs(con, sec, sym)
+        except Exception as e:
+            return jsonify({"error": str(e), "bbSecurity": sec}), 503
 
     if hits == 0:
         return jsonify({"error": "no data", "bbSecurity": sec}), 503
