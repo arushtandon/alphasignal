@@ -1770,6 +1770,28 @@ function mergeBloombergPriority(base, bb) {
   return out;
 }
 
+/** When vendors omit PEG but P/E + EPS growth exist, derive PEG ≈ P/E ÷ growth% (standard rule-of-thumb). */
+function applyDerivedFundamentals(merged) {
+  if (!merged || typeof merged !== 'object') return;
+  try {
+    const pe = Number(merged.forwardPE ?? merged.trailingPE);
+    const g = Number(merged.earningsGrowth);
+    if (
+      merged.pegRatio == null &&
+      Number.isFinite(pe) &&
+      Number.isFinite(g) &&
+      g > 0.2 &&
+      g < 500 &&
+      pe > 0
+    ) {
+      const peg = +((pe / g).toFixed(2));
+      if (Number.isFinite(peg) && peg > 0 && peg <= 99) merged.pegRatio = peg;
+    }
+  } catch (_) {
+    /* noop */
+  }
+}
+
 async function fetchFundamentals(symbol) {
   const useBridge = bloombergBridgeUrl();
   const [yFund, fMp, bb] = await Promise.all([
@@ -1832,6 +1854,20 @@ async function fetchFundamentals(symbol) {
       if (fGap) merged = mergeFundSnapshots(merged, fGap);
     } catch (_) {}
   }
+  if (
+    (process.env.FINNHUB_API_KEY || '').trim() &&
+    (merged.pegRatio == null ||
+      merged.revenueGrowth == null ||
+      merged.earningsGrowth == null ||
+      merged.forwardPE == null ||
+      merged.trailingPE == null)
+  ) {
+    try {
+      const fhFund = await fetchFundamentalsFinnhub(symbol);
+      if (fhFund) merged = mergeFundSnapshots(merged, fhFund);
+    } catch (_) {}
+  }
+  applyDerivedFundamentals(merged);
   const hasAny = Object.keys(merged).some(
     k => !k.startsWith('_') && merged[k] != null && merged[k] !== ''
   );
@@ -1856,7 +1892,10 @@ function mergeFundamentalsForUi(row, fund) {
   if (!fund || !row || typeof row !== 'object') return row;
   const gap = v => isPlaceholderUiSlot(v);
   /** When Bloomberg or FMP supplied the row, allow overwriting placeholder Claude text aggressively. */
-  const forceBb = fund._source === 'bloomberg_bridge' || fund._source === 'fmp';
+  const forceBb =
+    fund._source === 'bloomberg_bridge' ||
+    fund._source === 'fmp' ||
+    fund._source === 'finnhub_metric';
   const set = (k, v, force) => {
     if (!force && !gap(row[k])) return;
     if (v === null || v === undefined || v === '') return;
@@ -2674,6 +2713,202 @@ async function fetchFinnhubCompanyNewsForSymbol(sym) {
   return [];
 }
 
+/**
+ * Finnhub valuation / growth snapshot (fills gaps Yahoo/FMP omit from cloud + partial Bloomberg snapshots).
+ * https://finnhub.io/docs/api/stock-metrics
+ */
+async function fetchFundamentalsFinnhub(symbol) {
+  const token = (process.env.FINNHUB_API_KEY || '').trim();
+  if (!token || !symbol) return null;
+  const variants = [...new Set([symbol, symbol.replace(/\./g, '-')])].filter(Boolean);
+  const num = (v) => {
+    const x = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
+    return Number.isFinite(x) ? x : null;
+  };
+  /** Growth fields are sometimes fractional (0.12) or already in % (12). */
+  const growthPct = (v) => {
+    const n = num(v);
+    if (n == null) return null;
+    if (Math.abs(n) < 4.5 && Math.abs(n) > 1e-8) return +((n * 100).toFixed(2));
+    return +n.toFixed(2);
+  };
+  for (const v of variants) {
+    try {
+      const url = new URL('https://finnhub.io/api/v1/stock/metric');
+      url.searchParams.set('symbol', v);
+      url.searchParams.set('metric', 'all');
+      url.searchParams.set('token', token);
+      const r = await fetch(url.toString(), { signal: AbortSignal.timeout(14000) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j || typeof j !== 'object' || typeof j.error === 'string') continue;
+      const met = typeof j.metric === 'object' && j.metric ? j.metric : {};
+      const pegRatio = num(
+        met.pegRatioTTM ??
+          met.trailingPegRatio ??
+          met.pegRatioAnnual ??
+          met.pegRatio ??
+          met.peToEpsGrowthTTM
+      );
+      const earningsGrowth = growthPct(
+        met.epsGrowth3Y ??
+          met.epsGrowth5Y ??
+          met.epsAnnualGrowth5Y ??
+          met.netIncomeGrowthAnnual ??
+          met.epsGrowthAnnual ??
+          met.epsBvAnnualGrowth5Y
+      );
+      const revenueGrowth = growthPct(
+        met.revenueGrowth3Y ??
+          met.revenueGrowth5Y ??
+          met.revenueGrowthAnnual ??
+          met.revenueAnnualGrowth5Y ??
+          met.revenuePerShareAnnualGrowth5Y
+      );
+      const forwardPE = num(met.forwardPE ?? met.forwardPeRatio ?? met.peTTMForward);
+      const trailingPE = num(met.peTTM ?? met.peBasicExclExtraTTM ?? met.peNormalizedAnnual);
+      if (
+        pegRatio == null &&
+        earningsGrowth == null &&
+        revenueGrowth == null &&
+        forwardPE == null &&
+        trailingPE == null
+      )
+        continue;
+      const out = {
+        _source: 'finnhub_metric',
+        pegRatio,
+        earningsGrowth,
+        revenueGrowth,
+        forwardPE,
+        trailingPE
+      };
+      const hasAny = Object.keys(out).some(
+        (k) => !k.startsWith('_') && out[k] != null && out[k] !== ''
+      );
+      if (hasAny) return out;
+    } catch (e) {
+      console.warn('fetchFundamentalsFinnhub', v, e.message);
+    }
+  }
+  return null;
+}
+
+function finnhubPeriodToHistIso(period) {
+  const s = String(period ?? '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  const n = Number(s);
+  if (Number.isFinite(n) && n > 1e9) return new Date(n * 1000).toISOString().slice(0, 10);
+  if (Number.isFinite(n) && n > 30000 && n < 65000) {
+    try {
+      const epoch = new Date(Date.UTC(1899, 11, 30));
+      epoch.setUTCDate(epoch.getUTCDate() + Math.round(n));
+      return epoch.toISOString().slice(0, 10);
+    } catch (_) {
+      return '';
+    }
+  }
+  const t = Date.parse(s.replace(',', ''));
+  return !Number.isNaN(t) ? new Date(t).toISOString().slice(0, 10) : '';
+}
+
+/** Rows shaped like Yahoo earningsHistory for enrichEarningsHistFromYahooRows */
+async function finnhubHistoricalEpsSurprisesPool(sym, maxRows = 16) {
+  const token = (process.env.FINNHUB_API_KEY || '').trim();
+  if (!token || !sym) return [];
+  const variants = [...new Set([sym, sym.replace(/\./g, '-')])].filter(Boolean);
+  const pickNum = (v) => {
+    const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
+    return Number.isFinite(n) ? n : null;
+  };
+  for (const v of variants) {
+    try {
+      const tryUrls = [
+        () => {
+          const u = new URL('https://finnhub.io/api/v1/stock/earnings');
+          u.searchParams.set('symbol', v);
+          u.searchParams.set('token', token);
+          return u.toString();
+        },
+        () => {
+          const u = new URL('https://finnhub.io/api/v1/stock/historical_eps_surprises');
+          u.searchParams.set('symbol', v);
+          u.searchParams.set('token', token);
+          return u.toString();
+        }
+      ];
+      let j = null;
+      let raw = [];
+      for (const makeUrl of tryUrls) {
+        const r = await fetch(makeUrl(), { signal: AbortSignal.timeout(14000) });
+        j = await r.json().catch(() => null);
+        if (!r.ok || !j || typeof j !== 'object') continue;
+        raw =
+          (Array.isArray(j.data) && j.data) ||
+          (Array.isArray(j.earnings) && j.earnings) ||
+          (Array.isArray(j.earningCalendar) && j.earningCalendar) ||
+          (Array.isArray(j.surprises) && j.surprises) ||
+          (Array.isArray(j.results) && j.results) ||
+          (Array.isArray(j) ? j : []);
+        if (raw.length) break;
+      }
+      if (!raw.length) continue;
+      const sorted = [...raw].sort((a, b) => {
+        const da = finnhubPeriodToHistIso(a.period ?? a.date ?? a.actualTime);
+        const db = finnhubPeriodToHistIso(b.period ?? b.date ?? b.actualTime);
+        return db.localeCompare(da);
+      });
+      return sorted.slice(0, maxRows)
+        .map((row) => {
+          const ds = finnhubPeriodToHistIso(row.period ?? row.date ?? row.actualTime);
+          const ea = pickNum(row.actual ?? row.actualEps ?? row.epsActual);
+          const ee = pickNum(row.estimate ?? row.estimatedEps ?? row.epsEstimate ?? row.epsEst);
+          let surp = pickNum(
+            row.surprise ??
+              row.surprisePercent ??
+              row.epsSurprisePercent ??
+              row.epsSurprise
+          );
+          if (
+            (surp == null || Number.isNaN(surp)) &&
+            ea != null &&
+            ee != null &&
+            Math.abs(ee) > 1e-9
+          ) {
+            surp = ((ea - ee) / Math.abs(ee)) * 100;
+          }
+          if (surp != null && Number.isFinite(surp) && Math.abs(surp) <= 1.0001 && Math.abs(surp) > 1e-12) {
+            surp *= 100;
+          }
+          const surpLabel =
+            surp != null && Number.isFinite(surp)
+              ? (surp >= 0 ? '+' : '') + surp.toFixed(1) + '%'
+              : null;
+          const quarter = ds
+            ? new Date(ds + 'T12:00:00Z').toLocaleDateString('en-GB', {
+                month: 'short',
+                year: 'numeric'
+              })
+            : '';
+          return {
+            quarter,
+            date: /^\d{4}-\d{2}-\d{2}$/.test(ds) ? ds : '',
+            epsActual: ea != null ? String(ea) : null,
+            epsEstimate: ee != null ? String(ee) : null,
+            epsSurprise: surpLabel,
+            beat: surp != null ? surp >= 0 : null,
+            revenueActual: null,
+            stockReaction: null
+          };
+        })
+        .filter((r) => r.date || r.quarter);
+    } catch (e) {
+      console.warn('finnhubHistoricalEpsSurprisesPool', v, e.message);
+    }
+  }
+  return [];
+}
+
 function finnhubNewsToImpactPack(articles) {
   if (!Array.isArray(articles) || !articles.length) return null;
   const posRe =
@@ -3482,6 +3717,12 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
 
+    try {
+      const fhHistPool = await finnhubHistoricalEpsSurprisesPool(sym);
+      if (fhHistPool.length)
+        yahooHistEnrichPool = sortEarningsHistDesc(yahooHistEnrichPool.concat(fhHistPool));
+    } catch (_) {}
+
     let histSend = Array.isArray(merged.epsHistory) ? merged.epsHistory.map((r) => ({ ...r })) : [];
     let histSourceOut = merged.historySource;
     histSend = enrichEarningsHistFromYahooRows(histSend, yahooHistEnrichPool);
@@ -3494,6 +3735,16 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       const fmpH = await fmpEarningsSurprisesHistory(sym);
       if (fmpH.length) histSend = enrichEarningsHistFromYahooRows(histSend, fmpH);
     }
+    if (
+      (process.env.FINNHUB_API_KEY || '').trim() &&
+      histSend.length &&
+      histSend.some(
+        (r) => isEmptyHistEps(r.epsActual) || isEmptyHistEps(r.epsEstimate) || isEmptyHistEps(r.epsSurprise)
+      )
+    ) {
+      const fhAgain = await finnhubHistoricalEpsSurprisesPool(sym);
+      if (fhAgain.length) histSend = enrichEarningsHistFromYahooRows(histSend, fhAgain);
+    }
     histSend = sortEarningsHistDesc(histSend).slice(0, 4);
 
     if (!histSend.length && yahooHistEnrichPool.length) {
@@ -3505,6 +3756,13 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       if (fmpFall.length) {
         histSend = sortEarningsHistDesc(fmpFall).slice(0, 4).map((r) => ({ ...r }));
         histSourceOut = 'fmp_earnings_surprises';
+      }
+    }
+    if (!histSend.length && (process.env.FINNHUB_API_KEY || '').trim()) {
+      const fhFall = await finnhubHistoricalEpsSurprisesPool(sym);
+      if (fhFall.length) {
+        histSend = sortEarningsHistDesc(fhFall).slice(0, 4).map((r) => ({ ...r }));
+        histSourceOut = 'finnhub_historical_eps_surprises';
       }
     }
 
