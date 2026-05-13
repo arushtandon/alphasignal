@@ -904,91 +904,155 @@ function computeQuantSignal(tech, fund, hz) {
 }
 
 /**
- * Fast walk-forward backtest — same rules as computeQuantSignal using
- * simplified per-bar indicators. Called only from /api/analyze.
+ * Fast walk-forward backtest — same broad rules as computeQuantSignal, using only bars ≤ i when
+ * simulating signal at bar i (causal — no lookahead on S/R levels). Only one overlapping position:
+ * opens at bar i+1 after signal at bar i; next signal allowed after exit bar.
  */
 function backtestSignal(data, hz) {
-  if (!data || data.length < 50) return null;
+  const MIN_TRADES = 8;
+  const minBars = hz === 'short' ? 90 : hz === 'medium' ? 230 : 90;
+  if (!data || data.length < minBars) return null;
 
   const holdDays = hz === 'short' ? 3 : hz === 'medium' ? 15 : 60;
-  const warmup   = hz === 'short' ? 28 : 45;
+  const warmup = hz === 'short' ? 35 : hz === 'medium' ? 205 : 45;
 
-  const { support1: globalS1, resistance1: globalR1 } = findSupportResistance(data, Math.min(60, data.length - 2));
+  if (hz === 'long') return null;
+  if (data.length < warmup + holdDays + 5) return null;
 
-  let wins = 0, losses = 0, totalReturn = 0, trades = 0;
+  let wins = 0,
+    losses = 0,
+    totalReturn = 0,
+    trades = 0;
+  let nextAllowedSignalIndex = warmup;
 
   for (let i = warmup; i < data.length - holdDays - 1; i++) {
-    const closes = data.slice(0, i + 1).map(d => d.c);
-    const price  = closes[closes.length - 1];
+    if (i < nextAllowedSignalIndex) continue;
 
-    const ma20  = calcSMA(closes, 20);
-    const ma50  = closes.length >= 50 ? calcSMA(closes, 50) : null;
-    const rsi   = calcRSI(closes, 14);
-    const macd  = calcMACDFull(closes);
-    const atr   = calcATRFull(data.slice(0, i + 1), 14);
+    const past = data.slice(0, i + 1);
+    if (past.length < 30) continue;
+
+    const { support1: cS1, resistance1: cR1 } = findSupportResistance(past, Math.min(60, past.length));
+
+    const closes = past.map((d) => d.c);
+    const price = closes[closes.length - 1];
+
+    const ma20 = calcSMA(closes, 20);
+    const ma50 = closes.length >= 50 ? calcSMA(closes, 50) : null;
+    const ma200 = closes.length >= 200 ? calcSMA(closes, 200) : null;
+    const rsi = calcRSI(closes, 14);
+    const macd = calcMACDFull(closes);
+    const atr = calcATRFull(past, 14);
     if (!atr || atr <= 0) continue;
 
-    const aboveMa20  = ma20  ? price > ma20  : false;
-    const aboveMa50  = ma50  ? price > ma50  : false;
-    const macdBull   = macd?.trend === 'bullish';
-    const nearS1     = globalS1 && price >= globalS1 * 0.985 && price <= globalS1 * 1.020;
-    const nearR1     = globalR1 && price >= globalR1 * 0.980 && price <= globalR1 * 1.015;
-    const belowS1    = globalS1 && price < globalS1 * 0.995;
-    const vol20avg   = data.slice(Math.max(0, i-20), i).reduce((s, d) => s + (d.v || 0), 0) / 20;
-    const volRatio   = vol20avg > 0 ? (data[i].v || 0) / vol20avg : 1;
+    const aboveMa20 = ma20 ? price > ma20 : false;
+    const aboveMa50 = ma50 ? price > ma50 : false;
+    const aboveMa200 = ma200 != null ? price > ma200 : false;
+    const macdBull = macd?.trend === 'bullish';
 
-    let isBuy = false, isSell = false;
+    const nearS1 =
+      cS1 && price >= cS1 * 0.985 && price <= cS1 * 1.02;
+    const nearR1 =
+      cR1 && price >= cR1 * 0.98 && price <= cR1 * 1.015;
+    const belowS1 = cS1 && price < cS1 * 0.995;
+
+    const vol20avg =
+      past.slice(Math.max(0, past.length - 20), past.length).reduce((s, d) => s + (d.v || 0), 0) / 20;
+    const volRatio = vol20avg > 0 ? (past[past.length - 1].v || 0) / vol20avg : 1;
+
+    const shortTrend = calcTrend(past, 20);
+
+    let isBuy = false,
+      isSell = false;
 
     if (hz === 'short') {
-      isBuy  = (nearS1 && rsi >= 28 && rsi <= 68 && rsi < 74) ||
-                (aboveMa20 && macdBull && rsi >= 38 && rsi <= 65 && !nearR1);
-      isSell = (nearR1 && rsi >= 58) ||
-                (belowS1 && volRatio >= 1.1) ||
-                (!aboveMa20 && !macdBull && rsi > 50);
+      isBuy =
+        (nearS1 && rsi >= 28 && rsi <= 68) ||
+        (aboveMa20 &&
+          macdBull &&
+          rsi >= 38 &&
+          rsi <= 64 &&
+          !nearR1 &&
+          shortTrend !== 'downtrend');
+      isSell =
+        (nearR1 && rsi >= 58) || (belowS1 && volRatio >= 1.1) || (!aboveMa20 && !macdBull && rsi > 50);
     } else if (hz === 'medium') {
-      const ma200 = closes.length >= 200 ? calcSMA(closes, 200) : null;
-      const aboveMa200 = ma200 ? price > ma200 : true;
-      isBuy  = aboveMa50 && macdBull && rsi >= 40 && rsi <= 68 && aboveMa200;
+      if (!ma50 || ma200 === null) continue;
+      const goldenCross = ma50 >= ma200;
+      const trendNow = calcTrend(past, 20);
+      isBuy =
+        aboveMa50 &&
+        aboveMa200 &&
+        goldenCross &&
+        macdBull &&
+        rsi >= 42 &&
+        rsi <= 65 &&
+        (trendNow === 'uptrend' || trendNow === 'sideways');
       isSell = !aboveMa50 && !macdBull && rsi >= 38 && rsi <= 72;
     }
 
     if (!isBuy && !isSell) continue;
 
     const entry = data[i + 1]?.o;
-    if (!entry) continue;
+    if (!entry || entry <= 0) continue;
 
-    const tpMult = hz === 'short' ? 3.0 : 5.0;
-    const slMult = hz === 'short' ? 2.0 : 3.0;
+    const tpMult = hz === 'short' ? 2.75 : hz === 'medium' ? 4.5 : 5.0;
+    const slMult = hz === 'short' ? 2.25 : hz === 'medium' ? 2.85 : 3.0;
     const tpDist = atr * tpMult;
     const slDist = atr * slMult;
-    const tpPrice = isBuy  ? entry + tpDist : entry - tpDist;
-    const slPrice = isBuy  ? entry - slDist : entry + slDist;
+    const tpPrice = isBuy ? entry + tpDist : entry - tpDist;
+    const slPrice = isBuy ? entry - slDist : entry + slDist;
 
     let exitPnl = null;
+    let exitIdx = -1;
     for (let j = i + 1; j <= Math.min(i + holdDays, data.length - 1); j++) {
       const bar = data[j];
       if (isBuy) {
-        if (bar.h >= tpPrice) { exitPnl =  tpDist / entry; break; }
-        if (bar.l <= slPrice) { exitPnl = -slDist / entry; break; }
-        if (j === i + holdDays) exitPnl = (bar.c - entry) / entry;
+        if (bar.h >= tpPrice) {
+          exitPnl = tpDist / entry;
+          exitIdx = j;
+          break;
+        }
+        if (bar.l <= slPrice) {
+          exitPnl = -slDist / entry;
+          exitIdx = j;
+          break;
+        }
+        if (j === i + holdDays) {
+          exitPnl = (bar.c - entry) / entry;
+          exitIdx = j;
+        }
       } else {
-        if (bar.l <= tpPrice) { exitPnl =  tpDist / entry; break; }
-        if (bar.h >= slPrice) { exitPnl = -slDist / entry; break; }
-        if (j === i + holdDays) exitPnl = (entry - bar.c) / entry;
+        if (bar.l <= tpPrice) {
+          exitPnl = tpDist / entry;
+          exitIdx = j;
+          break;
+        }
+        if (bar.h >= slPrice) {
+          exitPnl = -slDist / entry;
+          exitIdx = j;
+          break;
+        }
+        if (j === i + holdDays) {
+          exitPnl = (entry - bar.c) / entry;
+          exitIdx = j;
+        }
       }
     }
 
-    if (exitPnl !== null) {
-      trades++; totalReturn += exitPnl;
-      if (exitPnl > 0) wins++; else losses++;
+    if (exitPnl !== null && exitIdx >= 0) {
+      trades++;
+      totalReturn += exitPnl;
+      if (exitPnl > 0) wins++;
+      else losses++;
+      nextAllowedSignalIndex = exitIdx + 1;
     }
   }
 
-  if (trades < 3) return null;
+  if (trades < MIN_TRADES) return null;
   return {
-    winRate:      Math.round(wins / trades * 100),
+    winRate: Math.round((wins / trades) * 100),
     trades,
-    avgReturnPct: parseFloat((totalReturn / trades * 100).toFixed(2))
+    avgReturnPct: parseFloat(((totalReturn / trades) * 100).toFixed(2))
   };
 }
 
@@ -4186,6 +4250,10 @@ app.post('/api/analyze', async (req, res) => {
 PRE-COMPUTED SIGNALS (DO NOT MODIFY buyScore/sellScore/rating/backtestedWinRate):
 ${tickerBlocksForClaude}${hintBlock}
 
+BACKTEST / HISTORICAL PERFORMANCE (read carefully — reference in prose when helpful):
+• "Real backtest" lines are causal walk-forward: at each simulated day only past OHLC/volume exists; support/resistance are recomputed from that slice only; only one hypothetical position runs at a time until exit then the next eligible signal day.
+• Results are illustrative, out-of-sample style, not guarantees. With fewer than ~15 closed trades they are statistically noisy — if trades are low or avg return sharply negative despite a bullish rating, say so plainly (range-bound regime / whipsaw) instead of implying strong historical edge.
+
 For each ticker, write these text fields ONLY. Reference specific prices, levels and indicators:
 - shortAnalysis: 1-2 sentences explaining the short-term signal using S/R, candle, RSI
 - mediumAnalysis: 1-2 sentences on trend structure and MA alignment
@@ -4213,6 +4281,8 @@ Output ONLY the JSON array. No markdown.`;
         max_tokens: 2500,
         system:
           'You are a quantitative equities analyst. Follow ALL mandatory analysis rules. '
+          + 'The server provides backtest win rates from a causal walk-forward simulation (no lookahead). '
+          + 'Treat very low trade counts or negative average trade return as a warning about regime mismatch, not silent endorsement. '
           + 'Output ONLY a valid JSON array starting with [. No markdown, no code fences, no commentary.',
         messages: [{ role: 'user', content: prompt }]
       }),
