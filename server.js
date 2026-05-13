@@ -1545,9 +1545,10 @@ function overlayQuarterYyWithBloomberg(existingRow, bbRow) {
 }
 
 function blendBloombergEarningsHistories(existingSlice, bloombergNorm) {
-  if (!Array.isArray(bloombergNorm) || !bloombergNorm.length) return existingSlice.slice(0, 4);
+  const prior = Array.isArray(existingSlice) ? existingSlice : [];
+  if (!Array.isArray(bloombergNorm) || !bloombergNorm.length) return prior.slice(0, 4);
   const byDate = {};
-  for (const r of existingSlice) {
+  for (const r of prior) {
     const d = r?.date ? String(r.date).trim().slice(0, 10) : '';
     if (/^\d{4}-\d{2}-\d{2}$/.test(d)) byDate[d] = r;
   }
@@ -1610,9 +1611,17 @@ function applyBloombergBridgeEarningsOverlay(
   if (norm.length) {
     const prior = Array.isArray(outHist) ? outHist.slice(0, 8) : [];
     if (!(gap && prior.length)) {
-      const blended = prior.length ? blendBloombergEarningsHistories(prior, norm) : norm.slice(0, 4);
-      outHist = blended.slice(0, 4);
-      outHistSrc = prior.length ? 'bloomberg_bridge+yahoo_fallback' : 'bloomberg_bridge';
+      let blended = prior.length ? blendBloombergEarningsHistories(prior, norm) : norm.slice(0, 4);
+      blended = Array.isArray(blended)
+        ? blended.filter((r) => r && (String(r.quarter || '').trim() || String(r.date || '').trim()))
+        : [];
+      if (!blended.length && prior.length) {
+        outHist = sortEarningsHistDesc(prior.slice(0, 8)).slice(0, 4);
+        outHistSrc = historySource || 'yahoo_fallback_bb_history_empty';
+      } else if (blended.length) {
+        outHist = sortEarningsHistDesc(blended).slice(0, 4);
+        outHistSrc = prior.length ? 'bloomberg_bridge+yahoo_fallback' : 'bloomberg_bridge';
+      }
     }
   }
   return {
@@ -1731,13 +1740,12 @@ function mergeFundamentalsForUi(row, fund) {
     const s = fmtPe(tr);
     if (s) row.pe = `${s} (TTM)`;
   }
-  if (fund.pegRatio != null && Number.isFinite(+fund.pegRatio) && (gap(row.peg) || forceBb)) {
+  if (fund.pegRatio != null && Number.isFinite(+fund.pegRatio))
     row.peg = String(+Number(fund.pegRatio).toFixed(2));
-  }
-  if (fund.revenueGrowth != null)
-    set('revenueGrowth', `${fund.revenueGrowth}%`, forceBb || gap(row.revenueGrowth));
-  if (fund.earningsGrowth != null)
-    set('earningsGrowth', `${fund.earningsGrowth}%`, forceBb || gap(row.earningsGrowth));
+  if (fund.revenueGrowth != null && Number.isFinite(+fund.revenueGrowth))
+    row.revenueGrowth = `${fund.revenueGrowth}%`;
+  if (fund.earningsGrowth != null && Number.isFinite(+fund.earningsGrowth))
+    row.earningsGrowth = `${fund.earningsGrowth}%`;
   let finGuess = '';
   const de = fund.debtToEquity;
   if (typeof de === 'number')
@@ -2204,6 +2212,12 @@ function earningsHistoryAllFromQuoteSummary(qs, maxRows = 24) {
         : per != null && typeof per !== 'object'
           ? String(per).trim()
           : '';
+    if (/^\d{8}$/.test(perFmt)) {
+      const y = perFmt.slice(0, 4);
+      const mo = perFmt.slice(4, 6);
+      const d = perFmt.slice(6, 8);
+      if (mo >= '01' && mo <= '12' && d >= '01' && d <= '31') return `${y}-${mo}-${d}`;
+    }
     const perRaw =
       typeof per === 'object' && per != null && per.raw != null ? Number(per.raw) : null;
     if (Number.isFinite(perRaw)) {
@@ -2246,7 +2260,13 @@ function earningsHistoryAllFromQuoteSummary(qs, maxRows = 24) {
         stockReaction: null
       };
     })
-    .filter((r) => r.date || r.quarter);
+    .filter(
+      (r) =>
+        r.date ||
+        r.quarter ||
+        (r.epsActual != null && r.epsActual !== '') ||
+        (r.epsEstimate != null && r.epsEstimate !== '')
+    );
 }
 
 /** Last 4 quarters for primary UI table. */
@@ -3219,32 +3239,6 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
 
-    if (!nextDate) {
-      const fhVariants =
-        sym === 'GOOGL' || sym === 'GOOG'
-          ? ['GOOGL', 'GOOG']
-          : sym.includes('.')
-            ? [sym, sym.replace(/\./g, '-')]
-            : [sym];
-      let fhRows = [];
-      for (const fv of fhVariants) {
-        fhRows = await finnhubEarningsCalendar(todayISO, toISOsym, { symbol: fv });
-        if (fhRows.length) break;
-      }
-      const fhFuture = fhRows.filter((r) => String(r.date).slice(0, 10) >= upcomingCutoff);
-      fhFuture.sort((a, b) => String(a.date).localeCompare(String(b.date)));
-      if (fhFuture.length) {
-        const e = fhFuture[0];
-        nextDate = String(e.date).slice(0, 10);
-        if (e.epsEstimate != null && Number.isFinite(+e.epsEstimate)) epsEst = epsEst || String(e.epsEstimate);
-        if (!callTime && finnhubHourToUi(e.hour) !== 'during-market')
-          callTime = finnhubHourToUi(e.hour);
-        if (!quarter && e.quarter != null && e.year != null)
-          quarter = `Q${e.quarter} FY${e.year}`;
-        calendarPrimary = calendarPrimary || 'finnhub';
-      }
-    }
-
     if (!nextDate && fmpAnyApiKey()) {
       const fmpArr = await fmpEarningCalendarByRange(todayISO, toISOsym);
       const symMatch = normalizeTickerMatch(sym);
@@ -3274,6 +3268,32 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
 
+    if (!nextDate) {
+      const fhVariants =
+        sym === 'GOOGL' || sym === 'GOOG'
+          ? ['GOOGL', 'GOOG']
+          : sym.includes('.')
+            ? [sym, sym.replace(/\./g, '-')]
+            : [sym];
+      let fhRows = [];
+      for (const fv of fhVariants) {
+        fhRows = await finnhubEarningsCalendar(todayISO, toISOsym, { symbol: fv });
+        if (fhRows.length) break;
+      }
+      const fhFuture = fhRows.filter((r) => String(r.date).slice(0, 10) >= upcomingCutoff);
+      fhFuture.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      if (fhFuture.length) {
+        const e = fhFuture[0];
+        nextDate = String(e.date).slice(0, 10);
+        if (e.epsEstimate != null && Number.isFinite(+e.epsEstimate)) epsEst = epsEst || String(e.epsEstimate);
+        if (!callTime && finnhubHourToUi(e.hour) !== 'during-market')
+          callTime = finnhubHourToUi(e.hour);
+        if (!quarter && e.quarter != null && e.year != null)
+          quarter = `Q${e.quarter} FY${e.year}`;
+        calendarPrimary = calendarPrimary || 'finnhub';
+      }
+    }
+
     const sourcesUsed = {};
     if (process.env.FINNHUB_API_KEY) sourcesUsed.finnhub = true;
     if (fmpAnyApiKey()) sourcesUsed.fmp = true;
@@ -3294,6 +3314,10 @@ app.get('/api/earnings/:symbol', async (req, res) => {
     );
 
     let yahooHistEnrichPool = earningsHistoryAllFromQuoteSummary(qs, 28);
+    if (!yahooHistEnrichPool.length) {
+      const qh = await quoteSummary(sym, 'earningsHistory').catch(() => null);
+      if (qh) yahooHistEnrichPool = earningsHistoryAllFromQuoteSummary(qh, 28);
+    }
     if (sym.includes('.') && sym !== 'GOOGL' && sym !== 'GOOG') {
       const altQsDot = await quoteSummary(sym.replace(/\./g, '-'), 'earningsHistory').catch(() => null);
       if (altQsDot) {
@@ -3309,6 +3333,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
     }
 
     let histSend = Array.isArray(merged.epsHistory) ? merged.epsHistory.map((r) => ({ ...r })) : [];
+    let histSourceOut = merged.historySource;
     histSend = enrichEarningsHistFromYahooRows(histSend, yahooHistEnrichPool);
     const needFmp =
       histSend.length &&
@@ -3320,6 +3345,18 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       if (fmpH.length) histSend = enrichEarningsHistFromYahooRows(histSend, fmpH);
     }
     histSend = sortEarningsHistDesc(histSend).slice(0, 4);
+
+    if (!histSend.length && yahooHistEnrichPool.length) {
+      histSend = sortEarningsHistDesc(yahooHistEnrichPool).slice(0, 4).map((r) => ({ ...r }));
+      histSourceOut = 'yahoo_quoteSummary_earningsHistory';
+    }
+    if (!histSend.length && fmpAnyApiKey()) {
+      const fmpFall = await fmpEarningsSurprisesHistory(sym);
+      if (fmpFall.length) {
+        histSend = sortEarningsHistDesc(fmpFall).slice(0, 4).map((r) => ({ ...r }));
+        histSourceOut = 'fmp_earnings_surprises';
+      }
+    }
 
     let bloombergBridgeExtras = null;
     if (bbEarn && !bbEarn.error) {
@@ -3346,7 +3383,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       calendarPrimarySource: merged.calendarPrimary || null,
       calendarSourcesConsulted: sourcesUsed,
       history: histSend,
-      historySource: merged.historySource,
+      historySource: histSourceOut,
       bloombergBridgeExtras
     });
   } catch (e) {
