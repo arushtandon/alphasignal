@@ -2451,6 +2451,65 @@ app.post('/api/technicals/batch', async (req, res) => {
         long:   computeQuantSignal(data, null, 'long')
       };
 
+      // ── Danelfin AI score — horizon-specific boosting ──────────────────
+      try {
+        const danKey = (process.env.DANELFIN_API_KEY || '').trim();
+        if (danKey) {
+          const ds = await fetchDanelfinRow(danKey, sym);
+          if (ds && ds.aiscore != null) {
+            data.danelfin         = ds;
+            const _caS = computeCompositeAlpha(ds, data, 0, 'short');
+            const _caM = computeCompositeAlpha(ds, data, 0, 'medium');
+            const _caL = computeCompositeAlpha(ds, data, 0, 'long');
+            data.compositeAlphaShort = _caS ? _caS.score : null;
+            data.compositeAlphaMedium = _caM ? _caM.score : null;
+            data.compositeAlphaLong = _caL ? _caL.score : null;
+            data.compositeAlpha = _caM ? _caM.score : null;
+            data.compositeGradeShort = _caS ? _caS.grade : null;
+            data.compositeGradeMedium = _caM ? _caM.grade : null;
+            data.compositeGradeLong = _caL ? _caL.grade : null;
+            data.compositeGrade = _caM ? _caM.grade : null;
+
+            // SHORT: Danelfin Technical subscore drives boost
+            if (ds.technical >= 7 && ds.aiscore >= 6 && ds.buy_track_record) {
+              const b = Math.round((ds.technical - 5) * 2.5);
+              data.quantSignal.short.buyScore = Math.min(92, (data.quantSignal.short.buyScore||0) + b);
+            } else if (ds.technical <= 3 || (!ds.buy_track_record && ds.aiscore <= 4)) {
+              data.quantSignal.short.buyScore = Math.round((data.quantSignal.short.buyScore||0) * 0.55);
+            }
+            if (ds.technical <= 3 && ds.sell_track_record) {
+              const b = Math.round((5 - ds.technical) * 2.5);
+              data.quantSignal.short.sellScore = Math.min(88, (data.quantSignal.short.sellScore||0) + b);
+            }
+
+            // MEDIUM: Full AI Score (Danelfin's sweet spot — trained for 3M)
+            if (ds.aiscore >= 7 && ds.buy_track_record) {
+              const b = Math.round((ds.aiscore - 5) * 3.5);
+              data.quantSignal.medium.buyScore = Math.min(92, (data.quantSignal.medium.buyScore||0) + b);
+            } else if (ds.aiscore <= 4) {
+              data.quantSignal.medium.buyScore = Math.round((data.quantSignal.medium.buyScore||0) * 0.50);
+            }
+            if (ds.aiscore <= 3 && ds.sell_track_record) {
+              const b = Math.round((5 - ds.aiscore) * 3.5);
+              data.quantSignal.medium.sellScore = Math.min(88, (data.quantSignal.medium.sellScore||0) + b);
+            }
+
+            // LONG: Fundamental subscore weighted with AI Score
+            const lq = (ds.aiscore||0) * 0.55 + (ds.fundamental||0) * 0.45;
+            if (lq >= 7 && ds.buy_track_record) {
+              const b = Math.round((lq - 5) * 3);
+              data.quantSignal.long.buyScore = Math.min(92, (data.quantSignal.long.buyScore||0) + b);
+            } else if (ds.fundamental <= 3 || ds.aiscore <= 3) {
+              data.quantSignal.long.buyScore = Math.round((data.quantSignal.long.buyScore||0) * 0.45);
+            }
+            if (ds.fundamental <= 3 && ds.aiscore <= 4 && ds.sell_track_record) {
+              const b = Math.round((5 - ds.aiscore) * 3);
+              data.quantSignal.long.sellScore = Math.min(88, (data.quantSignal.long.sellScore||0) + b);
+            }
+          }
+        }
+      } catch(de) { console.warn('Danelfin batch enrich:', sym, de.message); }
+
       techCache.set(sym, { ts: Date.now(), data });
       results[sym] = data;
     } catch(e) { console.warn('Batch tech fail:', sym, e.message); }
@@ -2559,6 +2618,54 @@ Output ONLY the JSON object. No markdown.`;
 
   res.json(results);
 });
+
+// ── Horizon-aware Composite Alpha Score ──────────────────────────────────────
+// SHORT:  Danelfin Technical subscore dominates (price action quality for 1-3d)
+// MEDIUM: Full Danelfin AI Score dominates (trained exactly for 3M horizon)
+// LONG:   Danelfin Fundamental subscore dominates (fundamentals drive 6M returns)
+function computeCompositeAlpha(dan, tech, newsScore, hz) {
+  hz = hz || 'medium';
+  if (!dan || dan.aiscore == null) return null;
+  const dAI   = (dan.aiscore    || 0) * 10;
+  const dTech = (dan.technical  || 0) * 10;
+  const dFund = (dan.fundamental|| 0) * 10;
+  const dSent = (dan.sentiment  || 0) * 10;
+  const dRisk = (dan.low_risk   || 0) * 10;
+  const track = dan.buy_track_record ? 5 : -5;
+  // Channel position (0-100) from AlphaSignal SD channel analysis
+  let chanScore = 50;
+  if (tech && tech.channelPos) {
+    const q = tech.channelPos.buyQuality;
+    chanScore = q==='excellent'?95 : q==='good'?80 : q==='fair'?62 : q==='neutral'?45 : 20;
+  }
+  // Momentum (0-100) from forward-looking indicators
+  let mom = 50;
+  if (tech) {
+    const rsi = tech.rsi || 50;
+    if (tech.macdTurningUp) mom += 18;
+    if (rsi >= 30 && rsi <= 52) mom += 15;
+    if (rsi > 70) mom -= 22;
+    if (tech.rsiRising) mom += 12;
+    if (tech.obvBullish === true) mom += 10;
+    if (tech.adx > 25) mom += 5;
+    mom = Math.min(100, Math.max(0, mom));
+  }
+  const news = Math.min(100, Math.max(0, ((newsScore || 0) + 100) / 2));
+  let composite;
+  if (hz === 'short') {
+    // Entry timing (channel) 30% + Danelfin Technical 20% = 50% of score
+    composite = dTech*0.20 + dRisk*0.12 + dSent*0.08 + dAI*0.10 + chanScore*0.30 + mom*0.15 + news*0.05 + track;
+  } else if (hz === 'long') {
+    // Fundamentals dominate; channel barely matters over 6 months
+    composite = dAI*0.28 + dFund*0.25 + dRisk*0.12 + dSent*0.08 + dTech*0.05 + chanScore*0.05 + mom*0.12 + news*0.05 + track;
+  } else {
+    // medium — AI Score is in its sweet spot (trained for 3M)
+    composite = dAI*0.30 + dTech*0.18 + dSent*0.12 + dRisk*0.08 + dFund*0.02 + chanScore*0.12 + mom*0.13 + news*0.05 + track;
+  }
+  const score = Math.min(100, Math.max(0, Math.round(composite)));
+  const grade = score>=82?'A+':score>=74?'A':score>=65?'B+':score>=55?'B':score>=45?'C':'D';
+  return { score, grade, hz };
+}
 
 /** Danelfin API: https://danelfin.com/docs/api — keyed by ticker as returned by the client batch. */
 const DANELFIN_BASE_URL = 'https://apirest.danelfin.com';
