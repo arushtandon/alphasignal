@@ -1612,6 +1612,18 @@ let lastBloombergSnapshotProbe = {
   elapsedMs: null
 };
 
+/** Last /earnings bridge attempt — surfaces 401/no_tunnel/date_parse issues in /api/health */
+let lastBloombergEarningsProbe = {
+  ts: 0,
+  symbol: '',
+  ok: false,
+  httpStatus: null,
+  err: null,
+  bbSecurity: null,
+  nextDateSeen: null,
+  elapsedMs: null
+};
+
 /** LAN/loopback bridge URLs are never reachable from public cloud (e.g. Render). */
 function bloombergBridgeUrlIsUnreachableFromInternet() {
   const base = bloombergBridgeUrl();
@@ -1786,19 +1798,60 @@ async function fetchBloombergBridgeFundamentals(symbol) {
  */
 async function fetchBloombergBridgeEarnings(symbol) {
   const base = bloombergBridgeUrl();
-  if (!base) return null;
+  const symTrim = String(symbol || '').trim();
+  const t0 = Date.now();
+  const stampFail = (httpStatus, err, bbSec) => {
+    lastBloombergEarningsProbe = {
+      ts: Date.now(),
+      symbol: symTrim,
+      ok: false,
+      httpStatus,
+      err,
+      bbSecurity: bbSec || null,
+      nextDateSeen: null,
+      elapsedMs: Date.now() - t0
+    };
+  };
+  if (!base) {
+    stampFail(null, 'bloomberg_bridge_url_not_set');
+    return null;
+  }
   const bb = toBloombergEquity(symbol);
-  if (!bb) return null;
+  if (!bb) {
+    stampFail(null, 'toBloombergEquity_unmapped_symbol');
+    return null;
+  }
   try {
     const u = new URL('/earnings', base + '/');
-    u.searchParams.set('symbol', String(symbol || '').trim());
+    u.searchParams.set('symbol', symTrim);
     u.searchParams.set('bb', bb);
     const r = await fetch(u.toString(), { headers: bloombergBridgeFetchHeaders(), signal: AbortSignal.timeout(22000) });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || (j && typeof j === 'object' && j.error))
+    if (!r.ok || (j && typeof j === 'object' && j.error)) {
+      const errMsg =
+        typeof j?.error === 'string'
+          ? j.error
+          : typeof j?.hint === 'string'
+            ? j.hint
+            : `HTTP_${r.status}`;
+      stampFail(r.status, errMsg, j?.bbSecurity || bb);
       return j && typeof j === 'object' ? { ...j, _httpStatus: r.status } : null;
+    }
+    const nd =
+      j?.nextEarningsDate != null ? String(j.nextEarningsDate).trim().slice(0, 10) : null;
+    lastBloombergEarningsProbe = {
+      ts: Date.now(),
+      symbol: symTrim,
+      ok: true,
+      httpStatus: r.status,
+      err: null,
+      bbSecurity: bb,
+      nextDateSeen: /^\d{4}-\d{2}-\d{2}$/.test(nd || '') ? nd : null,
+      elapsedMs: Date.now() - t0
+    };
     return j && typeof j === 'object' ? j : null;
   } catch (e) {
+    stampFail(null, String(e.message || e), bb);
     console.warn('Bloomberg bridge earnings', symbol, e.message);
     return null;
   }
@@ -2626,6 +2679,18 @@ app.get('/api/health', (req, res) => {
           bbSecurity: lastBloombergSnapshotProbe.bbSecurity,
           elapsedMs: lastBloombergSnapshotProbe.elapsedMs,
           error: lastBloombergSnapshotProbe.err
+        }
+      : null,
+    bloomberg_bridge_last_earnings: lastBloombergEarningsProbe.ts
+      ? {
+          ms_ago: Date.now() - lastBloombergEarningsProbe.ts,
+          symbol: lastBloombergEarningsProbe.symbol,
+          ok: lastBloombergEarningsProbe.ok,
+          httpStatus: lastBloombergEarningsProbe.httpStatus,
+          bbSecurity: lastBloombergEarningsProbe.bbSecurity,
+          nextDateSeen: lastBloombergEarningsProbe.nextDateSeen,
+          elapsedMs: lastBloombergEarningsProbe.elapsedMs,
+          error: lastBloombergEarningsProbe.err
         }
       : null,
     bloomberg_enterprise_configured: Boolean(bloombergEnterpriseBase()),

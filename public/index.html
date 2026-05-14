@@ -1517,17 +1517,18 @@ async function runDashScan(){
     logEl.innerHTML+='<div>→ '+batch.join(', ')+'</div>';
     logEl.scrollTop=logEl.scrollHeight;
 
-    let batchTech = {}, batchFund = {}, batchNews = {};
+    let batchTech = {}, batchFund = {}, batchNews = {}, batchDan = {};
     let batchPriceCtx = '';
     const eqSyms = batch.filter(function (t) {
       return !String(t).includes('=F') && !String(t).includes('-USD') && !String(t).includes('-EUR');
     });
     try {
-      const [bpr, techR, fundR, newsR] = await Promise.all([
+      const [bpr, techR, fundR, newsR, danR] = await Promise.all([
         fetch('/api/prices?symbols=' + encodeURIComponent(batch.join(','))),
         fetch('/api/technicals/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: batch }) }),
         fetch('/api/fundamentals/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: eqSyms }) }),
-        fetch('/api/news-sentiment/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: batch }) })
+        fetch('/api/news-sentiment/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: batch }) }),
+        fetch('/api/danelfin/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: batch }) })
       ]);
       const prices = bpr.ok ? await bpr.json() : {};
       if (Object.keys(prices).length) {
@@ -1546,6 +1547,7 @@ async function runDashScan(){
       if (techR.ok) batchTech = await techR.json();
       if (fundR.ok) batchFund = await fundR.json();
       if (newsR.ok) batchNews = await newsR.json();
+      if (danR && danR.ok) batchDan = await danR.json();
       const priceLines = batch.map(function (t) {
         const p = getPriceQuoteFromMap(prices, t);
         return p && p.price ? t + '=' + p.price + (p.currency || '') : null;
@@ -1733,6 +1735,49 @@ async function runDashScan(){
               r.newsScore = newsScore;
               r.newsSummary = news && news.summary ? news.summary : '';
               r.avoidEarnings = avoidEarnings;
+              // ── Danelfin AI score (the ML layer) ──────────────────────────
+              var _dan = batchDan[r.ticker];
+              if (_dan) {
+                r.danelfinAiScore     = _dan.aiscore;
+                r.danelfinTechnical   = _dan.technical;
+                r.danelfinFundamental = _dan.fundamental;
+                r.danelfinSentiment   = _dan.sentiment;
+                r.danelfinLowRisk     = _dan.low_risk;
+                r.danelfinBuyTrack    = _dan.buy_track_record;
+                // ── HORIZON-SPECIFIC DANELFIN BOOSTS ───────────────────────
+                // SHORT: Danelfin Technical subscore drives it (price action quality)
+                if (_dan.technical >= 7 && _dan.aiscore >= 6 && _dan.buy_track_record) {
+                  var _sb = Math.round((_dan.technical - 5) * 2.5);
+                  r.shortScore = Math.min(92, (r.shortScore || 0) + _sb);
+                  r.backtestedWinRate = Math.min(80, (r.backtestedWinRate || 50) + Math.round((_dan.technical - 6) * 1.5));
+                } else if (_dan.technical <= 3 || (!_dan.buy_track_record && _dan.aiscore <= 4)) {
+                  r.shortScore = Math.round((r.shortScore || 0) * 0.55);
+                }
+                if (_dan.technical <= 3 && _dan.sell_track_record) {
+                  r.shortSellScore = Math.min(88, (r.shortSellScore || 0) + Math.round((5 - _dan.technical) * 2.5));
+                }
+                // MEDIUM: Full AI Score (trained for 3M — Danelfin's sweet spot)
+                if (_dan.aiscore >= 7 && _dan.buy_track_record) {
+                  var _mb = Math.round((_dan.aiscore - 5) * 3.5);
+                  r.mediumScore = Math.min(92, (r.mediumScore || 0) + _mb);
+                  r.backtestedWinRate = Math.min(82, (r.backtestedWinRate || 50) + Math.round((_dan.aiscore - 6) * 2));
+                } else if (_dan.aiscore <= 4) {
+                  r.mediumScore = Math.round((r.mediumScore || 0) * 0.50);
+                }
+                if (_dan.aiscore <= 3 && _dan.sell_track_record) {
+                  r.mediumSellScore = Math.min(88, (r.mediumSellScore || 0) + Math.round((5 - _dan.aiscore) * 3.5));
+                }
+                // LONG: Fundamental subscore weighted with AI Score
+                var _lq = _dan.aiscore * 0.55 + _dan.fundamental * 0.45;
+                if (_lq >= 7 && _dan.buy_track_record) {
+                  r.longScore = Math.min(92, (r.longScore || 0) + Math.round((_lq - 5) * 3));
+                } else if (_dan.fundamental <= 3 || _dan.aiscore <= 3) {
+                  r.longScore = Math.round((r.longScore || 0) * 0.45);
+                }
+                if (_dan.fundamental <= 3 && _dan.aiscore <= 4 && _dan.sell_track_record) {
+                  r.longSellScore = Math.min(88, (r.longSellScore || 0) + Math.round((5 - _dan.aiscore) * 3));
+                }
+              }
             } else {
               if (!r.shortScore)  r.shortScore  = scoreFrom(r.shortRating,  r.action, r.backtestedWinRate);
               if (!r.mediumScore) r.mediumScore = scoreFrom(r.mediumRating, r.action, r.backtestedWinRate);
@@ -2945,7 +2990,59 @@ function renderCard(s){
     +'<div class="mt"><div class="ml">Momentum</div>'+mTag(s.momentum)+'</div>'
     +'</div>'
     +(s.candlePattern?'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:7px;padding:8px 10px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div><div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px">Candlestick Pattern</div><div style="font-size:13px;font-weight:500">'+s.candlePattern+'</div></div><div style="display:flex;align-items:center;gap:8px"><span style="font-size:10px;padding:2px 8px;border-radius:10px;font-family:DM Mono,monospace;background:'+(s.candleSignal==='Bullish'?'var(--buyb);color:var(--buy)':s.candleSignal==='Bearish'?'var(--sellb);color:var(--sell)':'var(--holdb);color:var(--hold)')+'">'+s.candleSignal+'</span><span style="font-size:10px;color:var(--m1);font-family:DM Mono,monospace">Conf: '+s.candleConf+'%</span></div></div>':'')
-    +(s.backtestedWinRate?'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:7px;padding:8px 10px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between"><div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em">Backtested Win Rate</div><div style="font-size:16px;font-weight:500;font-family:DM Mono,monospace;color:'+(s.backtestedWinRate>=55?'var(--buy)':s.backtestedWinRate>=45?'var(--hold)':'var(--sell)')+'">'+s.backtestedWinRate+'%</div></div>':'')
+    +(s.danelfinAiScore?
+    '<div style="background:linear-gradient(135deg,rgba(35,50,83,0.9),rgba(20,30,55,0.95));border:1px solid rgba(100,160,255,0.25);border-radius:9px;padding:10px 12px;margin-bottom:10px">'
+    // Header row
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+    +'<div style="display:flex;align-items:center;gap:6px">'
+    +'<div style="font-size:9px;font-weight:600;color:rgba(100,160,255,0.9);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.1em">Danelfin AI</div>'
+    +'<div style="font-size:8px;color:rgba(100,160,255,0.5);font-family:DM Mono,monospace">10,000 features · since 2017</div>'
+    +'</div>'
+    +'<div style="display:flex;align-items:center;gap:5px">'
+    +(s.danelfinBuyTrack?'<div style="font-size:8px;background:rgba(0,200,100,0.15);color:#00c864;border:1px solid rgba(0,200,100,0.3);padding:1px 6px;border-radius:3px;font-family:DM Mono,monospace">✓ Buy Track Record</div>':'')
+    +'<div style="font-size:20px;font-weight:700;font-family:DM Mono,monospace;color:'+(s.danelfinAiScore>=8?'#00d4ff':s.danelfinAiScore>=7?'#00c864':s.danelfinAiScore<=3?'#ff4444':'rgba(255,255,255,0.7)')+'">'+s.danelfinAiScore+'<span style="font-size:11px;opacity:0.5">/10</span></div>'
+    +'</div>'
+    +'</div>'
+    // 5 sub-scores as mini bars
+    +'<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:6px">'
+    +['Technical','Fundamental','Sentiment','Low Risk'].map((lbl,i)=>{
+      const vals=[s.danelfinTechnical,s.danelfinFundamental,s.danelfinSentiment,s.danelfinLowRisk];
+      const v=vals[i]||0;
+      const col=v>=7?'#00c864':v>=5?'#c9f14f':v<=3?'#ff4444':'rgba(255,255,255,0.4)';
+      return '<div style="text-align:center">'
+        +'<div style="font-size:7px;color:rgba(255,255,255,0.4);margin-bottom:2px;font-family:DM Mono,monospace">'+lbl+'</div>'
+        +'<div style="background:rgba(255,255,255,0.08);border-radius:3px;height:4px;overflow:hidden">'
+        +'<div style="height:100%;background:'+col+';width:'+(v*10)+'%;transition:width .4s"></div></div>'
+        +'<div style="font-size:9px;font-weight:600;color:'+col+';font-family:DM Mono,monospace;margin-top:1px">'+v+'</div>'
+        +'</div>';
+    }).join('')
+    +'<div style="text-align:center">'
+    +'<div style="font-size:7px;color:rgba(255,255,255,0.4);margin-bottom:2px;font-family:DM Mono,monospace">Alpha</div>'
+    +(s.compositeAlpha?'<div style="font-size:9px;font-weight:600;color:'+(s.compositeAlpha>=74?'#00c864':s.compositeAlpha>=55?'#c9f14f':'rgba(255,255,255,0.5)')+';font-family:DM Mono,monospace">'+s.compositeAlpha+'</div>'
+      +'<div style="font-size:8px;color:rgba(255,255,255,0.3);font-family:DM Mono,monospace">'+s.compositeGrade+'</div>':'<div style="font-size:9px;color:rgba(255,255,255,0.3)">—</div>')
+    +'</div>'
+    // Horizon-specific alpha scores row
+    +(s.compositeAlphaShort!=null||s.compositeAlphaMedium!=null||s.compositeAlphaLong!=null?
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-top:6px;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px">'
+      +[['1-3d',s.compositeAlphaShort],['1-3wk',s.compositeAlphaMedium],['1-6mo',s.compositeAlphaLong]].map(([lbl,v])=>{
+        if(v==null) return '<div></div>';
+        const col=v>=74?'#00c864':v>=55?'#c9f14f':v<=40?'#ff4444':'rgba(255,255,255,0.4)';
+        return '<div style="text-align:center">'
+          +'<div style="font-size:7px;color:rgba(255,255,255,0.35);font-family:DM Mono,monospace">'+lbl+'</div>'
+          +'<div style="font-size:11px;font-weight:600;color:'+col+';font-family:DM Mono,monospace">'+v+'</div>'
+          +'</div>';
+      }).join('')
+      +'</div>':'')
+    +'</div>'
+    // Verdict line
+    +'<div style="font-size:9px;font-family:DM Mono,monospace;color:'+(s.danelfinAiScore>=8?'#00c864':s.danelfinAiScore>=7?'rgba(200,255,200,0.8)':s.danelfinAiScore<=3?'#ff6666':'rgba(255,255,255,0.45)')+'">'
+    +(s.danelfinAiScore>=8&&s.danelfinBuyTrack?'🎯 ML confirms: high probability of beating market over next 3M'
+      :s.danelfinAiScore>=7?'✓ ML confirms: above-average market-beating probability'
+      :s.danelfinAiScore<=3?'⚠ ML flags: elevated underperformance risk'
+      :'→ ML signal: moderate probability — entry timing is critical')
+    +'</div>'
+    +'</div>':'')
+++(s.backtestedWinRate?'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:7px;padding:8px 10px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between"><div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em">Backtested Win Rate</div><div style="font-size:16px;font-weight:500;font-family:DM Mono,monospace;color:'+(s.backtestedWinRate>=55?'var(--buy)':s.backtestedWinRate>=45?'var(--hold)':'var(--sell)')+'">'+s.backtestedWinRate+'%</div></div>':'')
     +'</div>'
 
     // Fundamental Analysis
