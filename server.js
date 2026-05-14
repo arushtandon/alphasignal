@@ -20,6 +20,32 @@ const YF_HEADERS = {
   'Origin': 'https://finance.yahoo.com'
 };
 
+async function fetchNews(symbol, count = 8) {
+  const sym = encodeURIComponent(symbol);
+  const urls = [
+    `https://query1.finance.yahoo.com/v1/finance/search?q=${sym}&lang=en-US&region=US&newsCount=${count}`,
+    `https://query2.finance.yahoo.com/v1/finance/search?q=${sym}&lang=en-US&region=US&newsCount=${count}`
+  ];
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(8000) });
+      if (!r.ok) continue;
+      const d = await r.json();
+      const items = d?.news || [];
+      if (!items.length) continue;
+      return items.map(n => ({
+        title: n.title || '',
+        publisher: n.publisher || '',
+        time: n.providerPublishTime ? new Date(n.providerPublishTime * 1000).toISOString().slice(0, 10) : '',
+        link: n.link || ''
+      })).slice(0, count);
+    } catch (e) {
+      console.warn('fetchNews', symbol, e.message);
+    }
+  }
+  return [];
+}
+
 // ── Fetch price for a single symbol via Yahoo Finance ─────────────────────
 // Normalize symbol for Yahoo Finance (BRK.B -> BRK-B for some endpoints)
 function yfSymbol(s) {
@@ -640,6 +666,96 @@ function findSupportResistance(data, lookback = 60) {
   };
 }
 
+/** Volume-weighted S/R merged with pivots — confluence flags for tighter stops. */
+function findVolumeWeightedSR(data, lookback = 60, bins = 25) {
+  if (!data || data.length < 10) {
+    return {
+      support1: null,
+      support2: null,
+      support3: null,
+      resistance1: null,
+      resistance2: null,
+      resistance3: null,
+      s1Confluence: false,
+      r1Confluence: false
+    };
+  }
+  const recent = data.slice(-Math.min(lookback, data.length));
+  const price = recent[recent.length - 1].c;
+  const high = Math.max(...recent.map(d => d.h));
+  const low = Math.min(...recent.map(d => d.l));
+  const range = high - low;
+  if (range <= 0) {
+    return {
+      support1: null,
+      support2: null,
+      support3: null,
+      resistance1: null,
+      resistance2: null,
+      resistance3: null,
+      s1Confluence: false,
+      r1Confluence: false
+    };
+  }
+  const binSize = range / bins;
+  const volByBin = new Array(bins).fill(0);
+  const priceBin = new Array(bins).fill(0);
+  recent.forEach(d => {
+    const avgPrice = (d.h + d.l) / 2;
+    const bin = Math.min(bins - 1, Math.floor((avgPrice - low) / binSize));
+    volByBin[bin] += (d.v || 1);
+    priceBin[bin] = low + (bin + 0.5) * binSize;
+  });
+  const supports = [];
+  const resistances = [];
+  for (let i = 0; i < bins; i++) {
+    const levelPrice = priceBin[i] || (low + (i + 0.5) * binSize);
+    const volScore = volByBin[i];
+    if (volScore <= 0) continue;
+    if (levelPrice < price * 0.998) supports.push({ price: levelPrice, vol: volScore });
+    if (levelPrice > price * 1.002) resistances.push({ price: levelPrice, vol: volScore });
+  }
+  supports.sort((a, b) => b.vol - a.vol);
+  resistances.sort((a, b) => b.vol - a.vol);
+  const pivotHighs = [];
+  const pivotLows = [];
+  for (let i = 2; i < recent.length - 2; i++) {
+    if (
+      recent[i].h >= recent[i - 1].h &&
+      recent[i].h >= recent[i - 2].h &&
+      recent[i].h >= recent[i + 1].h &&
+      recent[i].h >= recent[i + 2].h
+    )
+      pivotHighs.push(recent[i].h);
+    if (
+      recent[i].l <= recent[i - 1].l &&
+      recent[i].l <= recent[i - 2].l &&
+      recent[i].l <= recent[i + 1].l &&
+      recent[i].l <= recent[i + 2].l
+    )
+      pivotLows.push(recent[i].l);
+  }
+  const pivSup = pivotLows.filter(v => v < price * 0.998).sort((a, b) => b - a);
+  const pivRes = pivotHighs.filter(v => v > price * 1.002).sort((a, b) => a - b);
+  const mergeLevel = (vol, pivot) => {
+    if (!vol && !pivot) return null;
+    if (!vol) return parseFloat(pivot.toFixed(2));
+    if (!pivot) return parseFloat(vol.price.toFixed(2));
+    const near = Math.abs(vol.price - pivot) / pivot < 0.005;
+    return near ? parseFloat(((vol.price + pivot) / 2).toFixed(2)) : parseFloat(vol.price.toFixed(2));
+  };
+  return {
+    support1: mergeLevel(supports[0], pivSup[0]),
+    support2: mergeLevel(supports[1], pivSup[1]),
+    support3: supports[2] ? parseFloat(supports[2].price.toFixed(2)) : pivSup[2] ? parseFloat(pivSup[2].toFixed(2)) : null,
+    resistance1: mergeLevel(resistances[0], pivRes[0]),
+    resistance2: mergeLevel(resistances[1], pivRes[1]),
+    resistance3: resistances[2] ? parseFloat(resistances[2].price.toFixed(2)) : pivRes[2] ? parseFloat(pivRes[2].toFixed(2)) : null,
+    s1Confluence: !!(supports[0] && pivSup[0] && Math.abs(supports[0].price - pivSup[0]) / pivSup[0] < 0.01),
+    r1Confluence: !!(resistances[0] && pivRes[0] && Math.abs(resistances[0].price - pivRes[0]) / pivRes[0] < 0.01)
+  };
+}
+
 /** Linear regression channel with ±1σ / ±2σ bands (trend-aware mean). */
 function calcLinRegChannel(closes, period = 20) {
   if (!closes || closes.length < period) return null;
@@ -682,8 +798,9 @@ function calcMultiTFChannels(dailyCloses, weeklyCloses) {
   return {
     daily20: calcLinRegChannel(dailyCloses, 20),
     daily50: calcLinRegChannel(dailyCloses, 50),
+    daily100: dailyCloses.length >= 100 ? calcLinRegChannel(dailyCloses, 100) : null,
     weekly20: weeklyCloses ? calcLinRegChannel(weeklyCloses, 20) : null,
-    weekly50: weeklyCloses ? calcLinRegChannel(weeklyCloses, 50) : null,
+    weekly50: weeklyCloses ? calcLinRegChannel(weeklyCloses, 50) : null
   };
 }
 
@@ -2124,7 +2241,9 @@ function mergeFundamentalsForUi(row, fund) {
 // Cache technicals — 15 min TTL
 const techCache  = new Map();
 const fundCache  = new Map();
+const newsCache  = new Map();
 const TECH_TTL   = 15 * 60 * 1000;
+const NEWS_TTL   = 30 * 60 * 1000;
 
 function buildFullTechResult(sym, daily, weekly) {
   const closes = daily.map(d => d.c);
@@ -2137,7 +2256,9 @@ function buildFullTechResult(sym, daily, weekly) {
   const bb    = calcBollingerFull(closes, 20);
   const atr   = calcATRFull(daily, 14);
   const atrPct = atr ? parseFloat((atr / cp * 100).toFixed(2)) : null;
-  const { support1, support2, resistance1, resistance2 } = findSupportResistance(daily, 60);
+  const srLevels = findVolumeWeightedSR(daily, 80, 30);
+  const { support1, support2, support3, resistance1, resistance2, resistance3, s1Confluence, r1Confluence } =
+    srLevels;
   const weeklyClosesChan = weekly && weekly.length >= 20 ? weekly.map(d => d.c) : null;
   const channels = calcMultiTFChannels(closes, weeklyClosesChan);
   const channelPos = getChannelPosition(cp, channels);
@@ -2168,7 +2289,8 @@ function buildFullTechResult(sym, daily, weekly) {
     atr, atrPct, bb, adx,
     adxSignal: adx ? (adx > 40 ? 'strong_trend' : adx > 25 ? 'trending' : 'weak/ranging') : null,
     bbSignal: bb ? (bb.pct > 80 ? 'near_upper_band' : bb.pct < 20 ? 'near_lower_band' : 'mid_band') : null,
-    support1, support2, resistance1, resistance2,
+    support1, support2, support3, resistance1, resistance2, resistance3,
+    s1Confluence, r1Confluence,
     channels,
     channelPos,
     volume, candlePattern: pattern,
@@ -2225,7 +2347,17 @@ app.post('/api/technicals/batch', async (req, res) => {
       const volume  = calcVolumeAnalysis(daily, 20);
       const trend20 = calcTrend(daily, 20);
       const adx     = calcADX(daily, 14);
-      const { support1, support2, resistance1, resistance2 } = findSupportResistance(daily, 40);
+      const srLevels = findVolumeWeightedSR(daily, 60, 30);
+      const {
+        support1,
+        support2,
+        support3,
+        resistance1,
+        resistance2,
+        resistance3,
+        s1Confluence,
+        r1Confluence
+      } = srLevels;
       const bb      = calcBollingerFull(closes, 20);
 
       let weeklyTrend = null, weeklyRSI = null;
@@ -2251,7 +2383,8 @@ app.post('/api/technicals/batch', async (req, res) => {
         aboveMa20:  ma20  != null ? cp > ma20  : null,
         aboveMa50:  ma50  != null ? cp > ma50  : null,
         aboveMa200: ma200 != null ? cp > ma200 : null,
-        support1, support2, resistance1, resistance2,
+        support1, support2, support3, resistance1, resistance2, resistance3,
+        s1Confluence, r1Confluence,
         channels,
         channelPos,
         candlePattern: detectCandlePattern(daily),
@@ -2290,6 +2423,87 @@ app.post('/api/fundamentals/batch', async (req, res) => {
     } catch(e) { console.warn('Fund batch fail:', sym, e.message); }
   }));
   console.log(`Fundamentals batch: ${Object.keys(results).length}/${equities.length} succeeded`);
+  res.json(results);
+});
+
+// POST /api/news-sentiment/batch — Yahoo headlines + Claude JSON sentiment per symbol
+app.post('/api/news-sentiment/batch', async (req, res) => {
+  const { symbols } = req.body;
+  const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
+  if (!symbols?.length || !apiKey) return res.json({});
+
+  const results = {};
+  const newsMap = {};
+  await Promise.allSettled(symbols.map(async sym => {
+    try {
+      const cached = newsCache.get(sym);
+      if (cached && Date.now() - cached.ts < NEWS_TTL) {
+        newsMap[sym] = cached.data;
+        return;
+      }
+      const items = await fetchNews(sym, 6);
+      newsMap[sym] = items;
+      newsCache.set(sym, { ts: Date.now(), data: items });
+    } catch (e) {
+      newsMap[sym] = [];
+    }
+  }));
+
+  const symbolsWithNews = symbols.filter(s => newsMap[s]?.length > 0);
+  if (!symbolsWithNews.length) return res.json({});
+
+  const newsBlocks = symbolsWithNews.map(sym => {
+    const headlines = newsMap[sym].map((n, i) => `  ${i + 1}. [${n.time}] ${n.title} (${n.publisher})`).join('\n');
+    return `${sym}:\n${headlines}`;
+  }).join('\n\n');
+
+  const prompt = `You are a financial news analyst. For each stock below, analyze the recent news headlines and return a JSON sentiment assessment. Focus on what ACTUALLY MOVES stock prices: earnings beats/misses, analyst upgrades/downgrades, product launches, regulatory events, M&A, guidance changes, macro impacts.
+
+NEWS HEADLINES:
+${newsBlocks}
+
+For each symbol return:
+- sentiment: "bullish" | "bearish" | "neutral"
+- score: integer -100 to +100 (0=neutral, +80=very bullish, -80=very bearish)
+- catalysts: array of up to 3 specific catalysts found in the news
+- risks: array of up to 2 news-based risks
+- nearTermCatalyst: bool — is there an earnings/product event in the next 2-4 weeks?
+- avoidBeforeEarnings: bool — should we avoid new positions due to upcoming earnings?
+- summary: one sentence max explaining the dominant news theme
+
+Return ONLY a JSON object like: {"AAPL": {"sentiment":"bullish","score":45,"catalysts":["iPhone demand"],"risks":["macro"],"nearTermCatalyst":false,"avoidBeforeEarnings":false,"summary":"..."}, ...}
+Output ONLY the JSON object. No markdown.`;
+
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1200,
+        system:
+          'You are a financial news sentiment analyst. Output ONLY valid JSON. No markdown, no backticks.',
+        messages: [{ role: 'user', content: prompt }]
+      }),
+      signal: AbortSignal.timeout(30000)
+    });
+    if (!r.ok) return res.json({});
+    const d = await r.json();
+    const text = d?.content?.[0]?.text || '';
+    const clean = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    Object.entries(parsed).forEach(([sym, data]) => {
+      newsCache.set(sym + '_sentiment', { ts: Date.now(), data });
+      results[sym] = data;
+    });
+  } catch (e) {
+    console.warn('news-sentiment error:', e.message);
+  }
+
   res.json(results);
 });
 
@@ -4669,72 +4883,82 @@ app.post('/api/claude', async (req, res) => {
   }
 });
 
-// Recalibrate existing history TP/SL levels using current ATR (fixes legacy tight stops)
+// Recalibrate open trades using SD channel + volume S/R (replaces legacy ATR-only method)
 app.post('/api/history/recalibrate-levels', async (req, res) => {
   const updated = [];
   const failed = [];
 
-  // Get unique tickers from history that are still open or recent
-  const tickers = [...new Set(
+  const openTickers = [...new Set(
     tradeHistory
       .filter(h => {
         const hz = h.hz || 'short';
-        const status = h[hz + 'Status'] || h.status || 'open';
-        return status === 'open';
+        return (h[hz + 'Status'] || h.status || 'open') === 'open';
       })
       .map(h => h.ticker)
       .filter(Boolean)
   )];
 
-  console.log('Recalibrate: fetching ATR for', tickers.length, 'open tickers');
+  console.log('Recalibrate channels: fetching tech for', openTickers.length, 'tickers');
 
-  // Fetch ATR for each open ticker
-  const atrMap = {};
-  await Promise.all(tickers.map(async ticker => {
+  const techMap = {};
+  await Promise.all(openTickers.map(async ticker => {
     try {
-      const ohlcv = await fetchOHLCVForAnalysis(ticker);
-      if (ohlcv) {
-        const tech = computeTechnicals(ohlcv);
-        if (tech?.atr14) atrMap[ticker] = tech.atr14;
-      }
-    } catch(e) { console.log('Recalibrate ATR err', ticker, e.message); }
+      const daily = await fetchOHLCV(ticker, '6mo', '1d');
+      const weekly = await fetchOHLCV(ticker, '2y', '1wk').catch(() => null);
+      if (daily && daily.length >= 30) techMap[ticker] = buildFullTechResult(ticker, daily, weekly);
+    } catch (e) {
+      console.warn('Recalibrate tech', ticker, e.message);
+    }
   }));
 
-  // Update open trades with new ATR-based levels
+  const fundMap = {};
+  const equityTickers = openTickers.filter(t => !t.includes('=F') && !t.includes('-USD') && !t.includes('-EUR'));
+  await Promise.all(equityTickers.map(async ticker => {
+    try {
+      const f = await fetchFundamentals(ticker);
+      if (f) fundMap[ticker] = f;
+    } catch (_) {}
+  }));
+
   tradeHistory = tradeHistory.map(h => {
     const hz = h.hz || 'short';
     const status = h[hz + 'Status'] || h.status || 'open';
-    if (status !== 'open') return h; // don't touch closed/SL-hit trades
+    if (status !== 'open') return h;
 
     const ticker = h.ticker;
-    const atr14 = atrMap[ticker];
-    const entryPrice = parseFloat(h.entry || h[hz + 'Entry'] || 0);
-    if (!entryPrice || !atr14) { failed.push(ticker); return h; }
-
-    const isSell = (h.action || '').toLowerCase() === 'sell';
-    const side = isSell ? 'sell' : 'buy';
-
-    const newH = { ...h };
-    // Recalibrate all horizons
-    for (const hzKey of ['short', 'medium', 'long']) {
-      const hzStatus = h[hzKey + 'Status'] || (hzKey === hz ? status : 'open');
-      if (hzStatus !== 'open') continue;
-      const m = HORIZON_ATR[hzKey][side];
-      newH[hzKey + 'Target1']  = String(roundPrice(entryPrice + m.tp1 * atr14));
-      newH[hzKey + 'Target2']  = String(roundPrice(entryPrice + m.tp2 * atr14));
-      newH[hzKey + 'StopLoss'] = String(roundPrice(entryPrice + m.sl  * atr14));
+    const tech = techMap[ticker];
+    const fund = fundMap[ticker] || null;
+    if (!tech) {
+      failed.push(ticker);
+      return h;
     }
-    // Back-compat
-    newH.target1  = newH.shortTarget1;
-    newH.target2  = newH.shortTarget2;
-    newH.stopLoss = newH.shortStopLoss;
+
+    const entryPrice = parseFloat(h[hz + 'Entry'] || h.entry || 0);
+    if (!entryPrice) {
+      failed.push(ticker);
+      return h;
+    }
+
+    const tempRow = {
+      ...h,
+      shortRating: h.shortRating || (h.action === 'Sell' ? 'Sell' : 'Buy'),
+      mediumRating: h.mediumRating || (h.action === 'Sell' ? 'Sell' : 'Buy'),
+      longRating: h.longRating || (h.action === 'Sell' ? 'Sell' : 'Buy')
+    };
+
+    const recalibrated = applyServerPriceLevels(tempRow, entryPrice, tech, fund);
     updated.push(ticker);
-    return newH;
+    return recalibrated;
   });
 
   saveHistoryFile(tradeHistory);
-  console.log('Recalibrate: updated', updated.length, 'trades, failed:', failed.length);
-  res.json({ updated: updated.length, failed: failed.length, failedTickers: [...new Set(failed)] });
+  console.log('Recalibrate: updated', updated.length, 'open trades with channel-based levels');
+  res.json({
+    updated: updated.length,
+    failed: failed.length,
+    failedTickers: [...new Set(failed)],
+    message: `Updated ${updated.length} open trade(s) with SD channel-based TP/SL and volume S/R levels.`
+  });
 });
 
 // One-time cleanup: fix impossible entries in server history (must be before SPA GET *)

@@ -1517,32 +1517,95 @@ async function runDashScan(){
     logEl.innerHTML+='<div>→ '+batch.join(', ')+'</div>';
     logEl.scrollTop=logEl.scrollHeight;
 
-    // Get live prices for this batch
+    let batchTech = {}, batchFund = {}, batchNews = {};
     let batchPriceCtx = '';
+    const eqSyms = batch.filter(function (t) {
+      return !String(t).includes('=F') && !String(t).includes('-USD') && !String(t).includes('-EUR');
+    });
     try {
-      const bpr = await fetch('/api/prices?symbols='+encodeURIComponent(batch.join(',')));
-      if(bpr.ok){
-        const bpd = await bpr.json();
-        const lines = batch.map(t => { const p=getPriceQuoteFromMap(bpd,t); return p&&p.price?`${t}=${p.price}${p.currency||''}`:null; }).filter(Boolean);
-        if(lines.length) batchPriceCtx = `\nLive prices: ${lines.join(', ')}. Base all entry/target/stop levels on these prices.`;
+      const [bpr, techR, fundR, newsR] = await Promise.all([
+        fetch('/api/prices?symbols=' + encodeURIComponent(batch.join(','))),
+        fetch('/api/technicals/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: batch }) }),
+        fetch('/api/fundamentals/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: eqSyms }) }),
+        fetch('/api/news-sentiment/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: batch }) })
+      ]);
+      const prices = bpr.ok ? await bpr.json() : {};
+      if (Object.keys(prices).length) {
+        Object.entries(prices).forEach(function ([sym, info]) {
+          const entry = Object.assign({}, info, { ts: Date.now() });
+          const k = String(sym || '').trim().toUpperCase();
+          if (!k) return;
+          priceCache[k] = entry;
+          if (k.includes('.')) priceCache[k.replace(/\./g, '-')] = entry;
+          else {
+            const m = k.match(/^(.+)-([A-Z]{1,5})$/);
+            if (m && m[2] !== 'USD') priceCache[m[1] + '.' + m[2]] = entry;
+          }
+        });
       }
-    } catch(e){}
+      if (techR.ok) batchTech = await techR.json();
+      if (fundR.ok) batchFund = await fundR.json();
+      if (newsR.ok) batchNews = await newsR.json();
+      const priceLines = batch.map(function (t) {
+        const p = getPriceQuoteFromMap(prices, t);
+        return p && p.price ? t + '=' + p.price + (p.currency || '') : null;
+      }).filter(Boolean);
+      if (priceLines.length) batchPriceCtx = '\nLIVE PRICES: ' + priceLines.join(', ');
+      const techLines = batch.map(function (t) {
+        const tech = batchTech[t];
+        if (!tech) return null;
+        return t + ': RSI=' + tech.rsi + '(' + tech.rsiSignal + '), MACD=' + (tech.macd && tech.macd.trend ? tech.macd.trend : '?')
+          + ', S1=' + tech.support1 + ' S2=' + tech.support2 + ' R1=' + tech.resistance1 + ' R2=' + tech.resistance2
+          + ', ATR%=' + tech.atrPct + ', vol=' + (tech.volume && tech.volume.confirmation ? tech.volume.confirmation : '?')
+          + ', pattern=' + tech.candlePattern;
+      }).filter(Boolean);
+      if (techLines.length) batchPriceCtx += '\n\nREAL TECH (Yahoo OHLCV):\n' + techLines.join('\n');
+    } catch (e2) {
+      console.warn('Batch tech/fund/news:', e2.message);
+    }
 
-    const exampleJson = '[{"ticker":"AAPL","name":"Apple Inc","market":"S&P 500","shortScore":82,"mediumScore":75,"longScore":68,"shortSellScore":20,"mediumSellScore":55,"longSellScore":30,"shortAction":"Buy","mediumAction":"Buy","longAction":"Hold","shortRating":"Strong Buy","mediumRating":"Buy","longRating":"Hold","shortConf":82,"mediumConf":74,"longConf":65,"shortEntry":"185.50","shortTarget1":"189","shortTarget2":"193","shortStopLoss":"182","mediumEntry":"185.50","mediumTarget1":"198","mediumTarget2":"210","mediumStopLoss":"178","longEntry":"185.50","longTarget1":"215","longTarget2":"240","longStopLoss":"168","entry":"185.50","target1":"189","target2":"193","stopLoss":"182","sellEntry":"215","sellTarget1":"200","sellTarget2":"185","sellStopLoss":"222","reason":"Breaking above key resistance","sellReason":"Approaching major resistance overbought"}]';
-    const prompt = 'Rate and analyze these instruments for trading: ' + batch.join(', ') + '.' + batchPriceCtx
-      + '\n\nCRITICAL: Each timeframe MUST have DIFFERENT numeric targets (server enforces math from live price; you must still output distinct intent):'
-      + '\n- Short (1-3 days):   entry = live price, TP1 ≈ +2.5%, TP2 ≈ +4.5%, SL ≈ −1.5% from entry (long); shorts inverted.'
-      + '\n- Medium (1-3 weeks): entry = live price, TP1 ≈ +7%,   TP2 ≈ +13%,  SL ≈ −4%'
-      + '\n- Long (1-6 months):  entry = live price, TP1 ≈ +18%, TP2 ≈ +35%, SL ≈ −10%'
-      + '\nshortTarget1 MUST numerically differ from mediumTarget1 MUST differ from longTarget1 (different % from same live base).'
-      + '\n\nQUALITY: backtestedWinRate 45-72% (realistic). Only Strong Buy/Sell with R:R > 2.5x. Give Sell scores for genuinely bearish horizons.'
-      + '\n\nCONSISTENCY: Never treat the same ticker as both a flagship long pick and a short-setup pick. If shortRating is Strong Buy or Buy, set shortSellScore under 22. If mediumRating is bullish, keep mediumSellScore under 22 unless the medium bias is clearly bearish.'
-      + '\n\nReturn ONLY raw JSON array. No markdown, no backticks, no "json" prefix. Start immediately with ['
-      + '\n\nFormat: ' + exampleJson
-      + '\n\nInclude all ' + batch.length + ' instruments. [';
+    const exampleJson = '[{"ticker":"AAPL","name":"Apple Inc","market":"S&P 500","shortScore":82,"mediumScore":72,"longScore":65,"shortSellScore":18,"mediumSellScore":28,"longSellScore":35,"shortAction":"Buy","mediumAction":"Buy","longAction":"Hold","shortRating":"Strong Buy","mediumRating":"Buy","longRating":"Hold","shortConf":82,"mediumConf":72,"longConf":58,"shortAnalysis":"RSI near MA20","mediumAnalysis":"Trend intact","longAnalysis":"Strong fundamentals","reason":"Setup note","sellReason":"","backtestedWinRate":56}]';
+
+    const signalContext = batch.map(function (t) {
+      const tech = batchTech[t];
+      const fund = batchFund[t];
+      const p = getPriceQuoteFromMap(priceCache, t);
+      if (!tech || !tech.quantSignal) return t + ': no signal computed';
+      const qs = tech.quantSignal;
+      const fmtHz = function (sig) {
+        const bt = sig.backtest;
+        const btStr = bt
+          ? 'real backtest: ' + bt.winRate + '% win, ' + bt.trades + ' trades, avg ' + bt.avgReturnPct + '% return'
+          : 'estimated win rate: ' + (sig.winRateHint != null ? sig.winRateHint : '?') + '%';
+        return sig.rating + ' (buy=' + sig.buyScore + ' sell=' + sig.sellScore + ') | ' + btStr + ' | triggers: ' + ((sig.conditions && sig.conditions.join(', ')) || 'none');
+      };
+      let line = t + ' @ $' + (p && p.price != null ? p.price : '?') + ': SHORT=' + fmtHz(qs.short) + ' | MEDIUM=' + fmtHz(qs.medium) + ' | LONG=' + fmtHz(qs.long);
+      line += ' | RSI=' + tech.rsi + ' MACD=' + (tech.macd && tech.macd.trend ? tech.macd.trend : '?') + ' ADX=' + tech.adx + ' S1=' + tech.support1 + ' R1=' + tech.resistance1
+        + ' Pattern=' + tech.candlePattern + ' WeeklyTrend=' + (tech.weeklyTrend || '?');
+      if (fund) {
+        const up = fund.targetMeanPrice && p && p.price ? (((fund.targetMeanPrice - p.price) / p.price) * 100).toFixed(0) + '%' : 'N/A';
+        line += ' | fPE=' + (fund.forwardPE != null ? fund.forwardPE : 'N/A') + ' Analyst=' + (fund.recommendationKey || 'N/A')
+          + ' Target=$' + (fund.targetMeanPrice != null ? fund.targetMeanPrice : 'N/A') + '(' + up + ' up)';
+      }
+      return line;
+    }).join('\n');
+
+    const prompt = 'Instruments: ' + batch.join(', ') + '.' + batchPriceCtx + '\n\n'
+      + 'You are a research analyst writing trade notes. Signals below are pre-computed by our quant engine — DO NOT change scores, ratings or win rates. Write ONLY the text explanation fields.\n\n'
+      + 'PRE-COMPUTED SIGNALS (treat as authoritative):\n' + signalContext + '\n\n'
+      + 'For each instrument, write ONLY these text fields in the JSON:\n'
+      + '- shortAnalysis, mediumAnalysis, longAnalysis: reference actual S/R, RSI, trend, fundamentals from the data above\n'
+      + '- sellReason: if sell signal, specific reason; else ""\n'
+      + '- risks: exactly 3 specific risks with numbers where possible\n'
+      + '- catalyst: near-term catalyst\n'
+      + '- momentum: Bullish / Neutral / Bearish (match the signal)\n'
+      + '- sector: sector name\n\n'
+      + 'IMPORTANT: Copy shortScore/mediumScore/longScore/shortSellScore/mediumSellScore/longSellScore/shortRating/mediumRating/longRating/'
+      + 'shortAction/mediumAction/longAction/backtestedWinRate EXACTLY from the pre-computed signals above. Do not invent scores.\n\n'
+      + 'Format: ' + exampleJson + '\n\nInclude all ' + batch.length + ' instruments. [';
 
     try{
-      const resp=await fetch('/api/claude',{method:'POST',headers:claudeFetchHeaders(),body:JSON.stringify({model:window.CLAUDE_MODEL||'claude-haiku-4-5-20251001',max_tokens:8192,system:'You are a financial data API. You output ONLY raw JSON arrays. Never use markdown, never use backticks, never add explanations. Your response must begin with [ and end with ].',messages:[{role:'user',content:prompt}]})});
+      const resp=await fetch('/api/claude',{method:'POST',headers:claudeFetchHeaders(),body:JSON.stringify({model:window.CLAUDE_MODEL||'claude-haiku-4-5-20251001',max_tokens:2200,system:'You are a research analyst. Output ONLY a valid JSON array starting with [. No markdown, no backticks. Copy all numeric scores and ratings from the user message exactly; write narrative text fields only.',messages:[{role:'user',content:prompt}]})});
       if(resp.status===401||resp.status===403){
         document.getElementById('dashStatus').innerHTML='<div class="eb"><strong>Invalid API key.</strong> Use the green key bar at the top to update your key, then click Refresh picks.</div>';
         document.getElementById('pBar') && (document.getElementById('pBar').style.width='0%');
@@ -1605,35 +1668,106 @@ async function runDashScan(){
         if(res && res.length > 0){
           function scoreFrom(rating, action, winRate){
             const v=(rating||action||'').toLowerCase();
-            const highConf = !winRate || winRate >= 70;
-            if(v.includes('strong buy'))  return highConf ? 88 : 72;
-            if(v.includes('buy'))         return 72;
-            if(v.includes('strong sell')) return highConf ? 82 : 68;
-            if(v.includes('sell'))        return 68;
-            return 45;
+            const wr = winRate || 0;
+            const boost = wr >= 65 ? 1.05 : wr >= 55 ? 1.0 : 0.9;
+            if(v.includes('strong buy'))  return Math.round(83 * boost);
+            if(v.includes('buy'))         return Math.round(67 * boost);
+            if(v.includes('strong sell')) return Math.round(80 * boost);
+            if(v.includes('sell'))        return Math.round(63 * boost);
+            return 32;
           }
-          res.forEach(r=>{
-            if(!r.shortScore  ||r.shortScore===0)  r.shortScore  =scoreFrom(r.shortRating,  r.shortAction  ||r.action, r.backtestedWinRate);
-            if(!r.mediumScore ||r.mediumScore===0) r.mediumScore =scoreFrom(r.mediumRating, r.mediumAction ||r.action, r.backtestedWinRate);
-            if(!r.longScore   ||r.longScore===0)   r.longScore   =scoreFrom(r.longRating,   r.longAction   ||r.action, r.backtestedWinRate);
-            if(!r.shortSellScore)  r.shortSellScore  =(r.shortRating ||'').toLowerCase().includes('sell')?75:0;
-            if(!r.mediumSellScore) r.mediumSellScore =(r.mediumRating||'').toLowerCase().includes('sell')?75:0;
-            if(!r.longSellScore)   r.longSellScore   =(r.longRating  ||'').toLowerCase().includes('sell')?75:0;
-            ['short','medium','long'].forEach(hz=>{
-              const sk = hz+'SellScore';
-              let v = r[sk]||0;
-              const rat = String(r[hz+'Rating']||'').toLowerCase();
-              if(rat.includes('strong sell')) v = Math.max(v, 82);
-              else if(rat.includes('sell')) v = Math.max(v, 70);
-              const buySc = r[hz+'Score']||0;
-              const act = String(r[hz+'Action']||r.action||'').toLowerCase();
-              if(act==='sell'||act==='short') v = Math.max(v, 68);
-              if(buySc>0 && buySc<52) v = Math.max(v, 38 + Math.round(52-buySc));
-              if(buySc>0 && buySc<45) v = Math.max(v, 45);
-              r[sk]=Math.min(100,Math.round(v));
-              var bull = rat.includes('strong buy') || (rat.includes('buy') && !rat.includes('sell'));
-              if (bull && (r[hz+'Score']||0) >= 58) r[sk] = Math.min(r[sk], 20);
-            });
+          function sellScoreFrom(rating, action){
+            const v=(rating||action||'').toLowerCase();
+            if(v.includes('strong sell')) return 80;
+            if(v.includes('sell'))        return 63;
+            return 0;
+          }
+          res.forEach(function(r){
+            const tech = batchTech[r.ticker];
+            const fund = batchFund[r.ticker];
+            const news = batchNews[r.ticker] || null;
+            const qs = tech && tech.quantSignal;
+            if (qs && (news || tech)) {
+              const newsScore = news != null && news.score != null ? news.score : 0;
+              const newsBull  = news && news.sentiment === 'bullish' && newsScore > 20;
+              const newsBear  = news && news.sentiment === 'bearish' && newsScore < -20;
+              const newsStrBull = news && news.sentiment === 'bullish' && newsScore > 50;
+              const newsStrBear = news && news.sentiment === 'bearish' && newsScore < -50;
+              const avoidEarnings = !!(news && news.avoidBeforeEarnings);
+
+              var sh  = qs.short && qs.short.buyScore  != null ? qs.short.buyScore  : 30;
+              var shS = qs.short && qs.short.sellScore != null ? qs.short.sellScore : 0;
+              var me  = qs.medium && qs.medium.buyScore  != null ? qs.medium.buyScore  : 30;
+              var meS = qs.medium && qs.medium.sellScore != null ? qs.medium.sellScore : 0;
+              var lo  = qs.long && qs.long.buyScore  != null ? qs.long.buyScore  : 30;
+              var loS = qs.long && qs.long.sellScore != null ? qs.long.sellScore : 0;
+
+              if (avoidEarnings) { sh = 0; shS = 0; }
+
+              if (newsStrBull) { sh=Math.min(92,sh+18); me=Math.min(92,me+15); lo=Math.min(92,lo+10); }
+              else if (newsBull) { sh=Math.min(92,sh+10); me=Math.min(92,me+8); lo=Math.min(92,lo+5); }
+              if (newsStrBear) { shS=Math.min(88,shS+18); meS=Math.min(88,meS+15); loS=Math.min(88,loS+10); sh=Math.round(sh*0.55); }
+              else if (newsBear) { shS=Math.min(88,shS+10); meS=Math.min(88,meS+8); sh=Math.round(sh*0.70); }
+
+              if(sh>55&&shS>55){ if(sh>=shS) shS=20; else sh=20; }
+              if(me>55&&meS>55){ if(me>=meS) meS=20; else me=20; }
+              if(lo>55&&loS>55){ if(lo>=loS) loS=20; else lo=20; }
+
+              r.shortScore = sh; r.shortSellScore = shS;
+              r.mediumScore = me; r.mediumSellScore = meS;
+              r.longScore = lo; r.longSellScore = loS;
+
+              const rate = function(sc){ return sc>=78?'Strong Buy':sc>=62?'Buy':'Hold'; };
+              const rateS = function(sc){ return sc>=74?'Strong Sell':sc>=58?'Sell':'Hold'; };
+              const act = function(b, sv){ return b>sv?(b>=62?'Buy':'Hold'):(sv>=58?'Sell':'Hold'); };
+              r.shortRating  = sh>=shS ? rate(sh)  : rateS(shS);
+              r.mediumRating = me>=meS ? rate(me)  : rateS(meS);
+              r.longRating   = lo>=loS ? rate(lo)  : rateS(loS);
+              r.shortAction  = act(sh,shS); r.mediumAction = act(me,meS); r.longAction = act(lo,loS);
+
+              var dom = Math.max(sh, shS);
+              var nb = (newsBull&&sh>shS)||(newsBear&&shS>sh) ? 3 : 0;
+              r.backtestedWinRate = dom>=75?62+nb:dom>=62?56+nb:dom>=50?48:40;
+              r.quantConditions = (qs.short && qs.short.conditions ? qs.short.conditions.slice() : []).concat(news && news.catalysts ? news.catalysts : []);
+              r.newsSentiment = news && news.sentiment ? news.sentiment : 'neutral';
+              r.newsScore = newsScore;
+              r.newsSummary = news && news.summary ? news.summary : '';
+              r.avoidEarnings = avoidEarnings;
+            } else {
+              if (!r.shortScore)  r.shortScore  = scoreFrom(r.shortRating,  r.action, r.backtestedWinRate);
+              if (!r.mediumScore) r.mediumScore = scoreFrom(r.mediumRating, r.action, r.backtestedWinRate);
+              if (!r.longScore)   r.longScore   = scoreFrom(r.longRating,   r.action, r.backtestedWinRate);
+              r.shortSellScore  = sellScoreFrom(r.shortRating,  r.action);
+              r.mediumSellScore = sellScoreFrom(r.mediumRating, r.action);
+              r.longSellScore   = sellScoreFrom(r.longRating,   r.action);
+              r.backtestedWinRate = Math.min(r.backtestedWinRate || 50, 55);
+              if (r.shortScore   > 55 && r.shortSellScore   > 55) { if (r.shortScore > r.shortSellScore) r.shortSellScore = 20; else r.shortScore = 20; }
+              if (r.mediumScore  > 55 && r.mediumSellScore  > 55) { if (r.mediumScore > r.mediumSellScore) r.mediumSellScore = 20; else r.mediumScore = 20; }
+              if (r.longScore    > 55 && r.longSellScore    > 55) { if (r.longScore > r.longSellScore) r.longSellScore = 20; else r.longScore = 20; }
+            }
+          });
+          res.forEach(function(r){
+            var tech = batchTech[r.ticker];
+            var fund = batchFund[r.ticker];
+            if (tech) {
+              r._atr = tech.atr || null;
+              r._atrPct = tech.atrPct || null;
+              r._support1 = tech.support1 || null;
+              r._support2 = tech.support2 || null;
+              r._support3 = tech.support3 || null;
+              r._resistance1 = tech.resistance1 || null;
+              r._resistance2 = tech.resistance2 || null;
+              r._resistance3 = tech.resistance3 || null;
+              r._ma50 = tech.ma50 || null;
+              r._ma200 = tech.ma200 || null;
+            }
+            if (fund) {
+              r._analystTarget = fund.targetMeanPrice || null;
+              r._revenueGrowth = fund.revenueGrowth || null;
+              r._earningsGrowth = fund.earningsGrowth || null;
+              r._forwardPE = fund.forwardPE || null;
+              r._recKey = fund.recommendationKey || null;
+            }
           });
           console.log('✓ Batch parsed', res.length, 'items');
           all.push(...res);
