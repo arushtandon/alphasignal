@@ -2560,6 +2560,104 @@ Output ONLY the JSON object. No markdown.`;
   res.json(results);
 });
 
+/** Danelfin API: https://danelfin.com/docs/api — keyed by ticker as returned by the client batch. */
+const DANELFIN_BASE_URL = 'https://apirest.danelfin.com';
+function danelfinNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function danelfinLatestLeaf(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  if (payload.aiscore !== undefined || payload.fundamental !== undefined || payload.technical !== undefined) {
+    return payload;
+  }
+  let chosen = null;
+  let chosenKey = '';
+  for (const [k, v] of Object.entries(payload)) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+    const inner =
+      v.aiscore !== undefined || v.fundamental !== undefined || v.technical !== undefined
+        ? v
+        : danelfinLatestLeaf(v);
+    if (!inner) continue;
+    if (!chosen || String(k) > chosenKey) {
+      chosenKey = String(k);
+      chosen = inner;
+    }
+  }
+  return chosen;
+}
+
+async function fetchDanelfinRow(apiKey, symbol) {
+  const sym = String(symbol || '').trim();
+  if (!sym) return null;
+  const fld =
+    'aiscore,technical,fundamental,sentiment,low_risk,buy_track_record,sell_track_record';
+  async function ranking(marketEu) {
+    const q = `ticker=${encodeURIComponent(sym)}&fields=${encodeURIComponent(fld)}`;
+    const u = `${DANELFIN_BASE_URL}/ranking?${q}${marketEu ? '&market=europe' : ''}`;
+    const r = await fetch(u, {
+      headers: { Accept: 'application/json', 'x-api-key': apiKey },
+      signal: AbortSignal.timeout(14000)
+    });
+    if (!r.ok) return null;
+    let json;
+    try {
+      json = await r.json();
+    } catch {
+      return null;
+    }
+    const leaf = danelfinLatestLeaf(json);
+    if (!leaf) return null;
+    return {
+      aiscore: danelfinNum(leaf.aiscore),
+      technical: danelfinNum(leaf.technical),
+      fundamental: danelfinNum(leaf.fundamental),
+      sentiment: danelfinNum(leaf.sentiment),
+      low_risk: danelfinNum(leaf.low_risk),
+      buy_track_record:
+        leaf.buy_track_record === true ||
+        leaf.buy_track_record === 1 ||
+        leaf.buy_track_record === '1',
+      sell_track_record:
+        leaf.sell_track_record === true ||
+        leaf.sell_track_record === 1 ||
+        leaf.sell_track_record === '1'
+    };
+  }
+  try {
+    const us = await ranking(false);
+    if (us && us.aiscore != null) return us;
+    return await ranking(true);
+  } catch (e) {
+    console.warn('Danelfin', sym, e.message);
+    return null;
+  }
+}
+
+// POST /api/danelfin/batch — equities only; returns map ticker -> scores (omit if no AI score)
+app.post('/api/danelfin/batch', async (req, res) => {
+  const apiKey = (process.env.DANELFIN_API_KEY || '').trim();
+  if (!apiKey) return res.json({});
+
+  const raw = req.body?.symbols;
+  const symbols = Array.isArray(raw) ? raw.map(s => String(s || '').trim()).filter(Boolean) : [];
+  if (!symbols.length) return res.json({});
+
+  const equities = symbols.filter(s => !s.includes('=F') && !s.includes('-USD') && !s.includes('-EUR'));
+
+  const out = {};
+  await Promise.allSettled(
+    equities.map(async sym => {
+      const row = await fetchDanelfinRow(apiKey, sym);
+      if (row && row.aiscore != null) out[sym] = row;
+    })
+  );
+
+  console.log(`Danelfin batch: ${Object.keys(out).length}/${equities.length}`);
+  res.json(out);
+});
+
 // ── Server-side trade history (shared across devices) ──────────────────────
 // In-memory store (persists while server is running, resets on redeploy)
 // Use a simple JSON file for persistence on Render disk
@@ -2658,6 +2756,7 @@ app.get('/api/health', (req, res) => {
       ASML_AS: toBloombergEquity('ASML.AS'),
       HK9988: toBloombergEquity('9988.HK')
     },
+    danelfin_configured: !!(process.env.DANELFIN_API_KEY || '').trim(),
     hasKey: !!process.env.ANTHROPIC_API_KEY,
     bloomberg_bridge_configured: Boolean(bloombergBridgeUrl()),
     bloomberg_bridge_secret_configured_on_server: Boolean((process.env.BLOOMBERG_BRIDGE_SECRET || '').trim()),
@@ -4819,6 +4918,20 @@ Output ONLY the JSON array. No markdown.`;
       const mergedRow = applyServerPriceLevels(row, +pq.price, tech || null, fund || null);
       mergeFundamentalsForUi(mergedRow, fund || null);
       injectAnalyzeRowFromServerTech(mergedRow, tech || null);
+
+      const dk = (process.env.DANELFIN_API_KEY || '').trim();
+      if (dk && !sym.includes('=F') && !sym.includes('-USD') && !sym.includes('-EUR')) {
+        const df = await fetchDanelfinRow(dk, sym);
+        if (df && df.aiscore != null) {
+          mergedRow.danelfinAiScore = df.aiscore;
+          mergedRow.danelfinTechnical = df.technical;
+          mergedRow.danelfinFundamental = df.fundamental;
+          mergedRow.danelfinSentiment = df.sentiment;
+          mergedRow.danelfinLowRisk = df.low_risk;
+          mergedRow.danelfinBuyTrack = df.buy_track_record;
+        }
+      }
+
       await augmentNewsImpactFromFinnhub(sym, mergedRow);
       return mergedRow;
     }));
