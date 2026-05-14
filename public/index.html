@@ -1237,6 +1237,160 @@ function dashLivePx(ticker) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** Mirror server applyServerPriceLevels (channel + S/R) for dashboard UI + history rows. */
+function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
+  fund = fund || {};
+  if (!e || e <= 0) return { tp1: null, tp2: null, sl: null };
+  const atr = tech?.atr || tech?.atr14 || null;
+  const chan = tech?.channels || null;
+  const d20 = chan?.daily20 || null;
+  const d50 = chan?.daily50 || null;
+  const w20 = chan?.weekly20 || null;
+  const w50 = chan?.weekly50 || null;
+  const s1 = tech?.support1 || null;
+  const s2 = tech?.support2 || null;
+  const r1 = tech?.resistance1 || null;
+  const r2 = tech?.resistance2 || null;
+  const s1conf = tech?.s1Confluence || false;
+  const ma50 = tech?.ma50 || null;
+  const ma200 = tech?.ma200 || null;
+  const analystTarget = fund.targetMeanPrice || fund.targetMean || null;
+  let tp1, tp2, sl;
+
+  if (!isSell) {
+    if (hz === 'short') {
+      const chanSL = d20?.lower2 ?? null;
+      const srSL = s1 && s1 < e * 0.999 && s1 > e * 0.92
+        ? (s1conf ? s1 * 0.992 : s1 * 0.994)
+        : null;
+      if (chanSL && srSL) sl = roundDashPrice(Math.max(chanSL, srSL));
+      else if (chanSL && chanSL < e * 0.999 && chanSL > e * 0.90) sl = roundDashPrice(chanSL);
+      else if (srSL) sl = roundDashPrice(srSL);
+      else sl = atr ? roundDashPrice(e - 2.0 * atr) : roundDashPrice(e * 0.975);
+
+      const chanTP1 = d20?.mean ?? null;
+      const srTP1 = r1 && r1 > e * 1.004 && r1 < e * 1.10 ? r1 : null;
+      if (chanTP1 && chanTP1 > e * 1.004) tp1 = srTP1 ? roundDashPrice(Math.min(chanTP1, srTP1)) : roundDashPrice(chanTP1);
+      else if (srTP1) tp1 = roundDashPrice(srTP1);
+      else tp1 = atr ? roundDashPrice(e + 2.5 * atr) : roundDashPrice(e * 1.035);
+
+      const chanTP2 = d20?.upper1 ?? null;
+      const srTP2 = r2 && r2 > tp1 ? r2 : (r1 && r1 > tp1 ? r1 : null);
+      tp2 = chanTP2 && chanTP2 > tp1
+        ? roundDashPrice(chanTP2)
+        : (srTP2 ? roundDashPrice(srTP2) : (atr ? roundDashPrice(e + 4.5 * atr) : roundDashPrice(e * 1.065)));
+    } else if (hz === 'medium') {
+      const wkSL = w20?.lower1 ?? null;
+      const dySL = d20?.lower2 ?? null;
+      const srSL = s2 && s2 < e * 0.995 && s2 > e * 0.88
+        ? s2 * 0.993 : (s1 && s1 < e * 0.995 && s1 > e * 0.88 ? s1 * 0.993 : null);
+      const candidates = [wkSL, dySL, srSL, ma50 ? ma50 * 0.97 : null]
+        .filter(function (v) { return v != null && v < e * 0.998 && v > e * 0.85; });
+      sl = candidates.length
+        ? roundDashPrice(Math.max.apply(null, candidates))
+        : (atr ? roundDashPrice(e - 3.0 * atr) : roundDashPrice(e * 0.940));
+
+      const wkMean = w20?.mean ?? d50?.mean ?? null;
+      const srTP1 = r1 && r1 > e * 1.008 ? r1 : null;
+      tp1 = wkMean && wkMean > e * 1.008
+        ? roundDashPrice(wkMean)
+        : (srTP1 ? roundDashPrice(srTP1) : (atr ? roundDashPrice(e + 4.5 * atr) : roundDashPrice(e * 1.08)));
+
+      const wkUp1 = w20?.upper1 ?? d50?.upper1 ?? null;
+      const srTP2 = r2 && r2 > tp1 ? r2 : null;
+      tp2 = wkUp1 && wkUp1 > tp1
+        ? roundDashPrice(wkUp1)
+        : (srTP2 ? roundDashPrice(srTP2) : (atr ? roundDashPrice(e + 8.0 * atr) : roundDashPrice(e * 1.14)));
+    } else {
+      const wkSL2 = w20?.lower2 ?? null;
+      const wkSL1 = w50?.lower1 ?? null;
+      const ma200SL = ma200 ? ma200 * 0.96 : null;
+      const candidates = [wkSL2, wkSL1, ma200SL]
+        .filter(function (v) { return v != null && v < e * 0.998 && v > e * 0.78; });
+      sl = candidates.length
+        ? roundDashPrice(Math.max.apply(null, candidates))
+        : (atr ? roundDashPrice(e - 5.5 * atr) : roundDashPrice(e * 0.880));
+
+      const targetOk = analystTarget && analystTarget > e * 1.06 && analystTarget < e * 2.2;
+      const wkUp1 = w20?.upper1 ?? null;
+      tp1 = targetOk
+        ? roundDashPrice(analystTarget)
+        : (wkUp1 && wkUp1 > e * 1.06 ? roundDashPrice(wkUp1) : (atr ? roundDashPrice(e + 10 * atr) : roundDashPrice(e * 1.22)));
+
+      const targetHighOk = fund.targetHighPrice && fund.targetHighPrice > tp1;
+      const wkUp2 = w20?.upper2 ?? w50?.upper1 ?? null;
+      tp2 = targetHighOk
+        ? roundDashPrice(fund.targetHighPrice)
+        : (wkUp2 && wkUp2 > tp1 ? roundDashPrice(wkUp2) : (atr ? roundDashPrice(e + 17 * atr) : roundDashPrice(e * 1.38)));
+    }
+  } else {
+    if (hz === 'short') {
+      const chanSL = d20?.upper2 ?? null;
+      const srSL = r1 && r1 > e * 1.001 && r1 < e * 1.06 ? r1 * 1.008 : null;
+      const candidates = [chanSL, srSL].filter(function (v) { return v != null && v > e * 1.001 && v < e * 1.12; });
+      sl = candidates.length
+        ? roundDashPrice(Math.min.apply(null, candidates))
+        : (atr ? roundDashPrice(e + 2.0 * atr) : roundDashPrice(e * 1.028));
+
+      const chanTP1 = d20?.mean ?? null;
+      const srTP1 = s1 && s1 < e * 0.996 && s1 > e * 0.88 ? s1 : null;
+      tp1 = chanTP1 && chanTP1 < e * 0.996
+        ? roundDashPrice(chanTP1)
+        : (srTP1 ? roundDashPrice(srTP1) : (atr ? roundDashPrice(e - 2.5 * atr) : roundDashPrice(e * 0.965)));
+
+      const chanTP2 = d20?.lower1 ?? null;
+      tp2 = chanTP2 && chanTP2 < tp1
+        ? roundDashPrice(chanTP2)
+        : (s2 && s2 < tp1 ? roundDashPrice(s2) : (atr ? roundDashPrice(e - 4.5 * atr) : roundDashPrice(e * 0.935)));
+    } else if (hz === 'medium') {
+      const chanSL = d20?.upper2 ?? null;
+      const wkSL = w20?.upper1 ?? null;
+      const candidates = [chanSL, wkSL, r1 ? r1 * 1.008 : null]
+        .filter(function (v) { return v != null && v > e * 1.001 && v < e * 1.15; });
+      sl = candidates.length
+        ? roundDashPrice(Math.min.apply(null, candidates))
+        : (atr ? roundDashPrice(e + 3.0 * atr) : roundDashPrice(e * 1.060));
+
+      const wkMean = w20?.mean ?? null;
+      tp1 = wkMean && wkMean < e * 0.994
+        ? roundDashPrice(wkMean)
+        : (s1 && s1 < e * 0.994 ? roundDashPrice(s1) : (atr ? roundDashPrice(e - 4.5 * atr) : roundDashPrice(e * 0.920)));
+
+      const wkLow1 = w20?.lower1 ?? null;
+      tp2 = wkLow1 && wkLow1 < tp1
+        ? roundDashPrice(wkLow1)
+        : (s2 && s2 < tp1 ? roundDashPrice(s2) : (atr ? roundDashPrice(e - 8.0 * atr) : roundDashPrice(e * 0.860)));
+    } else {
+      const wkUp2 = w20?.upper2 ?? null;
+      sl = wkUp2 && wkUp2 > e * 1.01 && wkUp2 < e * 1.20
+        ? roundDashPrice(wkUp2)
+        : (atr ? roundDashPrice(e + 5.5 * atr) : roundDashPrice(e * 1.120));
+
+      const ma200tp = ma200 && ma200 < e * 0.98 ? ma200 * 1.02 : null;
+      const wkLow1 = w20?.lower1 ?? null;
+      tp1 = ma200tp
+        ? roundDashPrice(ma200tp)
+        : (wkLow1 && wkLow1 < e * 0.95 ? roundDashPrice(wkLow1) : (atr ? roundDashPrice(e - 10 * atr) : roundDashPrice(e * 0.800)));
+
+      const wkLow2 = w20?.lower2 ?? null;
+      tp2 = wkLow2 && wkLow2 < tp1
+        ? roundDashPrice(wkLow2)
+        : (atr ? roundDashPrice(e - 17 * atr) : roundDashPrice(e * 0.650));
+    }
+  }
+
+  if (!isSell) {
+    if (sl >= e) sl = atr ? roundDashPrice(e - 2.0 * atr) : roundDashPrice(e * 0.975);
+    if (tp1 <= e) tp1 = atr ? roundDashPrice(e + 2.5 * atr) : roundDashPrice(e * 1.035);
+    if (tp2 <= tp1) tp2 = roundDashPrice(tp1 * 1.04);
+  } else {
+    if (sl <= e) sl = atr ? roundDashPrice(e + 2.0 * atr) : roundDashPrice(e * 1.028);
+    if (tp1 >= e) tp1 = atr ? roundDashPrice(e - 2.5 * atr) : roundDashPrice(e * 0.965);
+    if (tp2 >= tp1) tp2 = roundDashPrice(tp1 * 0.96);
+  }
+  return { tp1: tp1, tp2: tp2, sl: sl };
+}
+
 /** Snapshot live Yahoo price into short/medium/long entry + targets (dashboard + history save). */
 function enrichDashPickLevels(s) {
   if (!s || !s.ticker) return;
@@ -1244,6 +1398,8 @@ function enrichDashPickLevels(s) {
   if (!live) return;
   var hzKeys = ['short', 'medium', 'long'];
   var ratingKeys = { short: 'shortRating', medium: 'mediumRating', long: 'longRating' };
+  var tech = s._techSnap || null;
+  var fund = { targetMeanPrice: s._analystTarget, targetHighPrice: s._targetHighPrice };
   for (var hi = 0; hi < hzKeys.length; hi++) {
     var hz = hzKeys[hi];
     var ratingSell = ratingImpliesSellDash(s[ratingKeys[hz]]);
@@ -1253,12 +1409,23 @@ function enrichDashPickLevels(s) {
         ? ((s.mediumSellScore || 0) >= 52 && (s.mediumSellScore || 0) > (s.mediumScore || 0))
         : ((s.longSellScore || 0) >= 52 && (s.longSellScore || 0) > (s.longScore || 0));
     var sell = ratingSell || scoreSell;
-    var p = DASH_HORIZON_PCT[hz][sell ? 'sell' : 'buy'];
     var e = live;
+    var tp1, tp2, sl;
+    if (tech) {
+      var L = computeHorizonPriceLevels(e, hz, sell, tech, fund);
+      tp1 = L.tp1;
+      tp2 = L.tp2;
+      sl = L.sl;
+    } else {
+      var p = DASH_HORIZON_PCT[hz][sell ? 'sell' : 'buy'];
+      tp1 = roundDashPrice(e * (1 + p.tp1));
+      tp2 = roundDashPrice(e * (1 + p.tp2));
+      sl = roundDashPrice(e * (1 + p.sl));
+    }
     s[hz + 'Entry'] = String(roundDashPrice(e));
-    s[hz + 'Target1'] = String(roundDashPrice(e * (1 + p.tp1)));
-    s[hz + 'Target2'] = String(roundDashPrice(e * (1 + p.tp2)));
-    s[hz + 'StopLoss'] = String(roundDashPrice(e * (1 + p.sl)));
+    s[hz + 'Target1'] = String(tp1);
+    s[hz + 'Target2'] = String(tp2);
+    s[hz + 'StopLoss'] = String(sl);
   }
   s.entry = s.shortEntry;
   s.target1 = s.shortTarget1;
@@ -1564,6 +1731,38 @@ async function runDashScan(){
   if(allPickTickers.length) {
     try { await fetchLivePrices(allPickTickers); } catch(e) {}
   }
+  var batchTech = {};
+  var batchFund = {};
+  if (allPickTickers.length) {
+    try {
+      var eqSyms = allPickTickers.filter(function (t) {
+        return !String(t).includes('=F') && !String(t).includes('-USD') && !String(t).includes('-EUR');
+      });
+      var tr = await fetch('/api/technicals/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbols: allPickTickers })
+      });
+      var fr = await fetch('/api/fundamentals/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbols: eqSyms })
+      });
+      if (tr.ok) batchTech = await tr.json();
+      if (fr.ok) batchFund = await fr.json();
+    } catch (e2) {}
+  }
+  function attachTechFundSnap(s) {
+    if (!s || !s.ticker) return;
+    var tech = batchTech[s.ticker];
+    var fund = batchFund[s.ticker];
+    s._techSnap = tech || null;
+    s._analystTarget = fund ? fund.targetMeanPrice : null;
+    s._targetHighPrice = fund ? fund.targetHighPrice : null;
+  }
+  ['short','medium','long','shortSell','medSell','longSell'].forEach(function (k) {
+    (dashData[k] || []).forEach(attachTechFundSnap);
+  });
   ['short','medium','long','shortSell','medSell','longSell'].forEach(function(k){
     (dashData[k]||[]).forEach(function(s){ enrichDashPickLevels(s); });
   });
@@ -1595,40 +1794,48 @@ async function saveDashPicksToHistory(data) {
     const entry = liveP ? parseFloat(liveP.toFixed(2)) : parseFloat(aiEntryRaw);
     if(!entry) return null;
 
-    // Per-horizon % table (CURSOR_CONTEXT) — use AI prices only when they diverge meaningfully from live entry
-    const MKRECORD_PCTS = {
-      short:  { tp1: 0.025, tp2: 0.045, sl: -0.015 },
-      medium: { tp1: 0.07, tp2: 0.13, sl: -0.04 },
-      long:   { tp1: 0.18, tp2: 0.35, sl: -0.10 }
-    };
-    const dir = isSell ? -1 : 1;
-    const p = MKRECORD_PCTS[hz];
-    const minMove = 0.005;
+    const tech = s._techSnap || null;
+    const fundSnap = { targetMeanPrice: s._analystTarget, targetHighPrice: s._targetHighPrice };
+    let tp1, tp2, sl;
+    if (tech) {
+      const L = computeHorizonPriceLevels(entry, hz, isSell, tech, fundSnap);
+      tp1 = L.tp1;
+      tp2 = L.tp2;
+      sl = L.sl;
+    } else {
+      const MKRECORD_PCTS = {
+        short:  { tp1: 0.025, tp2: 0.045, sl: -0.015 },
+        medium: { tp1: 0.07, tp2: 0.13, sl: -0.04 },
+        long:   { tp1: 0.18, tp2: 0.35, sl: -0.10 }
+      };
+      const dir = isSell ? -1 : 1;
+      const p = MKRECORD_PCTS[hz];
+      const minMove = 0.005;
 
-    const aiTp1Raw = isSell ? (s.sellTarget1||s[hz+'Target1']||s.target1) : (s[hz+'Target1']||s.target1);
-    const aiTp2Raw = isSell ? (s.sellTarget2||s[hz+'Target2']||s.target2) : (s[hz+'Target2']||s.target2);
-    const aiSlRaw  = isSell ? (s.sellStopLoss||s[hz+'StopLoss']||s.stopLoss) : (s[hz+'StopLoss']||s.stopLoss);
-    const aiTp1 = parseFloat(aiTp1Raw) || 0;
-    const aiTp2 = parseFloat(aiTp2Raw) || 0;
-    const aiSl = parseFloat(aiSlRaw) || 0;
+      const aiTp1Raw = isSell ? (s.sellTarget1||s[hz+'Target1']||s.target1) : (s[hz+'Target1']||s.target1);
+      const aiTp2Raw = isSell ? (s.sellTarget2||s[hz+'Target2']||s.target2) : (s[hz+'Target2']||s.target2);
+      const aiSlRaw  = isSell ? (s.sellStopLoss||s[hz+'StopLoss']||s.stopLoss) : (s[hz+'StopLoss']||s.stopLoss);
+      const aiTp1 = parseFloat(aiTp1Raw) || 0;
+      const aiTp2 = parseFloat(aiTp2Raw) || 0;
+      const aiSl = parseFloat(aiSlRaw) || 0;
 
-    let tp1 = (aiTp1 && Math.abs(aiTp1 - entry) / entry > minMove)
-      ? parseFloat(aiTp1.toFixed(2))
-      : parseFloat((entry * (1 + dir * p.tp1)).toFixed(2));
-    let tp2 = (aiTp2 && Math.abs(aiTp2 - entry) / entry > minMove)
-      ? parseFloat(aiTp2.toFixed(2))
-      : parseFloat((entry * (1 + dir * p.tp2)).toFixed(2));
-    let sl  = (aiSl && Math.abs(aiSl - entry) / entry > minMove)
-      ? parseFloat(aiSl.toFixed(2))
-      : parseFloat((entry * (1 + dir * p.sl)).toFixed(2));
+      tp1 = (aiTp1 && Math.abs(aiTp1 - entry) / entry > minMove)
+        ? parseFloat(aiTp1.toFixed(2))
+        : parseFloat((entry * (1 + dir * p.tp1)).toFixed(2));
+      tp2 = (aiTp2 && Math.abs(aiTp2 - entry) / entry > minMove)
+        ? parseFloat(aiTp2.toFixed(2))
+        : parseFloat((entry * (1 + dir * p.tp2)).toFixed(2));
+      sl  = (aiSl && Math.abs(aiSl - entry) / entry > minMove)
+        ? parseFloat(aiSl.toFixed(2))
+        : parseFloat((entry * (1 + dir * p.sl)).toFixed(2));
 
-    // Sanity check direction: BUY needs tp > entry > sl, SELL needs tp < entry < sl
-    if(!isSell && tp1 <= entry) tp1 = parseFloat((entry*1.04).toFixed(2));
-    if(!isSell && tp2 <= tp1)   tp2 = parseFloat((tp1*1.04).toFixed(2));
-    if(!isSell && sl  >= entry) sl  = parseFloat((entry*0.97).toFixed(2));
-    if(isSell  && tp1 >= entry) tp1 = parseFloat((entry*0.95).toFixed(2));
-    if(isSell  && tp2 >= tp1)   tp2 = parseFloat((tp1*0.95).toFixed(2));
-    if(isSell  && sl  <= entry) sl  = parseFloat((entry*1.03).toFixed(2));
+      if(!isSell && tp1 <= entry) tp1 = parseFloat((entry*1.04).toFixed(2));
+      if(!isSell && tp2 <= tp1)   tp2 = parseFloat((tp1*1.04).toFixed(2));
+      if(!isSell && sl  >= entry) sl  = parseFloat((entry*0.97).toFixed(2));
+      if(isSell  && tp1 >= entry) tp1 = parseFloat((entry*0.95).toFixed(2));
+      if(isSell  && tp2 >= tp1)   tp2 = parseFloat((tp1*0.95).toFixed(2));
+      if(isSell  && sl  <= entry) sl  = parseFloat((entry*1.03).toFixed(2));
+    }
     return {
       _v: 2,
       ticker: s.ticker, name: s.name||s.ticker, sector: s.sector||'',

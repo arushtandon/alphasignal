@@ -640,6 +640,95 @@ function findSupportResistance(data, lookback = 60) {
   };
 }
 
+/** Linear regression channel with ±1σ / ±2σ bands (trend-aware mean). */
+function calcLinRegChannel(closes, period = 20) {
+  if (!closes || closes.length < period) return null;
+  const slice = closes.slice(-period);
+  const n = slice.length;
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += i;
+    sumY += slice[i];
+    sumXY += i * slice[i];
+    sumX2 += i * i;
+  }
+  const denom = n * sumX2 - sumX * sumX;
+  if (!denom) return null;
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+  const regValues = slice.map((_, i) => intercept + slope * i);
+  const residuals = slice.map((v, i) => v - regValues[i]);
+  const meanRes = residuals.reduce((a, b) => a + b, 0) / n;
+  const stdDev = Math.sqrt(residuals.reduce((s, r) => s + (r - meanRes) ** 2, 0) / n);
+  const ssTot = slice.reduce((s, v) => s + (v - sumY / n) ** 2, 0);
+  const ssRes = residuals.reduce((s, r) => s + r ** 2, 0);
+  const rSq = ssTot > 0 ? 1 - ssRes / ssTot : 0;
+  const mean = regValues[n - 1];
+  return {
+    mean: parseFloat(mean.toFixed(2)),
+    upper1: parseFloat((mean + stdDev).toFixed(2)),
+    upper2: parseFloat((mean + 2 * stdDev).toFixed(2)),
+    lower1: parseFloat((mean - stdDev).toFixed(2)),
+    lower2: parseFloat((mean - 2 * stdDev).toFixed(2)),
+    slope: parseFloat(slope.toFixed(4)),
+    rSquared: parseFloat(rSq.toFixed(3)),
+    stdDev: parseFloat(stdDev.toFixed(4)),
+    channelWidth: parseFloat((4 * stdDev).toFixed(2)),
+    slopePct: parseFloat(((slope / mean) * 100).toFixed(3)),
+  };
+}
+
+function calcMultiTFChannels(dailyCloses, weeklyCloses) {
+  return {
+    daily20: calcLinRegChannel(dailyCloses, 20),
+    daily50: calcLinRegChannel(dailyCloses, 50),
+    weekly20: weeklyCloses ? calcLinRegChannel(weeklyCloses, 20) : null,
+    weekly50: weeklyCloses ? calcLinRegChannel(weeklyCloses, 50) : null,
+  };
+}
+
+/** Where price sits vs multi-TF channels (dashboard / diagnostics). */
+function getChannelPosition(price, channels) {
+  if (!channels || !price) return null;
+  const d20 = channels.daily20;
+  const d50 = channels.daily50;
+  const w20 = channels.weekly20;
+  const dailyPos = d20 ? (() => {
+    if (price <= d20.lower2) return 'extreme_oversold';
+    if (price <= d20.lower1) return 'oversold';
+    if (price >= d20.upper2) return 'extreme_overbought';
+    if (price >= d20.upper1) return 'overbought';
+    if (price >= d20.mean * 0.998 && price <= d20.mean * 1.002) return 'at_mean';
+    return price > d20.mean ? 'above_mean' : 'below_mean';
+  })() : null;
+  const weeklyPos = w20 ? (() => {
+    if (price <= w20.lower2) return 'extreme_oversold';
+    if (price <= w20.lower1) return 'oversold';
+    if (price >= w20.upper2) return 'extreme_overbought';
+    if (price >= w20.upper1) return 'overbought';
+    return price > w20.mean ? 'above_mean' : 'below_mean';
+  })() : null;
+  const buyQuality =
+    dailyPos === 'extreme_oversold' ? 'excellent'
+      : dailyPos === 'oversold' ? 'good'
+        : dailyPos === 'below_mean' ? 'fair'
+          : dailyPos === 'at_mean' ? 'neutral' : 'poor';
+  const sellQuality =
+    dailyPos === 'extreme_overbought' ? 'excellent'
+      : dailyPos === 'overbought' ? 'good'
+        : dailyPos === 'above_mean' ? 'fair' : 'poor';
+  return {
+    dailyPos,
+    weeklyPos,
+    buyQuality,
+    sellQuality,
+    daily20: d20,
+    daily50: d50,
+    weekly20: w20,
+    weekly50: channels.weekly50,
+  };
+}
+
 function calcVolumeAnalysis(data, period = 20) {
   if (!data || data.length < period) return null;
   const recent = data.slice(-period);
@@ -2049,6 +2138,9 @@ function buildFullTechResult(sym, daily, weekly) {
   const atr   = calcATRFull(daily, 14);
   const atrPct = atr ? parseFloat((atr / cp * 100).toFixed(2)) : null;
   const { support1, support2, resistance1, resistance2 } = findSupportResistance(daily, 60);
+  const weeklyClosesChan = weekly && weekly.length >= 20 ? weekly.map(d => d.c) : null;
+  const channels = calcMultiTFChannels(closes, weeklyClosesChan);
+  const channelPos = getChannelPosition(cp, channels);
   const volume  = calcVolumeAnalysis(daily, 20);
   const pattern = detectCandlePattern(daily);
   const trend20 = calcTrend(daily, 20);
@@ -2077,6 +2169,8 @@ function buildFullTechResult(sym, daily, weekly) {
     adxSignal: adx ? (adx > 40 ? 'strong_trend' : adx > 25 ? 'trending' : 'weak/ranging') : null,
     bbSignal: bb ? (bb.pct > 80 ? 'near_upper_band' : bb.pct < 20 ? 'near_lower_band' : 'mid_band') : null,
     support1, support2, resistance1, resistance2,
+    channels,
+    channelPos,
     volume, candlePattern: pattern,
     weeklyRSI, weeklyTrend, weeklyMA50,
     summary: `RSI ${rsi} (${rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : 'neutral'}), ADX ${adx ?? 'N/A'}, ${bullishMAs}/${totalMAs} MAs bullish, ${trend20}, S1@${support1}, R1@${resistance1}`
@@ -2135,13 +2229,18 @@ app.post('/api/technicals/batch', async (req, res) => {
       const bb      = calcBollingerFull(closes, 20);
 
       let weeklyTrend = null, weeklyRSI = null;
+      let weeklyClosesChan = null;
       try {
         const weekly = await fetchOHLCV(sym, '1y', '1wk');
         if (weekly && weekly.length >= 14) {
           weeklyTrend = calcTrend(weekly.slice(-20), 20);
           weeklyRSI   = calcRSI(weekly.map(d => d.c), 14);
+          if (weekly.length >= 20) weeklyClosesChan = weekly.map(d => d.c);
         }
       } catch (_) {}
+
+      const channels = calcMultiTFChannels(closes, weeklyClosesChan);
+      const channelPos = getChannelPosition(cp, channels);
 
       const data = {
         symbol: sym, currentPrice: cp,
@@ -2153,6 +2252,8 @@ app.post('/api/technicals/batch', async (req, res) => {
         aboveMa50:  ma50  != null ? cp > ma50  : null,
         aboveMa200: ma200 != null ? cp > ma200 : null,
         support1, support2, resistance1, resistance2,
+        channels,
+        channelPos,
         candlePattern: detectCandlePattern(daily),
         rsiSignal: rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : rsi > 55 ? 'bullish' : rsi < 45 ? 'bearish' : 'neutral',
         summary: `RSI ${rsi}, ADX ${adx ?? '?'}, ${cp > ma20 ? 'above' : 'below'} MA20, ${trend20}, S@${support1}, R@${resistance1}`
@@ -4019,17 +4120,24 @@ function injectAnalyzeRowFromServerTech(row, tech) {
   return row;
 }
 
+/** SD channel + volume S/R entry / TP / SL (aligned with dashboard client math). */
 function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
   if (!row || !livePrice || livePrice <= 0) return row;
   const e = livePrice;
-  const atr = tech?.atr14 || tech?.atr || null;
-  const s1  = tech?.support1    || null;
-  const s2  = tech?.support2    || null;
-  const r1  = tech?.resistance1 || null;
-  const r2  = tech?.resistance2 || null;
-  const ma50  = tech?.ma50  || null;
+  const atr = tech?.atr || tech?.atr14 || null;
+  const chan = tech?.channels || null;
+  const d20 = chan?.daily20 || null;
+  const d50 = chan?.daily50 || null;
+  const w20 = chan?.weekly20 || null;
+  const w50 = chan?.weekly50 || null;
+  const s1 = tech?.support1 || null;
+  const s2 = tech?.support2 || null;
+  const r1 = tech?.resistance1 || null;
+  const r2 = tech?.resistance2 || null;
+  const s1conf = tech?.s1Confluence || false;
+  const ma50 = tech?.ma50 || null;
   const ma200 = tech?.ma200 || null;
-  const analystTarget = fund?.targetMeanPrice || null;
+  const analystTarget = fund?.targetMeanPrice || fund?.targetMean || null;
 
   const ratingKeys = { short: 'shortRating', medium: 'mediumRating', long: 'longRating' };
 
@@ -4038,88 +4146,162 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
     let tp1, tp2, sl;
 
     if (!isSell) {
-      // ── BUY LEVELS ──────────────────────────────────────────────────────────
       if (hz === 'short') {
-        // SL: just below nearest support (within 3% of entry), else 2×ATR
-        const s1ok = s1 && s1 < e * 0.999 && s1 > e * 0.97;
-        sl  = s1ok ? roundPrice(s1 * 0.995) : atr ? roundPrice(e - 2*atr) : roundPrice(e * 0.975);
-        // TP1: nearest resistance (within 8% of entry)
-        const r1ok = r1 && r1 > e * 1.005 && r1 < e * 1.08;
-        tp1 = r1ok ? roundPrice(r1 * 0.999) : atr ? roundPrice(e + 3*atr) : roundPrice(e * 1.04);
-        // TP2: next resistance or extend
-        const r2ok = r2 && r2 > tp1;
-        tp2 = r2ok ? roundPrice(r2 * 0.999) : atr ? roundPrice(e + 5*atr) : roundPrice(e * 1.07);
+        const chanSL = d20?.lower2 ?? null;
+        const srSL = s1 && s1 < e * 0.999 && s1 > e * 0.92
+          ? (s1conf ? s1 * 0.992 : s1 * 0.994)
+          : null;
+        if (chanSL && srSL) {
+          sl = roundPrice(Math.max(chanSL, srSL));
+        } else if (chanSL && chanSL < e * 0.999 && chanSL > e * 0.90) {
+          sl = roundPrice(chanSL);
+        } else if (srSL) {
+          sl = roundPrice(srSL);
+        } else {
+          sl = atr ? roundPrice(e - 2.0 * atr) : roundPrice(e * 0.975);
+        }
+
+        const chanTP1 = d20?.mean ?? null;
+        const srTP1 = r1 && r1 > e * 1.004 && r1 < e * 1.10 ? r1 : null;
+        if (chanTP1 && chanTP1 > e * 1.004) {
+          tp1 = srTP1 ? roundPrice(Math.min(chanTP1, srTP1)) : roundPrice(chanTP1);
+        } else if (srTP1) {
+          tp1 = roundPrice(srTP1);
+        } else {
+          tp1 = atr ? roundPrice(e + 2.5 * atr) : roundPrice(e * 1.035);
+        }
+
+        const chanTP2 = d20?.upper1 ?? null;
+        const srTP2 = r2 && r2 > tp1 ? r2 : (r1 && r1 > tp1 ? r1 : null);
+        tp2 = chanTP2 && chanTP2 > tp1
+          ? roundPrice(chanTP2)
+          : (srTP2 ? roundPrice(srTP2) : (atr ? roundPrice(e + 4.5 * atr) : roundPrice(e * 1.065)));
       } else if (hz === 'medium') {
-        // SL: below deeper support or MA50
-        const s2ok = s2 && s2 < e * 0.995 && s2 > e * 0.93;
-        const ma50ok = ma50 && ma50 < e * 0.99 && ma50 > e * 0.93;
-        const slBase = s2ok ? s2 : (ma50ok ? ma50 : null);
-        sl  = slBase ? roundPrice(slBase * 0.99) : atr ? roundPrice(e - 3*atr) : roundPrice(e * 0.94);
-        // TP1: resistance1 or resistance2
-        const r1ok = r1 && r1 > e * 1.01;
-        const r2ok = r2 && r2 > e * 1.01;
-        tp1 = r1ok ? roundPrice(r1) : (r2ok ? roundPrice(r2 * 0.95) : (atr ? roundPrice(e + 5*atr) : roundPrice(e * 1.10)));
-        tp2 = r2ok && r2 > tp1 ? roundPrice(r2) : (atr ? roundPrice(e + 9*atr) : roundPrice(e * 1.17));
-      } else { // long
-        // SL: below MA200 (best long-term floor) or deep support
-        const ma200ok = ma200 && ma200 < e * 0.995 && ma200 > e * 0.85;
-        sl  = ma200ok ? roundPrice(ma200 * 0.97) : (s2 && s2 < e * 0.99 ? roundPrice(s2 * 0.97) : (atr ? roundPrice(e - 5*atr) : roundPrice(e * 0.88)));
-        // TP1: analyst consensus target (primary), else S/R extension
-        const targetOk = analystTarget && analystTarget > e * 1.08 && analystTarget < e * 2.5;
-        tp1 = targetOk ? roundPrice(analystTarget) : (atr ? roundPrice(e + 10*atr) : roundPrice(e * 1.22));
-        tp2 = targetOk ? roundPrice(analystTarget * 1.15) : (atr ? roundPrice(e + 17*atr) : roundPrice(e * 1.38));
+        const wkSL = w20?.lower1 ?? null;
+        const dySL = d20?.lower2 ?? null;
+        const srSL = s2 && s2 < e * 0.995 && s2 > e * 0.88
+          ? s2 * 0.993 : (s1 && s1 < e * 0.995 && s1 > e * 0.88 ? s1 * 0.993 : null);
+        const candidates = [wkSL, dySL, srSL, ma50 ? ma50 * 0.97 : null]
+          .filter(v => v != null && v < e * 0.998 && v > e * 0.85);
+        sl = candidates.length
+          ? roundPrice(Math.max(...candidates))
+          : (atr ? roundPrice(e - 3.0 * atr) : roundPrice(e * 0.940));
+
+        const wkMean = w20?.mean ?? d50?.mean ?? null;
+        const srTP1 = r1 && r1 > e * 1.008 ? r1 : null;
+        tp1 = wkMean && wkMean > e * 1.008
+          ? roundPrice(wkMean)
+          : (srTP1 ? roundPrice(srTP1) : (atr ? roundPrice(e + 4.5 * atr) : roundPrice(e * 1.08)));
+
+        const wkUp1 = w20?.upper1 ?? d50?.upper1 ?? null;
+        const srTP2 = r2 && r2 > tp1 ? r2 : null;
+        tp2 = wkUp1 && wkUp1 > tp1
+          ? roundPrice(wkUp1)
+          : (srTP2 ? roundPrice(srTP2) : (atr ? roundPrice(e + 8.0 * atr) : roundPrice(e * 1.14)));
+      } else {
+        const wkSL2 = w20?.lower2 ?? null;
+        const wkSL1 = w50?.lower1 ?? null;
+        const ma200SL = ma200 ? ma200 * 0.96 : null;
+        const candidates = [wkSL2, wkSL1, ma200SL]
+          .filter(v => v != null && v < e * 0.998 && v > e * 0.78);
+        sl = candidates.length
+          ? roundPrice(Math.max(...candidates))
+          : (atr ? roundPrice(e - 5.5 * atr) : roundPrice(e * 0.880));
+
+        const targetOk = analystTarget && analystTarget > e * 1.06 && analystTarget < e * 2.2;
+        const wkUp1 = w20?.upper1 ?? null;
+        tp1 = targetOk
+          ? roundPrice(analystTarget)
+          : (wkUp1 && wkUp1 > e * 1.06 ? roundPrice(wkUp1) : (atr ? roundPrice(e + 10 * atr) : roundPrice(e * 1.22)));
+
+        const targetHighOk = fund?.targetHighPrice && fund.targetHighPrice > tp1;
+        const wkUp2 = w20?.upper2 ?? w50?.upper1 ?? null;
+        tp2 = targetHighOk
+          ? roundPrice(fund.targetHighPrice)
+          : (wkUp2 && wkUp2 > tp1 ? roundPrice(wkUp2) : (atr ? roundPrice(e + 17 * atr) : roundPrice(e * 1.38)));
       }
     } else {
-      // ── SELL/SHORT LEVELS ──────────────────────────────────────────────────
       if (hz === 'short') {
-        const r1ok = r1 && r1 > e * 1.001 && r1 < e * 1.03;
-        sl  = r1ok ? roundPrice(r1 * 1.005) : atr ? roundPrice(e + 2*atr) : roundPrice(e * 1.025);
-        const s1ok = s1 && s1 < e * 0.995 && s1 > e * 0.92;
-        tp1 = s1ok ? roundPrice(s1 * 1.002) : atr ? roundPrice(e - 3*atr) : roundPrice(e * 0.96);
-        const s2ok = s2 && s2 < tp1;
-        tp2 = s2ok ? roundPrice(s2 * 1.002) : atr ? roundPrice(e - 5*atr) : roundPrice(e * 0.93);
+        const chanSL = d20?.upper2 ?? null;
+        const srSL = r1 && r1 > e * 1.001 && r1 < e * 1.06 ? r1 * 1.008 : null;
+        const candidates = [chanSL, srSL].filter(v => v != null && v > e * 1.001 && v < e * 1.12);
+        sl = candidates.length
+          ? roundPrice(Math.min(...candidates))
+          : (atr ? roundPrice(e + 2.0 * atr) : roundPrice(e * 1.028));
+
+        const chanTP1 = d20?.mean ?? null;
+        const srTP1 = s1 && s1 < e * 0.996 && s1 > e * 0.88 ? s1 : null;
+        tp1 = chanTP1 && chanTP1 < e * 0.996
+          ? roundPrice(chanTP1)
+          : (srTP1 ? roundPrice(srTP1) : (atr ? roundPrice(e - 2.5 * atr) : roundPrice(e * 0.965)));
+
+        const chanTP2 = d20?.lower1 ?? null;
+        tp2 = chanTP2 && chanTP2 < tp1
+          ? roundPrice(chanTP2)
+          : (s2 && s2 < tp1 ? roundPrice(s2) : (atr ? roundPrice(e - 4.5 * atr) : roundPrice(e * 0.935)));
       } else if (hz === 'medium') {
-        const r1ok = r1 && r1 > e * 1.001 && r1 < e * 1.06;
-        sl  = r1ok ? roundPrice(r1 * 1.005) : atr ? roundPrice(e + 3*atr) : roundPrice(e * 1.06);
-        const s1ok = s1 && s1 < e * 0.99;
-        tp1 = s1ok ? roundPrice(s1) : atr ? roundPrice(e - 5*atr) : roundPrice(e * 0.90);
-        const s2ok = s2 && s2 < tp1;
-        tp2 = s2ok ? roundPrice(s2) : atr ? roundPrice(e - 9*atr) : roundPrice(e * 0.83);
-      } else { // long short
-        sl  = r2 && r2 > e * 1.01 && r2 < e * 1.15 ? roundPrice(r2 * 1.005) : (atr ? roundPrice(e + 5*atr) : roundPrice(e * 1.12));
-        tp1 = ma200 && ma200 < e * 0.99 ? roundPrice(ma200 * 1.01) : (atr ? roundPrice(e - 10*atr) : roundPrice(e * 0.78));
-        tp2 = atr ? roundPrice(e - 17*atr) : roundPrice(e * 0.62);
+        const chanSL = d20?.upper2 ?? null;
+        const wkSL = w20?.upper1 ?? null;
+        const candidates = [chanSL, wkSL, r1 ? r1 * 1.008 : null]
+          .filter(v => v != null && v > e * 1.001 && v < e * 1.15);
+        sl = candidates.length
+          ? roundPrice(Math.min(...candidates))
+          : (atr ? roundPrice(e + 3.0 * atr) : roundPrice(e * 1.060));
+
+        const wkMean = w20?.mean ?? null;
+        tp1 = wkMean && wkMean < e * 0.994
+          ? roundPrice(wkMean)
+          : (s1 && s1 < e * 0.994 ? roundPrice(s1) : (atr ? roundPrice(e - 4.5 * atr) : roundPrice(e * 0.920)));
+
+        const wkLow1 = w20?.lower1 ?? null;
+        tp2 = wkLow1 && wkLow1 < tp1
+          ? roundPrice(wkLow1)
+          : (s2 && s2 < tp1 ? roundPrice(s2) : (atr ? roundPrice(e - 8.0 * atr) : roundPrice(e * 0.860)));
+      } else {
+        const wkUp2 = w20?.upper2 ?? null;
+        sl = wkUp2 && wkUp2 > e * 1.01 && wkUp2 < e * 1.20
+          ? roundPrice(wkUp2)
+          : (atr ? roundPrice(e + 5.5 * atr) : roundPrice(e * 1.120));
+
+        const ma200tp = ma200 && ma200 < e * 0.98 ? ma200 * 1.02 : null;
+        const wkLow1 = w20?.lower1 ?? null;
+        tp1 = ma200tp
+          ? roundPrice(ma200tp)
+          : (wkLow1 && wkLow1 < e * 0.95 ? roundPrice(wkLow1) : (atr ? roundPrice(e - 10 * atr) : roundPrice(e * 0.800)));
+
+        const wkLow2 = w20?.lower2 ?? null;
+        tp2 = wkLow2 && wkLow2 < tp1
+          ? roundPrice(wkLow2)
+          : (atr ? roundPrice(e - 17 * atr) : roundPrice(e * 0.650));
       }
     }
 
-    // Sanity check: ensure direction is correct
     if (!isSell) {
-      if (sl  >= e)   sl  = atr ? roundPrice(e - 2*atr) : roundPrice(e * 0.975);
-      if (tp1 <= e)   tp1 = atr ? roundPrice(e + 3*atr) : roundPrice(e * 1.04);
+      if (sl >= e) sl = atr ? roundPrice(e - 2.0 * atr) : roundPrice(e * 0.975);
+      if (tp1 <= e) tp1 = atr ? roundPrice(e + 2.5 * atr) : roundPrice(e * 1.035);
       if (tp2 <= tp1) tp2 = roundPrice(tp1 * 1.04);
     } else {
-      if (sl  <= e)   sl  = atr ? roundPrice(e + 2*atr) : roundPrice(e * 1.025);
-      if (tp1 >= e)   tp1 = atr ? roundPrice(e - 3*atr) : roundPrice(e * 0.96);
+      if (sl <= e) sl = atr ? roundPrice(e + 2.0 * atr) : roundPrice(e * 1.028);
+      if (tp1 >= e) tp1 = atr ? roundPrice(e - 2.5 * atr) : roundPrice(e * 0.965);
       if (tp2 >= tp1) tp2 = roundPrice(tp1 * 0.96);
     }
 
-    row[hz + 'Entry']    = String(roundPrice(e));
-    row[hz + 'Target1']  = String(tp1);
-    row[hz + 'Target2']  = String(tp2);
+    row[hz + 'Entry'] = String(roundPrice(e));
+    row[hz + 'Target1'] = String(tp1);
+    row[hz + 'Target2'] = String(tp2);
     row[hz + 'StopLoss'] = String(sl);
   }
 
-  // Back-compat aliases
-  row.entry    = row.shortEntry;
-  row.target1  = row.shortTarget1;
-  row.target2  = row.shortTarget2;
+  row.entry = row.shortEntry;
+  row.target1 = row.shortTarget1;
+  row.target2 = row.shortTarget2;
   row.stopLoss = row.shortStopLoss;
 
   const mainSell = String(row.action || '').toLowerCase() === 'sell' || ratingImpliesSell(row.shortRating);
   if (mainSell) {
-    row.sellEntry    = row.shortEntry;
-    row.sellTarget1  = row.shortTarget1;
-    row.sellTarget2  = row.shortTarget2;
+    row.sellEntry = row.shortEntry;
+    row.sellTarget1 = row.shortTarget1;
+    row.sellTarget2 = row.shortTarget2;
     row.sellStopLoss = row.shortStopLoss;
   } else {
     row.sellEntry = row.sellTarget1 = row.sellTarget2 = row.sellStopLoss = '';
