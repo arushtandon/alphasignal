@@ -20,28 +20,80 @@ const YF_HEADERS = {
   'Origin': 'https://finance.yahoo.com'
 };
 
+function yahooSearchNewsRegionsForTicker(raw) {
+  const s = String(raw || '').trim().toUpperCase();
+  /** US + WORLD first; then exchange hints so non-US RICs aren’t stuck with region=US-only empty results. */
+  const regions = ['US', 'WORLD'];
+  if (/\.L$/.test(s)) regions.push('GB');
+  if (/\.HK$|^(\d+)\.HK$/i.test(s)) regions.push('HK');
+  if (/\.ST$/.test(s)) regions.push('SE');
+  if (/\.T$/.test(s) && !/\.ST$/.test(s)) regions.push('JP');
+  if (/\.NS$/.test(s)) regions.push('IN');
+  if (/\.AS$/.test(s)) regions.push('NL');
+  if (/\.DE$/.test(s)) regions.push('DE');
+  if (/\.PA$/.test(s)) regions.push('FR');
+  if (/\.(TO|V)$/.test(s)) regions.push('CA');
+  if (/\.AX$/.test(s)) regions.push('AU');
+  if (/\.SI$/.test(s)) regions.push('SG');
+  if (/\.SW$/.test(s)) regions.push('CH');
+  if (/\.OL$/.test(s)) regions.push('NO');
+  if (/\.CO$/.test(s)) regions.push('DK');
+  if (/\.MI$/.test(s)) regions.push('IT');
+  if (/\.MC$/.test(s)) regions.push('ES');
+  return [...new Set(regions)];
+}
+
 async function fetchNews(symbol, count = 8) {
-  const sym = encodeURIComponent(symbol);
-  const urls = [
-    `https://query1.finance.yahoo.com/v1/finance/search?q=${sym}&lang=en-US&region=US&newsCount=${count}`,
-    `https://query2.finance.yahoo.com/v1/finance/search?q=${sym}&lang=en-US&region=US&newsCount=${count}`
-  ];
-  for (const url of urls) {
-    try {
-      const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(8000) });
-      if (!r.ok) continue;
-      const d = await r.json();
-      const items = d?.news || [];
-      if (!items.length) continue;
-      return items.map(n => ({
+  const raw = String(symbol || '').trim();
+  if (!raw) return [];
+  const pack = (items) =>
+    (items || [])
+      .map(n => ({
         title: n.title || '',
         publisher: n.publisher || '',
         time: n.providerPublishTime ? new Date(n.providerPublishTime * 1000).toISOString().slice(0, 10) : '',
         link: n.link || ''
-      })).slice(0, count);
-    } catch (e) {
-      console.warn('fetchNews', symbol, e.message);
+      }))
+      .slice(0, count);
+
+  const queryVariants = [...new Set([raw, raw.replace(/\./g, '-'), raw.replace(/-/g, '.')])].filter(Boolean);
+  const regionList = yahooSearchNewsRegionsForTicker(raw);
+  const hosts = ['query1', 'query2'];
+  for (const qv of queryVariants) {
+    const q = encodeURIComponent(qv);
+    for (const region of regionList) {
+      for (const host of hosts) {
+        const url = `https://${host}.finance.yahoo.com/v1/finance/search?q=${q}&lang=en-US&region=${region}&newsCount=${count}`;
+        try {
+          const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(8000) });
+          if (!r.ok) continue;
+          const d = await r.json();
+          const items = d?.news || [];
+          if (items.length) return pack(items);
+        } catch (e) {
+          console.warn('fetchNews', symbol, e.message);
+        }
+      }
     }
+  }
+  /** Finnhub covers many global symbols when Yahoo search returns nothing (common on cloud IPs + intl tickers). */
+  try {
+    const fh = await fetchFinnhubCompanyNewsForSymbol(raw);
+    if (Array.isArray(fh) && fh.length) {
+      return fh.slice(0, count).map(n => ({
+        title: n.headline || n.title || '',
+        publisher: n.source || 'Finnhub',
+        time: (() => {
+          const dt = n.datetime;
+          if (dt == null) return '';
+          const ms = typeof dt === 'number' ? (dt < 1e12 ? dt * 1000 : dt) : Date.parse(String(dt));
+          return Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : '';
+        })(),
+        link: n.url || n.link || ''
+      }));
+    }
+  } catch (e) {
+    console.warn('fetchNews finnhub', symbol, e.message);
   }
   return [];
 }
@@ -1464,9 +1516,22 @@ function toBloombergEquity(sym) {
   if (/\.DE$/i.test(s)) return `${s.replace(/\.DE$/i, '')} GR Equity`;
   if (/\.AS$/i.test(s)) return `${s.replace(/\.AS$/i, '')} NA Equity`;
   if (/\.NS$/i.test(s)) return `${s.replace(/\.NS$/i, '')} IS Equity`;
+  /** Swedish .ST before Japanese .T — e.g. ERIC.ST vs 6758.T */
+  if (/\.ST$/i.test(s)) return `${s.replace(/\.ST$/i, '')} SS Equity`;
   if (/\.T$/i.test(s)) return `${s.replace(/\.T$/i, '')} JT Equity`;
+  /** Aligned with bloomberg-bridge bridge.py map_to_bb_security */
+  if (/\.SW$/i.test(s)) return `${s.replace(/\.SW$/i, '')} SW Equity`;
+  if (/\.SI$/i.test(s)) return `${s.replace(/\.SI$/i, '')} SP Equity`;
+  if (/\.AX$/i.test(s)) return `${s.replace(/\.AX$/i, '')} AU Equity`;
+  if (/\.OL$/i.test(s)) return `${s.replace(/\.OL$/i, '')} NO Equity`;
+  if (/\.CO$/i.test(s)) return `${s.replace(/\.CO$/i, '')} DC Equity`;
+  if (/\.MI$/i.test(s)) return `${s.replace(/\.MI$/i, '')} IM Equity`;
+  if (/\.MC$/i.test(s)) return `${s.replace(/\.MC$/i, '')} SM Equity`;
+  if (/\.TO$/i.test(s)) return `${s.replace(/\.TO$/i, '')} CN Equity`;
+  if (/\.V$/i.test(s)) return `${s.replace(/\.V$/i, '')} CN Equity`;
   if (/^[A-Z]{1,5}$/.test(s.replace(/\./g, '')) && !s.includes('.')) return `${s} US Equity`;
-  return `${s.replace(/\./g, '/')} US Equity`;
+  if (s.includes('.')) return `${s.replace(/\./g, '/')} Equity`;
+  return `${s} US Equity`;
 }
 
 /** Bloomberg Enterprise HTTP API (ReferenceDataRequest). Your Bloomberg team supplies host + often mTLS certs. */
@@ -2116,53 +2181,60 @@ function applyDerivedFundamentals(merged) {
 }
 
 async function fetchFundamentals(symbol) {
-  const useBridge = bloombergBridgeUrl();
-  const [yFund, fMp, bb] = await Promise.all([
-    fetchFundamentalsYahoo(symbol),
-    fmpEnvKeyFund() ? fetchFundamentalsFMP(symbol) : Promise.resolve(null),
-    useBridge ? fetchBloombergBridgeFundamentals(symbol) : Promise.resolve(null)
-  ]);
-  let merged = mergeFundSnapshots(yFund, fMp);
-  if (!merged && fMp) merged = { ...fMp };
-  if (!merged && yFund) merged = { ...yFund };
-  if (!merged) merged = {};
-  const qPe = await fetchYahooQuotePE(symbol);
-  if (qPe) {
-    if (merged.forwardPE == null && qPe.forwardPE != null) merged.forwardPE = qPe.forwardPE;
-    if (merged.trailingPE == null && qPe.trailingPE != null) merged.trailingPE = qPe.trailingPE;
-    if (merged.pegRatio == null && qPe.pegRatio != null) merged.pegRatio = qPe.pegRatio;
-  }
-  const ent = await fetchBloombergEnterpriseFundamentals(symbol);
+  // ── Bloomberg Bridge is ALWAYS running — fetch it FIRST, sequential, authoritative ──
+  // Bloomberg has the highest data quality for ALL markets (US, EU, Asia, commodities).
+  // FMP fills gaps (global coverage, reliable for non-US).
+  // Yahoo is last resort for any remaining gaps.
+
+  // Step 1: Bloomberg Bridge — primary source, awaited first
+  const bb = await fetchBloombergBridgeFundamentals(symbol).catch(() => null);
+  // Use Bloomberg as base if it returned data; otherwise start empty
+  let merged = bb ? mergeBloombergPriority({}, bb) : {};
+  if (bb) console.log(`Fundamentals: Bloomberg bridge hit for ${symbol}`);
+
+  // Step 2: Bloomberg Enterprise (secondary Bloomberg source)
+  const ent = await fetchBloombergEnterpriseFundamentals(symbol).catch(() => null);
   if (ent) merged = mergeBloombergPriority(merged, ent);
-  if (bb) {
-    if (ent) merged = mergeFundSnapshots(merged, bb);
-    else merged = mergeBloombergPriority(merged, bb);
-  }
-  const needYahooFill =
-    merged.revenueGrowth == null ||
-    merged.earningsGrowth == null ||
-    merged.pegRatio == null ||
-    merged.forwardPE == null;
-  if (needYahooFill) {
-    const variants = [
-      ...new Set(
-        [symbol, symbol.replace(/\./g, '-'), symbol.replace(/-/g, '.')].filter(Boolean)
-      )
-    ];
-    for (const v of variants) {
-      try {
-        const alt = await fetchFundamentalsYahoo(v);
-        if (alt) merged = mergeFundSnapshots(merged, alt);
-      } catch (_) {}
-      if (
-        merged.revenueGrowth != null &&
-        merged.earningsGrowth != null &&
-        merged.pegRatio != null &&
-        merged.forwardPE != null
-      )
-        break;
+
+  // Step 3: FMP — fill any gaps Bloomberg didn't cover (especially non-US)
+  const hasCoreData = merged.forwardPE != null || merged.revenueGrowth != null ||
+                      merged.earningsGrowth != null || merged.currentPrice != null;
+  let fMp = null;
+  if (!hasCoreData || merged.revenueGrowth == null || merged.earningsGrowth == null) {
+    fMp = fmpEnvKeyFund() ? await fetchFundamentalsFMP(symbol).catch(() => null) : null;
+    if (fMp) {
+      // FMP fills ONLY missing fields — Bloomberg wins on any overlap
+      for (const [k, v] of Object.entries(fMp)) {
+        if (merged[k] == null && v != null && v !== '') merged[k] = v;
+      }
+      console.log(`Fundamentals: FMP gap-fill for ${symbol}`);
     }
   }
+
+  // Step 4: Yahoo — last resort for any still-missing fields
+  const needsYahoo = merged.revenueGrowth == null || merged.earningsGrowth == null ||
+                     merged.pegRatio == null || merged.forwardPE == null;
+  if (needsYahoo) {
+    const yFund = await fetchFundamentalsYahoo(symbol).catch(() => null);
+    if (yFund) {
+      for (const [k, v] of Object.entries(yFund)) {
+        if (merged[k] == null && v != null && v !== '') merged[k] = v;
+      }
+    }
+    // Yahoo PE fallback for forward PE / PEG
+    const qPe = await fetchYahooQuotePE(symbol).catch(() => null);
+    if (qPe) {
+      if (merged.forwardPE == null && qPe.forwardPE != null) merged.forwardPE = qPe.forwardPE;
+      if (merged.trailingPE == null && qPe.trailingPE != null) merged.trailingPE = qPe.trailingPE;
+      if (merged.pegRatio == null && qPe.pegRatio != null) merged.pegRatio = qPe.pegRatio;
+    }
+  }
+
+  // Legacy compatibility: run old Yahoo fill chain only if we still have nothing
+  const useBridge = bloombergBridgeUrl(); // kept for backward compat references below
+  const yFund = null; // already handled above
+  // Yahoo gap-fill already handled above in the restructured fetchFundamentals
+
   /** Bloomberg snapshot often omits PEG / YoY growth fields; FMP is more reliable for those gaps on cloud hosts. */
   if (
     bb &&
@@ -2451,65 +2523,6 @@ app.post('/api/technicals/batch', async (req, res) => {
         long:   computeQuantSignal(data, null, 'long')
       };
 
-      // ── Danelfin AI score — horizon-specific boosting ──────────────────
-      try {
-        const danKey = (process.env.DANELFIN_API_KEY || '').trim();
-        if (danKey) {
-          const ds = await fetchDanelfinRow(danKey, sym);
-          if (ds && ds.aiscore != null) {
-            data.danelfin         = ds;
-            const _caS = computeCompositeAlpha(ds, data, 0, 'short');
-            const _caM = computeCompositeAlpha(ds, data, 0, 'medium');
-            const _caL = computeCompositeAlpha(ds, data, 0, 'long');
-            data.compositeAlphaShort = _caS ? _caS.score : null;
-            data.compositeAlphaMedium = _caM ? _caM.score : null;
-            data.compositeAlphaLong = _caL ? _caL.score : null;
-            data.compositeAlpha = _caM ? _caM.score : null;
-            data.compositeGradeShort = _caS ? _caS.grade : null;
-            data.compositeGradeMedium = _caM ? _caM.grade : null;
-            data.compositeGradeLong = _caL ? _caL.grade : null;
-            data.compositeGrade = _caM ? _caM.grade : null;
-
-            // SHORT: Danelfin Technical subscore drives boost
-            if (ds.technical >= 7 && ds.aiscore >= 6 && ds.buy_track_record) {
-              const b = Math.round((ds.technical - 5) * 2.5);
-              data.quantSignal.short.buyScore = Math.min(92, (data.quantSignal.short.buyScore||0) + b);
-            } else if (ds.technical <= 3 || (!ds.buy_track_record && ds.aiscore <= 4)) {
-              data.quantSignal.short.buyScore = Math.round((data.quantSignal.short.buyScore||0) * 0.55);
-            }
-            if (ds.technical <= 3 && ds.sell_track_record) {
-              const b = Math.round((5 - ds.technical) * 2.5);
-              data.quantSignal.short.sellScore = Math.min(88, (data.quantSignal.short.sellScore||0) + b);
-            }
-
-            // MEDIUM: Full AI Score (Danelfin's sweet spot — trained for 3M)
-            if (ds.aiscore >= 7 && ds.buy_track_record) {
-              const b = Math.round((ds.aiscore - 5) * 3.5);
-              data.quantSignal.medium.buyScore = Math.min(92, (data.quantSignal.medium.buyScore||0) + b);
-            } else if (ds.aiscore <= 4) {
-              data.quantSignal.medium.buyScore = Math.round((data.quantSignal.medium.buyScore||0) * 0.50);
-            }
-            if (ds.aiscore <= 3 && ds.sell_track_record) {
-              const b = Math.round((5 - ds.aiscore) * 3.5);
-              data.quantSignal.medium.sellScore = Math.min(88, (data.quantSignal.medium.sellScore||0) + b);
-            }
-
-            // LONG: Fundamental subscore weighted with AI Score
-            const lq = (ds.aiscore||0) * 0.55 + (ds.fundamental||0) * 0.45;
-            if (lq >= 7 && ds.buy_track_record) {
-              const b = Math.round((lq - 5) * 3);
-              data.quantSignal.long.buyScore = Math.min(92, (data.quantSignal.long.buyScore||0) + b);
-            } else if (ds.fundamental <= 3 || ds.aiscore <= 3) {
-              data.quantSignal.long.buyScore = Math.round((data.quantSignal.long.buyScore||0) * 0.45);
-            }
-            if (ds.fundamental <= 3 && ds.aiscore <= 4 && ds.sell_track_record) {
-              const b = Math.round((5 - ds.aiscore) * 3);
-              data.quantSignal.long.sellScore = Math.min(88, (data.quantSignal.long.sellScore||0) + b);
-            }
-          }
-        }
-      } catch(de) { console.warn('Danelfin batch enrich:', sym, de.message); }
-
       techCache.set(sym, { ts: Date.now(), data });
       results[sym] = data;
     } catch(e) { console.warn('Batch tech fail:', sym, e.message); }
@@ -2618,54 +2631,6 @@ Output ONLY the JSON object. No markdown.`;
 
   res.json(results);
 });
-
-// ── Horizon-aware Composite Alpha Score ──────────────────────────────────────
-// SHORT:  Danelfin Technical subscore dominates (price action quality for 1-3d)
-// MEDIUM: Full Danelfin AI Score dominates (trained exactly for 3M horizon)
-// LONG:   Danelfin Fundamental subscore dominates (fundamentals drive 6M returns)
-function computeCompositeAlpha(dan, tech, newsScore, hz) {
-  hz = hz || 'medium';
-  if (!dan || dan.aiscore == null) return null;
-  const dAI   = (dan.aiscore    || 0) * 10;
-  const dTech = (dan.technical  || 0) * 10;
-  const dFund = (dan.fundamental|| 0) * 10;
-  const dSent = (dan.sentiment  || 0) * 10;
-  const dRisk = (dan.low_risk   || 0) * 10;
-  const track = dan.buy_track_record ? 5 : -5;
-  // Channel position (0-100) from AlphaSignal SD channel analysis
-  let chanScore = 50;
-  if (tech && tech.channelPos) {
-    const q = tech.channelPos.buyQuality;
-    chanScore = q==='excellent'?95 : q==='good'?80 : q==='fair'?62 : q==='neutral'?45 : 20;
-  }
-  // Momentum (0-100) from forward-looking indicators
-  let mom = 50;
-  if (tech) {
-    const rsi = tech.rsi || 50;
-    if (tech.macdTurningUp) mom += 18;
-    if (rsi >= 30 && rsi <= 52) mom += 15;
-    if (rsi > 70) mom -= 22;
-    if (tech.rsiRising) mom += 12;
-    if (tech.obvBullish === true) mom += 10;
-    if (tech.adx > 25) mom += 5;
-    mom = Math.min(100, Math.max(0, mom));
-  }
-  const news = Math.min(100, Math.max(0, ((newsScore || 0) + 100) / 2));
-  let composite;
-  if (hz === 'short') {
-    // Entry timing (channel) 30% + Danelfin Technical 20% = 50% of score
-    composite = dTech*0.20 + dRisk*0.12 + dSent*0.08 + dAI*0.10 + chanScore*0.30 + mom*0.15 + news*0.05 + track;
-  } else if (hz === 'long') {
-    // Fundamentals dominate; channel barely matters over 6 months
-    composite = dAI*0.28 + dFund*0.25 + dRisk*0.12 + dSent*0.08 + dTech*0.05 + chanScore*0.05 + mom*0.12 + news*0.05 + track;
-  } else {
-    // medium — AI Score is in its sweet spot (trained for 3M)
-    composite = dAI*0.30 + dTech*0.18 + dSent*0.12 + dRisk*0.08 + dFund*0.02 + chanScore*0.12 + mom*0.13 + news*0.05 + track;
-  }
-  const score = Math.min(100, Math.max(0, Math.round(composite)));
-  const grade = score>=82?'A+':score>=74?'A':score>=65?'B+':score>=55?'B':score>=45?'C':'D';
-  return { score, grade, hz };
-}
 
 /** Danelfin API: https://danelfin.com/docs/api — keyed by ticker as returned by the client batch. */
 const DANELFIN_BASE_URL = 'https://apirest.danelfin.com';
@@ -3843,66 +3808,38 @@ let earningsMergeDiag = {
 
 async function mergedEarningsCalendarWidget(fromISO, toISO) {
   const byTicker = new Map();
-  /**
-   * Vendors are queried for [fromISO, toISO]; "next earnings" from Yahoo/Bloomberg often lands after toISO.
-   * Keep merged rows through displayEndISO so the calendar is not empty while keys are valid.
-   */
   const displayEndISO = addUTCISODays(toISO, 135);
-  /** Widen Finnhub/FMP *request* range so bulk calendars include names whose next report is after the UI horizon. */
-  const vendorEndISO = addUTCISODays(toISO, 90);
+  const vendorEndISO  = addUTCISODays(toISO, 90);
 
-  let yahooSeedHits = 0;
-  const SEED_CHUNK = 14;
-  for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i += SEED_CHUNK) {
-    const chunk = EARNINGS_CAL_SYMBOLS.slice(i, i + SEED_CHUNK);
+  // ── STEP 1: Bloomberg Bridge — ALWAYS FIRST (bridge is always running) ─────
+  // Bloomberg has authoritative earnings dates, EPS estimates, and call times.
+  // Run all tracked tickers in parallel chunks — fast, no throttle needed on bridge.
+  let bloombergTrackedHits = 0;
+  const BB_CHUNK = 15; // bigger chunk = faster (bridge handles parallel fine)
+  for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i += BB_CHUNK) {
+    const chunk = EARNINGS_CAL_SYMBOLS.slice(i, i + BB_CHUNK);
     await Promise.all(
       chunk.map(async (tick) => {
         try {
-          const nk = normalizeTickerMatch(tick);
-          if (!nk || byTicker.has(nk)) return;
-          const gap = await yahooEarningsGapRow(tick, fromISO, displayEndISO);
-          if (
-            gap &&
-            gap.date &&
-            gap.date >= fromISO &&
-            gap.date <= displayEndISO
-          ) {
-            byTicker.set(nk, gap);
-            yahooSeedHits++;
-          }
+          const bb = await fetchBloombergBridgeEarnings(tick);
+          const row = bridgeEarningsToCalendarRow(bb, tick);
+          if (!row || !isUpcomingCalRow(row, fromISO, displayEndISO)) return;
+          const k = normalizeTickerMatch(tick);
+          if (!k) return;
+          byTicker.set(k, row); // Bloomberg always wins — no prev check
+          bloombergTrackedHits++;
         } catch (_) {}
       })
     );
-    if (i + SEED_CHUNK < EARNINGS_CAL_SYMBOLS.length) {
-      await new Promise((r) => setTimeout(r, 65));
+    if (i + BB_CHUNK < EARNINGS_CAL_SYMBOLS.length) {
+      await new Promise(r => setTimeout(r, 25)); // minimal delay, bridge is local
     }
   }
+  console.log(`Earnings calendar: Bloomberg bridge ${bloombergTrackedHits}/${EARNINGS_CAL_SYMBOLS.length} hits`);
 
-  let bloombergTrackedHits = 0;
-  if (bloombergBridgeUrl()) {
-    const BB_CHUNK = 10;
-    for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i += BB_CHUNK) {
-      const chunk = EARNINGS_CAL_SYMBOLS.slice(i, i + BB_CHUNK);
-      await Promise.all(
-        chunk.map(async (tick) => {
-          try {
-            const bb = await fetchBloombergBridgeEarnings(tick);
-            const row = bridgeEarningsToCalendarRow(bb, tick);
-            if (!row || !isUpcomingCalRow(row, fromISO, displayEndISO)) return;
-            const k = normalizeTickerMatch(tick);
-            if (!k) return;
-            byTicker.set(k, row);
-            bloombergTrackedHits++;
-          } catch (_) {
-            /* ignore per-symbol bridge errors */
-          }
-        })
-      );
-      if (i + BB_CHUNK < EARNINGS_CAL_SYMBOLS.length) {
-        await new Promise((r) => setTimeout(r, 55));
-      }
-    }
-  }
+  // ── STEP 2: Finnhub bulk calendar — fills tickers Bloomberg didn't return ──
+  // Finnhub is a bulk API (one call for date range), very fast
+  let yahooSeedHits = 0; // kept for diag compat
 
   let fhRaw = await finnhubEarningsCalendar(fromISO, vendorEndISO);
   let finnhubPath = fhRaw.length ? 'global' : 'none';
@@ -3933,6 +3870,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
   const fmpRows = await fmpEarningCalendarByRange(fromISO, vendorEndISO);
 
   // Full-window merge (not limited to ~55 watchlist names) so the widget reflects the real market.
+  // ── STEP 3: Finnhub + FMP — bulk merge, Bloomberg always wins ─────────────
   fhRaw
     .filter((x) => x && x.symbol && isUpcomingCalRow(x, fromISO, displayEndISO))
     .forEach((e) => {
@@ -3940,7 +3878,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
       const k = normalizeTickerMatch(row.ticker);
       if (!k) return;
       const prev = byTicker.get(k);
-      if (prev && prev.source === 'bloomberg_bridge') return;
+      if (prev && prev.source === 'bloomberg_bridge') return; // Bloomberg always wins
       byTicker.set(k, row);
     });
 
@@ -3970,21 +3908,34 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
     }
   }
 
-  const GAP_CHUNK = 14;
-  for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i += GAP_CHUNK) {
-    const chunk = EARNINGS_CAL_SYMBOLS.slice(i, i + GAP_CHUNK);
-    await Promise.all(
-      chunk.map(async (tick) => {
-        const nk = normalizeTickerMatch(tick);
-        if (byTicker.has(nk)) return;
-        const gap = await yahooEarningsGapRow(tick, fromISO, displayEndISO);
-        if (gap && gap.date && gap.date >= fromISO && gap.date <= displayEndISO) {
-          byTicker.set(nk, gap);
-        }
-      })
-    );
-    if (i + GAP_CHUNK < EARNINGS_CAL_SYMBOLS.length) {
-      await new Promise((r) => setTimeout(r, 65));
+  // ── STEP 4: Yahoo gap-fill — ONLY for tickers Bloomberg + Finnhub + FMP missed ──
+  // Skip tickers already covered by Bloomberg (Bloomberg wins always)
+  const missingTickers = EARNINGS_CAL_SYMBOLS.filter(t => !byTicker.has(normalizeTickerMatch(t)));
+  if (missingTickers.length > 0) {
+    console.log(`Earnings calendar: Yahoo gap-fill for ${missingTickers.length} tickers Bloomberg/Finnhub/FMP missed`);
+    const GAP_CHUNK = 8;
+    for (let i = 0; i < missingTickers.length; i += GAP_CHUNK) {
+      const chunk = missingTickers.slice(i, i + GAP_CHUNK);
+      await Promise.all(
+        chunk.map(async (tick) => {
+          try {
+            const nk = normalizeTickerMatch(tick);
+            if (byTicker.has(nk)) return; // double-check
+            // Short timeout so slow Yahoo doesn't block the response
+            const gap = await Promise.race([
+              yahooEarningsGapRow(tick, fromISO, displayEndISO),
+              new Promise(r => setTimeout(() => r(null), 4000))
+            ]);
+            if (gap && gap.date && gap.date >= fromISO && gap.date <= displayEndISO) {
+              byTicker.set(nk, gap);
+              yahooSeedHits++;
+            }
+          } catch (_) {}
+        })
+      );
+      if (i + GAP_CHUNK < missingTickers.length) {
+        await new Promise((r) => setTimeout(r, 40));
+      }
     }
   }
 
@@ -4136,9 +4087,8 @@ app.get('/api/earnings/:symbol', async (req, res) => {
   const todayISO = new Date().toISOString().slice(0, 10);
   /** One-day grace: avoid dropping "today" rows on timezone / feed lag vs strict UTC midnight */
   const upcomingCutoff = addUTCISODays(todayISO, -1);
-  const bbEarnPromise = bloombergBridgeUrl()
-    ? fetchBloombergBridgeEarnings(sym)
-    : Promise.resolve(null);
+  // Bloomberg bridge is always running — fetch unconditionally, no URL check needed
+  const bbEarnPromise = fetchBloombergBridgeEarnings(sym);
   try {
     let nextDate = null;
     let nextDateEnd = null;
