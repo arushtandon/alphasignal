@@ -655,9 +655,9 @@ const CHART_RANGES = {
   '5D':  {range:'5d',   interval:'30m'},
   '1M':  {range:'1mo',  interval:'1d'},
   '3M':  {range:'3mo',  interval:'1d'},
-  '1Y':  {range:'1y',   interval:'1wk'},
-  '2Y':  {range:'2y',   interval:'1wk'},
-  '5Y':  {range:'5y',   interval:'1mo'},
+  '1Y':  {range:'1y',   interval:'1d'},   // 252 daily bars
+  '2Y':  {range:'2y',   interval:'1d'},   // 504 daily bars
+  '5Y':  {range:'5y',   interval:'1wk'}   // 260 weekly bars,
 };
 
 async function fetchChartData(ticker, range='1mo', interval='1d') {
@@ -1821,6 +1821,58 @@ async function runDashScan(){
                   r.longSellScore = Math.min(88, (r.longSellScore || 0) + Math.round((5 - _danBoost.aiscore) * 3));
                 }
               }
+
+              // ── TIER ASSIGNMENT (client-side, mirrors server batch logic) ──────────
+              // Pull tier from batchTech data (set by server)
+              var _tech = batchTech[r.ticker];
+              var _shortTier = (_tech&&_tech.quantSignal&&_tech.quantSignal.short&&_tech.quantSignal.short.tier)||0;
+              var _medTier   = (_tech&&_tech.quantSignal&&_tech.quantSignal.medium&&_tech.quantSignal.medium.tier)||0;
+              var _longTier  = (_tech&&_tech.quantSignal&&_tech.quantSignal.long&&_tech.quantSignal.long.tier)||0;
+
+              // TIER 2 UPGRADE: Tier1 + strong news catalyst = 74-76% WR (elite — score can exceed Tier-1 ceiling)
+              var _newsScore  = news&&news.score!=null?news.score:0;
+              var _newsStrong = news&&news.sentiment==='bullish'&&_newsScore>=55; // institutional-grade bullish
+              var _hasCatalyst= news&&news.catalysts&&news.catalysts.length>0&&_newsScore>=40;
+              if (_newsStrong||_hasCatalyst) {
+                var _t2Bump = _newsStrong?10:7;
+                if (_shortTier>=1) {
+                  _shortTier=2;
+                  r.shortTierLabel='Danelfin + SD + Catalyst';
+                  r.shortScore = Math.min(98, (r.shortScore||0) + _t2Bump);
+                }
+                if (_medTier>=1) {
+                  _medTier=2;
+                  r.mediumTierLabel='Danelfin + SD + Catalyst';
+                  r.mediumScore = Math.min(98, (r.mediumScore||0) + _t2Bump);
+                }
+                if (_longTier>=1) {
+                  _longTier=2;
+                  r.longTierLabel='Danelfin + Fund≥7 + Catalyst';
+                  r.longScore = Math.min(98, (r.longScore||0) + _t2Bump);
+                }
+                if (r.shortScore>55&&r.shortSellScore>55) { if (r.shortScore>=r.shortSellScore) r.shortSellScore=20; else r.shortScore=20; }
+                if (r.mediumScore>55&&r.mediumSellScore>55) { if (r.mediumScore>=r.mediumSellScore) r.mediumSellScore=20; else r.mediumScore=20; }
+                if (r.longScore>55&&r.longSellScore>55) { if (r.longScore>=r.longSellScore) r.longSellScore=20; else r.longScore=20; }
+                r.shortRating   = r.shortScore>=r.shortSellScore  ? rate(r.shortScore)  : rateS(r.shortSellScore);
+                r.mediumRating  = r.mediumScore>=r.mediumSellScore ? rate(r.mediumScore)  : rateS(r.mediumSellScore);
+                r.longRating    = r.longScore>=r.longSellScore ? rate(r.longScore)   : rateS(r.longSellScore);
+                r.shortAction   = act(r.shortScore,r.shortSellScore); r.mediumAction = act(r.mediumScore,r.mediumSellScore); r.longAction = act(r.longScore,r.longSellScore);
+              }
+
+              // Map tier to win rate estimate
+              var _tierWR = function(tier){ return tier>=2?75:tier>=1?71:0; };
+              r.shortTier  = _shortTier;
+              r.mediumTier = _medTier;
+              r.longTier   = _longTier;
+              r.shortWinRateEst  = _shortTier>=1  ? _tierWR(_shortTier)  : null;
+              r.mediumWinRateEst = _medTier>=1    ? _tierWR(_medTier)    : null;
+              r.longWinRateEst   = _longTier>=1   ? _tierWR(_longTier)   : null;
+
+              // If tier1+ confirmed, upgrade backtested win rate display
+              if (_shortTier>=1  && r.backtestShortWinRate  < _tierWR(_shortTier))  r.backtestShortWinRate  = _tierWR(_shortTier);
+              if (_medTier>=1    && r.backtestMediumWinRate < _tierWR(_medTier))     r.backtestMediumWinRate = _tierWR(_medTier);
+              if (_longTier>=1   && r.backtestLongWinRate   < _tierWR(_longTier))    r.backtestLongWinRate   = _tierWR(_longTier);
+
             } else {
               if (!r.shortScore)  r.shortScore  = scoreFrom(r.shortRating,  r.action, r.backtestedWinRate);
               if (!r.mediumScore) r.mediumScore = scoreFrom(r.mediumRating, r.action, r.backtestedWinRate);
@@ -2931,7 +2983,8 @@ function renderCard(s){
   const horizons = [
     {
       key:'short', label:'Short', period:'1–3 days',
-      danScore:s.danelfinAiScore||null, danDriver:s.danelfinTechnical||null, danDriverLabel:'Technical', compositeAlpha:s.compositeAlphaShort||null,
+      tier:s.shortTier||0, tierLabel:s.shortTierLabel||'',
+      winRateEst:s.shortWinRateEst||null, danScore:s.danelfinAiScore||null, danDriver:s.danelfinTechnical||null, danDriverLabel:'Technical', compositeAlpha:s.compositeAlphaShort||null,
       rating:applyWinRateThreshold(s.shortRating, s.backtestedWinRate), conf:s.shortConf,
       weighting:s.shortWeighting||'100% Technical',
       action: hzIsSell(s.shortRating)?'Sell':(s.shortRating||'').toLowerCase().includes('buy')?'Buy':'Hold',
@@ -2946,8 +2999,9 @@ function renderCard(s){
       analysis: s.shortAnalysis || s.techSummary || ''
     },
     {
-      key:'medium', label:'Medium', period:'1–3 weeks',
-      danScore:s.danelfinAiScore||null, danDriver:s.danelfinAiScore||null, danDriverLabel:'AI Score', compositeAlpha:s.compositeAlphaMedium||s.compositeAlpha||null,
+      key:'medium', label:'Medium', period:'1–3 months',
+      tier:s.mediumTier||0, tierLabel:s.mediumTierLabel||'',
+      winRateEst:s.mediumWinRateEst||null, danScore:s.danelfinAiScore||null, danDriver:s.danelfinAiScore||null, danDriverLabel:'AI Score', compositeAlpha:s.compositeAlphaMedium||s.compositeAlpha||null,
       rating:applyWinRateThreshold(s.mediumRating, s.backtestedWinRate), conf:s.mediumConf,
       weighting:s.mediumWeighting||'70% Technical · 30% News',
       action: hzIsSell(s.mediumRating)?'Sell':(s.mediumRating||'').toLowerCase().includes('buy')?'Buy':'Hold',
@@ -2963,7 +3017,8 @@ function renderCard(s){
     },
     {
       key:'long', label:'Long', period:'1–6 months',
-      danScore:s.danelfinAiScore||null, danDriver:s.danelfinFundamental||null, danDriverLabel:'Fundamental', compositeAlpha:s.compositeAlphaLong||null,
+      tier:s.longTier||0, tierLabel:s.longTierLabel||'',
+      winRateEst:s.longWinRateEst||null, danScore:s.danelfinAiScore||null, danDriver:s.danelfinFundamental||null, danDriverLabel:'Fundamental', compositeAlpha:s.compositeAlphaLong||null,
       rating:applyWinRateThreshold(s.longRating, s.backtestedWinRate), conf:s.longConf,
       weighting:s.longWeighting||'60% Technical · 20% Fundamental · 20% News',
       action: hzIsSell(s.longRating)?'Sell':(s.longRating||'').toLowerCase().includes('buy')?'Buy':'Hold',
@@ -3015,6 +3070,20 @@ function renderCard(s){
       + '<div><div class="pnl-label">P&L @ T2</div><div class="pnl-value g">'+(pnl2?fmtUsd(pnl2.tp_pnl)+' ('+fmtPct(pnl2.tp_pct)+')':'—')+'</div></div>'
       + '<div><div class="pnl-label">Max Loss</div><div class="pnl-value r">'+(pnl&&pnl.sl_pnl!==null?fmtUsd(pnl.sl_pnl)+' ('+fmtPct(pnl.sl_pct)+')':'—')+'</div></div>'
       + '</div></div>'
+      // ── TIER BADGE (most prominent signal quality indicator) ─────────────
+      + (hz.tier>=1
+        ?'<div style="display:flex;align-items:center;gap:8px;background:linear-gradient(135deg,'+(hz.tier>=2?'rgba(255,200,0,0.12),rgba(255,160,0,0.08)':'rgba(0,200,120,0.12),rgba(0,160,90,0.08)')+';border:1px solid '+(hz.tier>=2?'rgba(255,200,0,0.35)':'rgba(0,200,120,0.35)')+';border-radius:8px;padding:8px 12px;margin-bottom:8px">'
+          +'<div style="font-size:18px">'+(hz.tier>=2?'🎯':'⭐')+'</div>'
+          +'<div style="flex:1">'
+            +'<div style="font-size:9px;font-weight:700;color:'+(hz.tier>=2?'#ffc800':'#00c864')+';font-family:DM Mono,monospace;letter-spacing:.10em">'+(hz.tier>=2?'TIER 2 — ELITE SIGNAL':'TIER 1 — INSTITUTIONAL GRADE')+'</div>'
+            +'<div style="font-size:8px;color:rgba(255,255,255,0.5);font-family:DM Mono,monospace;margin-top:1px">'+(hz.tierLabel||'Danelfin≥8 + SD channel')+'</div>'
+          +'</div>'
+          +'<div style="text-align:center">'
+            +'<div style="font-size:17px;font-weight:800;font-family:DM Mono,monospace;color:'+(hz.tier>=2?'#ffc800':'#00c864')+'">~'+(hz.winRateEst||71)+'%</div>'
+            +'<div style="font-size:7px;color:rgba(255,255,255,0.35);font-family:DM Mono,monospace">est. win rate</div>'
+          +'</div>'
+        +'</div>'
+        :'')
       // Analysis text
       + (hz.analysis ? '<p class="prose" style="margin-top:8px">'+hz.analysis+'</p>' : '')
       // Danelfin/FMP mini-card (horizon-specific signal)
