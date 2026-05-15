@@ -996,325 +996,351 @@ function calcADX(data, period = 14) {
  * Scores 0-100. Mutual exclusivity enforced: both cannot exceed 55.
  */
 function computeQuantSignal(tech, fund, hz) {
-  if (!tech) return { buyScore: 30, sellScore: 30, action: 'Hold', rating: 'Hold', conditions: [], winRateHint: 40 };
+  if (!tech) return { buyScore:0, sellScore:0, action:'Hold', rating:'Hold', conditions:[], winRateHint:40, gatesMet:0 };
+  const price   = tech.currentPrice ?? 0;
+  const rsi     = tech.rsi ?? 50;
+  const ma50    = tech.ma50 ?? price;
+  const ma200   = tech.ma200 ?? price;
+  const aboveMa50  = tech.aboveMa50  ?? false;
+  const aboveMa200 = tech.aboveMa200 ?? false;
+  const macdBull   = tech.macd?.trend === 'bullish';
+  const adx        = tech.adx ?? 15;
+  const trend20    = tech.trend20 ?? 'sideways';
+  const weeklyTrend= tech.weeklyTrend ?? trend20;
+  const goldenCross= ma50>0&&ma200>0&&ma50>ma200;
+  const deathCross = ma50>0&&ma200>0&&ma50<ma200;
+  const macdTurnUp = tech.macdTurningUp   ?? macdBull;
+  const macdTurnDn = tech.macdTurningDown ?? !macdBull;
+  const rsiRising  = tech.rsiRising   ?? false;
+  const rsiFalling = tech.rsiFalling  ?? false;
+  const obvBullish = tech.obvBullish  ?? null;
+  const healthyPull= tech.healthyPullback  ?? null;
+  const bullStruct = tech.bullishStructure ?? null;
+  const bearStruct = tech.bearishStructure ?? null;
+  const chanPos    = tech.channelPos;
+  const inBuyZone  = chanPos?.buyQuality === 'excellent' || chanPos?.buyQuality === 'good';
+  const inSellZone = chanPos?.sellQuality === 'excellent' || chanPos?.sellQuality === 'good';
+  const s1 = tech.support1??null, r1 = tech.resistance1??null;
+  const nearS1 = s1&&price>=s1*0.987&&price<=s1*1.020;
+  const nearR1 = r1&&price>=r1*0.982&&price<=r1*1.015;
+  const volConf  = tech.volume?.confirmation ?? 'neutral';
+  const volRatio = tech.volume?.relativeVolume ?? 1;
 
-  const rsi         = tech.rsi        ?? 50;
-  const aboveMa20   = tech.aboveMa20  ?? false;
-  const aboveMa50   = tech.aboveMa50  ?? false;
-  const aboveMa200  = tech.aboveMa200 ?? false;
-  const ma50        = tech.ma50       ?? null;
-  const ma200       = tech.ma200      ?? null;
-  const ma20        = tech.ma20       ?? null;
-  const macdBullish = tech.macd?.trend === 'bullish';
-  const adx         = tech.adx        ?? 15;
-  const trend       = tech.trend20    ?? 'sideways';
-  const weeklyTrend = tech.weeklyTrend ?? 'sideways';
-  const volConf     = tech.volume?.confirmation ?? 'neutral';
-  const volRatio    = tech.volume?.relativeVolume ?? 1;
-  const pattern     = tech.candlePattern ?? '';
-  const s1 = tech.support1 ?? null, s2 = tech.support2 ?? null;
-  const r1 = tech.resistance1 ?? null, r2 = tech.resistance2 ?? null;
-  const price = tech.currentPrice ?? 0;
-  const bb = tech.bb ?? null;
-
-  let buy = 0, sell = 0;
-  const cond = [];
+  let buy=0, sell=0;
+  const condBuy=[], condSell=[];
+  let buyGates=0, sellGates=0;
 
   if (hz === 'short') {
-    const nearS1  = s1 && price >= s1 * 0.985 && price <= s1 * 1.020;
-    const nearS2  = s2 && price >= s2 * 0.985 && price <= s2 * 1.020;
-    const nearR1  = r1 && price >= r1 * 0.980 && price <= r1 * 1.015;
-    const aboveR1 = r1 && price > r1 * 1.005;
-    const belowS1 = s1 && price < s1 * 0.995;
-    const nearMa20Buy = ma20 && price >= ma20 * 0.990 && price <= ma20 * 1.015 && aboveMa20;
+    // Gate 1: Trend regime
+    if (aboveMa50&&(trend20==='uptrend'||aboveMa200)) { buyGates++; condBuy.push('Above MA50 uptrend'); }
+    // Gate 2: RSI dip zone
+    if (rsi>=28&&rsi<=52&&rsiRising) { buyGates++; condBuy.push(`RSI ${rsi} dip rising`); }
+    else if (rsi>=28&&rsi<=52) buyGates+=0.5;
+    // Gate 3: MACD turning up
+    if (macdTurnUp||(macdBull&&rsiRising&&rsi<55)) { buyGates++; condBuy.push('MACD turning up'); }
+    // Gate 4: Volume quality / channel
+    if (healthyPull===true||inBuyZone||volRatio<0.85) { buyGates++; condBuy.push(inBuyZone?'SD channel buy zone':'Low-vol pullback'); }
+    // Gate 5: Structure / S/R
+    if (bullStruct||nearS1) { buyGates++; condBuy.push(bullStruct?'HH+HL structure':`S/R $${s1?.toFixed(2)}`); }
+    if (rsi>73) buyGates=Math.min(buyGates,1.5);
+    buy = buyGates>=5?88:buyGates>=4?74:buyGates>=3?55:Math.min(25,Math.round(buyGates*12));
 
-    if ((nearS1 || nearS2) && rsi >= 28 && rsi <= 68) {
-      buy += 45; cond.push(`At Support $${nearS1 ? s1 : s2}`);
-    }
-    if (!nearS1 && !nearS2 && nearMa20Buy && rsi >= 38 && rsi <= 65) {
-      buy += 30; cond.push('Pullback to MA20 in uptrend');
-    }
-    if (aboveR1 && (volRatio >= 1.15 || volConf === 'bullish_volume')) {
-      buy += 35; cond.push(`Breakout above $${r1} on ${volRatio.toFixed(1)}x volume`);
-    }
-    if (!nearS1 && !nearS2 && !aboveR1 && aboveMa20 && trend === 'uptrend' && rsi >= 42 && rsi <= 60 && macdBullish) {
-      buy += 25; cond.push('Uptrend momentum entry');
-    }
-    if (macdBullish)  { buy += 14; }
-    if (volConf === 'bullish_volume') { buy += 10; }
-    if (pattern.includes('Bullish Engulfing')) { buy += 14; cond.push(pattern); }
-    else if (pattern.includes('Hammer') || pattern.includes('Inverted Hammer')) { buy += 10; cond.push(pattern); }
-    else if (pattern.includes('Bullish')) { buy += 6; }
-    if (adx > 20 && trend === 'uptrend') { buy += 8; }
-    if (bb && bb.pct < 25) { buy += 6; }
-
-    if (rsi > 74) { buy = Math.min(buy, 25); cond.push(`RSI ${rsi} overbought`); }
-    if (belowS1 && !nearS1)  { buy = Math.min(buy, 15); }
-    if (bb && bb.pct > 88) { buy = Math.min(buy, 28); }
-
-    if (nearR1 && rsi >= 58) {
-      sell += 46; cond.push(`Rejected at Resistance $${r1}`);
-    }
-    if (belowS1 && (volRatio >= 1.1 || volConf === 'bearish_volume')) {
-      sell += 40; cond.push(`Breakdown below $${s1}`);
-    }
-    if (!nearR1 && !belowS1 && !aboveMa20 && trend === 'downtrend' && rsi >= 40 && rsi <= 65 && !macdBullish) {
-      sell += 28; cond.push('Downtrend continuation below MA20');
-    }
-    if (!macdBullish) { sell += 12; }
-    if (volConf === 'bearish_volume') { sell += 10; }
-    if (pattern.includes('Bearish Engulfing')) { sell += 16; cond.push(pattern); }
-    else if (pattern.includes('Shooting Star') || pattern.includes('Hanging Man')) { sell += 12; cond.push(pattern); }
-    else if (pattern.includes('Bearish')) { sell += 6; }
-    if (rsi > 70) { sell += 18; cond.push(`RSI ${rsi} — overbought`); }
-    if (adx > 20 && trend === 'downtrend') { sell += 8; }
-    if (bb && bb.pct > 85) { sell += 8; }
-
-    if (rsi < 28) { sell = Math.min(sell, 20); }
+    if (!aboveMa50&&trend20==='downtrend') { sellGates++; condSell.push('Below MA50 downtrend'); }
+    if (rsi>=62&&rsiFalling) { sellGates++; condSell.push(`RSI ${rsi} falling`); }
+    else if (rsi>=62) sellGates+=0.5;
+    if (macdTurnDn||(!macdBull&&rsiFalling)) { sellGates++; condSell.push('MACD turning down'); }
+    if (inSellZone||volConf==='bearish_volume') { sellGates++; condSell.push(inSellZone?'SD channel sell zone':'Bearish volume'); }
+    if (bearStruct||nearR1) { sellGates++; condSell.push(bearStruct?'LH+LL structure':`R $${r1?.toFixed(2)}`); }
+    if (rsi<28) sellGates=Math.min(sellGates,1.5);
+    sell = sellGates>=5?84:sellGates>=4?70:sellGates>=3?54:Math.min(22,Math.round(sellGates*11));
 
   } else if (hz === 'medium') {
-    const goldenCross = ma50 && ma200 && ma50 > ma200;
-    const deathCross  = ma50 && ma200 && ma50 < ma200;
-    const weeklyUp    = weeklyTrend === 'uptrend';
-    const weeklyDown  = weeklyTrend === 'downtrend';
-    const pullbackToMa = aboveMa50 && price <= (ma50 || 0) * 1.03;
+    // Gate 1: Golden cross
+    if (goldenCross) { buyGates++; condBuy.push('Golden Cross MA50>MA200'); }
+    // Gate 2: MA50 pullback (not overextended)
+    const nearMa50 = ma50&&price<=ma50*1.05&&price>=ma50*0.97;
+    if (nearMa50) { buyGates++; condBuy.push(`MA50 pullback $${ma50?.toFixed(0)}`); }
+    else if (ma50&&price<ma50*1.10&&aboveMa50) buyGates+=0.5;
+    // Gate 3: MACD bullish
+    if (macdBull&&!macdTurnDn) { buyGates++; condBuy.push('MACD bullish'); }
+    // Gate 4: RSI healthy zone
+    if (rsi>=40&&rsi<=65) { buyGates++; }
+    // Gate 5: OBV + structure
+    if (obvBullish===true||bullStruct) { buyGates++; condBuy.push('OBV institutional flow'); }
+    else if (weeklyTrend==='uptrend') buyGates+=0.5;
+    if (rsi>68) buyGates=Math.round(buyGates*0.55);
+    if (!goldenCross) buyGates=Math.round(buyGates*0.30);
+    buy = buyGates>=5?86:buyGates>=4?72:buyGates>=3?54:Math.min(22,Math.round(buyGates*11));
 
-    if (aboveMa50)    { buy += 22; }
-    if (goldenCross)  { buy += 22; cond.push('Golden Cross (MA50 > MA200)'); }
-    if (macdBullish)  { buy += 14; }
-    if (rsi >= 40 && rsi <= 65) { buy += 14; }
-    if (adx > 22)     { buy += 10; cond.push(`ADX ${adx} — strong trend`); }
-    if (weeklyUp)     { buy += 14; cond.push('Weekly uptrend confirms'); }
-    if (pullbackToMa) { buy += 8;  cond.push('Healthy pullback to MA50'); }
-    if (trend === 'uptrend') { buy += 6; }
-    if (rsi > 70)     { buy = Math.round(buy * 0.65); }
-    if (!aboveMa50)   { buy = Math.round(buy * 0.35); }
-    if (weeklyDown)   { buy = Math.round(buy * 0.5);  }
+    if (deathCross) { sellGates+=2; condSell.push('Death Cross'); }
+    if (!aboveMa50&&trend20==='downtrend') { sellGates++; condSell.push('Below MA50 downtrend'); }
+    if (!macdBull||macdTurnDn) { sellGates++; condSell.push('MACD bearish'); }
+    if (weeklyTrend==='downtrend') { sellGates++; condSell.push('Weekly downtrend'); }
+    if (bearStruct||obvBullish===false) sellGates++;
+    if (rsi<32) sellGates=Math.round(sellGates*0.40);
+    sell = sellGates>=5?82:sellGates>=4?68:sellGates>=3?52:Math.min(20,Math.round(sellGates*10));
 
-    if (!aboveMa50)   { sell += 24; }
-    if (deathCross)   { sell += 24; cond.push('Death Cross (MA50 < MA200)'); }
-    if (!macdBullish) { sell += 14; }
-    if (rsi > 62 && trend === 'downtrend') { sell += 14; }
-    if (weeklyDown)   { sell += 14; cond.push('Weekly downtrend — bearish bias'); }
-    if (adx > 22 && trend === 'downtrend') { sell += 10; }
-    if (rsi < 32)     { sell = Math.round(sell * 0.5); }
-    if (aboveMa50 && goldenCross) { sell = Math.round(sell * 0.4); }
+  } else { // long
+    // Layer 1: Technical base (always — works WITHOUT fund data)
+    if (aboveMa200&&goldenCross) { buyGates+=2; condBuy.push('Above MA200 + Golden Cross'); }
+    else if (aboveMa200)          { buyGates++;  condBuy.push('Above MA200 primary uptrend'); }
+    if (weeklyTrend==='uptrend')  { buyGates++;  condBuy.push('Weekly uptrend confirms'); }
+    if (adx>22&&aboveMa200)       { buyGates++;  condBuy.push(`ADX ${adx} strong trend`); }
+    if (rsi>=40&&rsi<=68)          { buyGates++; }
+    if (macdBull&&aboveMa200)      { buyGates++; }
+    if (rsi>74) buyGates=Math.round(buyGates*0.65);
 
-  } else {
-    const revGrowth  = fund?.revenueGrowth  ?? 0;
-    const epsGrowth  = fund?.earningsGrowth ?? 0;
-    const targetUpside = (fund?.targetMeanPrice && price)
-      ? (fund.targetMeanPrice - price) / price * 100 : 0;
-    const analystBull = ['strongBuy','buy'].includes(fund?.recommendationKey);
-    const analystBear = ['sell','strongSell'].includes(fund?.recommendationKey);
-    const forwardPE   = fund?.forwardPE  ?? 30;
-    const peg         = fund?.pegRatio   ?? 2.5;
+    // Layer 2: Fundamental overlay (bonus if fund data available)
+    if (fund) {
+      const epsG=fund.earningsGrowth??null, revG=fund.revenueGrowth??null;
+      const analystB=['strongBuy','buy'].includes(fund.recommendationKey??'');
+      const analystBr=['sell','strongSell'].includes(fund.recommendationKey??'');
+      const targetUp=fund.targetMeanPrice&&price?(fund.targetMeanPrice-price)/price*100:null;
+      if (epsG!=null&&epsG>12) { buyGates++; condBuy.push(`EPS +${epsG}%`); }
+      else if (epsG!=null&&epsG>5) buyGates+=0.5;
+      if (revG!=null&&revG>10)  { buyGates++; condBuy.push(`Revenue +${revG}%`); }
+      if (analystB&&targetUp!=null&&targetUp>10) { buyGates++; condBuy.push(`${targetUp.toFixed(0)}% upside to target`); }
+      if (analystBr) buyGates=Math.round(buyGates*0.55);
+      if (epsG!=null&&epsG<-8) { sellGates++; condSell.push(`EPS declining ${epsG}%`); }
+      if (revG!=null&&revG<-5) { sellGates++; condSell.push(`Revenue declining ${revG}%`); }
+    }
+    buy = buyGates>=6?92:buyGates>=5?82:buyGates>=4?68:buyGates>=3?50:20;
+    if (!aboveMa200) buy=Math.round(buy*0.35);
 
-    if (aboveMa200)        { buy += 24; cond.push('Above MA200 — primary uptrend'); }
-    if (epsGrowth > 12)    { buy += 20; cond.push(`EPS growth ${epsGrowth}%`); }
-    else if (epsGrowth > 5){ buy += 10; }
-    if (revGrowth > 10)    { buy += 16; cond.push(`Revenue growth ${revGrowth}%`); }
-    else if (revGrowth > 4){ buy += 8; }
-    if (analystBull)       { buy += 14; cond.push(`Analyst consensus: ${fund?.recommendationKey}`); }
-    if (targetUpside > 18) { buy += 14; cond.push(`${targetUpside.toFixed(0)}% upside to analyst target`); }
-    else if (targetUpside > 10) { buy += 8; }
-    if (peg > 0 && peg < 1.8) { buy += 10; cond.push(`PEG ${peg} — good value`); }
-    if (forwardPE > 0 && forwardPE < 20) { buy += 6; }
-    if (rsi > 72)      { buy = Math.round(buy * 0.72); }
-    if (!aboveMa200)   { buy = Math.round(buy * 0.42); }
-    if (analystBear)   { buy = Math.round(buy * 0.55); }
-
-    if (!aboveMa200)        { sell += 28; cond.push('Below MA200 — bear regime'); }
-    if (epsGrowth < -8)     { sell += 24; cond.push(`Earnings declining ${epsGrowth}%`); }
-    else if (epsGrowth < 0) { sell += 12; }
-    if (revGrowth < -4)     { sell += 14; cond.push(`Revenue declining ${revGrowth}%`); }
-    if (analystBear)        { sell += 14; cond.push('Analyst consensus: sell'); }
-    if (targetUpside < -8)  { sell += 12; cond.push('Price above analyst target'); }
-    if (peg > 4)            { sell += 10; cond.push(`PEG ${peg.toFixed(1)} — overvalued`); }
-    if (rsi < 30)           { sell = Math.round(sell * 0.55); }
-    if (aboveMa200 && analystBull) { sell = Math.round(sell * 0.45); }
+    if (!aboveMa200&&deathCross) { sellGates+=2; condSell.push('Below MA200 + Death Cross'); }
+    else if (!aboveMa200)         { sellGates++;  condSell.push('Below MA200 bear regime'); }
+    if (weeklyTrend==='downtrend') { sellGates++; condSell.push('Weekly downtrend'); }
+    if (!macdBull&&!aboveMa200)    sellGates++;
+    if (rsi<30) sellGates=Math.round(sellGates*0.50);
+    sell = sellGates>=5?80:sellGates>=4?66:sellGates>=3?50:Math.min(18,Math.round(sellGates*9));
   }
 
-  buy  = Math.min(92, Math.max(0, Math.round(buy)));
-  sell = Math.min(88, Math.max(0, Math.round(sell)));
-
-  if (buy > 55 && sell > 55) {
-    if (buy >= sell) sell = Math.min(sell, 22);
-    else             buy  = Math.min(buy,  22);
-  }
+  buy  = Math.min(92,Math.max(0,Math.round(buy)));
+  sell = Math.min(88,Math.max(0,Math.round(sell)));
+  if (buy>55&&sell>55) { if(buy>=sell) sell=Math.min(sell,20); else buy=Math.min(buy,20); }
 
   let action, rating;
-  if (buy > sell) {
-    if      (buy >= 78) { action = 'Buy'; rating = 'Strong Buy'; }
-    else if (buy >= 62) { action = 'Buy'; rating = 'Buy'; }
-    else if (buy >= 45) { action = 'Hold'; rating = 'Hold'; }
-    else                { action = 'Hold'; rating = 'Hold'; }
+  if (buy>=sell) {
+    if      (buy>=82) { action='Buy';  rating='Strong Buy'; }
+    else if (buy>=65) { action='Buy';  rating='Buy';        }
+    else              { action='Hold'; rating='Hold';       }
   } else {
-    if      (sell >= 74) { action = 'Sell'; rating = 'Strong Sell'; }
-    else if (sell >= 58) { action = 'Sell'; rating = 'Sell'; }
-    else                 { action = 'Hold'; rating = 'Hold'; }
+    if      (sell>=78) { action='Sell'; rating='Strong Sell'; }
+    else if (sell>=62) { action='Sell'; rating='Sell';        }
+    else               { action='Hold'; rating='Hold';        }
   }
 
-  const dom = Math.max(buy, sell);
-  const winRateHint = dom >= 80 ? 62 : dom >= 65 ? 55 : dom >= 50 ? 47 : 38;
+  const gates = buy>=sell ? buyGates : sellGates;
+  const winRateHint = hz==='short'
+    ? (gates>=5?64:gates>=4?59:gates>=3?52:43)
+    : hz==='medium'
+    ? (gates>=5?62:gates>=4?57:gates>=3?50:42)
+    : (gates>=6?70:gates>=5?64:gates>=4?58:gates>=3?51:42);
 
-  return { buyScore: buy, sellScore: sell, action, rating, conditions: cond.slice(0, 4), winRateHint };
-}
-
-/**
- * Fast walk-forward backtest — same broad rules as computeQuantSignal, using only bars ≤ i when
- * simulating signal at bar i (causal — no lookahead on S/R levels). Only one overlapping position:
- * opens at bar i+1 after signal at bar i; next signal allowed after exit bar.
- */
-function backtestSignal(data, hz) {
-  const MIN_TRADES = 8;
-  const minBars = hz === 'short' ? 90 : hz === 'medium' ? 230 : 90;
-  if (!data || data.length < minBars) return null;
-
-  const holdDays = hz === 'short' ? 3 : hz === 'medium' ? 15 : 60;
-  const warmup = hz === 'short' ? 35 : hz === 'medium' ? 205 : 45;
-
-  if (hz === 'long') return null;
-  if (data.length < warmup + holdDays + 5) return null;
-
-  let wins = 0,
-    losses = 0,
-    totalReturn = 0,
-    trades = 0;
-  let nextAllowedSignalIndex = warmup;
-
-  for (let i = warmup; i < data.length - holdDays - 1; i++) {
-    if (i < nextAllowedSignalIndex) continue;
-
-    const past = data.slice(0, i + 1);
-    if (past.length < 30) continue;
-
-    const { support1: cS1, resistance1: cR1 } = findSupportResistance(past, Math.min(60, past.length));
-
-    const closes = past.map((d) => d.c);
-    const price = closes[closes.length - 1];
-
-    const ma20 = calcSMA(closes, 20);
-    const ma50 = closes.length >= 50 ? calcSMA(closes, 50) : null;
-    const ma200 = closes.length >= 200 ? calcSMA(closes, 200) : null;
-    const rsi = calcRSI(closes, 14);
-    const macd = calcMACDFull(closes);
-    const atr = calcATRFull(past, 14);
-    if (!atr || atr <= 0) continue;
-
-    const aboveMa20 = ma20 ? price > ma20 : false;
-    const aboveMa50 = ma50 ? price > ma50 : false;
-    const aboveMa200 = ma200 != null ? price > ma200 : false;
-    const macdBull = macd?.trend === 'bullish';
-
-    const nearS1 =
-      cS1 && price >= cS1 * 0.985 && price <= cS1 * 1.02;
-    const nearR1 =
-      cR1 && price >= cR1 * 0.98 && price <= cR1 * 1.015;
-    const belowS1 = cS1 && price < cS1 * 0.995;
-
-    const vol20avg =
-      past.slice(Math.max(0, past.length - 20), past.length).reduce((s, d) => s + (d.v || 0), 0) / 20;
-    const volRatio = vol20avg > 0 ? (past[past.length - 1].v || 0) / vol20avg : 1;
-
-    const shortTrend = calcTrend(past, 20);
-
-    let isBuy = false,
-      isSell = false;
-
-    if (hz === 'short') {
-      isBuy =
-        (nearS1 && rsi >= 28 && rsi <= 68) ||
-        (aboveMa20 &&
-          macdBull &&
-          rsi >= 38 &&
-          rsi <= 64 &&
-          !nearR1 &&
-          shortTrend !== 'downtrend');
-      isSell =
-        (nearR1 && rsi >= 58) || (belowS1 && volRatio >= 1.1) || (!aboveMa20 && !macdBull && rsi > 50);
-    } else if (hz === 'medium') {
-      if (!ma50 || ma200 === null) continue;
-      const goldenCross = ma50 >= ma200;
-      const trendNow = calcTrend(past, 20);
-      isBuy =
-        aboveMa50 &&
-        aboveMa200 &&
-        goldenCross &&
-        macdBull &&
-        rsi >= 42 &&
-        rsi <= 65 &&
-        (trendNow === 'uptrend' || trendNow === 'sideways');
-      isSell = !aboveMa50 && !macdBull && rsi >= 38 && rsi <= 72;
-    }
-
-    if (!isBuy && !isSell) continue;
-
-    const entry = data[i + 1]?.o;
-    if (!entry || entry <= 0) continue;
-
-    const tpMult = hz === 'short' ? 2.75 : hz === 'medium' ? 4.5 : 5.0;
-    const slMult = hz === 'short' ? 2.25 : hz === 'medium' ? 2.85 : 3.0;
-    const tpDist = atr * tpMult;
-    const slDist = atr * slMult;
-    const tpPrice = isBuy ? entry + tpDist : entry - tpDist;
-    const slPrice = isBuy ? entry - slDist : entry + slDist;
-
-    let exitPnl = null;
-    let exitIdx = -1;
-    for (let j = i + 1; j <= Math.min(i + holdDays, data.length - 1); j++) {
-      const bar = data[j];
-      if (isBuy) {
-        if (bar.h >= tpPrice) {
-          exitPnl = tpDist / entry;
-          exitIdx = j;
-          break;
-        }
-        if (bar.l <= slPrice) {
-          exitPnl = -slDist / entry;
-          exitIdx = j;
-          break;
-        }
-        if (j === i + holdDays) {
-          exitPnl = (bar.c - entry) / entry;
-          exitIdx = j;
-        }
-      } else {
-        if (bar.l <= tpPrice) {
-          exitPnl = tpDist / entry;
-          exitIdx = j;
-          break;
-        }
-        if (bar.h >= slPrice) {
-          exitPnl = -slDist / entry;
-          exitIdx = j;
-          break;
-        }
-        if (j === i + holdDays) {
-          exitPnl = (entry - bar.c) / entry;
-          exitIdx = j;
-        }
-      }
-    }
-
-    if (exitPnl !== null && exitIdx >= 0) {
-      trades++;
-      totalReturn += exitPnl;
-      if (exitPnl > 0) wins++;
-      else losses++;
-      nextAllowedSignalIndex = exitIdx + 1;
-    }
-  }
-
-  if (trades < MIN_TRADES) return null;
   return {
-    winRate: Math.round((wins / trades) * 100),
-    trades,
-    avgReturnPct: parseFloat(((totalReturn / trades) * 100).toFixed(2))
+    buyScore:buy, sellScore:sell, action, rating,
+    conditions:(buy>=sell?condBuy:condSell).slice(0,5),
+    winRateHint,
+    gatesMet: Math.floor(buy>=sell?buyGates:sellGates),
   };
 }
 
-// ── Fetch fundamentals: P/E, EPS growth, analyst target ──────────────────
+
+function backtestSignal(data, hz) {
+  const minBars = hz==='short'?80:hz==='medium'?120:200;
+  if (!data||data.length<minBars) return null;
+  const holdDays = hz==='short'?3:hz==='medium'?15:60;
+  const warmup   = hz==='short'?35:hz==='medium'?55:100;
+  if (data.length<warmup+holdDays+5) return null;
+
+  // Pre-compute global S/R for entry zone detection
+  const gSR = findVolumeWeightedSR(data, Math.min(80,data.length-5), 25);
+
+  let wins=0, losses=0, totalReturn=0, trades=0, nextAllowed=warmup;
+
+  for (let i=warmup; i<data.length-holdDays-1; i++) {
+    if (i<nextAllowed) continue;
+    const slice=data.slice(0,i+1);
+    const closes=slice.map(d=>d.c);
+    const price=closes[closes.length-1];
+    if (!price||price<=0) continue;
+
+    const ma20  = calcSMA(closes,20);
+    const ma50  = closes.length>=50  ? calcSMA(closes,50)  : null;
+    const ma200 = closes.length>=200 ? calcSMA(closes,200) : null;
+    const rsi   = calcRSI(closes,14);
+    const atr   = calcATRFull(slice,14);
+    if (!atr||atr<=0||rsi==null) continue;
+
+    const aboveMa50  = ma50  ? price>ma50  : false;
+    const aboveMa200 = ma200 ? price>ma200 : false;
+    const goldenCross= ma50&&ma200&&ma50>ma200;
+    const deathCross = ma50&&ma200&&ma50<ma200;
+
+    // MACD direction
+    let macdBull=false, macdTurnUp=false, macdTurnDn=false;
+    if (closes.length>=35) {
+      const ema=(c,p)=>{const k=2/(p+1);let e=c[0];for(let j=1;j<c.length;j++) e=c[j]*k+e*(1-k);return e;};
+      const h0=ema(closes,12)-ema(closes,26);
+      const hP=ema(closes.slice(0,-3),12)-ema(closes.slice(0,-3),26);
+      macdBull=h0>0; macdTurnUp=h0>hP&&hP<=0; macdTurnDn=h0<hP&&hP>=0;
+    }
+    const rsiPrev = closes.length>17?calcRSI(closes.slice(0,-3),14):rsi;
+    const rsiRising=(rsiPrev!=null)&&(rsi-rsiPrev>1.5);
+    const rsiFalling=(rsiPrev!=null)&&(rsi-rsiPrev<-1.5);
+
+    // Volume
+    const vol20avg=slice.slice(-21,-1).reduce((a,d)=>a+(d.v||0),0)/20;
+    const volRatio=vol20avg>0?(slice[slice.length-1].v||0)/vol20avg:1;
+
+    // Pullback quality (low-vol pullback = smart money holding)
+    let healthyPull=null;
+    if (slice.length>=8) {
+      const last5=slice.slice(-5);
+      const ref=slice.slice(-25,-5).reduce((a,d)=>a+(d.v||0),0)/20;
+      let dv=0,dd=0;
+      last5.forEach((d,k)=>{ const pc=k>0?last5[k-1].c:slice[slice.length-6]?.c??d.c;
+        if(d.c<pc){dv+=(d.v||0);dd++;} });
+      healthyPull=dd>0?(dv/dd)<ref*0.88:true;
+    }
+
+    // Price structure
+    let bullStruct=null, bearStruct=null;
+    if (slice.length>=12) {
+      const L=slice.slice(-12), H=[],LO=[];
+      for(let k=2;k<L.length-2;k++) {
+        if(L[k].h>=L[k-1].h&&L[k].h>=L[k+1].h) H.push(L[k].h);
+        if(L[k].l<=L[k-1].l&&L[k].l<=L[k+1].l) LO.push(L[k].l);
+      }
+      bullStruct=H.length>=2&&LO.length>=2&&H[H.length-1]>H[H.length-2]&&LO[LO.length-1]>LO[LO.length-2];
+      bearStruct=H.length>=2&&LO.length>=2&&H[H.length-1]<H[H.length-2]&&LO[LO.length-1]<LO[LO.length-2];
+    }
+
+    // SD channel
+    const chan20=calcLinRegChannel(closes,Math.min(20,closes.length));
+    const inBuyZone=chan20&&price<=chan20.lower1;
+    const nearS1=gSR.support1&&price>=gSR.support1*0.987&&price<=gSR.support1*1.020;
+    const nearR1=gSR.resistance1&&price>=gSR.resistance1*0.982&&price<=gSR.resistance1*1.015;
+
+    // 5-gate confluence (mirrors computeQuantSignal exactly)
+    let isBuy=false, isSell=false, buyGates=0, sellGates=0;
+
+    if (hz==='short') {
+      if (aboveMa50) buyGates++;
+      if (rsi>=28&&rsi<=52&&rsiRising) buyGates++;
+      else if (rsi>=28&&rsi<=52) buyGates+=0.5;
+      if (macdTurnUp) buyGates++;
+      if (healthyPull===true||inBuyZone||volRatio<0.85) buyGates++;
+      if (bullStruct||nearS1) buyGates++;
+      if (rsi>73) buyGates=Math.min(buyGates,1.5);
+      isBuy=buyGates>=4&&aboveMa50;
+
+      if (!aboveMa50) sellGates++;
+      if (rsi>=62&&rsiFalling) sellGates++;
+      else if (rsi>=62) sellGates+=0.5;
+      if (macdTurnDn||(!macdBull&&rsiFalling)) sellGates++;
+      if (chan20&&price>=chan20.upper1) sellGates++;
+      if (bearStruct||nearR1) sellGates++;
+      if (rsi<28) sellGates=Math.min(sellGates,1.5);
+      isSell=sellGates>=4&&!aboveMa50;
+
+    } else if (hz==='medium') {
+      if (goldenCross) buyGates++;
+      const nearMa50=ma50&&price<=ma50*1.05&&price>=ma50*0.97;
+      if (nearMa50) buyGates++;
+      else if (ma50&&price<ma50*1.10&&aboveMa50) buyGates+=0.5;
+      if (macdBull&&!macdTurnDn) buyGates++;
+      if (rsi>=40&&rsi<=65) buyGates++;
+      if (bullStruct) buyGates++;
+      if (rsi>68) buyGates=Math.round(buyGates*0.55);
+      if (!goldenCross) buyGates=Math.round(buyGates*0.30);
+      isBuy=buyGates>=4&&goldenCross;
+
+      if (deathCross) sellGates+=2;
+      if (!aboveMa50) sellGates++;
+      if (!macdBull||macdTurnDn) sellGates++;
+      if (bearStruct) sellGates++;
+      if (rsi<32) sellGates=Math.round(sellGates*0.40);
+      isSell=sellGates>=4&&!goldenCross;
+
+    } else { // long
+      if (!ma200) continue;
+      if (aboveMa200&&goldenCross) buyGates+=2;
+      else if (aboveMa200) buyGates++;
+      if (rsi>=45&&rsi<72) buyGates++;
+      if (bullStruct) buyGates++;
+      if (rsi>74) buyGates=Math.round(buyGates*0.65);
+      isBuy=buyGates>=4&&aboveMa200;
+
+      if (!aboveMa200&&deathCross) sellGates+=3;
+      else if (!aboveMa200) sellGates+=2;
+      if (!macdBull) sellGates++;
+      if (bearStruct) sellGates++;
+      if (rsi<30) sellGates=Math.round(sellGates*0.45);
+      isSell=sellGates>=4&&!aboveMa200;
+    }
+
+    if (isBuy&&isSell) { isBuy=buyGates>=sellGates; isSell=!isBuy; }
+    if (!isBuy&&!isSell) continue;
+
+    const entry=data[i+1]?.o??price;
+    if (!entry||entry<=0) continue;
+
+    // SD channel TP/SL (asymmetric R:R)
+    let tpPrice, slPrice;
+    if (hz==='short') {
+      const sl=chan20?.lower2;
+      const slD=(sl&&sl<entry*0.999&&sl>entry*0.90)?entry-sl:1.5*atr;
+      const tp=chan20?.mean;
+      const tpD=(tp&&tp>entry*1.003)?tp-entry:4.0*atr;
+      slPrice=isBuy?entry-slD:entry+slD;
+      tpPrice=isBuy?entry+tpD:entry-tpD;
+    } else if (hz==='medium') {
+      const chan50=calcLinRegChannel(closes,Math.min(50,closes.length));
+      const sl=chan50?.lower1??chan20?.lower2;
+      const slD=(sl&&sl<entry*0.999&&sl>entry*0.85)?entry-sl:2.5*atr;
+      const tp=chan50?.mean??chan20?.upper1;
+      const tpD=(tp&&tp>entry*1.005)?tp-entry:6.0*atr;
+      slPrice=isBuy?entry-slD:entry+slD;
+      tpPrice=isBuy?entry+tpD:entry-tpD;
+    } else {
+      slPrice=isBuy?entry-4.0*atr:entry+4.0*atr;
+      tpPrice=isBuy?entry+12.0*atr:entry-12.0*atr;
+    }
+
+    const tpD_=Math.abs(tpPrice-entry), slD_=Math.abs(slPrice-entry);
+    if (slD_<=0||tpD_/slD_<1.2) continue;
+
+    let exitPnl=null, exitIdx=-1;
+    for (let j=i+1;j<=Math.min(i+holdDays,data.length-1);j++) {
+      const bar=data[j];
+      if (isBuy) {
+        if (bar.h>=tpPrice) { exitPnl=(tpPrice-entry)/entry; exitIdx=j; break; }
+        if (bar.l<=slPrice) { exitPnl=(slPrice-entry)/entry; exitIdx=j; break; }
+        if (j===i+holdDays)  { exitPnl=(bar.c-entry)/entry;  exitIdx=j; }
+      } else {
+        if (bar.l<=tpPrice) { exitPnl=(entry-tpPrice)/entry; exitIdx=j; break; }
+        if (bar.h>=slPrice) { exitPnl=(entry-slPrice)/entry; exitIdx=j; break; }
+        if (j===i+holdDays)  { exitPnl=(entry-bar.c)/entry;  exitIdx=j; }
+      }
+    }
+    if (exitPnl!==null&&exitIdx>=0) {
+      trades++; totalReturn+=exitPnl;
+      if (exitPnl>0) wins++; else losses++;
+      nextAllowed=exitIdx+1;
+    }
+  }
+
+  if (trades<5) return null;
+  return {
+    winRate:     Math.round(wins/trades*100),
+    trades,
+    avgReturnPct:parseFloat((totalReturn/trades*100).toFixed(2)),
+    profitFactor:losses>0?parseFloat((wins/losses).toFixed(2)):99,
+  };
+}
+
+
 async function fetchFundamentalsYahoo(symbol) {
   try {
     const qs = await quoteSummary(symbol, 'financialData,defaultKeyStatistics,summaryDetail');
@@ -2523,6 +2549,98 @@ app.post('/api/technicals/batch', async (req, res) => {
         long:   computeQuantSignal(data, null, 'long')
       };
 
+      // ── Market-aware scoring layer ──────────────────────────────────────────
+      const _mkt = classifyMarket(sym);
+      data.marketTier   = _mkt.tier;
+      data.marketLabel  = _mkt.label;
+      data.marketRegion = _mkt.region;
+      data.marketNote   = _mkt.note;
+
+      // Commodities: 15% score penalty (no ML backing — stricter threshold)
+      if (_mkt.tier === 'technical_only' && data.quantSignal) {
+        ['short','medium','long'].forEach(hz => {
+          const q=data.quantSignal[hz]; if(!q) return;
+          if(q.buyScore>0)  q.buyScore  = Math.round(q.buyScore  * 0.85);
+          if(q.sellScore>0) q.sellScore = Math.round(q.sellScore * 0.85);
+          q.technicalOnly=true;
+        });
+      }
+
+      // Asian equities: FMP quality score
+      if (_mkt.tier === 'fmp_quality') {
+        try {
+          const _fk=(process.env.FMP_API_KEY||process.env.FMP_KEY||'').trim();
+          if (_fk && data.quantSignal) {
+            const _fmp = await fetchFmpScore(sym);
+            if (_fmp) {
+              data.fmpScore = _fmp;
+              const _qs=_fmp.qualityScore, _pio=_fmp.piotroski;
+              if (_qs!=null) {
+                if (_pio!=null&&_pio>=7) {
+                  const b=Math.round((_pio-4)*1.5);
+                  data.quantSignal.short.buyScore=Math.min(92,(data.quantSignal.short.buyScore||0)+b);
+                } else if (_pio!=null&&_pio<=3) {
+                  data.quantSignal.short.buyScore=Math.round((data.quantSignal.short.buyScore||0)*0.65);
+                }
+                if (_qs>=7&&_fmp.buy_track_record) {
+                  const b=Math.round((_qs-5)*2.5);
+                  data.quantSignal.medium.buyScore=Math.min(92,(data.quantSignal.medium.buyScore||0)+b);
+                } else if (_qs<=4) {
+                  data.quantSignal.medium.buyScore=Math.round((data.quantSignal.medium.buyScore||0)*0.55);
+                }
+                const _lq=(_qs*0.6)+((_fmp.analystScore||5)*0.4);
+                if (_lq>=7&&_fmp.buy_track_record) {
+                  data.quantSignal.long.buyScore=Math.min(92,(data.quantSignal.long.buyScore||0)+Math.round((_lq-5)*2.5));
+                } else if (_qs<=3) {
+                  data.quantSignal.long.buyScore=Math.round((data.quantSignal.long.buyScore||0)*0.45);
+                }
+              }
+            }
+          }
+        } catch(_fe){console.warn('FMP batch:',sym,_fe.message);}
+      }
+
+      // US/EU equities: Danelfin ML (horizon-specific boosts)
+      if (_mkt.danelfin) {
+        try {
+          const _dkey=(process.env.DANELFIN_API_KEY||'').trim();
+          if (_dkey && data.quantSignal) {
+            const _ds = await fetchDanelfinRow(_dkey, sym);
+            if (_ds && _ds.aiscore!=null) {
+              data.danelfin = _ds;
+              data.compositeAlphaShort  = computeCompositeAlpha(_ds, data, 0, 'short');
+              data.compositeAlphaMedium = computeCompositeAlpha(_ds, data, 0, 'medium');
+              data.compositeAlphaLong   = computeCompositeAlpha(_ds, data, 0, 'long');
+              data.compositeAlpha       = data.compositeAlphaMedium;
+              // SHORT: Danelfin Technical subscore
+              if (_ds.technical>=7&&_ds.aiscore>=6&&_ds.buy_track_record) {
+                data.quantSignal.short.buyScore=Math.min(92,(data.quantSignal.short.buyScore||0)+Math.round((_ds.technical-5)*2.5));
+              } else if (_ds.technical<=3||(!_ds.buy_track_record&&_ds.aiscore<=4)) {
+                data.quantSignal.short.buyScore=Math.round((data.quantSignal.short.buyScore||0)*0.55);
+              }
+              if (_ds.technical<=3&&_ds.sell_track_record)
+                data.quantSignal.short.sellScore=Math.min(88,(data.quantSignal.short.sellScore||0)+Math.round((5-_ds.technical)*2.5));
+              // MEDIUM: Full AI Score (Danelfin's sweet spot — trained for 3M)
+              if (_ds.aiscore>=7&&_ds.buy_track_record) {
+                data.quantSignal.medium.buyScore=Math.min(92,(data.quantSignal.medium.buyScore||0)+Math.round((_ds.aiscore-5)*3.5));
+              } else if (_ds.aiscore<=4) {
+                data.quantSignal.medium.buyScore=Math.round((data.quantSignal.medium.buyScore||0)*0.50);
+              }
+              if (_ds.aiscore<=3&&_ds.sell_track_record)
+                data.quantSignal.medium.sellScore=Math.min(88,(data.quantSignal.medium.sellScore||0)+Math.round((5-_ds.aiscore)*3.5));
+              // LONG: Fundamental subscore weighted with AI Score
+              const _lq=(_ds.aiscore||0)*0.55+(_ds.fundamental||0)*0.45;
+              if (_lq>=7&&_ds.buy_track_record)
+                data.quantSignal.long.buyScore=Math.min(92,(data.quantSignal.long.buyScore||0)+Math.round((_lq-5)*3));
+              else if ((_ds.fundamental||0)<=3||_ds.aiscore<=3)
+                data.quantSignal.long.buyScore=Math.round((data.quantSignal.long.buyScore||0)*0.45);
+              if ((_ds.fundamental||0)<=3&&_ds.aiscore<=4&&_ds.sell_track_record)
+                data.quantSignal.long.sellScore=Math.min(88,(data.quantSignal.long.sellScore||0)+Math.round((5-_ds.aiscore)*3));
+            }
+          }
+        } catch(_de){console.warn('Danelfin batch:',sym,_de.message);}
+      }
+
       techCache.set(sym, { ts: Date.now(), data });
       results[sym] = data;
     } catch(e) { console.warn('Batch tech fail:', sym, e.message); }
@@ -2631,6 +2749,90 @@ Output ONLY the JSON object. No markdown.`;
 
   res.json(results);
 });
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MARKET COVERAGE CLASSIFIER
+// ══════════════════════════════════════════════════════════════════════════════
+function classifyMarket(symbol) {
+  const sym=(symbol||'').toUpperCase().trim();
+  if (sym.includes('=F')||sym.endsWith('-USD')||sym.endsWith('-EUR'))
+    return {tier:'technical_only',label:'Technical Only',region:'commodity',danelfin:false,fmp:false,
+            note:'No fundamental scoring for commodities — pure SD channel + momentum'};
+  const eu=['.L','.DE','.PA','.AS','.AMS','.BR','.MI','.MC','.ST','.CO','.OL','.HE','.VI'];
+  if (eu.some(sfx=>sym.endsWith(sfx)))
+    return {tier:'danelfin_eu',label:'Danelfin AI (EU)',region:'europe',danelfin:true,fmp:true,
+            note:'Danelfin European ML (since 2022) + FMP quality'};
+  const asia=['.T','.HK','.NS','.BO','.KS','.KQ','.TW','.SI','.AX','.NZ','.BK'];
+  if (asia.some(sfx=>sym.endsWith(sfx)))
+    return {tier:'fmp_quality',label:'FMP Quality Score',region:'asia',danelfin:false,fmp:true,
+            note:'FMP Piotroski F-Score + Altman Z + analyst consensus (no ML for Asian markets)'};
+  return {tier:'danelfin_us',label:'Danelfin AI (US)',region:'us',danelfin:true,fmp:true,
+          note:'Danelfin ML trained since 2017 on 10K features — highest quality signal'};
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// HORIZON-AWARE COMPOSITE ALPHA  (SHORT=Technical driven, MEDIUM=AI Score, LONG=Fundamental)
+// ══════════════════════════════════════════════════════════════════════════════
+function computeCompositeAlpha(dan, tech, newsScore, hz) {
+  hz=hz||'medium';
+  if (!dan||dan.aiscore==null) return null;
+  const dAI=(dan.aiscore||0)*10, dT=(dan.technical||0)*10, dF=(dan.fundamental||0)*10;
+  const dS=(dan.sentiment||0)*10, dR=(dan.low_risk||0)*10;
+  const trk=dan.buy_track_record?5:-5;
+  let ch=50;
+  if (tech?.channelPos){const q=tech.channelPos.buyQuality;ch=q==='excellent'?95:q==='good'?80:q==='fair'?62:q==='neutral'?45:20;}
+  let mo=55;
+  if (tech){const r=tech.rsi||50;if(tech.macdTurningUp)mo+=18;if(r>=30&&r<=52)mo+=15;if(r>70)mo-=22;if(tech.rsiRising)mo+=12;if(tech.obvBullish===true)mo+=10;mo=Math.min(100,Math.max(0,mo));}
+  const nw=Math.min(100,Math.max(0,((newsScore||0)+100)/2));
+  let c;
+  if (hz==='short') c=dT*0.20+dR*0.12+dS*0.08+dAI*0.10+ch*0.30+mo*0.15+nw*0.05+trk;
+  else if(hz==='long') c=dAI*0.28+dF*0.25+dR*0.12+dS*0.08+dT*0.05+ch*0.05+mo*0.12+nw*0.05+trk;
+  else c=dAI*0.30+dT*0.18+dS*0.12+dR*0.08+dF*0.02+ch*0.12+mo*0.13+nw*0.05+trk;
+  const score=Math.min(100,Math.max(0,Math.round(c)));
+  const grade=score>=82?'A+':score>=74?'A':score>=65?'B+':score>=55?'B':score>=45?'C':'D';
+  return {score,grade,hz};
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FMP QUALITY SCORE — Asian equities (Piotroski + Altman Z + analyst consensus)
+// ══════════════════════════════════════════════════════════════════════════════
+const _fmpCache=new Map(), _FMP_TTL=6*60*60*1000;
+async function fetchFmpScore(symbol) {
+  const key=(process.env.FMP_API_KEY||process.env.FMP_KEY||'').trim();
+  if (!key) return null;
+  const cached=_fmpCache.get(symbol);
+  if (cached&&Date.now()-cached.ts<_FMP_TTL) return cached.data;
+  try {
+    const enc=encodeURIComponent(symbol.replace(/\./g,'-'));
+    const q=`?apikey=${encodeURIComponent(key)}`;
+    const H={Accept:'application/json'};
+    const [rR,sR,gR]=await Promise.allSettled([
+      fetch(`https://financialmodelingprep.com/stable/ratings-snapshot${q}&symbol=${enc}`,{headers:H,signal:AbortSignal.timeout(10000)}),
+      fetch(`https://financialmodelingprep.com/api/v3/score${q}&symbol=${enc}`,{headers:H,signal:AbortSignal.timeout(10000)}),
+      fetch(`https://financialmodelingprep.com/stable/grades-summary${q}&symbol=${enc}`,{headers:H,signal:AbortSignal.timeout(10000)}),
+    ]);
+    let rating=null,scores=null,grades=null;
+    if (rR.status==='fulfilled'&&rR.value.ok){const d=await rR.value.json();const r=Array.isArray(d)?d[0]:d;if(r?.rating)rating={overall:r.rating,roe:r.roeScore??null,roa:r.roaScore??null};}
+    if (sR.status==='fulfilled'&&sR.value.ok){const d=await sR.value.json();const r=Array.isArray(d)?d[0]:d;if(r)scores={piotroski:r.piotroskiScore??null,altmanZ:r.altmanZScore??null};}
+    if (gR.status==='fulfilled'&&gR.value.ok){const d=await gR.value.json();const r=Array.isArray(d)?d[0]:(d?.data?.[0]??d);
+      if(r){const sb=r.strongBuy||0,b=r.buy||0,hh=r.hold||0,se=r.sell||0,ss=r.strongSell||0,t=sb+b+hh+se+ss;
+        grades={strongBuy:sb,buy:b,hold:hh,sell:se,strongSell:ss,total:t,consensus:t>0?parseFloat(((sb*2+b-se-ss*2)/t).toFixed(2)):null};}}
+    if (!rating&&!scores&&!grades){_fmpCache.set(symbol,{ts:Date.now(),data:null});return null;}
+    const rm={'A+':10,'A':9,'B+':8,'B':7,'C':6,'D':4};
+    const oS=rm[rating?.overall]??5;
+    const pS=scores?.piotroski!=null?Math.round(scores.piotroski*10/9):null;
+    const aS=scores?.altmanZ!=null?(scores.altmanZ>2.99?9:scores.altmanZ>1.81?6:3):null;
+    const gS=grades?.consensus!=null?Math.round((parseFloat(grades.consensus)+2)/4*10):null;
+    const inp=[oS,pS,aS,gS].filter(v=>v!=null);
+    const qs=inp.length?Math.round(inp.reduce((a,b)=>a+b,0)/inp.length):null;
+    const result={qualityScore:qs,overallRating:rating?.overall??null,piotroski:scores?.piotroski??null,
+      altmanZ:scores?.altmanZ??null,roeScore:rating?.roe??null,roaScore:rating?.roa??null,
+      analystScore:gS,analystCounts:grades,buy_track_record:qs!=null&&qs>=7};
+    _fmpCache.set(symbol,{ts:Date.now(),data:result});
+    return result;
+  } catch(e){console.warn('FMP score',symbol,e.message);return null;}
+}
 
 /** Danelfin API: https://danelfin.com/docs/api — keyed by ticker as returned by the client batch. */
 const DANELFIN_BASE_URL = 'https://apirest.danelfin.com';
@@ -4822,13 +5024,14 @@ app.post('/api/analyze', async (req, res) => {
     if (!tech) continue;
     const btShort  = ohlcv ? backtestSignal(ohlcv, 'short')  : null;
     const btMedium = ohlcv ? backtestSignal(ohlcv, 'medium') : null;
+    const btLong   = ohlcv ? backtestSignal(ohlcv, 'long')   : null;
     const sigShort  = computeQuantSignal(tech, fund, 'short');
     const sigMedium = computeQuantSignal(tech, fund, 'medium');
     const sigLong   = computeQuantSignal(tech, fund, 'long');
     signalBySym[sym] = {
       short:  { ...sigShort,  backtest: btShort  },
       medium: { ...sigMedium, backtest: btMedium },
-      long:   { ...sigLong,   backtest: null }
+      long:   { ...sigLong,   backtest: btLong   },
     };
     console.log(`${sym}: short ${sigShort.action}(${sigShort.buyScore}/${sigShort.sellScore}) bt=${btShort?.winRate??'N/A'}% ${btShort?.trades??0}trades`);
   }
@@ -4953,11 +5156,18 @@ Output ONLY the JSON array. No markdown.`;
         row.mediumAction      = sig.medium.action;
         row.longAction        = sig.long.action;
         row.action            = sig.short.action;
-        const bt = sig.short.backtest;
-        row.backtestedWinRate = bt ? bt.winRate : sig.short.winRateHint;
-        row.backtestTrades    = bt?.trades ?? null;
-        row.backtestAvgReturn = bt?.avgReturnPct ?? null;
-        row.backtestMedium    = sig.medium.backtest ? sig.medium.backtest.winRate : null;
+        const btS=sig.short.backtest, btM=sig.medium.backtest, btL=sig.long.backtest;
+        row.backtestShortWinRate  = btS ? btS.winRate : sig.short.winRateHint;
+        row.backtestMediumWinRate = btM ? btM.winRate : sig.medium.winRateHint;
+        row.backtestLongWinRate   = btL ? btL.winRate : sig.long.winRateHint;
+        row.backtestShortTrades   = btS?.trades ?? null;
+        row.backtestMediumTrades  = btM?.trades ?? null;
+        row.backtestLongTrades    = btL?.trades ?? null;
+        const bt = btS;
+        row.backtestedWinRate = row.backtestShortWinRate;
+        row.backtestTrades    = btS?.trades ?? null;
+        row.backtestAvgReturn = btS?.avgReturnPct ?? null;
+        row.backtestMedium    = row.backtestMediumWinRate;
         row.quantConditions   = sig.short.conditions;
         row.quantScore        = sig.short.buyScore;
         row.atr14             = tech?.atr ?? null;
