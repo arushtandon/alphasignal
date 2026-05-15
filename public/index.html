@@ -3169,7 +3169,7 @@ function renderCard(s){
         +'<div style="font-size:8px;color:rgba(180,180,180,0.5);font-family:DM Mono,monospace;line-height:1.5">'+(s.marketNote||'No fundamental scoring system exists for this instrument. Analysis uses SD channel, RSI, MACD, OBV and volume with stricter gate thresholds.')+'</div></div>'
       :'')
     +'</div>'
-++(s.backtestShortWinRate!=null||s.backtestMediumWinRate!=null||s.backtestLongWinRate!=null
++(s.backtestShortWinRate!=null||s.backtestMediumWinRate!=null||s.backtestLongWinRate!=null
     ?'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:8px;padding:9px 11px;margin-bottom:8px">'
      +'<div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Backtested Win Rate (per horizon)</div>'
      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">'
