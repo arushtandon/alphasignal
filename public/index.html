@@ -261,7 +261,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
   .pnl-box{grid-template-columns:repeat(2,1fr)}
   .stock-card{padding:1rem}
   .mets{grid-template-columns:repeat(2,1fr)}
-  .chart-wrap{height:200px}
+  .chart-wrap{height:300px}
   .cstat-val{font-size:11px}
   .rec-box{padding:10px}
 }
@@ -317,7 +317,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
 .chart-tab{padding:5px 12px;font-size:10px;cursor:pointer;color:var(--m2);border-bottom:2px solid transparent;margin-bottom:-1px;font-family:'DM Mono',monospace;letter-spacing:.04em;transition:all .15s}
 .chart-tab:hover{color:var(--tx)}
 .chart-tab.act{color:var(--ac);border-bottom-color:var(--ac)}
-.chart-wrap{position:relative;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);overflow:hidden;height:280px}
+.chart-wrap{position:relative;height:420px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);overflow:hidden;height:420px}
 .chart-loading{display:flex;align-items:center;justify-content:center;height:100%;color:var(--m1);font-family:'DM Mono',monospace;font-size:11px;gap:8px}
 .chart-error{display:flex;align-items:center;justify-content:center;height:100%;color:var(--m1);font-size:11px;font-family:'DM Mono',monospace}
 .chart-canvas{width:100%!important;height:280px!important}
@@ -656,6 +656,8 @@ const CHART_RANGES = {
   '1M':  {range:'1mo',  interval:'1d'},
   '3M':  {range:'3mo',  interval:'1d'},
   '1Y':  {range:'1y',   interval:'1wk'},
+  '2Y':  {range:'2y',   interval:'1wk'},
+  '5Y':  {range:'5y',   interval:'1mo'},
 };
 
 async function fetchChartData(ticker, range='1mo', interval='1d') {
@@ -747,7 +749,7 @@ function drawChart(canvasId, data, ticker, entryPrice, tp1, tp2, slPrice, action
       const {ctx,chartArea:{left,right,top,bottom},scales:{x,y}} = chart;
       if(!x||!y) return;
       const n = raw.length;
-      const barW = Math.max(1, Math.min(12, (right-left)/n*0.7));
+      const barW = Math.max(2, Math.min(18, (right-left)/n*0.75));
       ctx.save();
       raw.forEach((candle,i)=>{
         const xPx = x.getPixelForValue(i);
@@ -821,7 +823,8 @@ function drawChart(canvasId, data, ticker, entryPrice, tp1, tp2, slPrice, action
                 }
               }
             },
-            limits:{x:{minRange:3}}
+            limits:{x:{minRange:5}},
+            // Auto-reset zoom when switching range tabs (handled in switchChartRange)
           },
           tooltip:{
             backgroundColor:'rgba(13,15,21,0.96)',
@@ -932,6 +935,11 @@ async function loadChart(ticker, canvasId, range, interval, entry, tp1, tp2, sl,
 
 function switchChartRange(ticker, canvasId, range, entry, tp1, tp2, sl, action) {
   const cfg = CHART_RANGES[range] || CHART_RANGES['1M'];
+  // Reset zoom when switching ranges so user sees the full range
+  const canvas = document.getElementById(canvasId);
+  if (canvas && canvas._chartInstance) {
+    try { canvas._chartInstance.resetZoom(); } catch(e) {}
+  }
   // Update active tab — charts use data-cticker attribute
   document.querySelectorAll('.chart-tab[data-cticker="'+ticker+'"], .chart-tab[data-ticker="'+ticker+'"]').forEach(t => {
     t.classList.toggle('act', t.getAttribute('data-range') === range);
@@ -2620,7 +2628,7 @@ function buildChartHtml(ticker, entry, tp1, tp2, sl, action) {
   const t2 = (tp2||'').replace(/"/g,'');
   const s2 = (sl||'').replace(/"/g,'');
   const a2 = (action||'Buy').replace(/"/g,'');
-  const ranges = ['5m','15m','1D','5D','1M','3M','1Y'];
+  const ranges = ['5m','15m','1D','5D','1M','3M','1Y','2Y','5Y'];
   let tabs = '';
   ranges.forEach(r => {
     const act = r === '15m' ? ' act' : '';
@@ -3169,7 +3177,7 @@ function renderCard(s){
         +'<div style="font-size:8px;color:rgba(180,180,180,0.5);font-family:DM Mono,monospace;line-height:1.5">'+(s.marketNote||'No fundamental scoring system exists for this instrument. Analysis uses SD channel, RSI, MACD, OBV and volume with stricter gate thresholds.')+'</div></div>'
       :'')
     +'</div>'
-+(s.backtestShortWinRate!=null||s.backtestMediumWinRate!=null||s.backtestLongWinRate!=null
+    +(s.backtestShortWinRate!=null||s.backtestMediumWinRate!=null||s.backtestLongWinRate!=null
     ?'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:8px;padding:9px 11px;margin-bottom:8px">'
      +'<div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Backtested Win Rate (per horizon)</div>'
      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px">'
@@ -3201,7 +3209,7 @@ function renderCard(s){
     +'</div>'
     +(s.newsImpact?'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:7px;padding:8px 10px;margin-bottom:8px"><div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">News Impact</div><div style="font-size:12px;color:'+(s.newsTone==='positive'?'var(--buy)':s.newsTone==='negative'?'var(--sell)':'var(--tx)')+'">'+escMinimalHtml(s.newsImpact)+'</div></div>':'')
     +buildEarningsRow(s)
-+(s.catalyst?'<div style="margin-bottom:6px"><span style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.1em">Catalyst: </span><span class="prose">'+s.catalyst+'</span></div>':'')
+    +(s.catalyst?'<div style="margin-bottom:6px"><span style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.1em">Catalyst: </span><span class="prose">'+s.catalyst+'</span></div>':'')
     +'<p class="prose">'+(s.fundSummary||'')+'</p></div>'
 
     // Risks
@@ -3778,6 +3786,7 @@ let earningsCache = null;
 let earningsCacheTs = 0;
 /** When set, must match dashboard query so we do not reuse an unfiltered payload. */
 let earningsCacheMcapMin = NaN;
+let earningsCacheTopPerDay = NaN;
 
 async function loadEarningsCalendar(force) {
   const widget = document.getElementById('earningsWidget');
@@ -3785,7 +3794,7 @@ async function loadEarningsCalendar(force) {
   if(!widget || !elContent) return;
   widget.style.display = 'block';
 
-  if(!force && earningsCache && earningsCacheMcapMin === 50 && (Date.now()-earningsCacheTs) < 3600000) {
+  if(!force && earningsCache && earningsCacheTopPerDay === 7 && earningsCacheMcapMin === 0 && (Date.now()-earningsCacheTs) < 3600000) {
     renderEarningsWidget(earningsCache, elContent); return;
   }
   // Don't auto-open - user clicks to expand
@@ -3796,7 +3805,8 @@ async function loadEarningsCalendar(force) {
     var calParams = new URLSearchParams();
     calParams.set('anchor', utcAnchor);
     calParams.set('days', '45');
-    calParams.set('mcapMin', '50');
+    calParams.set('mcapMin', '0');
+    calParams.set('topPerDay', '7');
     if (force) calParams.set('force', '1');
     const resp = await fetch('/api/earnings-calendar?'+calParams.toString());
     if(!resp.ok) throw new Error('HTTP '+resp.status);
@@ -3829,8 +3839,8 @@ async function loadEarningsCalendar(force) {
       if(ta!==tb)return ta-tb;
       return a.ticker.localeCompare(b.ticker);
     });
-    if(!earnings.length) { elContent.innerHTML='<span style="color:var(--m1)">No upcoming rows loaded. First open <code>/api/health</code> → check <code>earnings_calendar_merge.last_event_count</code> after loading this widget (hint: −1 means merge not run yet). Open Network → <code>/api/earnings-calendar</code>?force=1 — array should not be empty. Check Render logs for Finnhub/FMP; rotate keys if exposed.</span>'; return; }
-    earningsCache=earnings; earningsCacheTs=Date.now(); earningsCacheMcapMin=50;
+    if(!earnings.length) { elContent.innerHTML='<span style="color:var(--m1)">No upcoming earnings in this window. Check <code>/api/health</code> and Finnhub/FMP keys; broaden date range from the dashboard or retry.</span>'; return; }
+    earningsCache=earnings; earningsCacheTs=Date.now(); earningsCacheMcapMin=0; earningsCacheTopPerDay=7;
     renderEarningsWidget(earnings, elContent);
   } catch(e) {
     console.error('Earnings:',e);
@@ -3847,7 +3857,7 @@ function renderEarningsWidget(earnings, elContent) {
   // Update pill in header
   const todayCnt = earnings.filter(e=>e.date===todayISO).length;
   const pill = document.getElementById('earningsSummaryPill');
-  if(pill) pill.textContent = '≥$50B mcap · '+(todayCnt?todayCnt+' today · ':'')+earnings.length+' upcoming (next 14 days)';
+  if(pill) pill.textContent = 'Top 7 by mcap / day · '+(todayCnt?todayCnt+' today · ':'')+earnings.length+' slots (next 14 days)';
   // Keep collapsed - user expands manually
   // Group by date
   const byDate = {};

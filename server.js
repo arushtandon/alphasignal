@@ -279,6 +279,43 @@ function marketCapUsdForTicker(sym, capMap) {
   return Number.isFinite(v) && v > 0 ? v : null;
 }
 
+/** Dashboard widget: keep up to `topN` rows per earnings date (largest market cap first). Missing caps sort last. */
+function sliceEarningsCalendarTopMcapPerDay(merged, capMap, topN) {
+  const n = Math.floor(Number(topN));
+  if (!Array.isArray(merged) || !merged.length || !Number.isFinite(n) || n < 1) return merged;
+  const capSafe = capMap && typeof capMap === 'object' ? capMap : {};
+  const capRank = sym => {
+    const c = marketCapUsdForTicker(sym, capSafe);
+    return Number.isFinite(c) && c > 0 ? c : -1;
+  };
+  const byDay = new Map();
+  for (const row of merged) {
+    const d = String(row?.date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+    if (!byDay.has(d)) byDay.set(d, []);
+    byDay.get(d).push(row);
+  }
+  const out = [];
+  for (const d of [...byDay.keys()].sort()) {
+    const rows = byDay.get(d);
+    rows.sort((a, b) => {
+      const ca = capRank(a.ticker);
+      const cb = capRank(b.ticker);
+      if (cb !== ca) return cb - ca;
+      return earningsTickerPriority(a.ticker) - earningsTickerPriority(b.ticker);
+    });
+    out.push(...rows.slice(0, Math.min(n, 50)));
+  }
+  return out.sort((a, b) => {
+    const da = String(a.date || '').slice(0, 10).localeCompare(String(b.date || '').slice(0, 10));
+    if (da !== 0) return da;
+    const ca = capRank(a.ticker);
+    const cb = capRank(b.ticker);
+    if (cb !== ca) return cb - ca;
+    return earningsTickerPriority(a.ticker) - earningsTickerPriority(b.ticker);
+  });
+}
+
 async function quoteSummary(symbol, modules) {
   const symVariants = [symbol];
   if (symbol.includes('.') && !String(symbol).includes('=')) {
@@ -1381,7 +1418,11 @@ async function fetchFundamentalsYahoo(symbol) {
 
 /** Lightweight v7 quote — often still returns forward/trailing P/E when quoteSummary modules are empty from the server IP. */
 async function fetchYahooQuotePE(symbol) {
-  const variants = [...new Set([symbol, symbol.replace(/\./g, '-')])];
+  // Build comprehensive variants for global exchanges:
+  // FMP supports: INFY.NS (India NSE), 0700.HK (HK), 7203.T (Japan), AZN.L (LSE)
+  // Also try bare ticker (without exchange suffix) as FMP fallback
+  const bare = symbol.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i, '');
+  const variants = [...new Set([symbol, symbol.replace(/\./g, '-'), bare])].filter(Boolean);
   const num = v => {
     const n = v?.raw ?? v;
     return Number.isFinite(+n) ? +n : null;
@@ -2238,10 +2279,15 @@ async function fetchFundamentals(symbol) {
   }
 
   // Step 4: Yahoo — last resort for any still-missing fields
+  // For non-US tickers, also try bare ticker without exchange suffix
+  const isNonUS = /\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i.test(symbol);
   const needsYahoo = merged.revenueGrowth == null || merged.earningsGrowth == null ||
                      merged.pegRatio == null || merged.forwardPE == null;
   if (needsYahoo) {
-    const yFund = await fetchFundamentalsYahoo(symbol).catch(() => null);
+    // For non-US, also try bare ticker (e.g. INFY for INFY.NS, TCS for TCS.NS)
+    const bare = isNonUS ? symbol.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK)$/i, '') : symbol;
+    const yFund = await fetchFundamentalsYahoo(symbol).catch(() => null)
+      || (bare !== symbol ? await fetchFundamentalsYahoo(bare).catch(() => null) : null);
     if (yFund) {
       for (const [k, v] of Object.entries(yFund)) {
         if (merged[k] == null && v != null && v !== '') merged[k] = v;
@@ -2700,7 +2746,7 @@ app.post('/api/news-sentiment/batch', async (req, res) => {
     return `${sym}:\n${headlines}`;
   }).join('\n\n');
 
-  const prompt = `You are a financial news analyst. For each stock below, analyze the recent news headlines and return a JSON sentiment assessment. Focus on what ACTUALLY MOVES stock prices: earnings beats/misses, analyst upgrades/downgrades, product launches, regulatory events, M&A, guidance changes, macro impacts.
+  const prompt = `You are a global financial news analyst covering US, European, Asian, and Indian equities. For each stock below (which may be listed on non-US exchanges such as LSE, TSE, NSE, HKEX, Euronext), analyze the recent news headlines and return a JSON sentiment assessment. Focus on what ACTUALLY MOVES stock prices: earnings beats/misses, analyst upgrades/downgrades, product launches, regulatory events, M&A, guidance changes, macro impacts.
 
 NEWS HEADLINES:
 ${newsBlocks}
@@ -2727,7 +2773,7 @@ Output ONLY the JSON object. No markdown.`;
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1200,
+        max_tokens: 2000,
         system:
           'You are a financial news sentiment analyst. Output ONLY valid JSON. No markdown, no backticks.',
         messages: [{ role: 'user', content: prompt }]
@@ -3513,7 +3559,11 @@ async function fetchFinnhubCompanyNewsForSymbol(sym) {
   const dt = new Date(`${to}T12:00:00Z`);
   dt.setUTCDate(dt.getUTCDate() - 37);
   const from = dt.toISOString().slice(0, 10);
-  const variants = [...new Set([sym, sym.replace(/\./g, '-')])].filter(Boolean);
+  // Build Finnhub-compatible ticker variants:
+  // Finnhub uses: INFY (no suffix for India), 7203 (no suffix for Japan),
+  // AAPL (US), AZN (London), but also supports AZN.L sometimes
+  const bare2 = sym.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|KS|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i, '');
+  const variants = [...new Set([sym, sym.replace(/\./g, '-'), bare2])].filter(Boolean);
   for (const v of variants) {
     try {
       const u = new URL('https://finnhub.io/api/v1/company-news');
@@ -3521,7 +3571,7 @@ async function fetchFinnhubCompanyNewsForSymbol(sym) {
       u.searchParams.set('from', from);
       u.searchParams.set('to', to);
       u.searchParams.set('token', token);
-      const r = await fetch(u.toString(), { signal: AbortSignal.timeout(3800) });
+      const r = await fetch(u.toString(), { signal: AbortSignal.timeout(8000) }); // longer for intl
       if (!r.ok) continue;
       const arr = await r.json();
       if (Array.isArray(arr) && arr.length) return arr.slice(0, 15);
@@ -4210,7 +4260,8 @@ async function fmpEarningsSurprisesHistory(sym) {
       })
       .filter((r) => r.date || r.quarter);
   }
-  const variants = [...new Set([sym, sym.replace(/\./g, '-')])].filter(Boolean);
+  const earningsBare = sym.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK)$/i, '');
+  const variants = [...new Set([sym, sym.replace(/\./g, '-'), earningsBare])].filter(Boolean);
   for (const v of variants) {
     try {
       const enc = encodeURIComponent(v);
@@ -5226,7 +5277,12 @@ app.get('/api/earnings-calendar', async (req, res) => {
     if (!Number.isFinite(n) || n <= 0) return 0;
     return Math.min(n, 2000);
   })();
-  const cacheKey = `${rangeKey}|mcap:${mcapMinB}`;
+  const topPerDay = (() => {
+    const n = parseInt(String(req.query.topPerDay ?? '').trim(), 10);
+    if (!Number.isFinite(n) || n < 1 || n > 50) return 0;
+    return n;
+  })();
+  const cacheKey = `${rangeKey}|mcap:${mcapMinB}|top:${topPerDay}`;
 
   if (
     !req.query.force &&
@@ -5239,14 +5295,18 @@ app.get('/api/earnings-calendar', async (req, res) => {
 
   try {
     let merged = await mergedEarningsCalendarWidget(fromISO, endISO);
+    const uniqTickers = [...new Set(merged.map((r) => r.ticker).filter(Boolean))];
+    const needCaps = (mcapMinB > 0 || topPerDay > 0) && uniqTickers.length > 0;
+    const capMap = needCaps ? await fetchYahooMarketCapsBulk(uniqTickers) : {};
     if (mcapMinB > 0 && merged.length) {
-      const uniqTickers = [...new Set(merged.map((r) => r.ticker).filter(Boolean))];
-      const capMap = await fetchYahooMarketCapsBulk(uniqTickers);
       const floorUsd = mcapMinB * 1e9;
       merged = merged.filter((r) => {
         const c = marketCapUsdForTicker(r.ticker, capMap);
         return c != null && c >= floorUsd;
       });
+    }
+    if (topPerDay > 0 && merged.length) {
+      merged = sliceEarningsCalendarTopMcapPerDay(merged, capMap, topPerDay);
     }
     if (merged.length) {
       calCache = merged;
