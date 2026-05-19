@@ -2127,7 +2127,8 @@ function normalizeQuarterLabelForMatch(s) {
 /** When Bloomberg rows omit estimates, copy EPS / surprise from nearest Yahoo quarter. */
 function enrichEarningsHistFromYahooRows(hist, yahooRows) {
   if (!Array.isArray(hist) || !Array.isArray(yahooRows) || !yahooRows.length) return hist;
-  const DATE_WIN = 200;
+  /** Wider window: fiscal period-end vs announcement dates on NSE/ADR names often diverge. */
+  const DATE_WIN = 420;
   for (const r of hist) {
     const d = r?.date ? String(r.date).slice(0, 10) : '';
     let best = null;
@@ -2226,17 +2227,46 @@ function overlayQuarterYyWithBloomberg(existingRow, bbRow) {
 function blendBloombergEarningsHistories(existingSlice, bloombergNorm) {
   const prior = Array.isArray(existingSlice) ? existingSlice : [];
   if (!Array.isArray(bloombergNorm) || !bloombergNorm.length) return prior.slice(0, 4);
-  const byDate = {};
-  for (const r of prior) {
-    const d = r?.date ? String(r.date).trim().slice(0, 10) : '';
-    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) byDate[d] = r;
+  if (!prior.length) {
+    return bloombergNorm.slice(0, 4).map((bb) => overlayQuarterYyWithBloomberg(null, bb));
   }
+  const norm = bloombergNorm.slice(0, 8);
+  const used = new Set();
   const out = [];
-  for (const bb of bloombergNorm.slice(0, 4)) {
-    const d = bb?.date ? String(bb.date).trim().slice(0, 10) : '';
-    out.push(overlayQuarterYyWithBloomberg(byDate[d] || null, bb));
+  for (const r of prior.slice(0, 8)) {
+    if (out.length >= 4) break;
+    const d = r?.date ? String(r.date).trim().slice(0, 10) : '';
+    const rq = normalizeQuarterLabelForMatch(r.quarter);
+    let bestI = -1;
+    let bestScore = -1;
+    for (let i = 0; i < norm.length; i++) {
+      if (used.has(i)) continue;
+      const bb = norm[i];
+      const bbd = bb?.date ? String(bb.date).trim().slice(0, 10) : '';
+      const bq = normalizeQuarterLabelForMatch(bb.quarter);
+      let score = -1;
+      if (rq && bq && rq === bq) score = 200;
+      else if (/^\d{4}-\d{2}-\d{2}$/.test(d) && /^\d{4}-\d{2}-\d{2}$/.test(bbd)) {
+        const dx = calendarDayDiffIso(d, bbd);
+        if (dx <= 220) score = 150 - Math.min(dx, 149);
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestI = i;
+      }
+    }
+    if (bestI >= 0 && bestScore > 0) {
+      used.add(bestI);
+      out.push(overlayQuarterYyWithBloomberg(r, norm[bestI]));
+    } else {
+      out.push({ ...r });
+    }
   }
-  return out;
+  for (let i = 0; i < norm.length && out.length < 4; i++) {
+    if (used.has(i)) continue;
+    out.push(overlayQuarterYyWithBloomberg(null, norm[i]));
+  }
+  return out.slice(0, 4);
 }
 
 /** Merge Bloomberg bridge earnings into computed fields (priority configurable). */
@@ -2365,8 +2395,15 @@ async function fetchFundamentals(symbol) {
   if (ent) merged = mergeBloombergPriority(merged, ent);
 
   // Step 3: FMP — fill missing fields (Bloomberg returns price but NOT growth/ratings)
-  const needsFMPGapFill=merged.revenueGrowth==null||merged.earningsGrowth==null||
-    merged.pegRatio==null||merged.forwardPE==null||merged.recommendationKey==null||merged.targetMeanPrice==null;
+  const needsFMPGapFill =
+    merged.revenueGrowth == null ||
+    merged.earningsGrowth == null ||
+    merged.pegRatio == null ||
+    merged.forwardPE == null ||
+    merged.recommendationKey == null ||
+    merged.targetMeanPrice == null ||
+    merged._fmpSector == null ||
+    merged._fmpSector === '';
   let fMp=null;
   if (needsFMPGapFill&&fmpEnvKeyFund()) {
     fMp=await fetchFundamentalsFMP(symbol).catch(()=>null);
@@ -2379,8 +2416,13 @@ async function fetchFundamentals(symbol) {
   // Step 4: Yahoo — last resort for any still-missing fields
   // For non-US tickers, also try bare ticker without exchange suffix
   const isNonUS = /\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i.test(symbol);
-  const needsYahoo = merged.revenueGrowth == null || merged.earningsGrowth == null ||
-                     merged.pegRatio == null || merged.forwardPE == null;
+  const needsYahoo =
+    merged.revenueGrowth == null ||
+    merged.earningsGrowth == null ||
+    merged.pegRatio == null ||
+    merged.forwardPE == null ||
+    merged._fmpSector == null ||
+    merged._fmpSector === '';
   if (needsYahoo) {
     // For non-US, also try bare ticker (e.g. INFY for INFY.NS, TCS for TCS.NS)
     const bare = isNonUS ? symbol.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK)$/i, '') : symbol;
@@ -2405,14 +2447,16 @@ async function fetchFundamentals(symbol) {
   const yFund = null; // already handled above
   // Yahoo gap-fill already handled above in the restructured fetchFundamentals
 
-  /** Bloomberg snapshot often omits PEG / YoY growth fields; FMP is more reliable for those gaps on cloud hosts. */
+  /** Fill PEG / YoY / sector / analyst grid gaps even when Bloomberg returned a rich price snapshot. */
   if (
-    bb &&
     fmpEnvKeyFund() &&
     (merged.pegRatio == null ||
       merged.revenueGrowth == null ||
       merged.earningsGrowth == null ||
-      merged.forwardPE == null)
+      merged.forwardPE == null ||
+      merged._fmpSector == null ||
+      merged._fmpSector === '' ||
+      merged.recommendationKey == null)
   ) {
     try {
       const fGap = await fetchFundamentalsFMP(symbol);
@@ -2425,7 +2469,9 @@ async function fetchFundamentals(symbol) {
       merged.revenueGrowth == null ||
       merged.earningsGrowth == null ||
       merged.forwardPE == null ||
-      merged.trailingPE == null)
+      merged.trailingPE == null ||
+      merged._fmpSector == null ||
+      merged._fmpSector === '')
   ) {
     try {
       const fhFund = await fetchFundamentalsFinnhub(symbol);
@@ -2528,8 +2574,13 @@ function mergeFundamentalsForUi(row, fund) {
   if (fund.targetMeanPrice != null && fund.marketCap != null)
     bits.push(`mktCap data available · targetMean ${fund.targetMeanPrice}`);
   if (bits.length) set('fundSummary', `Fundamentals (server merge): ${bits.join(' · ')}`, forceBb);
-  if (fund.analystCount != null && (forceBb || gap(row.newsImpact)))
-    row.newsImpact = `${fund.analystCount} analysts (consensus: ${fund.recommendationKey || 'n/a'})`;
+  const newsFromFund =
+    fund.analystCount != null && fund.analystCount > 0
+      ? `${fund.analystCount} analysts (consensus: ${fund.recommendationKey || 'n/a'})`
+      : fund.recommendationKey
+        ? `Analyst stance: ${fund.recommendationKey}`
+        : null;
+  if (newsFromFund && (forceBb || gap(row.newsImpact))) row.newsImpact = newsFromFund;
   return row;
 }
 
@@ -4015,8 +4066,18 @@ function finnhubNewsToImpactPack(articles) {
 
 async function augmentNewsImpactFromFinnhub(sym, row) {
   if (!row || !sym) return;
-  const arts = await fetchFinnhubCompanyNewsForSymbol(sym);
-  const pack = finnhubNewsToImpactPack(arts);
+  let arts = await fetchFinnhubCompanyNewsForSymbol(sym);
+  let pack = finnhubNewsToImpactPack(arts);
+  if (!pack?.text) {
+    try {
+      const yNews = await fetchNews(sym, 8);
+      if (Array.isArray(yNews) && yNews.length) {
+        pack = finnhubNewsToImpactPack(
+          yNews.map((n) => ({ headline: n.title || '', source: n.publisher || 'Yahoo' }))
+        );
+      }
+    } catch (_) {}
+  }
   if (pack?.text) {
     row.newsImpact = pack.text;
     row.newsTone = pack.tone;
