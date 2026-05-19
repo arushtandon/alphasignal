@@ -118,6 +118,27 @@ That is **Bloomberg Enterprise** (e.g. **B-Pipe**, **Data License**, **Server AP
 
 ---
 
+## Troubleshooting
+
+### `InvalidStateException: Session Not Started` / `/snapshot` → 503
+
+The bridge talks to Bloomberg over **localhost port 8194**. That session exists only while **Bloomberg Terminal is open and logged in** on that PC. If Terminal sleeps, logs out, or the API connection drops, you will see **Session Not Started** in the bridge console and **`no data`** / **503** on `/snapshot` until you restart Terminal (or at least restore the session) and **restart `bridge.py`** so `pdblp` opens a fresh session. The bridge code resets its `BCon` automatically when it detects this error and retries once per request.
+
+### Symbol mapping (AlphaSignal ↔ Bloomberg)
+
+When you omit `bb=`, `bridge.py` maps common broker/Yahoo suffixes to Bloomberg **yellow keys**:
+
+| Example AlphaSignal / Yahoo | Mapped Bloomberg equity (no `bb=` hint) |
+|----------------------------|------------------------------------------|
+| `9988.HK` | `9988 HK Equity` |
+| `7203.T` | `7203 JT Equity` |
+| `RELIANCE.NS` | `RELIANCE IS Equity` (**IS** = NSE in Bloomberg; not `IN`) |
+| `RELIANCE.BO` | `RELIANCE IB Equity` (BSE) |
+
+Always pass **`bb=`** with the exact string from Terminal if a name does not resolve.
+
+---
+
 ## Environment reference
 
 | Variable | Where | Meaning |

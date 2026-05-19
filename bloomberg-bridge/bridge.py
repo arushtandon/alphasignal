@@ -74,7 +74,7 @@ BRIDGE_BIND = os.environ.get("BRIDGE_BIND", "127.0.0.1").strip() or "127.0.0.1"
 SECRET = os.environ.get("BLOOMBERG_BRIDGE_SECRET", "").strip()
 
 # Bump when changing ref parsing so /health proves which code is running on the Bloomberg PC.
-BRIDGE_BUILD = "20260513-quarter-union-hk-jt"
+BRIDGE_BUILD = "20260519-session-retry-in-equity"
 
 # Legacy name retained for README references.
 FLDS = [
@@ -177,15 +177,41 @@ def map_to_bb_security(symbol: str, bb_hint: str | None) -> str:
         return re.sub(r"\.PA$", "", s, flags=re.I) + " FP Equity"
     if re.search(r"\.DE$", s, re.I):
         return re.sub(r"\.DE$", "", s, flags=re.I) + " GR Equity"
+    # NSE (Yahoo-style *.NS): Bloomberg uses exchange code "IS" → "TICKER IS Equity" (not country "IN").
     if re.search(r"\.NS$", s, re.I):
         return re.sub(r"\.NS$", "", s, flags=re.I) + " IS Equity"
+    # BSE Bombay (Yahoo-style *.BO)
+    if re.search(r"\.BO$", s, re.I):
+        return re.sub(r"\.BO$", "", s, flags=re.I) + " IB Equity"
     if re.search(r"\.AS$", s, re.I):
         return re.sub(r"\.AS$", "", s, flags=re.I) + " NA Equity"
+    if re.search(r"\.ST$", s, re.I):
+        return re.sub(r"\.ST$", "", s, flags=re.I) + " SS Equity"
     if re.search(r"\.T$", s, re.I):
         return re.sub(r"\.T$", "", s, flags=re.I) + " JT Equity"
+    if re.search(r"\.SW$", s, re.I):
+        return re.sub(r"\.SW$", "", s, flags=re.I) + " SW Equity"
+    if re.search(r"\.SI$", s, re.I):
+        return re.sub(r"\.SI$", "", s, flags=re.I) + " SP Equity"
+    if re.search(r"\.AX$", s, re.I):
+        return re.sub(r"\.AX$", "", s, flags=re.I) + " AU Equity"
+    if re.search(r"\.OL$", s, re.I):
+        return re.sub(r"\.OL$", "", s, flags=re.I) + " NO Equity"
+    if re.search(r"\.CO$", s, re.I):
+        return re.sub(r"\.CO$", "", s, flags=re.I) + " DC Equity"
+    if re.search(r"\.MI$", s, re.I):
+        return re.sub(r"\.MI$", "", s, flags=re.I) + " IM Equity"
+    if re.search(r"\.MC$", s, re.I):
+        return re.sub(r"\.MC$", "", s, flags=re.I) + " SM Equity"
+    if re.search(r"\.TO$", s, re.I):
+        return re.sub(r"\.TO$", "", s, flags=re.I) + " CN Equity"
+    if re.search(r"\.V$", s, re.I):
+        return re.sub(r"\.V$", "", s, flags=re.I) + " CN Equity"
     if re.match(r"^[A-Z]{1,5}$", s):
         return f"{s} US Equity"
-    return s.replace(".", "/") + " US Equity"
+    if "." in s:
+        return s.replace(".", "/") + " Equity"
+    return f"{s} US Equity"
 
 
 def get_bcon():
@@ -211,8 +237,23 @@ def reset_bloomberg_connection() -> None:
         pass
 
 
+def _session_dead(exc: BaseException) -> bool:
+    """Blpapi / pdblp when Desktop API session is not usable (Terminal idle, reconnect, etc.)."""
+    m = str(exc).lower().replace("`", "").replace("'", "")
+    cls = getattr(exc.__class__, "__name__", "").lower()
+    return (
+        "session not started" in m
+        or "0x00010009" in m
+        or "invalidstate" in m
+        or "invalid state" in m
+        or cls == "invalidstateexception"
+    )
+
+
 def _exc_suggests_bloomberg_restart(exc: BaseException) -> bool:
     """True when the Bloomberg session likely needs a reconnect (e.g. after NumPy/API faults)."""
+    if _session_dead(exc):
+        return True
     m = str(exc).lower().replace("`", "").replace("'", "")
     cls = getattr(exc.__class__, "__name__", "").lower()
     # pdblp stack: `'np.NaN' was removed in the NumPy 2.0 release`
@@ -314,10 +355,7 @@ def _ref_get(row, fld: str):
 
 def _bloomberg_soft(exc: BaseException) -> bool:
     cls = getattr(exc.__class__, "__name__", "").upper()
-    if cls in (
-        "REFERENCE_DATA_RESPONSE",
-        "REFERENCEDATARESPONSE",
-    ):
+    if cls in ("REFERENCE_DATA_RESPONSE", "REFERENCEDATARESPONSE"):
         return True
     s = str(exc).upper()
     return any(
@@ -365,6 +403,9 @@ def ref_field_safe(con, sec: str, fld: str):
         r = df.iloc[0]
         return _ref_get(r, fld)
     except Exception as exc:
+        # Session loss must propagate so routes can reset BCon and retry.
+        if _session_dead(exc):
+            raise
         # Per-field soft failures are common; never abort the whole /snapshot for one field.
         if not _bloomberg_soft(exc):
             try:
@@ -422,6 +463,8 @@ def _bdh_optional(con, sec: str, fld: str, start_yyyymmdd: str, end_yyyymmdd: st
         df = con.bdh(sec, [fld], start_yyyymmdd, end_yyyymmdd, **kw)
         return df if df is not None and not getattr(df, "empty", True) else None
     except Exception as exc:
+        if _session_dead(exc):
+            raise
         if _bloomberg_soft(exc):
             return None
         return None
@@ -834,22 +877,7 @@ def snapshot():
     return jsonify(out)
 
 
-@app.get("/earnings")
-def earnings():
-    if not check_secret():
-        return jsonify(
-            {"error": "unauthorized", "hint": "Authorization: Bearer <exact BLOOMBERG_BRIDGE_SECRET>; CMD: curl.exe ^ before &"}
-        ), 401
-    sym = clean_bridge_symbol(request.args.get("symbol", ""))
-    bb_arg = request.args.get("bb", "").strip()
-    if not sym and not bb_arg:
-        return jsonify({"error": "symbol or bb required"}), 400
-    sec = map_to_bb_security(sym or bb_arg.split()[0], bb_arg or None)
-    try:
-        con = get_bcon()
-    except Exception as e:
-        return jsonify({"error": str(e), "bbSecurity": sec}), 503
-
+def _earnings_json_dict(con, sec: str, sym: str) -> dict:
     header: dict = {}
     for fld in EARN_HEADER_REF_FIELDS:
         v = ref_field_safe(con, sec, fld)
@@ -875,7 +903,9 @@ def earnings():
         px_asc_hint = _load_daily_px_asc(con, sec)
         if px_asc_hint and next_iso:
             headline_reaction = reaction_bundle_for_anchor(px_asc_hint, next_iso, earnings_time)
-    except Exception:
+    except Exception as exc:
+        if _session_dead(exc):
+            raise
         headline_reaction = None
 
     est_from_best = fmt_trim_num(first_float(header.get("BEST_EPS")), 4)
@@ -903,36 +933,60 @@ def earnings():
     hist = []
     try:
         hist = _build_quarter_rows(con, sec, earnings_time)
-    except Exception:
+    except Exception as exc:
+        if _session_dead(exc):
+            raise
         hist = []
 
-    return jsonify(
-        {
-            "bbSecurity": sec,
-            "ticker": sym or sec.split()[0],
-            "nextEarningsDate": next_iso or None,
-            "epsEstimate": est_from_best,
-            "consensusEstimatesHint": (
-                {}
-                if (rev_est is None and ebd_est is None and ni_est is None)
-                else {
-                    "revenueConsensus": rev_est,
-                    "ebitdaConsensus": ebd_est,
-                    "netIncomeConsensus": ni_est,
-                }
-            ),
-            "earningsTime": earnings_time,
-            "postEventPriceHintNext": headline_reaction,
-            "primaryStockReactionInterpretationHint": earnings_time or "during-market",
-            "quarter": fq or None,
-            "history": hist,
-            "calendarPrimarySource": "bloomberg_bridge",
-            "sourcesNote": (
-                "History rows align quarterly fundamentals; EPS surprise fields vary by entitlement. "
-                "Use Yahoo/FMP overlays on AlphaSignal server for fuller estimate grids."
-            ),
-        }
-    )
+    return {
+        "bbSecurity": sec,
+        "ticker": sym or sec.split()[0],
+        "nextEarningsDate": next_iso or None,
+        "epsEstimate": est_from_best,
+        "consensusEstimatesHint": (
+            {}
+            if (rev_est is None and ebd_est is None and ni_est is None)
+            else {
+                "revenueConsensus": rev_est,
+                "ebitdaConsensus": ebd_est,
+                "netIncomeConsensus": ni_est,
+            }
+        ),
+        "earningsTime": earnings_time,
+        "postEventPriceHintNext": headline_reaction,
+        "primaryStockReactionInterpretationHint": earnings_time or "during-market",
+        "quarter": fq or None,
+        "history": hist,
+        "calendarPrimarySource": "bloomberg_bridge",
+        "sourcesNote": (
+            "History rows align quarterly fundamentals; EPS surprise fields vary by entitlement. "
+            "Use Yahoo/FMP overlays on AlphaSignal server for fuller estimate grids."
+        ),
+    }
+
+
+@app.get("/earnings")
+def earnings():
+    if not check_secret():
+        return jsonify(
+            {"error": "unauthorized", "hint": "Authorization: Bearer <exact BLOOMBERG_BRIDGE_SECRET>; CMD: curl.exe ^ before &"}
+        ), 401
+    sym = clean_bridge_symbol(request.args.get("symbol", ""))
+    bb_arg = request.args.get("bb", "").strip()
+    if not sym and not bb_arg:
+        return jsonify({"error": "symbol or bb required"}), 400
+    sec = map_to_bb_security(sym or bb_arg.split()[0], bb_arg or None)
+
+    tried_reset = False
+    while True:
+        try:
+            con = get_bcon()
+            return jsonify(_earnings_json_dict(con, sec, sym))
+        except Exception as e:
+            if tried_reset or not _exc_suggests_bloomberg_restart(e):
+                return jsonify({"error": str(e), "bbSecurity": sec}), 503
+            reset_bloomberg_connection()
+            tried_reset = True
 
 
 if __name__ == "__main__":
