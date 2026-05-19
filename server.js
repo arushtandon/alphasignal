@@ -1184,22 +1184,22 @@ function computeQuantSignal(tech, fund, hz) {
   // Danelfin Fundamental subscore confirms earnings/revenue durability.
   // SD channel entry gives favorable risk/reward over multi-month hold.
   // ════════════════════════════════════════════════════════════════════════════
-  } else { // long (4–12 months) — SEPA Trend Template + CANSLIM quality
+  } else { // long (4–12 months) — SEPA Trend Template + CANSLIM
 
-    // ── SEPA TREND TEMPLATE (exact mirror of backtestSignal long gates) ──────
-    // Gate 1: Full bullish MA alignment (SEPA: price > MA50 > MA200)
+    // ── SEPA TREND TEMPLATE (Minervini) ──────────────────────────────────────
     const sepaAlignment = aboveMa200 && aboveMa50 && ma50 > ma200;
     const slopeBullish  = weeklyTrend === 'uptrend';
+    // Gate 1: Full MA alignment
     if (sepaAlignment&&goldenCross&&slopeBullish) { buyGates+=3; condBuy.push('SEPA: full MA alignment + rising trend'); }
     else if (sepaAlignment&&goldenCross)           { buyGates+=2; condBuy.push('SEPA: MA alignment + Golden Cross'); }
     else if (aboveMa200&&goldenCross)              { buyGates+=2; condBuy.push('MA200 + Golden Cross'); }
     else if (aboveMa200)                           { buyGates++;  condBuy.push('Above MA200 uptrend'); }
 
-    // Gate 2: 52W positioning — CANSLIM L (Leader, not Laggard)
+    // Gate 2: 52W positioning — CANSLIM L (Leader not Laggard)
     const high52w = tech.high52w ?? null;
     const low52w  = tech.low52w  ?? null;
-    const nearHigh52w = high52w ? price >= high52w * 0.75 : true;
-    const aboveLow52w = low52w  ? price >= low52w  * 1.25 : true;
+    const nearHigh52w = high52w ? price >= high52w*0.75 : true;
+    const aboveLow52w = low52w  ? price >= low52w*1.25  : true;
     if (nearHigh52w&&aboveLow52w) { buyGates++; condBuy.push('Leader: near 52W high, above low'); }
     else if (nearHigh52w)          buyGates+=0.5;
 
@@ -1209,31 +1209,27 @@ function computeQuantSignal(tech, fund, hz) {
     if (adx>=25&&aboveMa200) { buyGates++; condBuy.push(`ADX ${adx} strong trend`); }
     else if (adx>=20)          buyGates+=0.4;
 
-    // Gate 4: SD channel — VCP-style entry (buy at statistical discount)
-    if (inSDGood&&aboveMa200)      { buyGates++; condBuy.push('SD channel: VCP-style entry'); }
-    else if (inSDNeutral&&aboveMa200) buyGates+=0.3;
-    if (atSDTop) buyGates = Math.round(buyGates * 0.4); // extended = terrible 12M R:R
+    // Gate 4: SD channel entry (VCP-style — buy at discount)
+    if (inSDGood&&aboveMa200)         { buyGates++; condBuy.push('SD channel: VCP-style entry'); }
+    else if (inSDNeutral&&aboveMa200)   buyGates+=0.3;
+    if (atSDTop) buyGates=Math.round(buyGates*0.4);
 
     // Gate 5: RSI zone
     if (rsi>=35&&rsi<=65&&aboveMa200) { buyGates++; }
 
-    // Gate 6: CANSLIM C+A + I (fundamentals overlay)
+    // Gate 6: CANSLIM C+A (Current & Annual EPS growth)
     if (fund) {
       const epsG=fund.earningsGrowth??null, revG=fund.revenueGrowth??null;
       const pegR=fund.pegRatio??null;
       const analystB=['strongBuy','buy'].includes(fund.recommendationKey??'');
       const analystBr=['sell','strongSell'].includes(fund.recommendationKey??'');
       const targetUp=fund.targetMeanPrice&&price?(fund.targetMeanPrice-price)/price*100:null;
-      // CANSLIM C+A: EPS ≥25% = institutional-grade growth
-      if (epsG!=null&&epsG>=25) { buyGates+=2; condBuy.push(`CANSLIM: EPS +${epsG}% (institutional grade)`); }
+      if (epsG!=null&&epsG>=25) { buyGates+=2; condBuy.push(`CANSLIM: EPS +${epsG}% institutional grade`); }
       else if (epsG!=null&&epsG>=15) { buyGates++; condBuy.push(`EPS growth +${epsG}%`); }
       else if (epsG!=null&&epsG>=8)   buyGates+=0.5;
-      // Revenue acceleration
       if (revG!=null&&revG>=20) { buyGates++; condBuy.push(`Revenue +${revG}% accelerating`); }
-      else if (revG!=null&&revG>=10) buyGates+=0.5;
-      // PEG < 1.5 = GARP
+      else if (revG!=null&&revG>=10)  buyGates+=0.5;
       if (pegR!=null&&pegR>0&&pegR<1.5) { buyGates+=0.5; condBuy.push(`PEG ${pegR.toFixed(1)} — GARP`); }
-      // CANSLIM I: Institutional sponsorship
       if (analystB&&targetUp!=null&&targetUp>15) { buyGates++; condBuy.push(`${targetUp.toFixed(0)}% analyst upside`); }
       else if (analystB&&targetUp!=null&&targetUp>8) buyGates+=0.5;
       if (analystBr) buyGates=Math.round(buyGates*0.50);
@@ -1242,22 +1238,22 @@ function computeQuantSignal(tech, fund, hz) {
     }
 
     // Gate 7: OBV long-term accumulation
-    if (obvBullish===true&&bullStruct) { buyGates++; condBuy.push('OBV + structural HH/HL'); }
+    if (obvBullish===true&&bullStruct) { buyGates++; condBuy.push('OBV + HH/HL structure'); }
     else if (obvBullish===true)         buyGates+=0.5;
 
     // Hard disqualifiers
     if (rsi>76)      buyGates=Math.round(buyGates*0.60);
-    if (!aboveMa200) buyGates=0; // absolute — never long below MA200
+    if (!aboveMa200) buyGates=0;
 
     buy = buyGates>=8?92:buyGates>=7?84:buyGates>=6?74:buyGates>=5?60:buyGates>=4?46:buyGates>=3?32:0;
     if (!aboveMa200) buy=0;
 
-    // SELL: structural bear regime breakdown
-    if (!aboveMa200&&deathCross) { sellGates+=3; condSell.push('Bear regime: below MA200 + Death Cross'); }
-    else if (!aboveMa200)         { sellGates+=2; condSell.push('Below MA200 — bear regime'); }
-    if (weeklyTrend==='downtrend'){ sellGates++;  condSell.push('Weekly downtrend'); }
-    if (!macdBull&&!aboveMa200)   sellGates++;
-    if (bearStruct&&obvBullish===false) { sellGates++; condSell.push('Distribution: LH+LL + OBV falling'); }
+    // Sell: structural breakdown
+    if (!aboveMa200&&deathCross)        { sellGates+=3; condSell.push('Bear regime: below MA200+Death Cross'); }
+    else if (!aboveMa200)               { sellGates+=2; condSell.push('Below MA200 — bear regime'); }
+    if (weeklyTrend==='downtrend')      { sellGates++;  condSell.push('Weekly downtrend'); }
+    if (!macdBull&&!aboveMa200)          sellGates++;
+    if (bearStruct&&obvBullish===false) { sellGates++;  condSell.push('Distribution: LH+LL + OBV falling'); }
     if (rsi<28) sellGates=Math.round(sellGates*0.50);
     sell = sellGates>=5?82:sellGates>=4?68:sellGates>=3?52:Math.min(20,Math.round(sellGates*10));
   }
@@ -1283,12 +1279,11 @@ function computeQuantSignal(tech, fund, hz) {
   // ── Win rate hint: base rates from quantitative research ─────────────────
   // These are BASE hints before Danelfin/FMP overlay in batch endpoint.
   // The batch endpoint upgrades tier based on Danelfin score + SD channel.
-  // Win rate hints (base, before Danelfin/FMP tier overlay in batch)
   const winRateHint = hz==='short'
-    ? (gates>=5?63:gates>=4?57:gates>=3?51:42)
+    ? (gates>=5?62:gates>=4?56:gates>=3?50:42)   // SD channel is gate 2 here
     : hz==='medium'
-    ? (gates>=5?63:gates>=4?57:gates>=3?51:42)
-    : (gates>=8?68:gates>=7?62:gates>=6?57:gates>=5?51:44); // 8-gate SEPA+CANSLIM
+    ? (gates>=5?62:gates>=4?56:gates>=3?50:42)   // regime + weekly + ADX
+    : (gates>=7?65:gates>=6?60:gates>=5?55:gates>=4?49:42); // fundamental quality layer
 
   return {
     buyScore:buy, sellScore:sell, action, rating,
@@ -1302,74 +1297,69 @@ function computeQuantSignal(tech, fund, hz) {
 
 
 function backtestSignal(data, hz) {
-  // ── Time parameters aligned with live signal timeframes ─────────────────
-  // Short: 1d-1mo  (20-day max hold)
-  // Medium: 1-3mo  (90-day max hold = Danelfin 3M horizon)
-  // Long: 4-12mo   (240-day max hold)
-  const holdDays = hz==='short'?20:hz==='medium'?90:240;
-  const warmup   = hz==='short'?50:hz==='medium'?100:150;
-  const minBars  = hz==='short'?100:hz==='medium'?240:400;
-  if (!data||data.length<minBars) return null;
-  if (data.length<warmup+holdDays+10) return null;
+  // ── Timeframe parameters ────────────────────────────────────────────────────
+  // Short  1d-1mo  : 20-day max hold (mean-reversion from SD channel to mean)
+  // Medium 1-3mo   : 90-day max hold (= Danelfin 3M horizon exactly)
+  // Long   4-12mo  : 240-day max hold (structural trend, SEPA+CANSLIM)
+  const holdDays = hz==='short'?20 : hz==='medium'?90 : 240;
+  const warmup   = hz==='short'?50 : hz==='medium'?100: 150;
+  const minBars  = hz==='short'?100: hz==='medium'?240: 420;
+  if (!data || data.length < minBars) return null;
+  if (data.length < warmup + holdDays + 10) return null;
 
-  // Pre-compute S/R once (avoids lookahead on S/R)
-  const gSR = findVolumeWeightedSR(data, Math.min(80,data.length-5), 25);
+  // Pre-compute volume-weighted S/R once (no lookahead)
+  const gSR = findVolumeWeightedSR(data, Math.min(80, data.length - 5), 25);
 
   let wins=0, losses=0, totalReturn=0, trades=0, nextAllowed=warmup;
 
   for (let i=warmup; i<data.length-holdDays-1; i++) {
-    if (i<nextAllowed) continue;
-    const slice=data.slice(0,i+1);
-    const closes=slice.map(d=>d.c);
-    const price=closes[closes.length-1];
-    if (!price||price<=0) continue;
+    if (i < nextAllowed) continue;
+    const slice  = data.slice(0, i+1);
+    const closes = slice.map(d => d.c);
+    const price  = closes[closes.length-1];
+    if (!price || price <= 0) continue;
 
-    // ── Technical indicators (mirroring computeQuantSignal exactly) ─────────
-    const ma50  = closes.length>=50  ? calcSMA(closes,50)  : null;
-    const ma200 = closes.length>=200 ? calcSMA(closes,200) : null;
-    const rsi   = calcRSI(closes,14);
-    const atr   = calcATRFull(slice,14);
-    if (!atr||atr<=0||rsi==null) continue;
+    // ── Technical indicators (exact same as computeQuantSignal) ─────────────
+    const ma20  = closes.length >= 20  ? calcSMA(closes, 20)  : null;
+    const ma50  = closes.length >= 50  ? calcSMA(closes, 50)  : null;
+    const ma200 = closes.length >= 200 ? calcSMA(closes, 200) : null;
+    const rsi   = calcRSI(closes, 14);
+    const atr   = calcATRFull(slice, 14);
+    if (!atr || atr <= 0 || rsi == null) continue;
 
-    const aboveMa50  = ma50  ? price>ma50  : false;
-    const aboveMa200 = ma200 ? price>ma200 : false;
-    const goldenCross= ma50&&ma200&&ma50>ma200;
-    const deathCross = ma50&&ma200&&ma50<ma200;
+    const aboveMa50  = ma50  ? price > ma50  : false;
+    const aboveMa200 = ma200 ? price > ma200 : false;
+    const goldenCross= ma50 && ma200 && ma50 > ma200;
+    const deathCross = ma50 && ma200 && ma50 < ma200;
 
-    // MACD (same simplified EMA approach as computeQuantSignal)
+    // MACD (simplified EMA)
     let macdBull=false, macdTurnUp=false, macdTurnDn=false;
-    if (closes.length>=35) {
-      const ema=(c,p)=>{const k=2/(p+1);let e=c[0];for(let j=1;j<c.length;j++) e=c[j]*k+e*(1-k);return e;};
+    if (closes.length >= 35) {
+      const ema=(c,p)=>{ const k=2/(p+1); let e=c[0]; for(let j=1;j<c.length;j++) e=c[j]*k+e*(1-k); return e; };
       const h0=ema(closes,12)-ema(closes,26);
-      const hP=ema(closes.slice(0,-3),12)-ema(closes.slice(0,-3),26);
+      const hP=closes.length>4?ema(closes.slice(0,-3),12)-ema(closes.slice(0,-3),26):h0;
       macdBull=h0>0; macdTurnUp=h0>hP&&hP<=0; macdTurnDn=h0<hP&&hP>=0;
     }
-    const rsiPrev=closes.length>17?calcRSI(closes.slice(0,-3),14):rsi;
-    const rsiRising=(rsiPrev!=null)&&(rsi-rsiPrev>1.5);
-    const rsiFalling=(rsiPrev!=null)&&(rsi-rsiPrev<-1.5);
+    const rsiPrev   = closes.length>17 ? calcRSI(closes.slice(0,-3),14) : rsi;
+    const rsiRising  = rsiPrev!=null && (rsi-rsiPrev>1.5);
+    const rsiFalling = rsiPrev!=null && (rsi-rsiPrev<-1.5);
 
-    // ADX proxy (use MA slope divergence as trend strength)
-    const adxProxy = ma50&&ma200 ? Math.abs(ma50-ma200)/ma200*100 : 0;
-    const trendStrong = adxProxy > 3; // >3% divergence = trending
+    // Weekly trend proxy (20-bar momentum)
+    const c20ago     = closes.length>20 ? closes[closes.length-21] : closes[0];
+    const weeklyTrendUp = price > c20ago*1.02;
+    const weeklyTrendDn = price < c20ago*0.98;
 
-    // Weekly trend proxy (use last 20 bars direction)
-    const weeklyClose20ago = closes.length>20?closes[closes.length-21]:closes[0];
-    const weeklyTrendUp = price > weeklyClose20ago * 1.02;
-    const weeklyTrendDn = price < weeklyClose20ago * 0.98;
+    // Volume
+    const vol20avg = slice.slice(-21,-1).reduce((a,d)=>a+(d.v||0),0)/20;
+    const volRatio = vol20avg>0 ? (slice[slice.length-1].v||0)/vol20avg : 1;
 
-    // Volume signature
-    const vol20avg=slice.slice(-21,-1).reduce((a,d)=>a+(d.v||0),0)/20;
-    const volRatio=vol20avg>0?(slice[slice.length-1].v||0)/vol20avg:1;
-
-    // Pullback quality (low-vol = institutional absorption)
-    let healthyPull=false;
+    // Healthy pullback (low-vol = institutional absorption)
+    let healthyPull = false;
     if (slice.length>=8) {
-      const last5=slice.slice(-5);
-      const ref=slice.slice(-25,-5).reduce((a,d)=>a+(d.v||0),0)/20;
+      const last5=slice.slice(-5), ref=slice.slice(-25,-5).reduce((a,d)=>a+(d.v||0),0)/20;
       let dv=0,dd=0;
-      last5.forEach((d,k)=>{const pc=k>0?last5[k-1].c:slice[slice.length-6]?.c??d.c;
-        if(d.c<pc){dv+=(d.v||0);dd++;}});
-      healthyPull=dd>0?(dv/dd)<ref*0.88:true;
+      last5.forEach((d,k)=>{ const pc=k>0?last5[k-1].c:slice[slice.length-6]?.c??d.c; if(d.c<pc){dv+=(d.v||0);dd++;} });
+      healthyPull = dd>0 ? (dv/dd)<ref*0.88 : true;
     }
 
     // OBV direction
@@ -1384,10 +1374,10 @@ function backtestSignal(data, hz) {
       obvBullish=(last10.slice(-5).reduce((a,b)=>a+b,0)/5)>(last10.reduce((a,b)=>a+b,0)/10);
     }
 
-    // Price structure
+    // Price structure (HH+HL or LH+LL)
     let bullStruct=false, bearStruct=false;
     if (slice.length>=15) {
-      const L=slice.slice(-15),H=[],LO=[];
+      const L=slice.slice(-15), H=[], LO=[];
       for(let k=2;k<L.length-2;k++){
         if(L[k].h>=L[k-1].h&&L[k].h>=L[k+1].h) H.push(L[k].h);
         if(L[k].l<=L[k-1].l&&L[k].l<=L[k+1].l) LO.push(L[k].l);
@@ -1396,175 +1386,163 @@ function backtestSignal(data, hz) {
       bearStruct=H.length>=2&&LO.length>=2&&H[H.length-1]<H[H.length-2]&&LO[LO.length-1]<LO[LO.length-2];
     }
 
-    // SD channel (PRIMARY timing signal — must mirror computeQuantSignal exactly)
-    const chan20=calcLinRegChannel(closes,Math.min(20,closes.length));
-    // inSDExcellent = price ≤ lower2 (2σ below mean — extreme discount)
-    // inSDGood = price ≤ lower1 (1σ below mean — discount)
-    const inSDExcellent = chan20 && price<=chan20.lower2;
-    const inSDGood      = chan20 && price<=chan20.lower1;  // includes excellent
-    const atSDTop       = chan20 && price>=chan20.upper1;  // extended = avoid buying
-    const inSDNeutral = chan20 && !inSDGood && price < chan20.mean;
+    // ── SD CHANNEL (primary timing gate — must mirror computeQuantSignal) ────
+    const chan20 = calcLinRegChannel(closes, Math.min(20, closes.length));
+    const inSDExcellent = chan20 && price <= chan20.lower2;          // ≤ 2σ below mean
+    const inSDGood      = chan20 && price <= chan20.lower1;          // ≤ 1σ below mean
+    const inSDNeutral   = chan20 && !inSDGood && price < chan20.mean;
+    const atSDTop       = chan20 && price >= chan20.upper1;          // extended = avoid
     const nearS1=gSR.support1&&price>=gSR.support1*0.985&&price<=gSR.support1*1.025;
     const nearR1=gSR.resistance1&&price>=gSR.resistance1*0.978&&price<=gSR.resistance1*1.018;
 
-    // ── 5-GATE CONFLUENCE (EXACT MIRROR of computeQuantSignal) ──────────────
+    // ── 5-GATE CONFLUENCE (exact mirror of computeQuantSignal gates) ──────────
     let isBuy=false, isSell=false, buyGates=0, sellGates=0;
 
-    if (hz==='short') {
-      // Gate 1: Trend regime (permission to trade long)
+    if (hz === 'short') {
+      // Gate 1: Trend regime
       if (aboveMa50&&(goldenCross||weeklyTrendUp)) buyGates++;
       else if (aboveMa50) buyGates+=0.5;
-      // Gate 2: SD CHANNEL (primary timing — double weight for excellent)
-      if (inSDExcellent)     { buyGates+=2; }
-      else if (inSDGood)     { buyGates++;  }
+      // Gate 2: SD channel (PRIMARY — double weight for excellent)
+      if (inSDExcellent)  buyGates+=2;
+      else if (inSDGood)  buyGates++;
       // Gate 3: RSI dip + rising
-      if (rsi>=24&&rsi<=58&&rsiRising) buyGates++;
-      else if (rsi>=24&&rsi<=55) buyGates+=0.5;
+      if (rsi>=24&&rsi<=58&&rsiRising)  buyGates++;
+      else if (rsi>=24&&rsi<=55)         buyGates+=0.5;
       // Gate 4: MACD inflection
-      if (macdTurnUp) buyGates++;
-      else if (macdBull&&rsiRising&&rsi<52) buyGates+=0.5;
+      if (macdTurnUp)                                   buyGates++;
+      else if (macdBull&&rsiRising&&rsi<52)             buyGates+=0.5;
       // Gate 5: Volume + structure
-      if ((healthyPull||volRatio<0.80)&&bullStruct) buyGates++;
-      else if (bullStruct||nearS1) buyGates+=0.8;
-      else if (healthyPull||volRatio<0.80) buyGates+=0.5;
-      // Hard disqualifiers
-      if (rsi>72)   buyGates=Math.min(buyGates,1.5);
-      if (atSDTop)  buyGates=Math.round(buyGates*0.4);
+      if ((healthyPull||volRatio<0.80)&&bullStruct)     buyGates++;
+      else if (bullStruct||nearS1)                      buyGates+=0.8;
+      else if (healthyPull||volRatio<0.80)              buyGates+=0.5;
+      // Penalties
+      if (rsi>72)    buyGates=Math.min(buyGates,1.5);
+      if (atSDTop)   buyGates=Math.round(buyGates*0.4);
       if (!aboveMa50) buyGates=Math.round(buyGates*0.45);
-      isBuy=buyGates>=4&&aboveMa50&&!atSDTop;
+      isBuy = buyGates>=4 && aboveMa50 && !atSDTop;
 
-      // Sell gates
       if (!aboveMa50&&(deathCross||weeklyTrendDn)) sellGates++;
-      if (atSDTop||chan20&&price>=chan20.upper1) sellGates++;
-      if (rsi>=64&&rsiFalling) sellGates++;
-      else if (rsi>=64) sellGates+=0.5;
-      if (macdTurnDn||(!macdBull&&rsiFalling)) sellGates++;
-      if (bearStruct||nearR1) sellGates++;
+      if (atSDTop||nearR1)                          sellGates++;
+      if (rsi>=64&&rsiFalling)                      sellGates++;
+      else if (rsi>=64)                             sellGates+=0.5;
+      if (macdTurnDn||(!macdBull&&rsiFalling))      sellGates++;
+      if (bearStruct||nearR1)                       sellGates++;
       if (rsi<26) sellGates=Math.round(sellGates*0.4);
-      isSell=sellGates>=4&&!aboveMa50;
+      isSell = sellGates>=4 && !aboveMa50;
 
-    } else if (hz==='medium') {
-      // Gate 1: MA200 regime (double weight for golden cross)
+    } else if (hz === 'medium') {
+      // Gate 1: MA200 regime (double weight with golden cross)
       if (aboveMa200&&goldenCross) buyGates+=2;
-      else if (aboveMa200) buyGates++;
-      else if (goldenCross) buyGates++;
+      else if (aboveMa200)          buyGates++;
+      else if (goldenCross)         buyGates++;
       // Gate 2: Weekly trend
-      if (weeklyTrendUp) buyGates++;
-      else if (!weeklyTrendDn&&aboveMa200) buyGates+=0.5;
-      // Gate 3: Trend strength (ADX proxy)
-      if (trendStrong&&aboveMa200) buyGates++;
-      else if (trendStrong) buyGates+=0.5;
+      if (weeklyTrendUp)                         buyGates++;
+      else if (!weeklyTrendDn&&aboveMa200)       buyGates+=0.5;
+      // Gate 3: Trend strength (MA divergence proxy for ADX)
+      const maDivPct = ma50&&ma200 ? Math.abs(ma50-ma200)/ma200*100 : 0;
+      if (maDivPct>3&&aboveMa200)                buyGates++;
+      else if (maDivPct>1.5)                     buyGates+=0.5;
       // Gate 4: SD channel pullback within uptrend
-      if (inSDGood&&aboveMa200) buyGates++;
-      else if (inSDExcellent) buyGates++;  // so oversold even without MA200 counts
+      if (inSDGood&&aboveMa200)                  buyGates++;
+      else if (inSDExcellent)                    buyGates++;
+      if (atSDTop&&!inSDGood)                    buyGates=Math.round(buyGates*0.7);
       // Gate 5: OBV + RSI zone
       if (obvBullish===true&&(rsi>=38&&rsi<=68)) buyGates++;
-      else if (obvBullish===true) buyGates+=0.7;
-      else if (bullStruct&&(rsi>=38&&rsi<=68)) buyGates+=0.7;
+      else if (obvBullish===true)                buyGates+=0.7;
+      else if (bullStruct&&(rsi>=38&&rsi<=68))   buyGates+=0.7;
       // Penalties
-      if (rsi>74) buyGates=Math.round(buyGates*0.50);
-      if (atSDTop&&!inSDGood) buyGates=Math.round(buyGates*0.7);
+      if (rsi>74)                buyGates=Math.round(buyGates*0.50);
       if (!aboveMa200&&!goldenCross) buyGates=Math.round(buyGates*0.20);
-      if (deathCross) buyGates=Math.round(buyGates*0.30);
-      isBuy=buyGates>=4&&(aboveMa200||goldenCross)&&!deathCross;
+      if (deathCross)            buyGates=Math.round(buyGates*0.30);
+      isBuy = buyGates>=4 && (aboveMa200||goldenCross) && !deathCross;
 
-      // Sell gates
       if (!aboveMa200&&deathCross) sellGates+=3;
-      else if (!aboveMa200) sellGates+=2;
-      else if (deathCross) sellGates+=2;
-      if (weeklyTrendDn) sellGates++;
-      if (!macdBull&&!aboveMa200) sellGates++;
+      else if (!aboveMa200)        sellGates+=2;
+      else if (deathCross)         sellGates+=2;
+      if (weeklyTrendDn)           sellGates++;
+      if (!macdBull&&!aboveMa200)  sellGates++;
       if (bearStruct&&obvBullish===false) sellGates++;
       else if (bearStruct||obvBullish===false) sellGates+=0.5;
       if (rsi<30) sellGates=Math.round(sellGates*0.4);
-      isSell=sellGates>=4&&(!aboveMa200||deathCross);
+      isSell = sellGates>=4 && (!aboveMa200||deathCross);
 
-    } else { // long
-      // Gate 1: Full MA alignment (SEPA-style)
-      const sepaOk=aboveMa200&&aboveMa50&&(ma50?ma50>ma200:true);
-      if (sepaOk&&goldenCross) buyGates+=3;
-      else if (aboveMa200&&goldenCross) buyGates+=2;
-      else if (aboveMa200) buyGates++;
-      // Gate 2: 52W positioning proxy
-      const high50 = Math.max(...slice.slice(-50).map(d=>d.h));
-      const low50  = Math.min(...slice.slice(-50).map(d=>d.l));
-      const nearHigh = price >= high50*0.80;
-      const aboveLow  = price >= low50*1.20;
-      if (nearHigh&&aboveLow) buyGates++;
-      else if (nearHigh) buyGates+=0.5;
+    } else { // long (4-12 months) — SEPA-style
+      if (!ma200) continue;
+      const maDivPct = ma50&&ma200 ? Math.abs(ma50-ma200)/ma200*100 : 0;
+      // Gate 1: SEPA full MA alignment
+      const sepaOk = aboveMa200&&aboveMa50&&ma50>ma200;
+      if (sepaOk&&goldenCross&&weeklyTrendUp)   buyGates+=3;
+      else if (sepaOk&&goldenCross)              buyGates+=2;
+      else if (aboveMa200&&goldenCross)          buyGates+=2;
+      else if (aboveMa200)                       buyGates++;
+      // Gate 2: 52W positioning proxy (last 50 bars)
+      const high50=Math.max(...slice.slice(-50).map(d=>d.h));
+      const low50 =Math.min(...slice.slice(-50).map(d=>d.l));
+      if (price>=high50*0.80&&price>=low50*1.20) buyGates++;
+      else if (price>=high50*0.80)               buyGates+=0.5;
       // Gate 3: Weekly trend + trend strength
       if (weeklyTrendUp&&aboveMa200) buyGates++;
-      else if (weeklyTrendUp) buyGates+=0.5;
-      if (trendStrong&&aboveMa200) buyGates++;
-      else if (trendStrong) buyGates+=0.4;
+      else if (weeklyTrendUp)         buyGates+=0.5;
+      if (maDivPct>3&&aboveMa200)    buyGates++;
       // Gate 4: SD channel
-      if (inSDGood&&aboveMa200) buyGates++;
+      if (inSDGood&&aboveMa200)      buyGates++;
       else if (inSDNeutral&&aboveMa200) buyGates+=0.3;
-      if (atSDTop) buyGates=Math.round(buyGates*0.4);
-      // Gate 5: RSI
+      if (atSDTop)                   buyGates=Math.round(buyGates*0.4);
+      // Gate 5: RSI zone
       if (rsi>=35&&rsi<=65&&aboveMa200) buyGates++;
-      // Gate 6: OBV
+      // Gate 6: OBV + structure
       if (obvBullish===true&&bullStruct) buyGates++;
-      else if (obvBullish===true) buyGates+=0.5;
+      else if (obvBullish===true)         buyGates+=0.5;
       // Penalties
-      if (rsi>76) buyGates=Math.round(buyGates*0.60);
-      if (!aboveMa200) buyGates=0; // absolute — no long below MA200 on 12M horizon
-      isBuy=buyGates>=5&&aboveMa200;
+      if (rsi>76)     buyGates=Math.round(buyGates*0.60);
+      if (!aboveMa200) buyGates=0;
+      isBuy = buyGates>=5 && aboveMa200;
 
-      // Sell gates
       if (!aboveMa200&&deathCross) sellGates+=3;
-      else if (!aboveMa200) sellGates+=2;
-      if (weeklyTrendDn) sellGates++;
-      if (!macdBull&&!aboveMa200) sellGates++;
+      else if (!aboveMa200)         sellGates+=2;
+      if (weeklyTrendDn)            sellGates++;
+      if (!macdBull&&!aboveMa200)   sellGates++;
       if (bearStruct&&obvBullish===false) sellGates++;
       if (rsi<28) sellGates=Math.round(sellGates*0.50);
-      isSell=sellGates>=4&&!aboveMa200;
+      isSell = sellGates>=4 && !aboveMa200;
     }
 
-    // Resolve conflicts
     if (isBuy&&isSell) { isBuy=buyGates>=sellGates; isSell=!isBuy; }
     if (!isBuy&&!isSell) continue;
 
-    const entry=data[i+1]?.o??price;
-    if (!entry||entry<=0) continue;
+    const entry = data[i+1]?.o ?? price;
+    if (!entry || entry <= 0) continue;
 
-    // ── TP/SL — SD channel based, minimum R:R ≥ 2.0 enforced ─────────────
-    // Entry at SD buy zone → natural TP is the channel mean
-    // SL is the lower2 band (2σ) or ATR fallback
+    // ── TP/SL — SD channel based, R:R >= 2.0 enforced ────────────────────────
     let tpPrice, slPrice;
-    if (hz==='short') {
-      // Short (20d): mean-reversion to channel mean
-      // TP = channel mean (natural reversion target), SL = 1.2×ATR below entry
+    if (hz === 'short') {
+      // TP = channel mean (natural reversion target), SL = 1.5×ATR
       const chanMean = chan20?.mean;
-      const tpD = (chanMean&&chanMean>entry*1.005) ? chanMean-entry : 2.5*atr;
-      const slD = Math.min(1.5*atr, entry*0.06); // max 6% SL
+      const tpD = chanMean&&chanMean>entry*1.005 ? chanMean-entry : 2.5*atr;
+      const slD = Math.min(1.5*atr, entry*0.06);
       slPrice = isBuy ? entry-slD : entry+slD;
       tpPrice = isBuy ? entry+tpD : entry-tpD;
-    } else if (hz==='medium') {
-      // Medium (90d): reversion to upper band
-      const chan50=calcLinRegChannel(closes,Math.min(50,closes.length));
+    } else if (hz === 'medium') {
+      const chan50 = calcLinRegChannel(closes, Math.min(50, closes.length));
       const chanUp = chan50?.upper1 ?? chan20?.upper1;
       const chanSl = chan50?.lower2 ?? chan20?.lower2;
-      const tpD = (chanUp&&chanUp>entry*1.01) ? chanUp-entry : 6.0*atr;
-      const slD = (chanSl&&chanSl<entry*0.998&&chanSl>entry*0.80) ? entry-chanSl : 2.5*atr;
+      const tpD = chanUp&&chanUp>entry*1.01 ? chanUp-entry : 6.0*atr;
+      const slD = chanSl&&chanSl<entry*0.999&&chanSl>entry*0.80 ? entry-chanSl : 2.5*atr;
       slPrice = isBuy ? entry-slD : entry+slD;
       tpPrice = isBuy ? entry+tpD : entry-tpD;
     } else {
-      // Long (240d): move to upper2 band (major upside)
-      const chan100=calcLinRegChannel(closes,Math.min(100,closes.length));
-      const tpD = (chan100?.upper2&&chan100.upper2>entry*1.02) ? chan100.upper2-entry : 12.0*atr;
-      const slD = 3.5*atr;
-      slPrice = isBuy ? entry-slD : entry+slD;
-      tpPrice = isBuy ? entry+tpD : entry-tpD;
+      // Long: large asymmetric R:R
+      slPrice = isBuy ? entry-3.5*atr : entry+3.5*atr;
+      tpPrice = isBuy ? entry+12.0*atr : entry-12.0*atr;
     }
 
-    const tpD_=Math.abs(tpPrice-entry), slD_=Math.abs(slPrice-entry);
     // Enforce minimum R:R of 2.0:1
-    if (slD_<=0||tpD_/slD_<2.0) continue;
+    const tpD_=Math.abs(tpPrice-entry), slD_=Math.abs(slPrice-entry);
+    if (slD_<=0 || tpD_/slD_<2.0) continue;
 
-    // ── Trade simulation ─────────────────────────────────────────────────────
+    // ── Trade simulation ────────────────────────────────────────────────────
     let exitPnl=null, exitIdx=-1;
-    for (let j=i+1;j<=Math.min(i+holdDays,data.length-1);j++) {
+    for (let j=i+1; j<=Math.min(i+holdDays, data.length-1); j++) {
       const bar=data[j];
       if (isBuy) {
         if (bar.h>=tpPrice) { exitPnl=(tpPrice-entry)/entry; exitIdx=j; break; }
@@ -1576,19 +1554,19 @@ function backtestSignal(data, hz) {
         if (j===i+holdDays)  { exitPnl=(entry-bar.c)/entry; exitIdx=j; }
       }
     }
-    if (exitPnl!==null&&exitIdx>=0) {
+    if (exitPnl!==null && exitIdx>=0) {
       trades++; totalReturn+=exitPnl;
       if (exitPnl>0) wins++; else losses++;
-      nextAllowed=exitIdx+1;
+      nextAllowed = exitIdx+1;
     }
   }
 
-  if (trades<8) return null; // need min 8 trades for validity
+  if (trades<8) return null;
   return {
-    winRate:     Math.round(wins/trades*100),
+    winRate:      Math.round(wins/trades*100),
     trades,
-    avgReturnPct:parseFloat((totalReturn/trades*100).toFixed(2)),
-    profitFactor:losses>0?parseFloat((wins/losses).toFixed(2)):99,
+    avgReturnPct: parseFloat((totalReturn/trades*100).toFixed(2)),
+    profitFactor: losses>0 ? parseFloat((wins/losses).toFixed(2)) : 99,
   };
 }
 
@@ -1699,14 +1677,14 @@ async function fetchFundamentalsFMP(symbol) {
       const kmUrl = `https://financialmodelingprep.com/api/v3/key-metrics-ttm/${enc}?apikey=${encodeURIComponent(k)}`;
       const grUrl = `https://financialmodelingprep.com/api/v3/financial-growth/${enc}?limit=1&apikey=${encodeURIComponent(k)}`;
       const prUrl = `https://financialmodelingprep.com/api/v3/profile/${enc}?apikey=${encodeURIComponent(k)}`;
-      const anUrl = `https://financialmodelingprep.com/api/v3/analyst-stock-recommendations/${enc}?limit=1&apikey=${encodeURIComponent(k)}`;
-      const ptUrl = `https://financialmodelingprep.com/api/v3/price-target-consensus/${enc}?apikey=${encodeURIComponent(k)}`;
-      const [kmTxt, grTxt, prTxt, anTxt, ptTxt] = await Promise.all([
-        fetch(kmUrl, { signal: AbortSignal.timeout(12000) }).then(r => (r.ok ? r.text() : '')),
-        fetch(grUrl, { signal: AbortSignal.timeout(12000) }).then(r => (r.ok ? r.text() : '')),
-        fetch(prUrl, { signal: AbortSignal.timeout(12000) }).then(r => (r.ok ? r.text() : '')),
-        fetch(anUrl, { signal: AbortSignal.timeout(10000) }).then(r => (r.ok ? r.text() : '')).catch(() => ''),
-        fetch(ptUrl, { signal: AbortSignal.timeout(10000) }).then(r => (r.ok ? r.text() : '')).catch(() => ''),
+      const anUrl=`https://financialmodelingprep.com/api/v3/analyst-stock-recommendations/${enc}?limit=1&apikey=${encodeURIComponent(k)}`;
+      const ptUrl=`https://financialmodelingprep.com/api/v3/price-target-consensus/${enc}?apikey=${encodeURIComponent(k)}`;
+      const [kmTxt,grTxt,prTxt,anTxt,ptTxt]=await Promise.all([
+        fetch(kmUrl,{signal:AbortSignal.timeout(12000)}).then(r=>r.ok?r.text():''),
+        fetch(grUrl,{signal:AbortSignal.timeout(12000)}).then(r=>r.ok?r.text():''),
+        fetch(prUrl,{signal:AbortSignal.timeout(12000)}).then(r=>r.ok?r.text():''),
+        fetch(anUrl,{signal:AbortSignal.timeout(10000)}).then(r=>r.ok?r.text():'').catch(()=>''),
+        fetch(ptUrl,{signal:AbortSignal.timeout(10000)}).then(r=>r.ok?r.text():'').catch(()=>''),
       ]);
       let km = null;
       try {
@@ -1718,20 +1696,16 @@ async function fetchFundamentalsFMP(symbol) {
         const a = grTxt ? JSON.parse(grTxt) : [];
         gr = Array.isArray(a) && a[0] ? a[0] : null;
       } catch (_) { /* noop */ }
-      let pf = null;
-      try { const a=prTxt?JSON.parse(prTxt):[];pf=Array.isArray(a)&&a[0]?a[0]:null; } catch(_){}
-      let an=null;
-      try { const a=anTxt?JSON.parse(anTxt):[];an=Array.isArray(a)&&a[0]?a[0]:null; } catch(_){}
-      let pt=null;
-      try { const a=ptTxt?JSON.parse(ptTxt):[];pt=Array.isArray(a)&&a[0]?a[0]:null; } catch(_){}
+      let pf=null; try{const a=prTxt?JSON.parse(prTxt):[];pf=Array.isArray(a)&&a[0]?a[0]:null;}catch(_){}
+      let an=null; try{const a=anTxt?JSON.parse(anTxt):[];an=Array.isArray(a)&&a[0]?a[0]:null;}catch(_){}
+      let pt=null; try{const a=ptTxt?JSON.parse(ptTxt):[];pt=Array.isArray(a)&&a[0]?a[0]:null;}catch(_){}
       if (!km && !gr && !pf) continue;
       const anBuy=(an?.analystRatingsBuy||0)+(an?.analystRatingsStrongBuy||0);
       const anHold=an?.analystRatingsHold||0;
       const anSell=(an?.analystRatingsSell||0)+(an?.analystRatingsStrongSell||0);
       const anTotal=anBuy+anHold+anSell;
-      const bullRatio=anTotal>0?anBuy/anTotal:0;
-      const bearRatio=anTotal>0?anSell/anTotal:0;
-      const derivedRecKey=anTotal>0?(bullRatio>=0.70?'strongBuy':bullRatio>=0.55?'buy':bearRatio>=0.55?'strongSell':bearRatio>=0.40?'sell':'hold'):null;
+      const bRatio=anTotal>0?anBuy/anTotal:0, brRatio=anTotal>0?anSell/anTotal:0;
+      const derivedRecKey=anTotal>0?(bRatio>=0.70?'strongBuy':bRatio>=0.55?'buy':brRatio>=0.55?'strongSell':brRatio>=0.40?'sell':'hold'):null;
       const derivedTarget=pt?.targetConsensus??pt?.lastMonthAvgPriceTarget??null;
       const num = x => {
         const v = x?.raw ?? x;
@@ -2497,22 +2471,18 @@ async function fetchFundamentals(symbol) {
   const ent = await fetchBloombergEnterpriseFundamentals(symbol).catch(() => null);
   if (ent) merged = mergeBloombergPriority(merged, ent);
 
-  // Step 3: FMP — always fills missing fields Bloomberg didn't cover
-  // Critical: Bloomberg returns currentPrice/PE for most stocks, making old
-  // hasCoreData=true even when revenueGrowth/earningsGrowth/PEG are all null.
-  // Fix: check for the SPECIFIC fields we need, not "any data present".
-  const needsFMPGapFill = merged.revenueGrowth == null || merged.earningsGrowth == null ||
-                          merged.pegRatio == null || merged.forwardPE == null ||
-                          merged.trailingPE == null || merged.recommendationKey == null ||
-                          merged.targetMeanPrice == null;
+  // Step 3: FMP — always fill specific missing fields (Bloomberg returns price but NOT growth)
+  const needsFMPGapFill = merged.revenueGrowth==null||merged.earningsGrowth==null||
+    merged.pegRatio==null||merged.forwardPE==null||merged.recommendationKey==null||
+    merged.targetMeanPrice==null;
   let fMp = null;
   if (needsFMPGapFill && fmpEnvKeyFund()) {
     fMp = await fetchFundamentalsFMP(symbol).catch(() => null);
     if (fMp) {
       for (const [k, v] of Object.entries(fMp)) {
-        if (merged[k] == null && v != null && v !== '') merged[k] = v;
+        if (merged[k]==null && v!=null && v!=='') merged[k]=v;
       }
-      console.log(`FMP gap-fill: ${symbol} rev=${merged.revenueGrowth} eps=${merged.earningsGrowth} rec=${merged.recommendationKey}`);
+      console.log(`FMP gap-fill: ${symbol} rev=${merged.revenueGrowth} eps=${merged.earningsGrowth}`);
     }
   }
 
@@ -2728,6 +2698,8 @@ function buildFullTechResult(sym, daily, weekly) {
     s1Confluence, r1Confluence,
     channels,
     channelPos,
+    high52w: daily.length>=52?Math.max(...daily.slice(-252).map(d=>d.h??0)):null,
+    low52w:  daily.length>=52?Math.min(...daily.slice(-252).map(d=>d.l??Infinity)):null,
     volume, candlePattern: pattern,
     weeklyRSI, weeklyTrend, weeklyMA50,
     summary: `RSI ${rsi} (${rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : 'neutral'}), ADX ${adx ?? 'N/A'}, ${bullishMAs}/${totalMAs} MAs bullish, ${trend20}, S1@${support1}, R1@${resistance1}`
@@ -2850,72 +2822,61 @@ app.post('/api/technicals/batch', async (req, res) => {
         });
       }
 
-      // ── FMP: PRIMARY scoring for .NS/.T/.HK, fallback for .L/.DE (EU) ────────────
-      // FMP IS the scoring backbone for Asian equities — no Danelfin coverage exists.
-      // Same tier framework as Danelfin: Tier 1 = quality ≥8 + SD channel = ~70-73% WR
+      // ── FMP: PRIMARY scoring for .NS/.T/.HK, fallback for EU ───────────────────
+      // No Danelfin coverage for Asian markets — FMP IS the quality backbone.
+      // Same Tier 1 framework: quality + SD channel = ~70-73% estimated WR.
       if (_mkt.tier === 'fmp_quality' || (_mkt.tier === 'danelfin_eu' && _mkt.fmp)) {
         try {
           const _fk=(process.env.FMP_API_KEY||process.env.FMP_KEY||'').trim();
           if (_fk && data.quantSignal) {
-            const _fmp = await fetchFmpScore(sym);
+            const _fmp=await fetchFmpScore(sym);
             if (_fmp) {
-              data.fmpScore = _fmp;
-              const _qs  = _fmp.qualityScore ?? 5;
-              const _pio = _fmp.piotroski   ?? 0;
-              const _az  = _fmp.altmanZ     ?? 0;
-              const _ast = _fmp.analystScore ?? 5;
-              const _hasBT = !!_fmp.buy_track_record;
-              const _sdBQ = data?.channelPos?.buyQuality ?? 'fair';
-              const _sdGd = _sdBQ === 'good' || _sdBQ === 'excellent';
-              const _sdEx = _sdBQ === 'excellent';
-
-              // SHORT: Piotroski ≥7 (financially healthy) + SD channel → Tier 1
-              const _fmpST1 = _pio >= 7 && _sdGd && _hasBT;
-              if (_fmpST1) {
-                data.quantSignal.short.buyScore = Math.min(92, Math.max(data.quantSignal.short.buyScore||0, 76) + Math.round((_pio-6)*2));
-                data.quantSignal.short.tier = 1;
-                data.quantSignal.short.tierLabel = `Piotroski ${_pio}/9 + SD channel`;
-                data.quantSignal.short.winRateHint = 70;
-              } else if (_pio >= 5 && _hasBT) {
-                data.quantSignal.short.buyScore = Math.min(92,(data.quantSignal.short.buyScore||0)+Math.round((_pio-4)*1.5));
-              } else if (_pio <= 3 || _qs <= 3) {
-                data.quantSignal.short.buyScore = Math.min(40, Math.round((data.quantSignal.short.buyScore||0)*0.50));
+              data.fmpScore=_fmp;
+              const _qs=_fmp.qualityScore??5, _pio=_fmp.piotroski??0;
+              const _az=_fmp.altmanZ??0, _ast=_fmp.analystScore??5;
+              const _hasBT=!!_fmp.buy_track_record;
+              const _sdBQ=data?.channelPos?.buyQuality??'fair';
+              const _sdGd=_sdBQ==='good'||_sdBQ==='excellent';
+              const _sdEx=_sdBQ==='excellent';
+              // SHORT: Piotroski ≥7 + SD channel → Tier 1 (~70% WR)
+              if (_pio>=7&&_sdGd&&_hasBT) {
+                data.quantSignal.short.buyScore=Math.min(92,Math.max(data.quantSignal.short.buyScore||0,76)+Math.round((_pio-6)*2));
+                data.quantSignal.short.tier=1;
+                data.quantSignal.short.tierLabel=`Piotroski ${_pio}/9 + SD channel`;
+                data.quantSignal.short.winRateHint=70;
+              } else if (_pio>=5&&_hasBT) {
+                data.quantSignal.short.buyScore=Math.min(92,(data.quantSignal.short.buyScore||0)+Math.round((_pio-4)*1.5));
+              } else if (_pio<=3||_qs<=3) {
+                data.quantSignal.short.buyScore=Math.min(40,Math.round((data.quantSignal.short.buyScore||0)*0.50));
               }
-
-              // MEDIUM: FMP quality ≥8 + SD channel → Tier 1 (same as Danelfin AI≥8)
-              const _fmpMT1 = _qs >= 8 && _sdGd && _hasBT;
-              const _fmpMT1b= _qs >= 7 && _sdEx && _hasBT;
-              if (_fmpMT1 || _fmpMT1b) {
-                data.quantSignal.medium.buyScore = Math.min(92, Math.max(data.quantSignal.medium.buyScore||0, 78) + Math.round((_qs-7)*2));
-                data.quantSignal.medium.tier = 1;
-                data.quantSignal.medium.tierLabel = `FMP Quality ${_qs}/10 + SD channel`;
-                data.quantSignal.medium.winRateHint = 71;
-              } else if (_qs >= 6 && _hasBT) {
-                data.quantSignal.medium.buyScore = Math.min(92,(data.quantSignal.medium.buyScore||0)+Math.round((_qs-5)*2.5));
-              } else if (_qs <= 4) {
-                data.quantSignal.medium.buyScore = Math.min(38, Math.round((data.quantSignal.medium.buyScore||0)*0.40));
+              // MEDIUM: FMP quality ≥8 + SD channel → Tier 1
+              if ((_qs>=8&&_sdGd||_qs>=7&&_sdEx)&&_hasBT) {
+                data.quantSignal.medium.buyScore=Math.min(92,Math.max(data.quantSignal.medium.buyScore||0,78)+Math.round((_qs-7)*2));
+                data.quantSignal.medium.tier=1;
+                data.quantSignal.medium.tierLabel=`FMP Quality ${_qs}/10 + SD channel`;
+                data.quantSignal.medium.winRateHint=71;
+              } else if (_qs>=6&&_hasBT) {
+                data.quantSignal.medium.buyScore=Math.min(92,(data.quantSignal.medium.buyScore||0)+Math.round((_qs-5)*2.5));
+              } else if (_qs<=4) {
+                data.quantSignal.medium.buyScore=Math.min(38,Math.round((data.quantSignal.medium.buyScore||0)*0.40));
               }
-
-              // LONG: Altman Z > 2.99 (financially safe) + FMP composite ≥7 → Tier 1
-              const _fmpLQ = (_qs*0.45)+(_pio*0.35)+(_ast*0.20);
-              const _altSafe = _az > 2.99;
-              const _fmpLT1 = _fmpLQ >= 7 && _altSafe && _sdGd && _hasBT;
-              if (_fmpLT1) {
-                data.quantSignal.long.buyScore = Math.min(92, Math.max(data.quantSignal.long.buyScore||0, 76) + Math.round((_fmpLQ-6)*2));
-                data.quantSignal.long.tier = 1;
-                data.quantSignal.long.tierLabel = `FMP composite ${_fmpLQ.toFixed(1)}/10 + Altman Z safe`;
-                data.quantSignal.long.winRateHint = 70;
-              } else if (_fmpLQ >= 5 && _hasBT) {
-                data.quantSignal.long.buyScore = Math.min(92,(data.quantSignal.long.buyScore||0)+Math.round((_fmpLQ-5)*2));
-              } else if (_fmpLQ <= 4 || !_altSafe) {
-                data.quantSignal.long.buyScore = Math.min(35, Math.round((data.quantSignal.long.buyScore||0)*0.40));
+              // LONG: Altman Z > 2.99 + composite ≥7 → Tier 1
+              const _fmpLQ=(_qs*0.45)+(_pio*0.35)+(_ast*0.20);
+              if (_fmpLQ>=7&&_az>2.99&&_sdGd&&_hasBT) {
+                data.quantSignal.long.buyScore=Math.min(92,Math.max(data.quantSignal.long.buyScore||0,76)+Math.round((_fmpLQ-6)*2));
+                data.quantSignal.long.tier=1;
+                data.quantSignal.long.tierLabel=`FMP composite ${_fmpLQ.toFixed(1)}/10 + Altman Z safe`;
+                data.quantSignal.long.winRateHint=70;
+              } else if (_fmpLQ>=5&&_hasBT) {
+                data.quantSignal.long.buyScore=Math.min(92,(data.quantSignal.long.buyScore||0)+Math.round((_fmpLQ-5)*2));
+              } else if (_fmpLQ<=4||_az<=1.81) {
+                data.quantSignal.long.buyScore=Math.min(35,Math.round((data.quantSignal.long.buyScore||0)*0.40));
               }
-              console.log(`FMP score ${sym}: qs=${_qs}, pio=${_pio}, az=${_az?.toFixed?.(1)??_az}, sd=${_sdBQ}`);
+              console.log(`FMP ${sym}: qs=${_qs} pio=${_pio} az=${_az?.toFixed?.(1)??_az} sd=${_sdBQ}`);
             }
           }
         } catch(_fe){console.warn('FMP batch:',sym,_fe.message);}
       }
-
       // US/EU equities: Danelfin ML (horizon-specific boosts)
       if (_mkt.danelfin) {
         try {
@@ -3029,6 +2990,24 @@ app.post('/api/technicals/batch', async (req, res) => {
           if (q.tier === 0 && q.buyScore > 72) q.buyScore = 72;
           if (q.tier === 1 && q.buyScore > 88) q.buyScore = 88;
           if (q.tier >= 1)   q.winRateHint = Math.max(q.winRateHint||60, 70);
+        });
+      }
+
+      // ── Re-derive action/rating from FINAL scores (after all boosts/penalties) ──
+      // This fixes the mismatch where action='Buy' but score got penalised to 30
+      if (data.quantSignal) {
+        ['short','medium','long'].forEach(hz => {
+          const q = data.quantSignal[hz]; if (!q) return;
+          const bs = q.buyScore||0, ss = q.sellScore||0;
+          if (bs >= ss) {
+            if      (bs >= 84) { q.action='Buy';  q.rating='Strong Buy';  }
+            else if (bs >= 66) { q.action='Buy';  q.rating='Buy';         }
+            else               { q.action='Hold'; q.rating='Hold';        }
+          } else {
+            if      (ss >= 80) { q.action='Sell'; q.rating='Strong Sell'; }
+            else if (ss >= 64) { q.action='Sell'; q.rating='Sell';        }
+            else               { q.action='Hold'; q.rating='Hold';        }
+          }
         });
       }
 
