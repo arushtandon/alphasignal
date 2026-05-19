@@ -7,7 +7,7 @@
 # Optional (same window, before running):
 #   $env:BRIDGE_BIND = "0.0.0.0"
 #   $env:BRIDGE_PORT = "5055"
-#   $env:BLOOMBERG_BRIDGE_SECRET = "your-shared-secret"
+#   $env:BLOOMBERG_BRIDGE_SECRET = "S@FRON1490"
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
