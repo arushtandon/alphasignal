@@ -1434,6 +1434,49 @@ function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
   return { tp1: tp1, tp2: tp2, sl: sl };
 }
 
+/** renderCard reads s.pe / s.peg / growth strings — fundamentals batch attaches numbers on _*; Claude often leaves tiles blank for non-US symbols. */
+function dashFundDisplayGap(v){
+  if (v==null||v==='') return true;
+  var t = String(v).trim();
+  if (/^[\u2012\u2013\u2014\u2015\-\–\——\s]+$/u.test(t)) return true;
+  if (/^n\/?a$/i.test(t) || /^n\.a\.?$/i.test(t)) return true;
+  if (/\bunknown\b/i.test(t)) return true;
+  if (/\bnot\s+specified\b/i.test(t)) return true;
+  return false;
+}
+
+function mergeFundTilesFromBatchFund(row, fund) {
+  if (!row || !fund || typeof fund !== 'object') return;
+  function fmtPe(x){
+    var n = Number(x);
+    if (!isFinite(n)) return null;
+    if (n >= 99) return String(Math.round(n));
+    if (n > 35) return String(+n.toFixed(1)).replace(/\.0$/,'');
+    var s = String(+n.toFixed(2)); return s.replace(/\.00$/,'').replace(/(\.\d)0$/,'$1');
+  }
+
+  var fwd = fund.forwardPE;
+  var tr = fund.trailingPE;
+  if (fwd != null && isFinite(Number(fwd)) && dashFundDisplayGap(row.pe))
+    row.pe = fmtPe(fwd) + ' (forward)';
+  else if ((!row.pe || dashFundDisplayGap(row.pe)) && tr != null && isFinite(Number(tr)))
+    row.pe = fmtPe(tr) + ' (TTM)';
+
+  if (fund.pegRatio != null && isFinite(Number(fund.pegRatio)) && dashFundDisplayGap(row.peg))
+    row.peg = String(+Number(fund.pegRatio).toFixed(2));
+
+  if (fund.revenueGrowth != null && isFinite(Number(fund.revenueGrowth)) && dashFundDisplayGap(row.revenueGrowth))
+    row.revenueGrowth = String(Number(fund.revenueGrowth)) + '%';
+
+  if (fund.earningsGrowth != null && isFinite(Number(fund.earningsGrowth)) && dashFundDisplayGap(row.earningsGrowth))
+    row.earningsGrowth = String(Number(fund.earningsGrowth)) + '%';
+
+  var sec = fund._fmpSector;
+  if ((!sec || !String(sec).trim()) && fund._yahooSector) sec = fund._yahooSector;
+  if (sec && dashFundDisplayGap(row.industryPos))
+    row.industryPos = String(sec).slice(0, 72);
+}
+
 /** Snapshot live Yahoo price into short/medium/long entry + targets (dashboard + history save). */
 function enrichDashPickLevels(s) {
   if (!s || !s.ticker) return;
@@ -1934,6 +1977,7 @@ async function runDashScan(){
               r._earningsGrowth = fund.earningsGrowth || null;
               r._forwardPE = fund.forwardPE || null;
               r._recKey = fund.recommendationKey || null;
+              mergeFundTilesFromBatchFund(r, fund);
             }
           });
           console.log('✓ Batch parsed', res.length, 'items');
@@ -2062,6 +2106,7 @@ async function runDashScan(){
     s._techSnap = tech || null;
     s._analystTarget = fund ? fund.targetMeanPrice : null;
     s._targetHighPrice = fund ? fund.targetHighPrice : null;
+    mergeFundTilesFromBatchFund(s, fund);
   }
   ['short','medium','long','shortSell','medSell','longSell'].forEach(function (k) {
     (dashData[k] || []).forEach(attachTechFundSnap);

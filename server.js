@@ -1468,15 +1468,31 @@ function backtestSignal(data, hz) {
 
 async function fetchFundamentalsYahoo(symbol) {
   try {
-    const qs = await quoteSummary(symbol, 'financialData,defaultKeyStatistics,summaryDetail');
+    const qs = await quoteSummary(
+      symbol,
+      'financialData,defaultKeyStatistics,summaryDetail,assetProfile'
+    );
     const res = qs?.quoteSummary?.result?.[0];
     if (!res) return null;
     const fd = res.financialData || {};
     const ks = res.defaultKeyStatistics || {};
     const sd = res.summaryDetail || {};
-    const num = v => { const n = v?.raw ?? v; return Number.isFinite(+n) ? +n : null; };
-    const pct = v => { const n = num(v); return n != null ? +(n * 100).toFixed(1) : null; };
-    const fmt = (v, dec = 2) => { const n = num(v); return n != null ? +n.toFixed(dec) : null; };
+    const ap = res.assetProfile || {};
+    const num = v => {
+      const n = v?.raw ?? v;
+      return Number.isFinite(+n) ? +n : null;
+    };
+    const pct = v => {
+      const n = num(v);
+      return n != null ? +(n * 100).toFixed(1) : null;
+    };
+    const fmt = (v, dec = 2) => {
+      const n = num(v);
+      return n != null ? +n.toFixed(dec) : null;
+    };
+    const sect = String(ap.sector || ap.industry || '')
+      .trim()
+      .slice(0, 120);
     return {
       targetMeanPrice: fmt(fd.targetMeanPrice),
       targetHighPrice: fmt(fd.targetHighPrice),
@@ -1496,7 +1512,10 @@ async function fetchFundamentalsYahoo(symbol) {
       forwardEps: fmt(ks.forwardEps),
       trailingPE: fmt(sd.trailingPE, 1),
       dividendYield: pct(sd.dividendYield),
-      marketCap: num(sd.marketCap)
+      marketCap: num(sd.marketCap),
+      /** Populates Industry Pos tile when FMP omit (_fmpSector); merge prefers first non-null. */
+      _fmpSector: sect || null,
+      _yahooSector: sect || null
     };
   } catch (e) {
     console.warn('fetchFundamentalsYahoo', symbol, e.message);
@@ -4674,11 +4693,33 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
 
+    /** Intl listings: Yahoo often omits quoteSummary earningsHistory from cloud IPs; FMP surprises usually work for NSE/HK/JP/LSE when API key exists. */
+    if (!epsHistory.length && fmpAnyApiKey()) {
+      const prefersFmpIntl = /\.(NS|BO|HK|T|L|DE|PA|AS|TW|SI|KS|KQ|AX|NZ|BK|ST|SW|MC|MI|TO|V)$/i.test(
+        sym
+      );
+      if (prefersFmpIntl) {
+        try {
+          const fmpHist = await fmpEarningsSurprisesHistory(sym);
+          if (fmpHist.length) {
+            epsHistory = fmpHist;
+            historySource = 'fmp_earnings_surprises';
+          }
+        } catch (_) {}
+      }
+    }
+
     const symbolsForChart =
       sym === 'GOOGL' || sym === 'GOOG'
         ? ['GOOGL', 'GOOG']
         : sym.includes('.')
-          ? [...new Set([sym, sym.replace(/\./g, '-')])].filter(Boolean)
+          ? [
+              ...new Set([
+                sym,
+                sym.replace(/\./g, '-'),
+                sym.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|KS|KQ|TW|SI|AX|ST|SW|MC|MI)$/i, '')
+              ])
+            ].filter(Boolean)
           : [sym];
     const rangeQs = ['range=3y&interval=3mo', 'range=8y&interval=1wk'];
     for (const host of ['query1', 'query2']) {
