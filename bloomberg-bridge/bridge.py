@@ -76,45 +76,66 @@ SECRET = os.environ.get("BLOOMBERG_BRIDGE_SECRET", "").strip()
 # Bump when changing ref parsing so /health proves which code is running on the Bloomberg PC.
 BRIDGE_BUILD = "20260520-nse-in-equity-mapping"
 
-# Legacy name retained for README references.
+# Legacy name retained for README references — global equity BDP staples + prior bridge fallbacks.
 FLDS = [
-    "BEST_PE_NTM",
     "PE_RATIO",
     "BEST_PEG_RATIO",
-    "BEST_TARGET_MEDIAN",
+    "IS_EPS",
+    "EPS_GROWTH",
+    "SALES_GROWTH",
+    "BEST_PE_NTM",
     "SALES_YOY_GR",
     "BEST_EPS_GROWTH",
+    "BEST_TARGET_MEDIAN",
 ]
 
+# Snapshot: each tuple is (ordered Bloomberg candidates, JSON key). First non-empty ref() wins.
 SAFE_SNAPSHOT_BB_FIELDS = [
-    ("PX_LAST", "currentPrice"),
-    ("CUR_MKT_CAP", "marketCap"),
-    ("BEST_PE_NTM", "forwardPE"),
-    ("PE_RATIO", "trailingPE"),
-    ("BEST_PEG_RATIO", "pegRatio"),
-    ("BEST_TARGET_MEDIAN", "targetMeanPrice"),
-    ("SALES_YOY_GR", "revenueGrowth"),
-    ("BEST_EPS_GROWTH", "earningsGrowth"),
-    ("DEBT_TO_EQ_RATIO", "debtToEquity"),
-    ("RETURN_ON_CAPITAL_ADJ", "returnOnCapital"),
-    ("RETURN_ON_COMMON_EQUITY_ADJUSTED", "returnOnEquity"),
-    ("RETURN_ON_ASSET_PERCENT", "returnOnAssets"),
-    ("CURRENT_RATIO", "currentRatio"),
-    ("OPER_MARGIN", "operatingMargins"),
-    ("GROSS_MARGIN", "grossMargins"),
-    ("FREE_CASH_FLOW_YIELD_CURR", "freeCashFlowYield"),
-    ("SHORT_INT_RATIO", "shortInterestRatio"),
+    (["PX_LAST"], "currentPrice"),
+    (["CUR_MKT_CAP"], "marketCap"),
+    (["BEST_PE_NTM"], "forwardPE"),
+    (["PE_RATIO"], "trailingPE"),
+    (["BEST_PEG_RATIO"], "pegRatio"),
+    (["BEST_TARGET_MEDIAN"], "targetMeanPrice"),
+    (["SALES_GROWTH", "SALES_YOY_GR"], "revenueGrowth"),
+    (["EPS_GROWTH", "BEST_EPS_GROWTH"], "earningsGrowth"),
+    (["IS_EPS"], "fundamentalTrailingEps"),
+    (["DEBT_TO_EQ_RATIO"], "debtToEquity"),
+    (["RETURN_ON_CAPITAL_ADJ"], "returnOnCapital"),
+    (["RETURN_ON_COMMON_EQUITY_ADJUSTED"], "returnOnEquity"),
+    (["RETURN_ON_ASSET_PERCENT"], "returnOnAssets"),
+    (["CURRENT_RATIO"], "currentRatio"),
+    (["OPER_MARGIN"], "operatingMargins"),
+    (["GROSS_MARGIN"], "grossMargins"),
+    (["FREE_CASH_FLOW_YIELD_CURR"], "freeCashFlowYield"),
+    (["SHORT_INT_RATIO"], "shortInterestRatio"),
 ]
 
+# Next-earnings refs; time/period also resolved via *_CANDIDATE lists below.
 EARN_HEADER_REF_FIELDS = [
     "EXPECTED_REPORT_DT",
     "EXPECTED_REPORT_TYP",
+    "EXPECTED_REPORT_PERIOD",
     "BEST_EPS",
     "BEST_SALES",
     "BEST_EBITDA",
     "BEST_NET_INCOME",
     "BEST_FFQ",
     "BEST_FPERIOD_END_DT",
+]
+
+# BDP mnemonic candidates for wall-clock timing (listing-dependent; Terminal FLDS verifies).
+EXPECTED_REPORT_TIME_CANDIDATES = [
+    "EXPECTED_REPORT_TIME",
+    "NEXT_EARN_TIMING",
+    "EARN_TIMING",
+    "EXPECTED_RELEASE_TM",
+]
+
+EXPECTED_REPORT_PERIOD_CANDIDATES = [
+    "EXPECTED_REPORT_PERIOD",
+    "NEXT_EARN_EXPECTED_PERIOD",
+    "EXPECTED_FISCAL_PERIOD",
 ]
 
 QUARTERLY_METRIC_GROUPS = [
@@ -160,6 +181,16 @@ BB_QUARTERLY_ELMS_VARIANTS = [
     [("periodicitySelection", "QUARTERLY")],
 ]
 
+# Excel BDS: =BDS(...,"EARN_ANN_DT_TIME_HIST_WITH_EPS", startrow,endrow,startcol,endcol,headers=y)
+EARN_ANN_BULK_FIELD = "EARN_ANN_DT_TIME_HIST_WITH_EPS"
+EARN_ANN_BULK_OVRDS_VARIANTS = [
+    [("startrow", "1"), ("endrow", "4"), ("startcol", "1"), ("endcol", "3"), ("headers", "Y")],
+    [("START_ROW", "1"), ("END_ROW", "4"), ("START_COL", "1"), ("END_COL", "3"), ("HEADERS", "Y")],
+    [("ROWS", "1:4"), ("COLUMNS", "1:3")],
+]
+
+EPS_ACTUAL_FOR_AE_SERIES = ("IS_COMP_EPS_ADJUSTED", "IS_COMP_EPS", "IS_EPS")
+
 _bcon = None
 
 
@@ -167,7 +198,6 @@ def clean_bridge_symbol(raw: str) -> str:
     """Strip stray `^` from query params (Windows CMD / copy-paste artifacts)."""
     s = (raw or "").strip().replace("^", "")
     return s.strip()
-
 
 # Yahoo *.NS symbols often diverge from Bloomberg NSE mnemonics (hyphens, marketing names).
 NSE_BB_OVERRIDES: dict[str, str] = {
@@ -210,12 +240,12 @@ def map_to_bb_security(symbol: str, bb_hint: str | None) -> str:
         return re.sub(r"\.PA$", "", s, flags=re.I) + " FP Equity"
     if re.search(r"\.DE$", s, re.I):
         return re.sub(r"\.DE$", "", s, flags=re.I) + " GR Equity"
-    # NSE (Yahoo-style *.NS): Bloomberg lists India as TICKER **IN Equity** (country IN).
-    # The old "* IS Equity" form breaks many securities (hyphenated Yahoo roots, wrong mnemonic).
+    # NSE (Yahoo-style *.NS): Bloomberg uses exchange code "IS" → "TICKER IS Equity" (not country "IN").
+    # NSE (Yahoo *.NS): list as TICKER **IN Equity** (India listing).
     if re.search(r"\.NS$", s, re.I):
         root = re.sub(r"\.NS$", "", s, flags=re.I).strip().upper()
         root = NSE_BB_OVERRIDES.get(root, root.replace("-", " "))
-        root = " ".join(root.split())  # collapse spaces
+        root = " ".join(root.split())
         return f"{root} IN Equity"
     # BSE Bombay (Yahoo-style *.BO)
     if re.search(r"\.BO$", s, re.I):
@@ -256,10 +286,7 @@ def get_bcon():
     if BCon is None:
         raise RuntimeError("Install pdblp: pip install pdblp")
     if _bcon is None:
-        _bcon = BCon(
-            timeout=int(os.environ.get("BLOOMBERG_BRIDGE_BCON_MS", os.environ.get("BRIDGE_BCON_TIMEOUT_MS", "35000"))
-            ), debug=False, port=8194
-        )
+        _bcon = BCon(timeout=int(os.environ.get("BLOOMBERG_BRIDGE_BCON_MS", os.environ.get("BRIDGE_BCON_TIMEOUT_MS", "35000"))), debug=False, port=8194)
         _bcon.start()
     return _bcon
 
@@ -396,10 +423,8 @@ def _ref_get(row, fld: str):
 def _bloomberg_soft(exc: BaseException) -> bool:
     cls = getattr(exc.__class__, "__name__", "").upper()
     msg = str(exc).upper()
-    # Bloomberg rejects bad security strings as ValueError: "Unknow security '...'"
     if cls == "VALUEERROR" and "SECURITY" in msg and ("UNKNOW" in msg or "UNKNOWN" in msg):
         return True
-    # Occasional pdblp/pandas shape quirks on regional tickers — treat as soft skip.
     if cls == "TYPEERROR" and "STRING INDICES" in msg:
         return True
     if cls in ("REFERENCE_DATA_RESPONSE", "REFERENCEDATARESPONSE"):
@@ -473,6 +498,35 @@ def ref_field_safe(con, sec: str, fld: str):
         return None
 
 
+def ref_first_candidate(con, sec: str, candidates: list[str]):
+    """Return first non-empty ref() among Bloomberg field names (order = preference)."""
+    for fld in candidates:
+        v = ref_field_safe(con, sec, fld)
+        if v is None:
+            continue
+        try:
+            if pd.isna(v):
+                continue
+        except Exception:
+            pass
+        return v
+    return None
+
+
+def _bb_ref_str(v) -> str | None:
+    if v is None:
+        return None
+    try:
+        if pd.isna(v):
+            return None
+    except Exception:
+        pass
+    s = str(v).strip()
+    if not s or s.upper() in ("NA", "N/A", "NIL", "NONE"):
+        return None
+    return s
+
+
 def fmt_trim_num(x: float | None, nd: int = 4):
     if x is None:
         return None
@@ -499,6 +553,7 @@ def fmt_money_billions(x: float | None):
 
 
 def _report_typ_to_ui(raw) -> str | None:
+    """Map EXPECTED_REPORT_TYP text to AlphaSignal buckets; unknown strings return None (fall back to time field)."""
     t = str(raw or "").strip().lower()
     if not t:
         return None
@@ -506,7 +561,46 @@ def _report_typ_to_ui(raw) -> str | None:
         return "post-market"
     if any(x in t for x in ("bef", "bmo", "pre", "morn", "open")):
         return "pre-market"
-    return "during-market"
+    if any(x in t for x in ("during", "intraday", "regular", "rth", "mkt hrs", "market hour")):
+        return "during-market"
+    return None
+
+
+def _classification_from_bb_time(raw) -> str | None:
+    """Infer pre/post from time string when EXPECTED_REPORT_TYP is empty."""
+    t = str(raw or "").strip().lower()
+    if not t:
+        return None
+    if any(
+        x in t
+        for x in (
+            "after",
+            "aft",
+            "post",
+            "pm",
+            "p.m",
+            "close",
+            "closing",
+            "afterhour",
+            "after hour",
+        )
+    ):
+        return "post-market"
+    if any(
+        x in t
+        for x in (
+            "bef",
+            "bmo",
+            "pre",
+            "morn",
+            "morning",
+            "open",
+            "a.m",
+            "am ",
+        )
+    ):
+        return "pre-market"
+    return None
 
 
 def _bdh_optional(con, sec: str, fld: str, start_yyyymmdd: str, end_yyyymmdd: str, elms=None):
@@ -662,6 +756,367 @@ def reaction_bundle_for_anchor(
     return out
 
 
+def _bulkref_optional(con, sec: str, fld: str, ovrds: list[tuple[str, str]]):
+    try:
+        df = con.bulkref(sec, [fld], ovrds=ovrds)
+        if df is not None and not getattr(df, "empty", True):
+            return df
+    except Exception as exc:
+        if _session_dead(exc):
+            raise
+        if not _bloomberg_soft(exc):
+            try:
+                print(
+                    "bulkref_optional %s %s: %s: %s"
+                    % (sec, fld, exc.__class__.__name__, exc),
+                    file=sys.stderr,
+                )
+            except Exception:
+                pass
+    return None
+
+
+def _bulk_rows_by_position(df) -> dict[int, dict[str, object]]:
+    """bulkref long frame -> position -> {element name -> value}."""
+    if df is None or getattr(df, "empty", True) or not isinstance(df, pd.DataFrame):
+        return {}
+    cols = {str(c).strip().lower(): c for c in df.columns}
+    pos_c = cols.get("position")
+    name_c = cols.get("name")
+    val_c = cols.get("value")
+    if pos_c is None or name_c is None or val_c is None:
+        return {}
+    out: dict[int, dict[str, object]] = {}
+    for _, r in df.iterrows():
+        try:
+            pos = int(pd.to_numeric(r[pos_c], errors="coerce"))
+        except Exception:
+            continue
+        if pos != pos:  # NaN
+            continue
+        try:
+            nm = str(r[name_c]).strip()
+            out.setdefault(pos, {})[nm] = r[val_c]
+        except TypeError:
+            continue
+    return out
+
+
+def _bulk_pick_cell(cells: dict, *needles: str) -> object | None:
+    nlow = tuple(s.lower() for s in needles)
+    for k, v in cells.items():
+        kl = str(k).lower().strip()
+        if any(nd in kl for nd in nlow):
+            return v
+    return None
+
+
+def _infer_ann_row_from_cells(cells: dict[str, object]) -> dict | None:
+    """One BDS earnings-history row → announcementDate + Bef-/Aft-mkt bucket."""
+    period = _bulk_pick_cell(cells, "period", "fiscal")
+    period_s = _bb_ref_str(period)
+
+    dval = _bulk_pick_cell(
+        cells,
+        "announcement date",
+        "ann date",
+        "announce date",
+        "earnings announcement date",
+    )
+    if dval is None:
+        dval = _bulk_pick_cell(cells, "date")
+    ann_iso = _bbelem_to_iso(dval)
+    if not ann_iso:
+        return None
+
+    tval = _bulk_pick_cell(
+        cells,
+        "announcement time",
+        "ann time",
+        "timing",
+        "time",
+        "mkt",
+    )
+    tstr = _bb_ref_str(tval) if tval is not None else None
+    timing_ui = _bef_aft_cell_to_timing_ui(tstr)
+    return {
+        "announcementPeriod": period_s,
+        "announcementDate": ann_iso,
+        "announcementTimeRaw": tstr,
+        "earningsReleaseTiming": timing_ui,
+    }
+
+
+def _bef_aft_cell_to_timing_ui(t: str | None) -> str:
+    """Maps Excel-style 'Aft-mkt' / 'Bef-mkt' strings to AlphaSignal buckets."""
+    s = (t or "").strip().lower()
+    if not s:
+        return "during-market"
+    if any(x in s for x in ("aft", "after", "post", "pm", "close", "following")):
+        return "post-market"
+    if any(x in s for x in ("bef", "before", "pre", "bmo", "morn", "am ")):
+        return "pre-market"
+    return "during-market"
+
+
+def _bulk_df_to_earn_ann_rows(df) -> list[dict]:
+    if df is None or getattr(df, "empty", True):
+        return []
+    cols = {str(c).strip().lower(): c for c in df.columns}
+    if "field" in cols:
+        fcol = cols["field"]
+        df = df[df[fcol].astype(str).str.strip() == EARN_ANN_BULK_FIELD].copy()
+        if df.empty:
+            return []
+    by_pos = _bulk_rows_by_position(df)
+    rows: list[dict] = []
+    for pos in sorted(by_pos.keys()):
+        row = _infer_ann_row_from_cells(by_pos[pos])
+        if row:
+            rows.append(row)
+    rows.sort(key=lambda z: z["announcementDate"], reverse=True)
+    return rows[:4]
+
+
+def _fetch_earn_ann_table(con, sec: str) -> list[dict]:
+    """Top 4 earnings announcement rows (Excel BDS EARN_ANN_DT_TIME_HIST_WITH_EPS)."""
+    for ovrds in EARN_ANN_BULK_OVRDS_VARIANTS:
+        df = _bulkref_optional(con, sec, EARN_ANN_BULK_FIELD, ovrds)
+        if df is None:
+            continue
+        rows = _bulk_df_to_earn_ann_rows(df)
+        if rows:
+            return rows
+    return []
+
+
+def reaction_bundle_excel_earnings(
+    px_asc: list[tuple[str, float]],
+    announcement_iso: str,
+    timing_ui: str | None,
+) -> dict:
+    """
+    Excel BQL-style % change:
+    - Aft-mkt: close on announcement session → next session close.
+    - Bef-mkt / during: prior session close → announcement session close.
+    """
+    out: dict = {
+        "anchorDate": announcement_iso,
+        "methodology": "excel_bql_close_to_close",
+        "timingUsed": timing_ui or "during-market",
+    }
+    i0 = _index_first_on_or_after(px_asc, announcement_iso)
+    if i0 is None:
+        out["note"] = "no PX_LAST session on/after announcement date"
+        return out
+    event_date = px_asc[i0][0]
+    event_close = px_asc[i0][1]
+    ip = _index_last_before(px_asc, event_date)
+    if ip is None:
+        out["note"] = "missing prior session for window"
+        return out
+    prior_close = px_asc[ip][1]
+    out["priorSessionCloseDate"] = px_asc[ip][0]
+    out["eventSessionDate"] = event_date
+
+    is_aft = (timing_ui or "") == "post-market"
+    if is_aft:
+        i1 = i0 + 1 if i0 + 1 < len(px_asc) else None
+        if i1 is None:
+            out["note"] = "missing next session (after-market window)"
+            return out
+        next_close = px_asc[i1][1]
+        out["nextSessionDate"] = px_asc[i1][0]
+        leg = _pct_change(event_close, next_close)
+        out["headlinePct"] = leg
+        out["fromEventCloseToNextClosePct"] = leg
+        out["headlineLabel"] = "Aft-mkt: announcement date close → next session close"
+    else:
+        leg = _pct_change(prior_close, event_close)
+        out["headlinePct"] = leg
+        out["fromPriorCloseToAnnouncementSessionClosePct"] = leg
+        out["headlineLabel"] = "Bef-mkt/during: prior close → announcement session close"
+    return out
+
+
+def _bdh_quarterly_ae_series(
+    con, sec: str, fld: str, ae: str
+) -> list[tuple[str, float]]:
+    """BDH fundamentals with Actual vs Estimate overrides (BQL-aligned AE=A| E when overrides work)."""
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=2200)
+    sy, ey = start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+
+    combos: list[list[tuple[str, str]]] = []
+    for pk, pv in (
+        ("FUNDAMENTAL_PERIOD_TYPE", "Q"),
+        ("FUNDAMENTAL_PERIOD_TYPE", "QUARTERLY"),
+        ("FPT", "Q"),
+    ):
+        for root in (
+            ("ACTUAL_OR_ESTIMATE", ae),
+            ("Actual_Or_Estimate", ae),
+            ("AE", ae),
+        ):
+            combos.append([(pk, pv), root])
+
+    skip_ae = False
+    for ovrds in combos:
+        if skip_ae:
+            break
+        for elms in BB_QUARTERLY_ELMS_VARIANTS:
+            try:
+                df = con.bdh(sec, [fld], sy, ey, elms=tuple(elms), ovrds=list(ovrds))
+            except TypeError:
+                skip_ae = True
+                break
+            except Exception as exc:
+                if _session_dead(exc):
+                    raise
+                continue
+            pts = _series_sorted_desc(df)
+            if len(pts) >= 2:
+                return pts
+    return []
+
+
+def _lookup_sorted_pts(pts: list[tuple[str, float]], iso: str) -> float | None:
+    for d, v in pts:
+        if d == iso:
+            try:
+                return float(v)
+            except Exception:
+                return None
+    return None
+
+
+def _pct_surprise_actual_est(actual: float | None, est: float | None) -> float | None:
+    if actual is None or est is None:
+        return None
+    try:
+        e = float(est)
+        if abs(e) < 1e-12:
+            return None
+        return round((float(actual) - e) / abs(e) * 100.0, 4)
+    except Exception:
+        return None
+
+
+def _fmt_signed_surprise_pct(p: float | None) -> str | None:
+    if p is None or p != p:
+        return None
+    return (("+" if p >= 0 else "") + str(round(p, 2)) + "%")
+
+
+def _fetch_quarterly_ae_surprise_grid(con, sec: str) -> list[dict]:
+    """
+    Last four fiscal quarters EPS/revenue actual vs estimate + surprise %
+    (parallel to BQL IS_EPS / SALES_REV_TURN with FPT=Q, AE=A|E).
+    """
+    pts_a: list[tuple[str, float]] = []
+    pts_e: list[tuple[str, float]] = []
+    fld_eps: str | None = None
+    for fld in EPS_ACTUAL_FOR_AE_SERIES:
+        cand_a = _bdh_quarterly_ae_series(con, sec, fld, "A")
+        if len(cand_a) >= 2:
+            fld_eps = fld
+            pts_a = cand_a
+            pts_e = _bdh_quarterly_ae_series(con, sec, fld, "E")
+            break
+
+    if not pts_a:
+        for fld in EPS_ACTUAL_FOR_AE_SERIES:
+            cand = _bdh_series_quarterly(con, sec, fld)
+            if cand:
+                fld_eps = fld
+                pts_a = cand
+                break
+    if not pts_a:
+        return []
+
+    _, est_pts_fallback = first_series_for_candidates(con, sec, QUARTERLY_EPS_ESTIMATE_FIELDS)
+    rev_a = _bdh_quarterly_ae_series(con, sec, "SALES_REV_TURN", "A")
+    if not rev_a:
+        rev_a = _bdh_series_quarterly(con, sec, "SALES_REV_TURN")
+    rev_e = _bdh_quarterly_ae_series(con, sec, "SALES_REV_TURN", "E")
+
+    rows_out: list[dict] = []
+    for iso, av in pts_a[:12]:
+        if len(rows_out) >= 4:
+            break
+        try:
+            av_f = float(av)
+        except Exception:
+            continue
+
+        ev = _lookup_sorted_pts(pts_e, iso) if pts_e else None
+        if ev is None and est_pts_fallback:
+            ev = _lookup_sorted_pts(est_pts_fallback, iso)
+
+        rav = _lookup_sorted_pts(rev_a, iso) if rev_a else None
+        rev_es = _lookup_sorted_pts(rev_e, iso) if rev_e else None
+
+        row: dict = {
+            "date": iso,
+            "epsFieldActual": fld_eps,
+            "historyRowSource": "bdh_ae_quarterly_grid",
+        }
+        try:
+            row["quarter"] = datetime.strptime(iso, "%Y-%m-%d").strftime("%b %Y")
+        except Exception:
+            row["quarter"] = iso
+        row["epsActual"] = fmt_trim_num(av_f, 4)
+        ev_f = first_float(ev) if ev is not None else None
+        if ev_f is not None:
+            row["epsEstimate"] = fmt_trim_num(ev_f, 4)
+        eps_sp = _pct_surprise_actual_est(av_f, ev_f)
+        if eps_sp is not None:
+            row["epsSurprise"] = _fmt_signed_surprise_pct(eps_sp)
+            row["epsSurpriseSource"] = "computed_actual_minus_estimate_pct"
+            row["beat"] = bool(av_f >= ev_f) if ev_f is not None else None
+
+        if rav is not None:
+            row["revenueActual"] = fmt_money_billions(rav)
+        if rev_es is not None:
+            row["revenueEstimate"] = fmt_money_billions(rev_es)
+        rsp = _pct_surprise_actual_est(rav, rev_es)
+        if rsp is not None:
+            row["revenueSurprise"] = _fmt_signed_surprise_pct(rsp)
+            row["revenueSurpriseSource"] = "computed_actual_minus_estimate_pct"
+        rows_out.append(row)
+    return rows_out
+
+
+def _merge_ann_into_grid(
+    px_asc: list[tuple[str, float]],
+    grid: list[dict],
+    ann: list[dict],
+    fallback_timing: str | None,
+) -> list[dict]:
+    """Zip Excel-style BDS top-4 announcements (by recency with grid) onto fiscal quarter rows."""
+    for i, row in enumerate(grid):
+        if i < len(ann):
+            ev = ann[i]
+            ann_dt = ev["announcementDate"]
+            tim = ev.get("earningsReleaseTiming")
+            row["announcementDate"] = ann_dt
+            row["announcementTimeRaw"] = ev.get("announcementTimeRaw")
+            row["earningsReleaseTiming"] = tim
+            pe = ev.get("announcementPeriod")
+            if pe:
+                row["announcementPeriod"] = pe
+            row["announcementAlignedIndex"] = i
+            row["historyRowSource"] = "excel_bds_ann+bdh_ae_grid"
+            row["reportOrAnnounceDate"] = ann_dt
+            if px_asc:
+                row["stockReaction"] = reaction_bundle_excel_earnings(px_asc, ann_dt, tim)
+        else:
+            fiscal = row.get("date")
+            if px_asc and fiscal:
+                row["stockReaction"] = reaction_bundle_for_anchor(px_asc, str(fiscal), fallback_timing)
+    return grid
+
+
 def _eps_surprise_pct_normalize(x: float) -> float:
     """Bloomberg often returns surprise as 0.12 vs 12 — normalize to percent points."""
     try:
@@ -673,8 +1128,8 @@ def _eps_surprise_pct_normalize(x: float) -> float:
     return v
 
 
-def _build_quarter_rows(con, sec: str, next_tim_hint: str | None) -> list[dict]:
-    """Align last four fiscal quarter points across metrics (best effort)."""
+def _build_quarter_rows_legacy(con, sec: str, next_tim_hint: str | None) -> list[dict]:
+    """Legacy: align last four fiscal quarter points across BDH metrics (no BDS announcement table)."""
     series_by_key: dict[str, list[tuple[str, float]]] = {}
     for cands, jkey in QUARTERLY_METRIC_GROUPS:
         _, pts = first_series_for_candidates(con, sec, list(cands))
@@ -780,6 +1235,7 @@ def _build_quarter_rows(con, sec: str, next_tim_hint: str | None) -> list[dict]:
             anchor_iso = _bbelem_to_iso(anchor_val)
         anchor_for_px = anchor_iso if anchor_iso else iso
         row["anchorDateUsedForReaction"] = anchor_for_px
+        row["historyRowSource"] = "bdh_legacy_union"
         if anchor_iso:
             row["reportOrAnnounceDate"] = anchor_iso
         if px_asc:
@@ -790,7 +1246,17 @@ def _build_quarter_rows(con, sec: str, next_tim_hint: str | None) -> list[dict]:
     return rows
 
 
-def _financial_quality_hint(d: dict) -> dict | None:
+def _build_quarter_rows(con, sec: str, next_tim_hint: str | None) -> list[dict]:
+    """
+    Prefer BDS EARN_ANN_DT_TIME_HIST_WITH_EPS (top 4) + BDH actual/estimate grid;
+    fallback to legacy fiscal union if the grid is empty.
+    """
+    px = _load_daily_px_asc(con, sec)
+    ann = _fetch_earn_ann_table(con, sec)
+    grid = _fetch_quarterly_ae_surprise_grid(con, sec)
+    if grid:
+        return _merge_ann_into_grid(px, grid, ann, next_tim_hint)[:4]
+    return _build_quarter_rows_legacy(con, sec, next_tim_hint)
     """Lightweight label for UI; not investment advice."""
     score = 0
     reasons = []
@@ -860,8 +1326,8 @@ def _run_snapshot_refs(con, sec: str, sym: str) -> tuple[dict, int]:
         "ticker": sym or sec.split()[0],
     }
     hits = 0
-    for bb_field, js_key in SAFE_SNAPSHOT_BB_FIELDS:
-        v = ref_field_safe(con, sec, bb_field)
+    for candidates, js_key in SAFE_SNAPSHOT_BB_FIELDS:
+        v = ref_first_candidate(con, sec, list(candidates))
         if v is None:
             continue
         n = first_float(v)
@@ -966,8 +1432,9 @@ def snapshot():
         except Exception as e:
             return jsonify({"error": str(e), "bbSecurity": sec}), 503
 
-    # NSE mnemonic fixes (yahoo *.NS ↔ Bloomberg IN Equity) occasionally need reconnect after prior bad requests
-    if hits == 0 and (not tried_reset) and (" IN Equity" in sec.upper() or " HK Equity" in sec.upper()):
+    if hits == 0 and (not tried_reset) and (
+        (" IN Equity" in sec.upper()) or (" HK Equity" in sec.upper())
+    ):
         reset_bloomberg_connection()
         tried_reset = True
         try:
@@ -989,6 +1456,14 @@ def _earnings_json_dict(con, sec: str, sym: str) -> dict:
         if v is not None:
             header[fld] = v
 
+    tm_raw_val = ref_first_candidate(con, sec, list(EXPECTED_REPORT_TIME_CANDIDATES))
+
+    period_label = _bb_ref_str(header.get("EXPECTED_REPORT_PERIOD"))
+    if not period_label:
+        period_label = _bb_ref_str(
+            ref_first_candidate(con, sec, list(EXPECTED_REPORT_PERIOD_CANDIDATES))
+        )
+
     nxt_dt = header.get("EXPECTED_REPORT_DT")
     nxt_typ = header.get("EXPECTED_REPORT_TYP")
 
@@ -1000,7 +1475,7 @@ def _earnings_json_dict(con, sec: str, sym: str) -> dict:
         except Exception:
             next_iso = _pandas_ts_to_iso(nxt_dt)
 
-    earnings_time = _report_typ_to_ui(nxt_typ)
+    earnings_time = _report_typ_to_ui(nxt_typ) or _classification_from_bb_time(tm_raw_val) or "during-market"
 
     px_asc_hint = []
     headline_reaction = None
@@ -1030,6 +1505,9 @@ def _earnings_json_dict(con, sec: str, sym: str) -> dict:
                 fq = fq + (" · " if fq else "") + "period end %s" % tail
             except Exception:
                 fq = fq + (" · " if fq else "") + fq_iso
+
+    if not fq and period_label:
+        fq = period_label
 
     rev_est = fmt_money_billions(first_float(header.get("BEST_SALES")))
     ebd_est = fmt_money_billions(first_float(header.get("BEST_EBITDA")))
@@ -1063,9 +1541,16 @@ def _earnings_json_dict(con, sec: str, sym: str) -> dict:
         "quarter": fq or None,
         "history": hist,
         "calendarPrimarySource": "bloomberg_bridge",
+        "expectedReportTyp": _bb_ref_str(nxt_typ),
+        "expectedReportPeriod": period_label,
+        "expectedReportTime": _bb_ref_str(tm_raw_val),
         "sourcesNote": (
-            "History rows align quarterly fundamentals; EPS surprise fields vary by entitlement. "
-            "Use Yahoo/FMP overlays on AlphaSignal server for fuller estimate grids."
+            "/earnings history prefers BDS "
+            + EARN_ANN_BULK_FIELD
+            + " (4 rows) for announcement dates/Bef-/Aft-mkt, "
+            + "BDH AE=A|E-style EPS/revenue grids for actual vs consensus and computed surprise %%, "
+            + "and PX_LAST close windows matching Excel BQL (Aft-mkt vs Bef-mkt). "
+            + "Fallback: legacy quarterly BDH merge. Yahoo/FMP on server can still overlay gaps."
         ),
     }
 
