@@ -1686,6 +1686,12 @@ function mergeFundSnapshots(y, f) {
   return out;
 }
 
+/** Yahoo NSE root → Bloomberg mnemonic (hyphen quirks). Keep in sync with bloomberg-bridge bridge.py `NSE_BB_OVERRIDES`. */
+const NSE_BB_OVERRIDES = /** @type {Record<string,string>} */ ({
+  'BAJAJ-AUTO': 'BAJAUT',
+  'M&M': 'MM'
+});
+
 /** Map app ticker to Bloomberg equity string for Desktop API ref() (examples: `AAPL US Equity`, `ASML NA Equity`, `9988 HK Equity`). */
 function toBloombergEquity(sym) {
   const s = String(sym || '')
@@ -1702,7 +1708,12 @@ function toBloombergEquity(sym) {
   if (/\.PA$/i.test(s)) return `${s.replace(/\.PA$/i, '')} FP Equity`;
   if (/\.DE$/i.test(s)) return `${s.replace(/\.DE$/i, '')} GR Equity`;
   if (/\.AS$/i.test(s)) return `${s.replace(/\.AS$/i, '')} NA Equity`;
-  if (/\.NS$/i.test(s)) return `${s.replace(/\.NS$/i, '')} IS Equity`;
+  if (/\.NS$/i.test(s)) {
+    let root = s.replace(/\.NS$/i, '');
+    root = NSE_BB_OVERRIDES[root] || root.replace(/-/g, ' ');
+    root = root.replace(/\s+/g, ' ').trim();
+    return `${root} IN Equity`;
+  }
   /** Swedish .ST before Japanese .T — e.g. ERIC.ST vs 6758.T */
   if (/\.ST$/i.test(s)) return `${s.replace(/\.ST$/i, '')} SS Equity`;
   if (/\.T$/i.test(s)) return `${s.replace(/\.T$/i, '')} JT Equity`;
