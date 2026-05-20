@@ -2694,7 +2694,7 @@ app.get('/api/technicals/:symbol', async (req, res) => {
   if (cached && Date.now() - cached.ts < TECH_TTL) return res.json(cached.data);
   try {
     const [daily, weekly] = await Promise.all([
-      fetchOHLCV(sym, '6mo', '1d'),
+      fetchOHLCV(sym, '2y', '1d').catch(() => fetchOHLCV(sym, '1y', '1d')),
       fetchOHLCV(sym, '2y', '1wk').catch(() => null)
     ]);
     if (!daily || daily.length < 20) return res.status(404).json({ error: 'Insufficient data' });
@@ -2722,7 +2722,12 @@ app.post('/api/technicals/batch', async (req, res) => {
         return;
       }
 
-      const daily = await fetchOHLCV(sym, '3mo', '1d');
+      // CRITICAL: Need 2y (504+ bars) for ma200, backtestSignal, and SEPA gates
+      // 3mo (65 bars) was causing: ma200=null, buyScore=0, action=Hold for all long picks
+      let daily = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
+      if (!daily || daily.length < 100) {
+        daily = await fetchOHLCV(sym, '1y', '1d').catch(() => null);
+      }
       if (!daily || daily.length < 20) return;
       const closes  = daily.map(d => d.c);
       const cp      = closes[closes.length - 1];
@@ -2969,6 +2974,22 @@ app.post('/api/technicals/batch', async (req, res) => {
             if(ss>=80){q.action='Sell';q.rating='Strong Sell';}
             else if(ss>=64){q.action='Sell';q.rating='Sell';}
             else{q.action='Hold';q.rating='Hold';}
+          }
+        });
+      }
+      // Re-derive action/rating after ALL Danelfin/FMP score adjustments
+      if (data.quantSignal) {
+        ['short','medium','long'].forEach(hz => {
+          const q = data.quantSignal[hz]; if (!q) return;
+          const bs = q.buyScore || 0, ss = q.sellScore || 0;
+          if (bs >= ss) {
+            if (bs >= 84)      { q.action = 'Buy';  q.rating = 'Strong Buy';  }
+            else if (bs >= 66) { q.action = 'Buy';  q.rating = 'Buy';         }
+            else               { q.action = 'Hold'; q.rating = 'Hold';        }
+          } else {
+            if (ss >= 80)      { q.action = 'Sell'; q.rating = 'Strong Sell'; }
+            else if (ss >= 64) { q.action = 'Sell'; q.rating = 'Sell';        }
+            else               { q.action = 'Hold'; q.rating = 'Hold';        }
           }
         });
       }
