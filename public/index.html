@@ -1449,7 +1449,8 @@ function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
 function dashFundDisplayGap(v){
   if (v==null||v==='') return true;
   var t = String(v).trim();
-  if (/^[\u2012\u2013\u2014\u2015\-\–\——\s]+$/u.test(t)) return true;
+  // Unicode dashes (figure/en/em/bar) + minus sign + ASCII hyphen; hyphen only at end of [] is literal
+  if (/^[\u2012\u2013\u2014\u2015\u2212\s-]+$/u.test(t)) return true;
   if (/^n\/?a$/i.test(t) || /^n\.a\.?$/i.test(t)) return true;
   if (/\bunknown\b/i.test(t)) return true;
   if (/\bnot\s+specified\b/i.test(t)) return true;
