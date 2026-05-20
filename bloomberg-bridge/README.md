@@ -166,7 +166,8 @@ Always pass **`bb=`** with the exact string from Terminal if a name does not res
 Returns next report date and EPS context for the AlphaSignal **earnings** card:
 
 - **Ref data:** `EXPECTED_REPORT_DT`, `EXPECTED_REPORT_TYP`, `BEST_EPS`, `BEST_FPERIOD_END_DT`
-- **History (best effort):** BDH series `IS_COMP_EPS` — field availability differs by listing; some names return an empty history.
+- **History (best effort):** Quarterly BDH aligns **actual EPS** (`IS_COMP_EPS` and fallbacks), optional **consensus** (`FQ_EPS_MEAN`, `BEST_EPS`, etc.), and **% surprise** (`FQ_EPS_PERCENT_SURPRISE`). If consensus is missing but **% surprise** AND actual exist, the bridge **derives** implied consensus \(E = A / (1 + \text{pct}/100)\).
+- **Asian / thin coverage:** Quarterly BDH accepts **2+** datapoints (was 4+) so short histories still return rows when Terminal has data.
 
 The Node server merges this automatically when **`BLOOMBERG_BRIDGE_URL`** is set (same secret as `/snapshot`).
 

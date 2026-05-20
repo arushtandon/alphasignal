@@ -74,7 +74,7 @@ BRIDGE_BIND = os.environ.get("BRIDGE_BIND", "127.0.0.1").strip() or "127.0.0.1"
 SECRET = os.environ.get("BLOOMBERG_BRIDGE_SECRET", "").strip()
 
 # Bump when changing ref parsing so /health proves which code is running on the Bloomberg PC.
-BRIDGE_BUILD = "20260519-session-retry-in-equity"
+BRIDGE_BUILD = "20260519-bdh-eps-act-est-asia"
 
 # Legacy name retained for README references.
 FLDS = [
@@ -118,14 +118,40 @@ EARN_HEADER_REF_FIELDS = [
 ]
 
 QUARTERLY_METRIC_GROUPS = [
-    (["IS_COMP_EPS"], "epsActual"),
+    (
+        [
+            "IS_COMP_EPS",
+            "IS_EPS",
+            "UNDERLYING_DILUTED_EPS",
+            "DILUTED_EPS",
+            "TRAIL_TWELVE_MTH_EPS",
+            "NORMALIZED_EPS_FROM_OPS",
+        ],
+        "epsActual",
+    ),
     (["SALES_REV_TURN"], "revenueActual"),
     (["EBITDA"], "ebitdaActual"),
     (["NET_INCOME"], "netIncomeActual"),
     (["EBIT_ADJ_TOT", "EBIT"], "operatingProfitActual"),
 ]
 
-QUARTERLY_SURPRISE_FIELDS = ["FQ_EPS_PERCENT_SURPRISE", "FQ_EPS_SURPRISE", "EPS_PERCENT_SURPRISE"]
+# Quarterly mean / consensus EPS (BDH quarterly). Tried until one returns coverage.
+QUARTERLY_EPS_ESTIMATE_FIELDS = [
+    "FQ_EPS_MEAN",
+    "MEAN_EPS_FQ",
+    "CQ_EPS_MEAN",
+    "BFGS_EPS_MEAN",
+    "EXPECTED_EPSQF",
+    "EPS_MEAN_REC",
+    "PE_CONS_EPS",
+    "BEST_EPS",
+]
+
+QUARTERLY_SURPRISE_FIELDS = [
+    "FQ_EPS_PERCENT_SURPRISE",
+    "FQ_EPS_SURPRISE",
+    "EPS_PERCENT_SURPRISE",
+]
 
 QUARTERLY_ANCHOR_FIELDS = ["EARN_REPORT_DT", "ECO_RELEASE_DT"]
 
@@ -508,7 +534,8 @@ def _bdh_series_quarterly(con, sec: str, fld: str):
     for elms in BB_QUARTERLY_ELMS_VARIANTS:
         df = _bdh_optional(con, sec, fld, sy, ey, elms=tuple(elms))
         pts = _series_sorted_desc(df)
-        if len(pts) >= 4:
+        # Asian / smaller histories: require at least two quarterly ticks; demanding 4+ dropped valid series.
+        if len(pts) >= 2:
             return pts
     df = _bdh_optional(con, sec, fld, sy, ey, elms=None)
     return _series_sorted_desc(df)
@@ -609,6 +636,17 @@ def reaction_bundle_for_anchor(
     return out
 
 
+def _eps_surprise_pct_normalize(x: float) -> float:
+    """Bloomberg often returns surprise as 0.12 vs 12 — normalize to percent points."""
+    try:
+        v = float(x)
+    except Exception:
+        return float("nan")
+    if abs(v) <= 1.25:
+        v *= 100.0
+    return v
+
+
 def _build_quarter_rows(con, sec: str, next_tim_hint: str | None) -> list[dict]:
     """Align last four fiscal quarter points across metrics (best effort)."""
     series_by_key: dict[str, list[tuple[str, float]]] = {}
@@ -632,6 +670,8 @@ def _build_quarter_rows(con, sec: str, next_tim_hint: str | None) -> list[dict]:
         if pts:
             anchor_pts = pts
             break
+
+    _, estimate_pts = first_series_for_candidates(con, sec, QUARTERLY_EPS_ESTIMATE_FIELDS)
 
     # Prefer IS_COMP_EPS dates, but revenue-only BDH can diverge — union quarter-ends so EPS can still match.
     iso_set: list[str] = []
@@ -669,16 +709,45 @@ def _build_quarter_rows(con, sec: str, next_tim_hint: str | None) -> list[dict]:
                 row[jk] = fmt_trim_num(v, 4)
             else:
                 row[jk] = fmt_money_billions(v)
-        sp = lookup(surprise_pts, iso)
+
+        eps_track = series_by_key.get("epsActual")
+        av_raw = lookup(eps_track, iso) if eps_track else None
+
+        pct_n = None
+        sp = lookup(surprise_pts, iso) if surprise_pts else None
         if sp is not None:
-            pct = sp
-            if abs(pct) <= 1.0:
-                pct *= 100.0
-            row["epsSurprise"] = (("+" if pct >= 0 else "") + str(round(pct, 2)) + "%")
-            if surprise_src:
-                row["epsSurpriseField"] = surprise_src
+            pct_n = _eps_surprise_pct_normalize(sp)
+            if pct_n == pct_n:  # not NaN
+                row["epsSurprise"] = (("+" if pct_n >= 0 else "") + str(round(pct_n, 2)) + "%")
+                if surprise_src:
+                    row["epsSurpriseField"] = surprise_src
+
         row["epsEstimate"] = None
+        est_f: float | None = None
+        if estimate_pts:
+            ev = lookup(estimate_pts, iso)
+            if ev is not None:
+                try:
+                    est_f = float(ev)
+                except Exception:
+                    est_f = None
+                if est_f is not None and abs(est_f) < 1e18:
+                    row["epsEstimate"] = fmt_trim_num(est_f, 4)
+
+        if row["epsEstimate"] is None and av_raw is not None and pct_n is not None and pct_n == pct_n:
+            src_ok = surprise_src and (
+                "PERCENT" in surprise_src.upper() or "PCT" in surprise_src.upper()
+            )
+            if src_ok and abs(pct_n) < 900:
+                denom = 1.0 + (pct_n / 100.0)
+                if abs(denom) > 1e-9:
+                    est_f = float(av_raw) / denom
+                    row["epsEstimate"] = fmt_trim_num(est_f, 4)
+
         row["beat"] = None
+        if av_raw is not None and est_f is not None:
+            row["beat"] = float(av_raw) >= float(est_f)
+
         anchor_val = lookup(anchor_pts, iso)
         anchor_iso = None
         if anchor_val is not None:
