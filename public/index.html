@@ -2060,16 +2060,15 @@ async function runDashScan(){
   });
   const deduped=Object.values(map);
 
-  // Only stocks where action is actually 'Buy' go into Buy section
-  // Prevents Hold/Sell stocks appearing as "Long/Buy Setups"
-  const BUY_MIN_SCORE = 62; // matches rate() threshold: sc>=62 → 'Buy'
-  const shortTop5 = [...deduped].filter(s=>(s.shortScore||0)>=BUY_MIN_SCORE&&s.shortAction==='Buy').sort((a,b)=>(b.shortScore||0)-(a.shortScore||0)).slice(0,5);
-  const medTop5   = [...deduped].filter(s=>(s.mediumScore||0)>=BUY_MIN_SCORE&&s.mediumAction==='Buy').sort((a,b)=>(b.mediumScore||0)-(a.mediumScore||0)).slice(0,5);
-  const longTop5  = [...deduped].filter(s=>(s.longScore||0)>=BUY_MIN_SCORE&&s.longAction==='Buy').sort((a,b)=>(b.longScore||0)-(a.longScore||0)).slice(0,5);
+  // Buy panes: horizon action must be 'Buy' AND score ≥ rate() Buy floor (merged: clarity from Claude + repo score gate).
+  const BUY_MIN_SCORE = 62; // rate(): sc>=62 → 'Buy'
+  const shortTop5 = [...deduped].filter(s => (s.shortScore || 0) >= BUY_MIN_SCORE && s.shortAction === 'Buy').sort((a, b) => (b.shortScore || 0) - (a.shortScore || 0)).slice(0, 5);
+  const medTop5 = [...deduped].filter(s => (s.mediumScore || 0) >= BUY_MIN_SCORE && s.mediumAction === 'Buy').sort((a, b) => (b.mediumScore || 0) - (a.mediumScore || 0)).slice(0, 5);
+  const longTop5 = [...deduped].filter(s => (s.longScore || 0) >= BUY_MIN_SCORE && s.longAction === 'Buy').sort((a, b) => (b.longScore || 0) - (a.longScore || 0)).slice(0, 5);
   const shortBuys = new Set(shortTop5.map(s=>s.ticker));
   const medBuys = new Set(medTop5.map(s=>s.ticker));
   const longBuys = new Set(longTop5.map(s=>s.ticker));
-  const SELL_MIN = 58; // matches rateS() Sell threshold — no Hold stocks in Sell section
+  const SELL_MIN = 58; // rateS() Sell floor — Short/Sell section stays Sell-leaning (not crowded by Hold/low sell scores)
   let shortSell5=[...deduped].filter(s=>!shortBuys.has(s.ticker)&&(s.shortSellScore||0)>=SELL_MIN).sort((a,b)=>(b.shortSellScore||0)-(a.shortSellScore||0)).slice(0,5);
   let medSell5=[...deduped].filter(s=>!medBuys.has(s.ticker)&&(s.mediumSellScore||0)>=SELL_MIN).sort((a,b)=>(b.mediumSellScore||0)-(a.mediumSellScore||0)).slice(0,5);
   let longSell5=[...deduped].filter(s=>!longBuys.has(s.ticker)&&(s.longSellScore||0)>=SELL_MIN).sort((a,b)=>(b.longSellScore||0)-(a.longSellScore||0)).slice(0,5);
