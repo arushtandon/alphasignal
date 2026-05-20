@@ -2722,8 +2722,7 @@ app.post('/api/technicals/batch', async (req, res) => {
         return;
       }
 
-      // CRITICAL: Need 2y (504+ bars) for ma200, backtestSignal, and SEPA gates
-      // 3mo (65 bars) was causing: ma200=null, buyScore=0, action=Hold for all long picks
+      // Need 2y (504+ bars) for MA200, backtestSignal, SEPA gates; fallback to 1y
       let daily = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
       if (!daily || daily.length < 100) {
         daily = await fetchOHLCV(sym, '1y', '1d').catch(() => null);
@@ -2974,22 +2973,6 @@ app.post('/api/technicals/batch', async (req, res) => {
             if(ss>=80){q.action='Sell';q.rating='Strong Sell';}
             else if(ss>=64){q.action='Sell';q.rating='Sell';}
             else{q.action='Hold';q.rating='Hold';}
-          }
-        });
-      }
-      // Re-derive action/rating after ALL Danelfin/FMP score adjustments
-      if (data.quantSignal) {
-        ['short','medium','long'].forEach(hz => {
-          const q = data.quantSignal[hz]; if (!q) return;
-          const bs = q.buyScore || 0, ss = q.sellScore || 0;
-          if (bs >= ss) {
-            if (bs >= 84)      { q.action = 'Buy';  q.rating = 'Strong Buy';  }
-            else if (bs >= 66) { q.action = 'Buy';  q.rating = 'Buy';         }
-            else               { q.action = 'Hold'; q.rating = 'Hold';        }
-          } else {
-            if (ss >= 80)      { q.action = 'Sell'; q.rating = 'Strong Sell'; }
-            else if (ss >= 64) { q.action = 'Sell'; q.rating = 'Sell';        }
-            else               { q.action = 'Hold'; q.rating = 'Hold';        }
           }
         });
       }
@@ -3459,8 +3442,9 @@ app.post('/api/history/add', express.json(), async (req, res) => {
   // Add new trades
   tradeHistory.unshift(...trades);
   
-  // Keep max 500 entries (50 days × 10 trades)
-  if (tradeHistory.length > 500) tradeHistory = tradeHistory.slice(0, 500);
+  // Cap total rows (multi-horizon scans add many per day; avoid unbounded growth)
+  const HISTORY_MAX_SERVER = 3000;
+  if (tradeHistory.length > HISTORY_MAX_SERVER) tradeHistory = tradeHistory.slice(0, HISTORY_MAX_SERVER);
   
   saveHistoryFile(tradeHistory);
   console.log('History: added', trades.length, 'trades, total:', tradeHistory.length);
@@ -5773,7 +5757,8 @@ app.post('/api/history/recalibrate-levels', async (req, res) => {
   const techMap = {};
   await Promise.all(openTickers.map(async ticker => {
     try {
-      const daily = await fetchOHLCV(ticker, '6mo', '1d');
+      let daily = await fetchOHLCV(ticker, '2y', '1d').catch(() => null);
+      if (!daily || daily.length < 30) daily = await fetchOHLCV(ticker, '1y', '1d').catch(() => null);
       const weekly = await fetchOHLCV(ticker, '2y', '1wk').catch(() => null);
       if (daily && daily.length >= 30) techMap[ticker] = buildFullTechResult(ticker, daily, weekly);
     } catch (e) {

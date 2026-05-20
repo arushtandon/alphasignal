@@ -511,7 +511,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
 
     <!-- HISTORY -->
     <div id="pane-history" class="pane">
-      <div class="ph"><div class="pt">Recommendation history</div><button class="btn" onclick="clearHist()">Clear all</button></div>
+      <div class="ph"><div class="pt">Recommendation history</div></div>
       <div id="histContent"></div>
     </div>
 
@@ -1096,6 +1096,8 @@ const SAMPLE=["NVDA","MSFT","AAPL","AMZN","META","TSLA","GOOGL","AMD","AZN.L","S
 // STATE
 // ══════════════════════════════════════════════
 const SK='as_v5';
+/** Max history rows kept in localStorage (must stay in sync with appetite for multi-day multi-horizon scans). */
+const HISTORY_MAX_LOCAL = 3000;
 let ST={history:[],watchlist:[],dashData:null,dashTs:null};
 
 /** Reject corrupted localStorage dashboard payloads (would leave UI stuck on "Loading…"). */
@@ -1204,10 +1206,15 @@ function switchTab(t){
   if(t==='history') {
     renderHist();
     renderSummaryCards('short');
-    // Silently auto-fix bad entry prices (async — renderHist ends with renderSummaryCards)
-    fixHistoryPrices(true).then(()=>{ renderHist(); });
-    const anyMktOpen = ST.history.some(h => isMarketTrading(h.ticker));
-    if(ST.history.length && anyMktOpen) setTimeout(refreshHistoryPnl, 3000);
+    fixHistoryPrices(true).then(async function () {
+      renderHist();
+      if (ST.history.length) {
+        try { await refreshHistoryPnl(); } catch (e) { console.warn(e); }
+      }
+    });
+    if (ST.history.length) {
+      refreshHistoryPnl().catch(function (e) { console.warn(e); });
+    }
   }
   if(t==='watchlist') renderWl();
 }
@@ -2091,58 +2098,69 @@ async function runDashScan(){
 
   const dashData={short:shortTop5,medium:medTop5,long:longTop5,shortSell:shortSell5,medSell:medSell5,longSell:longSell5};
   ST.dashData=dashData;ST.dashTs=Date.now();ss();
-  // Fetch live prices FIRST so history entries use real market prices, not AI-suggested levels
+  await hydrateDashDataWithLiveBatch(dashData);
+  await saveDashPicksToHistory(dashData); // priceCache + 2y tech snapshots + channel levels
+  await renderDashboard(dashData);
+}
+
+/**
+ * Live prices + /api/technicals/batch (2y daily on server) + fundamentals, attached to each pick.
+ * Used after dashboard scan and after "Clear all" history to re-seed with current engine parameters.
+ */
+async function hydrateDashDataWithLiveBatch(dashData) {
+  if (!dashData || typeof dashData !== 'object') return;
   const allPickTickers = [...new Set([
-    ...(dashData.short||[]), ...(dashData.medium||[]), ...(dashData.long||[]),
-    ...(dashData.shortSell||[]), ...(dashData.medSell||[]), ...(dashData.longSell||[])
-  ].map(s=>s.ticker))];
-  if(allPickTickers.length) {
-    try { await fetchLivePrices(allPickTickers); } catch(e) {}
-  }
-  var batchTech = {};
-  var batchFund = {};
-  if (allPickTickers.length) {
-    try {
-      var eqSyms = allPickTickers.filter(function (t) {
-        return !String(t).includes('=F') && !String(t).includes('-USD') && !String(t).includes('-EUR');
-      });
-      var tr = await fetch('/api/technicals/batch', {
+    ...(dashData.short || []), ...(dashData.medium || []), ...(dashData.long || []),
+    ...(dashData.shortSell || []), ...(dashData.medSell || []), ...(dashData.longSell || [])
+  ].map((s) => s.ticker).filter(Boolean))];
+  if (!allPickTickers.length) return;
+  try {
+    await fetchLivePrices(allPickTickers);
+  } catch (e) {}
+  let batchTech = {};
+  let batchFund = {};
+  try {
+    const eqSyms = allPickTickers.filter(function (t) {
+      return !String(t).includes('=F') && !String(t).includes('-USD') && !String(t).includes('-EUR');
+    });
+    const [tr, fr] = await Promise.all([
+      fetch('/api/technicals/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbols: allPickTickers })
-      });
-      var fr = await fetch('/api/fundamentals/batch', {
+      }),
+      fetch('/api/fundamentals/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbols: eqSyms })
-      });
-      if (tr.ok) batchTech = await tr.json();
-      if (fr.ok) batchFund = await fr.json();
-    } catch (e2) {}
+      })
+    ]);
+    if (tr.ok) batchTech = await tr.json();
+    if (fr.ok) batchFund = await fr.json();
+  } catch (e2) {
+    console.warn('hydrateDashDataWithLiveBatch', e2.message);
   }
   function attachTechFundSnap(s) {
     if (!s || !s.ticker) return;
-    var tech = batchTech[s.ticker];
-    var fund = batchFund[s.ticker];
+    const tech = batchTech[s.ticker];
+    const fund = batchFund[s.ticker];
     s._techSnap = tech || null;
     s._analystTarget = fund ? fund.targetMeanPrice : null;
     s._targetHighPrice = fund ? fund.targetHighPrice : null;
     mergeFundTilesFromBatchFund(s, fund);
   }
-  ['short','medium','long','shortSell','medSell','longSell'].forEach(function (k) {
+  ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell'].forEach(function (k) {
     (dashData[k] || []).forEach(attachTechFundSnap);
   });
-  ['short','medium','long','shortSell','medSell','longSell'].forEach(function(k){
-    (dashData[k]||[]).forEach(function(s){ enrichDashPickLevels(s); });
+  ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell'].forEach(function (k) {
+    (dashData[k] || []).forEach(function (s) {
+      enrichDashPickLevels(s);
+    });
   });
-  saveDashPicksToHistory(dashData);  // Now priceCache has live prices + per-horizon math
-  await renderDashboard(dashData);
 }
 
 async function saveDashPicksToHistory(data) {
   const today = new Date().toDateString();
-  const cutoff = new Date('2026-04-13').getTime();
-  if(Date.now() < cutoff) return;
 
   // Collect top 5 buy and top 5 sell per horizon
   // We save ONE record per ticker per day, with all horizon data embedded
@@ -2263,7 +2281,7 @@ async function saveDashPicksToHistory(data) {
         ST.history.unshift(t);
       }
     });
-    if(ST.history.length > 200) ST.history = ST.history.slice(0, 200);
+    if(ST.history.length > HISTORY_MAX_LOCAL) ST.history = ST.history.slice(0, HISTORY_MAX_LOCAL);
     ss();
   }
 }
@@ -2278,6 +2296,9 @@ async function loadHistoryFromServer(fetchOpts) {
         const serverKeys = new Set(serverData.map(h => h.ticker+'_'+(h.hz||'short')+'_'+new Date(h.entryDate||h.timestamp).toDateString()));
         const localOnly  = (ST.history||[]).filter(h => h.hz&&!serverKeys.has(h.ticker+'_'+h.hz+'_'+new Date(h.entryDate||h.timestamp).toDateString()));
         ST.history = [...serverData, ...localOnly];
+        ST.history.sort(function (a, b) {
+          return new Date(b.entryDate || b.timestamp) - new Date(a.entryDate || a.timestamp);
+        });
       } else if(ST.history&&ST.history.length>0) {
         console.log('Server empty, re-uploading', ST.history.length, 'local records');
         try { await fetch('/api/history/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ST.history)}); } catch(e){}
@@ -2289,14 +2310,6 @@ async function loadHistoryFromServer(fetchOpts) {
     }
   } catch(e) { console.warn('History load failed:', e.message); }
   return false;
-}
-
-async function clearHistoryServer() {
-  if(!confirm('Clear all recommendation history?')) return;
-  try {
-    await fetch('/api/history', {method:'DELETE'});
-    ST.history = []; ss(); renderHist();
-  } catch(e) { ST.history = []; ss(); renderHist(); }
 }
 
 async function resyncHistory() {
@@ -2595,7 +2608,7 @@ async function loadPickDetail(ticker,hz){
         shortPnlPct:null, mediumPnlPct:null, longPnlPct:null,
       });
     });
-    if(ST.history.length>200)ST.history=ST.history.slice(0,200);ss();
+    if(ST.history.length>HISTORY_MAX_LOCAL)ST.history=ST.history.slice(0,HISTORY_MAX_LOCAL);ss();
   }else{
     detailEl.innerHTML='<div class="eb">Could not load full analysis. Please try again.</div>';
   }
@@ -2710,7 +2723,7 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
         shortPnlDollar:null, mediumPnlDollar:null, longPnlDollar:null,
         shortPnlPct:null, mediumPnlPct:null, longPnlPct:null,
       });
-    });if(ST.history.length>200)ST.history=ST.history.slice(0,200);ss();}
+    });if(ST.history.length>HISTORY_MAX_LOCAL)ST.history=ST.history.slice(0,HISTORY_MAX_LOCAL);ss();}
     if(btn)btn.disabled=false;
     return stocks;
   }catch(err){
@@ -3557,7 +3570,7 @@ function renderHist() {
         pnlDisplay = '<span style="color:var(--m1);font-size:10px;font-family:DM Mono,monospace">⏳ Pending open</span>';
       } else if(computedPnlD == null) {
         // No price loaded yet
-        pnlDisplay = '<span style="color:var(--m1);font-size:10px;font-family:DM Mono,monospace;cursor:pointer" onclick="refreshHistoryPnl()">↻ Load PnL</span>';
+        pnlDisplay = '<span style="color:var(--m1);font-size:10px;font-family:DM Mono,monospace">Live price loading…</span>';
       } else {
         // Show unrealised PnL (yellow) regardless of market hours - last known price
         const pos  = computedPnlD >= 0;
@@ -3604,17 +3617,15 @@ function renderHist() {
 
   const pendingCount = hist.filter(h => h.shortPnlDollar == null).length;
   const pendingBanner = pendingCount > 0
-    ? '<div style="background:rgba(245,200,66,0.1);border:1px solid rgba(245,200,66,0.3);border-radius:8px;padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px">'
-      +'<span style="font-size:11px;color:#F5C842;font-family:DM Mono,monospace">'+pendingCount+' trade'+(pendingCount>1?'s':'')+' need live prices for PnL</span>'
-      +'<button class="btn ac" style="font-size:10px;padding:4px 12px;flex-shrink:0" onclick="refreshHistoryPnl()">↻ Refresh PnL</button></div>'
+    ? '<div style="background:rgba(245,200,66,0.08);border:1px solid rgba(245,200,66,0.25);border-radius:8px;padding:8px 12px">'
+      +'<span style="font-size:11px;color:#F5C842;font-family:DM Mono,monospace">'+pendingCount+' trade'+(pendingCount>1?'s':'')+' — fetching live quotes for PnL (automatic)</span></div>'
     : '';
 
   el.innerHTML = '<div class="hist-body">'+summaryCards + pendingBanner
     +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-top:2px">'
-    +'<span style="font-size:10px;color:var(--m1);font-family:DM Mono,monospace">'+hist.length+' Buy/Sell trades · $10k per trade · 🟡 Unrealised · ✓ TP hit · ✗ SL hit</span>'
-    +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
-    +'<button class="btn" style="font-size:10px;padding:4px 10px" onclick="refreshHistoryPnl()">↻ Refresh PnL</button>'
-    +'</div></div>'
+    +'<span style="font-size:10px;color:var(--m1);font-family:DM Mono,monospace">'+hist.length+' Buy/Sell trades · $10k per trade · 🟡 Unrealised · ✓ TP hit · ✗ SL hit · PnL refreshes when you open History</span>'
+    +'<div></div>'
+    +'</div>'
     +horizonTabs+mkTable('short')+mkTable('medium')+mkTable('long')+'</div>';
   renderSummaryCards('short');
 }
@@ -3750,10 +3761,31 @@ function isMarketTrading(ticker) {
   if(t.endsWith('.HK')) return utcMins>=90&&utcMins<=480;
   return utcMins>=810&&utcMins<=1200;
 }
-function getTimeLimitDays(hz) {
-  if(hz==='short') return 3;
-  if(hz==='medium') return 21;
-  return 180; // long
+/** Mon–Fri count from entry date through today (inclusive), local calendar days. */
+function tradingDaysElapsedSinceEntry(entryDateOrIso) {
+  var d0 = new Date(entryDateOrIso);
+  if (Number.isNaN(d0.getTime())) return 0;
+  var start = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate());
+  var end = new Date();
+  var endD = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  var n = 0;
+  for (var d = new Date(start); d <= endD; d.setDate(d.getDate() + 1)) {
+    var wd = d.getDay();
+    if (wd !== 0 && wd !== 6) n++;
+  }
+  return n;
+}
+
+/** Short: 20 session days; Medium: ~3 months sessions; Long: 180 calendar days (unchanged). */
+function horizonTimeLimitExceeded(hz, entryDateOrIso) {
+  if (hz === 'long') {
+    var daysOld = (Date.now() - new Date(entryDateOrIso).getTime()) / 86400000;
+    return daysOld >= 180;
+  }
+  var td = tradingDaysElapsedSinceEntry(entryDateOrIso);
+  if (hz === 'short') return td >= 20;
+  if (hz === 'medium') return td >= 63;
+  return false;
 }
 
 async function refreshHistoryPnl() {
@@ -3819,20 +3851,23 @@ async function refreshHistoryPnl() {
           h[hz+'Status']    = 'tp1_hit';
           h[hz+'ExitPrice'] = tp1;
         } else {
-          // Check time limit before marking as open
-          const hzLimits = {short:3, medium:21, long:180};
-          const daysOld = (Date.now() - new Date(h.entryDate||h.timestamp).getTime()) / 86400000;
-          if(daysOld >= (hzLimits[hz]||3) && h[hz+'Status'] !== 'time_limit') {
-            // Time limit reached — close at current price
+          var entryDt = h.entryDate || h.timestamp;
+          var overLimit = horizonTimeLimitExceeded(hz, entryDt);
+          if (!overLimit && h[hz+'Status'] === 'time_limit') {
+            // Rule was tightened (was 3 calendar days); restore incorrectly time-limited trades
             h[hz+'PnlDollar'] = pnlDollar;
-            h[hz+'PnlPct']    = pnlPct;
-            h[hz+'Status']    = 'time_limit';
+            h[hz+'PnlPct'] = pnlPct;
+            h[hz+'Status'] = 'open';
+            h[hz+'ExitPrice'] = '';
+          } else if (overLimit && h[hz+'Status'] !== 'time_limit') {
+            h[hz+'PnlDollar'] = pnlDollar;
+            h[hz+'PnlPct'] = pnlPct;
+            h[hz+'Status'] = 'time_limit';
             h[hz+'ExitPrice'] = curr.toFixed(2);
-          } else if(h[hz+'Status'] !== 'time_limit') {
-            // Open trade — unrealised PnL
+          } else if (h[hz+'Status'] !== 'time_limit') {
             h[hz+'PnlDollar'] = pnlDollar;
-            h[hz+'PnlPct']    = pnlPct;
-            h[hz+'Status']    = 'open';
+            h[hz+'PnlPct'] = pnlPct;
+            h[hz+'Status'] = 'open';
           }
         }
         h[hz+'CurrentPrice'] = curr;
@@ -4165,6 +4200,10 @@ async function startApp() {
     } catch (e) { /* ignore */ }
   }
 
+  if (ST.history.length) {
+    try { await refreshHistoryPnl(); } catch (_) { /* ignore */ }
+  }
+
   try {
     const ds = document.getElementById('dashStatus');
     if (!hasKey && ds) {
@@ -4237,7 +4276,7 @@ if (_inpBoot) _inpBoot.addEventListener('keydown', e => { if (e.key === 'Escape'
 
 function pnlBadge(dollar, pct) {
   if (dollar === null || dollar === undefined) {
-    return '<span style="color:var(--m1);font-size:10px;font-family:DM Mono,monospace;cursor:pointer" onclick="refreshHistoryPnl()" title="Click to load">↻ Load PnL</span>';
+    return '<span style="color:var(--m1);font-size:10px;font-family:DM Mono,monospace">—</span>';
   }
   const pos = dollar >= 0;
   const col = pos ? 'var(--buy)' : 'var(--sell)';
