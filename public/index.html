@@ -1097,13 +1097,24 @@ const SAMPLE=["NVDA","MSFT","AAPL","AMZN","META","TSLA","GOOGL","AMD","AZN.L","S
 // ══════════════════════════════════════════════
 const SK='as_v5';
 let ST={history:[],watchlist:[],dashData:null,dashTs:null};
+
+/** Reject corrupted localStorage dashboard payloads (would leave UI stuck on "Loading…"). */
+function normalizeDashData(raw){
+  if(raw==null||typeof raw!=='object'||Array.isArray(raw))return null;
+  var keys=['short','medium','long','shortSell','medSell','longSell'];
+  for(var i=0;i<keys.length;i++){
+    var v=raw[keys[i]];
+    if(v!=null&&!Array.isArray(v))return null;
+  }
+  return raw;
+}
 function ls(){
   try{
     const d=JSON.parse(localStorage.getItem(SK)||'{}');
     ST={
       history:(d.history||[]).filter(h=>h&&h.ticker),
       watchlist:d.watchlist||[],
-      dashData:d.dashData||null,
+      dashData:normalizeDashData(d.dashData)||null,
       dashTs:d.dashTs||null
     };
   }catch(e){}
@@ -1567,6 +1578,13 @@ function claudeFetchHeaders() {
 }
 
 async function loadDashboard(force=false){
+  const _prev = ST.dashData;
+  ST.dashData = normalizeDashData(ST.dashData);
+  if (ST.dashData !== _prev) {
+    if (!ST.dashData) ST.dashTs = null;
+    ss();
+  }
+
   if(!force&&ST.dashData&&ST.dashTs){
     const age=(Date.now()-ST.dashTs)/1000/3600;
     if(age<4){
@@ -1582,7 +1600,9 @@ async function loadDashboard(force=false){
 async function runDashScan(){
   const dashTsEl = document.getElementById('dashTs');
   if (dashTsEl) dashTsEl.textContent = 'Scanning research universe… (typically a few minutes; progress below)';
-  document.getElementById('dashStatus').innerHTML='<div class="prog-wrap">'
+  const dashStatusEl = document.getElementById('dashStatus');
+  if (!dashStatusEl){ console.warn('dashStatus missing'); }
+  else dashStatusEl.innerHTML='<div class="prog-wrap">'
     +'<div class="prog-title">Scanning global research universe</div>'
     +'<div style="font-size:10px;color:var(--m1);margin-bottom:4px;font-family:DM Mono,monospace">Free tier: 8s between batches</div>'
     +'<div class="prog-sub" id="pSub">Initialising...</div>'
@@ -2366,6 +2386,11 @@ async function fixHistoryPrices(silent) {
 
 
 async function renderDashboard(data){
+  if(!data||typeof data!=='object'||Array.isArray(data)){
+    console.warn('renderDashboard: invalid dashData — forcing rescan');
+    ST.dashData=null; ST.dashTs=null; ss();
+    await runDashScan(); return;
+  }
   const ts=ST.dashTs?new Date(ST.dashTs).toLocaleString():'—';
   document.getElementById('dashTs').textContent='Updated: '+ts+' · '+SAMPLE.length+' instruments · Prices: Yahoo Finance (real-time)';
   console.log('renderDashboard called, short picks:', data.short&&data.short.length, 'medium:', data.medium&&data.medium.length);
@@ -3923,7 +3948,15 @@ async function loadEarningsCalendar(force) {
     calParams.set('mcapMin', '0');
     calParams.set('topPerDay', '7');
     if (force) calParams.set('force', '1');
-    const resp = await fetch('/api/earnings-calendar?'+calParams.toString());
+    var calSig = null;
+    try {
+      if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function')
+        calSig = AbortSignal.timeout(90000);
+    } catch (_) {}
+    const resp = await fetch(
+      '/api/earnings-calendar?' + calParams.toString(),
+      calSig ? { signal: calSig } : {}
+    );
     if(!resp.ok) throw new Error('HTTP '+resp.status);
     let earnings = await resp.json();
     if (earnings && typeof earnings === 'object' && !Array.isArray(earnings)) {
@@ -4059,6 +4092,11 @@ function openQuickStartModal() {
 
 async function startApp() {
   window.CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
+
+  try {
+    var _dtBoot = document.getElementById('dashTs');
+    if (_dtBoot && String(_dtBoot.textContent || '').trim() === 'Loading...') _dtBoot.textContent = 'Connecting to API…';
+  } catch (_) {}
 
   const API_TIMEOUT_MS = 12000;
   function apiSignal() {

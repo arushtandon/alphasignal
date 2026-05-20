@@ -1727,8 +1727,11 @@ const BBG_ENT_FIELDS = [
   'PE_RATIO',
   'BEST_PEG_RATIO',
   'BEST_TARGET_MEDIAN',
+  'SALES_GROWTH',
   'SALES_YOY_GR',
-  'BEST_EPS_GROWTH'
+  'EPS_GROWTH',
+  'BEST_EPS_GROWTH',
+  'IS_EPS'
 ];
 
 function bloombergEnterpriseBase() {
@@ -1816,8 +1819,9 @@ function parseBloombergEnterpriseRefData(respJson) {
     trailingPE: num(fd.PE_RATIO),
     pegRatio: num(fd.BEST_PEG_RATIO),
     targetMeanPrice: num(fd.BEST_TARGET_MEDIAN),
-    revenueGrowth: num(fd.SALES_YOY_GR),
-    earningsGrowth: num(fd.BEST_EPS_GROWTH),
+    revenueGrowth: num(fd.SALES_GROWTH ?? fd.SALES_YOY_GR),
+    earningsGrowth: num(fd.EPS_GROWTH ?? fd.BEST_EPS_GROWTH),
+    fundamentalTrailingEps: num(fd.IS_EPS),
     _bbSecurity: row.security || null
   };
   const hasAny = Object.keys(out).some(
@@ -1968,7 +1972,8 @@ async function fetchBloombergBridgeFundamentals(symbol) {
       num(j.currentPrice) != null ||
       num(j.marketCap) != null ||
       num(j.revenueGrowth) != null ||
-      num(j.earningsGrowth) != null;
+      num(j.earningsGrowth) != null ||
+      num(j.fundamentalTrailingEps) != null;
     if (j.error && !hasNumericPayload) {
       lastBloombergSnapshotProbe = {
         ts: Date.now(),
@@ -1990,6 +1995,7 @@ async function fetchBloombergBridgeFundamentals(symbol) {
       targetMeanPrice: num(j.targetMeanPrice),
       revenueGrowth: num(j.revenueGrowth),
       earningsGrowth: num(j.earningsGrowth),
+      fundamentalTrailingEps: num(j.fundamentalTrailingEps),
       debtToEquity: num(j.debtToEquity),
       returnOnEquity: num(j.returnOnEquity),
       returnOnAssets: num(j.returnOnAssets),
@@ -2211,6 +2217,15 @@ function normalizeBbBridgeHistRows(rows) {
         epsSurprise: surp,
         beat,
         revenueActual: row?.revenueActual != null ? row.revenueActual : null,
+        revenueEstimate: row?.revenueEstimate != null ? row.revenueEstimate : null,
+        revenueSurprise: row?.revenueSurprise != null ? String(row.revenueSurprise) : null,
+        earningsReleaseTiming:
+          row?.earningsReleaseTiming != null ? String(row.earningsReleaseTiming).trim() : null,
+        announcementDate:
+          row?.announcementDate != null ? String(row.announcementDate).trim().slice(0, 10) : '',
+        announcementTimeRaw: row?.announcementTimeRaw != null ? String(row.announcementTimeRaw) : null,
+        announcementPeriod: row?.announcementPeriod != null ? String(row.announcementPeriod) : null,
+        historyRowSource: row?.historyRowSource != null ? String(row.historyRowSource) : null,
         ebitdaActual: row?.ebitdaActual != null ? row.ebitdaActual : null,
         netIncomeActual: row?.netIncomeActual != null ? row.netIncomeActual : null,
         operatingProfitActual: row?.operatingProfitActual != null ? row.operatingProfitActual : null,
@@ -2239,7 +2254,7 @@ function overlayQuarterYyWithBloomberg(existingRow, bbRow) {
     }
   };
   fillIfEmpty('epsActual', 'epsEstimate', 'epsSurprise', 'beat');
-  fillIfEmpty('revenueActual');
+  fillIfEmpty('revenueActual', 'revenueEstimate', 'revenueSurprise');
   return merged;
 }
 
@@ -2301,7 +2316,10 @@ function applyBloombergBridgeEarningsOverlay(
       quarter,
       epsHistory,
       historySource,
-      calendarPrimary
+      calendarPrimary,
+      expectedReportTyp: null,
+      expectedReportPeriod: null,
+      expectedReportTime: null
     };
   }
   const gap =
@@ -2359,7 +2377,10 @@ function applyBloombergBridgeEarningsOverlay(
     quarter: outQ,
     epsHistory: Array.isArray(outHist) ? outHist : epsHistory,
     historySource: outHistSrc,
-    calendarPrimary: outCal
+    calendarPrimary: outCal,
+    expectedReportTyp: bbEarn.expectedReportTyp ?? null,
+    expectedReportPeriod: bbEarn.expectedReportPeriod ?? null,
+    expectedReportTime: bbEarn.expectedReportTime ?? null
   };
 }
 
@@ -4349,10 +4370,18 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
   const displayEndISO = addUTCISODays(toISO, 135);
   const vendorEndISO  = addUTCISODays(toISO, 90);
 
-  // ── STEP 1: Bloomberg Bridge — ALWAYS FIRST (bridge is always running) ─────
-  // Bloomberg has authoritative earnings dates, EPS estimates, and call times.
-  // Run all tracked tickers in parallel chunks — fast, no throttle needed on bridge.
+  // ── STEP 1: Bloomberg Bridge (skip when URL is LAN/loopback on a public host — saves long TCP stalls)
   let bloombergTrackedHits = 0;
+  const skipBbCal =
+    !bloombergBridgeUrl() ||
+    (typeof bloombergBridgeUrlIsUnreachableFromInternet === 'function' &&
+      bloombergBridgeUrlIsUnreachableFromInternet());
+  if (skipBbCal && bloombergBridgeUrl()) {
+    console.log(
+      'Earnings calendar: skipping Bloomberg bridge (URL not reachable from this server, e.g. 127.0.0.1 on Render)'
+    );
+  }
+  if (!skipBbCal) {
   const BB_CHUNK = 15; // bigger chunk = faster (bridge handles parallel fine)
   for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i += BB_CHUNK) {
     const chunk = EARNINGS_CAL_SYMBOLS.slice(i, i + BB_CHUNK);
@@ -4374,6 +4403,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
     }
   }
   console.log(`Earnings calendar: Bloomberg bridge ${bloombergTrackedHits}/${EARNINGS_CAL_SYMBOLS.length} hits`);
+  }
 
   // ── STEP 2: Finnhub bulk calendar — fills tickers Bloomberg didn't return ──
   // Finnhub is a bulk API (one call for date range), very fast
@@ -4934,6 +4964,9 @@ app.get('/api/earnings/:symbol', async (req, res) => {
         postEventPriceHintNext: bbEarn.postEventPriceHintNext ?? null,
         primaryStockReactionInterpretationHint:
           bbEarn.primaryStockReactionInterpretationHint ?? null,
+        expectedReportTyp: bbEarn.expectedReportTyp ?? null,
+        expectedReportPeriod: bbEarn.expectedReportPeriod ?? null,
+        expectedReportTime: bbEarn.expectedReportTime ?? null,
         sourcesNote: bbEarn.sourcesNote ?? null
       };
       if (Object.values(extras).some((x) => x != null)) bloombergBridgeExtras = extras;
@@ -4950,6 +4983,9 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       earningsTime: merged.callTime || null,
       quarter: merged.quarter,
       calendarPrimarySource: merged.calendarPrimary || null,
+      expectedReportTyp: merged.expectedReportTyp ?? null,
+      expectedReportPeriod: merged.expectedReportPeriod ?? null,
+      expectedReportTime: merged.expectedReportTime ?? null,
       calendarSourcesConsulted: sourcesUsed,
       history: histSend,
       historySource: histSourceOut,

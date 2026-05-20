@@ -159,15 +159,19 @@ Always pass **`bb=`** with the exact string from Terminal if a name does not res
 
 ## Fields (editable in `bridge.py`)
 
-`BEST_PE_NTM`, `PE_RATIO`, `BEST_PEG_RATIO`, `BEST_TARGET_MEDIAN`, `SALES_YOY_GR`, `BEST_EPS_GROWTH`.
+**`/snapshot`** global equity staples (ordered with fallbacks in `SAFE_SNAPSHOT_BB_FIELDS`):
+
+- `PE_RATIO` → trailing P/E · `BEST_PEG_RATIO` → PEG · `IS_EPS` → `fundamentalTrailingEps`
+- `EPS_GROWTH` (fallback `BEST_EPS_GROWTH`) · `SALES_GROWTH` (fallback `SALES_YOY_GR`)
+- Plus price, market cap, `BEST_PE_NTM`, target, margins, etc.
 
 ### `/earnings?symbol=AAPL` (and optional `&bb=AAPL US Equity`)
 
 Returns next report date and EPS context for the AlphaSignal **earnings** card:
 
-- **Ref data:** `EXPECTED_REPORT_DT`, `EXPECTED_REPORT_TYP`, `BEST_EPS`, `BEST_FPERIOD_END_DT`
-- **History (best effort):** Quarterly BDH aligns **actual EPS** (`IS_COMP_EPS` and fallbacks), optional **consensus** (`FQ_EPS_MEAN`, `BEST_EPS`, etc.), and **% surprise** (`FQ_EPS_PERCENT_SURPRISE`). If consensus is missing but **% surprise** AND actual exist, the bridge **derives** implied consensus \(E = A / (1 + \text{pct}/100)\).
-- **Asian / thin coverage:** Quarterly BDH accepts **2+** datapoints (was 4+) so short histories still return rows when Terminal has data.
+- **Ref data:** `EXPECTED_REPORT_DT`, `EXPECTED_REPORT_TYP`, `EXPECTED_REPORT_PERIOD`, **time** (`EXPECTED_REPORT_TIME` and alternates), `BEST_EPS`, `BEST_FPERIOD_END_DT`
+- **History (preferred path, Excel-aligned):** `bulkref` on **`EARN_ANN_DT_TIME_HIST_WITH_EPS`** (BDS-style overrides: first 4 rows × 3 cols) for **fiscal period**, **announcement date**, and **time** (`Bef-mkt` / `Aft-mkt`). **EPS & revenue** last 4 quarters use BDH with **`ACTUAL_OR_ESTIMATE`** overrides when the API accepts them (`IS_COMP_EPS_ADJUSTED` → `IS_COMP_EPS` → `IS_EPS`, and `SALES_REV_TURN`), mirroring BQL `AE=A` vs `AE=E`. **Surprise %** is computed as \((A-E)/|E|\times100\) when both exist. **Price reaction** matches the Excel BQL rule: **Aft-mkt** = close on announcement session → next session close; **Bef-mkt / during** = prior close → announcement session close (from daily `PX_LAST`).
+- **Fallback:** If BDS or AE overrides are empty/unavailable, legacy quarterly BDH union (multi-field stitch + optional `FQ_EPS_PERCENT_SURPRISE`, etc.) still returns up to four rows.
 
 The Node server merges this automatically when **`BLOOMBERG_BRIDGE_URL`** is set (same secret as `/snapshot`).
 
