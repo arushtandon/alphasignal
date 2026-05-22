@@ -5100,6 +5100,37 @@ function ratingImpliesSell(rating) {
 }
 
 /**
+ * Claude JSON sometimes uses the wrong ticker (esp. HK/NS names). Merge must use the *requested*
+ * symbols or fundamentals, Bloomberg lines, and /api/earnings on the client will bind to the wrong name.
+ */
+function alignAiStockRowsToRequestedTickers(stocks, requested) {
+  if (!Array.isArray(stocks) || !Array.isArray(requested) || !requested.length) return stocks || [];
+  const out = stocks.map((row) => (row && typeof row === 'object' ? { ...row } : {}));
+  if (requested.length === 1) {
+    if (out.length >= 1) out[0].ticker = requested[0];
+    return out.slice(0, 1);
+  }
+  if (out.length === requested.length) {
+    for (let i = 0; i < out.length; i++) out[i].ticker = requested[i];
+    return out;
+  }
+  const used = new Set();
+  const norm = (t) => String(t || '').trim().toUpperCase();
+  const picked = [];
+  for (const row of out) {
+    const u = norm(row.ticker);
+    if (requested.includes(u) && !used.has(u)) {
+      used.add(u);
+      picked.push({ ...row, ticker: u });
+    }
+  }
+  if (picked.length) return picked;
+  const n = Math.min(out.length, requested.length);
+  for (let i = 0; i < n; i++) out[i].ticker = requested[i];
+  return out.slice(0, n);
+}
+
+/**
  * ATR-based TP/SL multipliers — hedge fund standard.
  * SL must clear daily noise (min 2×ATR). R:R ≥ 1.5:1 on TP1.
  *   Short  (1-3d):  SL=-2×ATR, TP1=+3×ATR  → R:R 1.5:1
@@ -5557,6 +5588,14 @@ Output ONLY the JSON array. No markdown.`;
       return res.status(500).json({ error: 'Could not parse analysis JSON', preview: aiText.slice(0, 200) });
     }
 
+    stocks = alignAiStockRowsToRequestedTickers(stocks, requestedWithPrice);
+    if (!stocks.length) {
+      return res.status(500).json({
+        error: 'Analysis JSON tickers did not match requested symbols',
+        preview: aiText.slice(0, 200)
+      });
+    }
+
     // ── Merge server signals + prices — override Claude's scores ────────────────
     stocks = await Promise.all(stocks.map(async row => {
       const sym  = (row.ticker || '').toUpperCase();
@@ -5612,6 +5651,19 @@ Output ONLY the JSON array. No markdown.`;
       const mergedRow = applyServerPriceLevels(row, +pq.price, tech || null, fund || null);
       mergeFundamentalsForUi(mergedRow, fund || null);
       injectAnalyzeRowFromServerTech(mergedRow, tech || null);
+
+      const _mktAn = classifyMarket(sym);
+      if (
+        _mktAn.tier === 'fmp_quality' ||
+        (_mktAn.tier === 'danelfin_eu' && _mktAn.fmp)
+      ) {
+        try {
+          const _fmpR = await fetchFmpScore(sym);
+          if (_fmpR && typeof _fmpR === 'object') mergedRow.fmpScore = _fmpR;
+        } catch (_e) {
+          /* optional */
+        }
+      }
 
       const dk = (process.env.DANELFIN_API_KEY || '').trim();
       if (dk && !sym.includes('=F') && !sym.includes('-USD') && !sym.includes('-EUR')) {

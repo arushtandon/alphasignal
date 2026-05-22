@@ -1795,6 +1795,10 @@ async function runDashScan(){
 
         const res = tryParseArray(rawText);
         if(res && res.length > 0){
+          // Claude sometimes returns wrong tickers — pin rows to THIS batch index (fixes batchTech/batchFund/batchNews keys & dashboard picks).
+          if (batch.length === 1 && res.length === 1) res[0].ticker = batch[0];
+          else if (batch.length === res.length) res.forEach(function (row, ix) { row.ticker = batch[ix]; });
+          else res.forEach(function (row) { row.ticker = String(row.ticker || '').trim().toUpperCase(); });
           function scoreFrom(rating, action, winRate){
             const v=(rating||action||'').toLowerCase();
             const wr = winRate || 0;
@@ -3114,6 +3118,119 @@ function renderCard(s){
   const _badgeText=_isML?'rgba(0,210,255,0.95)':_isFMP?'#00c864':'rgba(180,180,180,0.7)';
   const _badgeIcon=_isML?'🤖':_isFMP?'📊':'📈';
   const _badgeLabel=_mm.label||(_isML?'Danelfin AI':_isFMP?'FMP Quality':'Technical Only');
+  var _fmpCard = '';
+  if (_isFMP) {
+    var _fm = (s.fmpScore && typeof s.fmpScore === 'object') ? s.fmpScore : null;
+    if (_fm) {
+      var _fq = _fm.qualityScore != null && !isNaN(Number(_fm.qualityScore)) ? Number(_fm.qualityScore) : null;
+      var _fp = _fm.piotroski != null && !isNaN(Number(_fm.piotroski)) ? Number(_fm.piotroski) : null;
+      var _fa = _fm.altmanZ != null && !isNaN(Number(_fm.altmanZ)) ? Number(_fm.altmanZ) : null;
+      var _fOrRaw = (_fm.overallRating != null && String(_fm.overallRating).trim()) ? String(_fm.overallRating).trim() : '';
+      var _fOr = _fOrRaw ? escMinimalHtml(_fOrRaw) : '';
+      var _fBuy = !!_fm.buy_track_record;
+      /** Claude spec: Quality /10 — 🟢 ≥7 Strong · 🟡 ≥5 Moderate · 🔴 &lt;5 Weak */
+      var _qk = '';
+      var _qv = '';
+      var _qz = '';
+      if (_fq == null) {
+        _qk = ''; _qv = '<span style="color:rgba(200,200,200,0.45)">—</span>';
+        _qz = '<span style="color:rgba(200,200,200,0.45)">n/a</span>';
+      } else if (_fq >= 7) {
+        _qk = '🟢'; _qv = '<span style="color:#00e68a;font-weight:800">' + escMinimalHtml(String(_fq)) + '<span style="opacity:.45;font-weight:600;font-size:.75em">/10</span></span>';
+        _qz = '<span style="color:#00e68a;font-size:10px;font-weight:600">Strong</span>';
+      } else if (_fq >= 5) {
+        _qk = '🟡'; _qv = '<span style="color:#F5C842;font-weight:800">' + escMinimalHtml(String(_fq)) + '<span style="opacity:.45;font-weight:600;font-size:.75em">/10</span></span>';
+        _qz = '<span style="color:#F5C842;font-size:10px;font-weight:600">Moderate</span>';
+      } else {
+        _qk = '🔴'; _qv = '<span style="color:#ff6b6b;font-weight:800">' + escMinimalHtml(String(_fq)) + '<span style="opacity:.45;font-weight:600;font-size:.75em">/10</span></span>';
+        _qz = '<span style="color:#ff6b6b;font-size:10px;font-weight:600">Weak</span>';
+      }
+      /** Piotroski /9 — 🟢 ≥7 Healthy · 🟡 ≥5 Moderate · 🔴 &lt;5 Weak */
+      var _pk = '';
+      var _pv = '';
+      var _pz = '';
+      if (_fp == null) {
+        _pk = ''; _pv = '<span style="color:rgba(200,200,200,0.45)">—</span>'; _pz = '<span style="color:rgba(200,200,200,0.45)">n/a</span>';
+      } else if (_fp >= 7) {
+        _pk = '🟢'; _pv = '<span style="color:#00e68a;font-weight:800">' + escMinimalHtml(String(_fp)) + '<span style="opacity:.45;font-weight:600;font-size:.75em">/9</span></span>';
+        _pz = '<span style="color:#00e68a;font-size:10px;font-weight:600">Healthy</span>';
+      } else if (_fp >= 5) {
+        _pk = '🟡'; _pv = '<span style="color:#F5C842;font-weight:800">' + escMinimalHtml(String(_fp)) + '<span style="opacity:.45;font-weight:600;font-size:.75em">/9</span></span>';
+        _pz = '<span style="color:#F5C842;font-size:10px;font-weight:600">Moderate</span>';
+      } else {
+        _pk = '🔴'; _pv = '<span style="color:#ff6b6b;font-weight:800">' + escMinimalHtml(String(_fp)) + '<span style="opacity:.45;font-weight:600;font-size:.75em">/9</span></span>';
+        _pz = '<span style="color:#ff6b6b;font-size:10px;font-weight:600">Weak</span>';
+      }
+      /** Altman Z — 🟢 &gt;2.99 Safe · 🟡 &gt;1.81 Grey · 🔴 ≤1.81 Distress */
+      var _ak = '';
+      var _av = '';
+      var _az = '';
+      if (_fa == null) {
+        _ak = ''; _av = '<span style="color:rgba(200,200,200,0.45)">—</span>'; _az = '<span style="color:rgba(200,200,200,0.45)">n/a</span>';
+      } else if (_fa > 2.99) {
+        _ak = '🟢'; _av = '<span style="color:#00e68a;font-weight:800">' + escMinimalHtml(_fa.toFixed(2)) + '</span>';
+        _az = '<span style="color:#00e68a;font-size:10px;font-weight:600">Safe zone</span>';
+      } else if (_fa > 1.81) {
+        _ak = '🟡'; _av = '<span style="color:#F5C842;font-weight:800">' + escMinimalHtml(_fa.toFixed(2)) + '</span>';
+        _az = '<span style="color:#F5C842;font-size:10px;font-weight:600">Grey zone</span>';
+      } else {
+        _ak = '🔴'; _av = '<span style="color:#ff6b6b;font-weight:800">' + escMinimalHtml(_fa.toFixed(2)) + '</span>';
+        _az = '<span style="color:#ff6b6b;font-size:10px;font-weight:600">Distress</span>';
+      }
+      /** FMP letter rating — 🟢 A grades · 🟡 B grades · 🔴 C/D */
+      var _rk = '';
+      var _rv = '';
+      var _rz = '';
+      var _rU = (_fOrRaw || '').toUpperCase();
+      if (!_fOr) {
+        _rv = '<span style="color:rgba(200,200,200,0.45)">—</span>';
+        _rz = '<span style="color:rgba(200,200,200,0.45)">n/a</span>';
+      } else if (/^A/.test(_rU)) {
+        _rk = '🟢'; _rv = '<span style="color:#00e68a;font-weight:800;font-family:DM Mono,monospace">' + _fOr + '</span>';
+        _rz = '<span style="color:#00e68a;font-size:10px;font-weight:600">A-band</span>';
+      } else if (/^B/.test(_rU)) {
+        _rk = '🟡'; _rv = '<span style="color:#F5C842;font-weight:800;font-family:DM Mono,monospace">' + _fOr + '</span>';
+        _rz = '<span style="color:#F5C842;font-size:10px;font-weight:600">B-band</span>';
+      } else {
+        _rk = '🔴'; _rv = '<span style="color:#ff6b6b;font-weight:800;font-family:DM Mono,monospace">' + _fOr + '</span>';
+        _rz = '<span style="color:#ff6b6b;font-size:10px;font-weight:600">C / D</span>';
+      }
+      var _fmpRow = function (em, title, numHtml, tierHtml) {
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,0.04);border-radius:7px;padding:7px 9px;margin-bottom:5px;border:1px solid rgba(255,255,255,0.06)">'
+          + '<div style="display:flex;align-items:center;gap:8px;min-width:0">'
+          + '<span style="font-size:14px;line-height:1;flex-shrink:0">' + (em || '') + '</span>'
+          + '<div><div style="font-size:8px;font-weight:600;color:rgba(255,255,255,0.45);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.06em">' + title + '</div>'
+          + '<div style="font-size:13px;font-family:DM Mono,monospace;line-height:1.2">' + numHtml + '</div></div></div>'
+          + '<div style="text-align:right;flex-shrink:0">' + tierHtml + '</div></div>';
+      };
+      _fmpCard =
+        '<div style="background:linear-gradient(135deg,rgba(8,42,28,0.97),rgba(5,28,18,0.99));border:1px solid rgba(0,200,120,0.28);border-radius:10px;padding:11px 13px;margin-bottom:4px">'
+        + '<div style="margin-bottom:8px"><div style="font-size:9px;font-weight:700;color:rgba(0,230,140,0.95);font-family:DM Mono,monospace;letter-spacing:.08em">FMP QUALITY</div>'
+        + '<div style="font-size:7px;color:rgba(0,230,140,0.4);font-family:DM Mono,monospace">Color tiers match rules below (composite + Piotroski + Altman + FMP rating).</div></div>'
+        + _fmpRow(_qk, 'Quality score', _qv, _qz)
+        + _fmpRow(_pk, 'Piotroski F-Score', _pv, _pz)
+        + _fmpRow(_ak, 'Altman Z-Score', _av, _az)
+        + _fmpRow(_rk, 'FMP rating', _rv, _rz)
+        + '<div style="display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(0,0,0,0.2);border-radius:6px;padding:6px 8px;margin:6px 0 8px;font-size:10px;font-weight:700;font-family:DM Mono,monospace">'
+        + (_fBuy ? '<span style="color:#00e68a">✓ Buy-track bias</span>' : '<span style="color:rgba(200,200,200,0.45)">No buy-track bias</span>')
+        + '</div>'
+        + '<div style="font-size:7px;font-family:DM Mono,monospace;color:rgba(190,235,205,0.52);line-height:1.55;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px">'
+        + '<strong style="color:rgba(210,245,220,0.75)">Colour key</strong><br/>'
+        + 'Quality /10 · 🟢 ≥7 Strong · 🟡 ≥5 Moderate · 🔴 &lt;5 Weak<br/>'
+        + 'Piotroski /9 · 🟢 ≥7 Healthy · 🟡 ≥5 Moderate · 🔴 &lt;5 Weak<br/>'
+        + 'Altman Z · 🟢 &gt;2.99 Safe zone · 🟡 &gt;1.81 Grey zone · 🔴 ≤1.81 Distress<br/>'
+        + 'FMP rating · 🟢 A+/A/A- · 🟡 B+/B/B- · 🔴 C or D'
+        + '</div>'
+        + '<div style="font-size:8px;font-family:DM Mono,monospace;color:rgba(170,215,185,0.45);line-height:1.45;margin-top:6px">'
+        + 'Horizons: short → Piotroski; medium → quality /10; long → Altman distress risk.'
+        + '</div></div>';
+    } else {
+      _fmpCard =
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(0,200,120,0.15);border-radius:8px;padding:9px 11px;margin-bottom:4px">'
+        + '<div style="font-size:9px;font-weight:600;color:rgba(0,200,120,0.75);font-family:DM Mono,monospace;margin-bottom:4px">FMP SCORE UNAVAILABLE</div>'
+        + '<div style="font-size:8px;color:rgba(180,180,180,0.55);font-family:DM Mono,monospace;line-height:1.5">Add <strong>FMP_API_KEY</strong> on the Render service (Financial Modeling Prep) to load numeric quality, Piotroski, Altman Z, and better earnings history for HK/NSE/JP listings.</div></div>';
+    }
+  }
   const ac=aCls(s.action);
   const isSellCard=(s.action||'').toLowerCase()==='sell'||(s.shortRating||'').toLowerCase().includes('strong sell')||(s.shortRating||'').toLowerCase().includes('sell');
   const cardEntry=isSellCard?(s.sellEntry||s.entry):s.entry;
@@ -3364,6 +3481,7 @@ function renderCard(s){
     +(_isTech?'<span style="font-size:8px;color:rgba(200,200,200,0.4);font-family:DM Mono,monospace"> — SD channel + momentum</span>':'')
     +'</div>'
     // Danelfin card (US + EU)
+    +_fmpCard
     +(_isML&&s.danelfinAiScore!=null
       ?'<div style="background:linear-gradient(135deg,rgba(10,22,50,0.97),rgba(5,12,32,0.99));border:1px solid rgba(55,115,225,0.30);border-radius:10px;padding:11px 13px;margin-bottom:4px">'
         +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
