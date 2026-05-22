@@ -2060,6 +2060,7 @@ async function runDashScan(){
   });
   const deduped=Object.values(map);
 
+  // Only include stocks where action is actually 'Buy' in the Buy/Long section
   const shortTop5=[...deduped].filter(s=>s.shortAction==='Buy').sort((a,b)=>(b.shortScore||0)-(a.shortScore||0)).slice(0,5);
   const medTop5  =[...deduped].filter(s=>s.mediumAction==='Buy').sort((a,b)=>(b.mediumScore||0)-(a.mediumScore||0)).slice(0,5);
   const longTop5 =[...deduped].filter(s=>s.longAction==='Buy').sort((a,b)=>(b.longScore||0)-(a.longScore||0)).slice(0,5);
@@ -3295,6 +3296,35 @@ function renderCard(s){
         +(s.danelfinAiScore>=8&&s.danelfinBuyTrack?'🎯 ML confirms: high probability of beating market over 3M':s.danelfinAiScore>=7?'✓ ML: above-average market-beating probability':s.danelfinAiScore<=3?'⚠ ML flags underperformance risk':'→ Neutral ML signal — technical entry timing is the primary edge')
         +'</div></div>'
       :'')
+    // FMP quality card (Asian equities)
+    +(_isFMP&&s.fmpScore
+      ?'<div style="background:linear-gradient(135deg,rgba(0,32,22,0.97),rgba(0,18,12,0.99));border:1px solid rgba(0,180,100,0.28);border-radius:10px;padding:11px 13px;margin-bottom:4px">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+        +'<div><div style="font-size:9px;font-weight:700;color:rgba(0,220,130,0.95);font-family:DM Mono,monospace;letter-spacing:.08em">FMP QUALITY SCORE</div>'
+        +'<div style="font-size:7px;color:rgba(0,220,130,0.4);font-family:DM Mono,monospace">Piotroski F-Score · Altman Z · Analyst Consensus</div></div>'
+        +'<div style="text-align:center"><div style="font-size:22px;font-weight:800;font-family:DM Mono,monospace;line-height:1;color:'+(s.fmpScore.qualityScore>=7?'#00c864':s.fmpScore.qualityScore>=5?'#c9f14f':s.fmpScore.qualityScore<=3?'#ff4444':'rgba(200,200,200,0.8)')+'">'+( s.fmpScore.qualityScore||'—')+'<span style="font-size:10px;opacity:0.4">/10</span></div>'
+        +'<div style="font-size:7px;color:rgba(255,255,255,0.3);font-family:DM Mono,monospace">QUALITY</div></div></div>'
+        +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:6px">'
+        +(s.fmpScore.piotroski!=null?'<div style="background:rgba(255,255,255,0.04);border-radius:5px;padding:5px"><div style="font-size:7px;color:rgba(255,255,255,0.38);font-family:DM Mono,monospace">Piotroski</div>'
+          +'<div style="font-size:13px;font-weight:700;color:'+(s.fmpScore.piotroski>=7?'#00c864':s.fmpScore.piotroski>=5?'#c9f14f':'#ff5555')+';font-family:DM Mono,monospace">'+s.fmpScore.piotroski+'/9</div></div>':'')
+        +(s.fmpScore.altmanZ!=null?'<div style="background:rgba(255,255,255,0.04);border-radius:5px;padding:5px"><div style="font-size:7px;color:rgba(255,255,255,0.38);font-family:DM Mono,monospace">Altman Z</div>'
+          +'<div style="font-size:13px;font-weight:700;color:'+(s.fmpScore.altmanZ>2.99?'#00c864':s.fmpScore.altmanZ>1.81?'#c9f14f':'#ff5555')+';font-family:DM Mono,monospace">'+s.fmpScore.altmanZ.toFixed(1)+'</div></div>':'')
+        +(s.fmpScore.overallRating?'<div style="background:rgba(255,255,255,0.04);border-radius:5px;padding:5px"><div style="font-size:7px;color:rgba(255,255,255,0.38);font-family:DM Mono,monospace">Rating</div>'
+          +'<div style="font-size:16px;font-weight:800;color:'+(s.fmpScore.overallRating[0]==='A'?'#00c864':s.fmpScore.overallRating[0]==='B'?'#c9f14f':'#ff5555')+';font-family:DM Mono,monospace">'+s.fmpScore.overallRating+'</div></div>':'')
+        +'</div>'
+        +(s.fmpScore.analystCounts&&s.fmpScore.analystCounts.total>0
+          ?'<div style="display:flex;align-items:center;gap:4px;margin-bottom:5px"><div style="font-size:7px;color:rgba(255,255,255,0.38);font-family:DM Mono,monospace;min-width:52px">Analysts:</div>'
+           +'<div style="flex:1;display:flex;gap:2px;align-items:center">'
+           +['strongBuy','buy','hold','sell','strongSell'].map(function(k){
+             var v=s.fmpScore.analystCounts[k]||0;if(!v)return '';
+             var col=k.includes('Buy')?'#00c864':k==='hold'?'#c9f14f':'#ff5555';
+             return '<div style="background:'+col+';opacity:0.8;width:'+Math.round(v/s.fmpScore.analystCounts.total*60)+'px;min-width:3px;height:8px;border-radius:2px" title="'+k+': '+v+'"></div>';
+           }).join('')
+           +'</div><div style="font-size:8px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace">'+s.fmpScore.analystCounts.total+' analysts</div></div>'
+          :'')
+        +'<div style="font-size:8px;color:rgba(0,220,130,0.6);font-family:DM Mono,monospace">ℹ No AI model exists for Asian markets — FMP provides rules-based quality scoring</div>'
+        +'</div>'
+      :'')
     // Technical-only notice (commodities)
     +(_isTech
       ?'<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(200,200,200,0.12);border-radius:8px;padding:9px 11px;margin-bottom:4px">'
@@ -3332,67 +3362,48 @@ function renderCard(s){
     +'<div class="mt"><div class="ml">Fin Health</div><div class="mv '+(s.financialHealth==='Strong'?'g':s.financialHealth==='Weak'?'r':'y')+'">'+(s.financialHealth||'—')+'</div></div>'
     +'<div class="mt"><div class="ml">Industry Pos</div><div class="mv">'+(s.industryPos||'—')+'</div></div>'
     +'</div>'
-    // FMP quality scores for Asian equities (.NS/.T/.HK) — Piotroski, Altman Z, Quality
     +(s.fmpScore
       ?'<div style="margin-top:10px;padding:10px 12px;background:linear-gradient(135deg,rgba(0,32,22,0.95),rgba(0,22,14,0.95));border:1px solid rgba(0,200,100,0.2);border-radius:8px">'
         +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">'
           +'<div style="font-size:8px;font-weight:700;color:#00dc82;font-family:DM Mono,monospace;letter-spacing:.12em">📊 FMP QUALITY SCORE</div>'
-          +'<div style="font-size:7px;color:rgba(0,220,130,0.4);font-family:DM Mono,monospace">Piotroski F-Score · Altman Z · Quality Rating</div>'
+          +'<div style="font-size:7px;color:rgba(0,220,130,0.4);font-family:DM Mono,monospace">Piotroski F-Score · Altman Z · Analyst Consensus</div>'
         +'</div>'
         +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">'
-          // Overall Quality Score /10
           +(s.fmpScore.qualityScore!=null
             ?'<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;text-align:center">'
               +'<div style="font-size:9px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace;margin-bottom:4px">Quality</div>'
-              +'<div style="font-size:18px;font-weight:800;font-family:DM Mono,monospace;line-height:1;color:'+(s.fmpScore.qualityScore>=7?'#00c864':s.fmpScore.qualityScore>=5?'#c9f14f':'#ff5555')+'">'+(s.fmpScore.qualityScore)+'<span style="font-size:9px;opacity:0.4">/10</span></div>'
-              +'<div style="font-size:8px;color:rgba(255,255,255,0.3);margin-top:2px">'+(s.fmpScore.qualityScore>=7?'Strong':'Moderate')+'</div>'
-            +'</div>'
-            :'')
-          // Piotroski F-Score /9
-          +(s.fmpScore.piotroski!=null
+              +'<div style="font-size:20px;font-weight:800;font-family:DM Mono,monospace;color:'+(s.fmpScore.qualityScore>=7?'#00c864':s.fmpScore.qualityScore>=5?'#c9f14f':'#ff5555')+'">'+(s.fmpScore.qualityScore)+'<span style="font-size:9px;opacity:0.4">/10</span></div>'
+              +'<div style="font-size:8px;color:rgba(255,255,255,0.3);margin-top:2px">'+(s.fmpScore.qualityScore>=7?'Strong':s.fmpScore.qualityScore>=5?'Moderate':'Weak')+'</div>'
+            +'</div>':'')          +(s.fmpScore.piotroski!=null
             ?'<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;text-align:center">'
               +'<div style="font-size:9px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace;margin-bottom:4px">Piotroski</div>'
-              +'<div style="font-size:18px;font-weight:800;font-family:DM Mono,monospace;line-height:1;color:'+(s.fmpScore.piotroski>=7?'#00c864':s.fmpScore.piotroski>=5?'#c9f14f':'#ff5555')+'">'+(s.fmpScore.piotroski)+'<span style="font-size:9px;opacity:0.4">/9</span></div>'
+              +'<div style="font-size:20px;font-weight:800;font-family:DM Mono,monospace;color:'+(s.fmpScore.piotroski>=7?'#00c864':s.fmpScore.piotroski>=5?'#c9f14f':'#ff5555')+'">'+(s.fmpScore.piotroski)+'<span style="font-size:9px;opacity:0.4">/9</span></div>'
               +'<div style="font-size:8px;color:rgba(255,255,255,0.3);margin-top:2px">'+(s.fmpScore.piotroski>=7?'Healthy':s.fmpScore.piotroski>=5?'Moderate':'Weak')+'</div>'
-            +'</div>'
-            :'')
-          // Altman Z-Score
-          +(s.fmpScore.altmanZ!=null
+            +'</div>':'')          +(s.fmpScore.altmanZ!=null
             ?'<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;text-align:center">'
               +'<div style="font-size:9px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace;margin-bottom:4px">Altman Z</div>'
-              +'<div style="font-size:18px;font-weight:800;font-family:DM Mono,monospace;line-height:1;color:'+(s.fmpScore.altmanZ>2.99?'#00c864':s.fmpScore.altmanZ>1.81?'#c9f14f':'#ff5555')+'">'+(s.fmpScore.altmanZ.toFixed(1))+'</div>'
+              +'<div style="font-size:20px;font-weight:800;font-family:DM Mono,monospace;color:'+(s.fmpScore.altmanZ>2.99?'#00c864':s.fmpScore.altmanZ>1.81?'#c9f14f':'#ff5555')+'">'+(s.fmpScore.altmanZ.toFixed(1))+'</div>'
               +'<div style="font-size:8px;color:rgba(255,255,255,0.3);margin-top:2px">'+(s.fmpScore.altmanZ>2.99?'Safe Zone':s.fmpScore.altmanZ>1.81?'Grey Zone':'Distress')+'</div>'
-            +'</div>'
-            :'')
-          // FMP Overall Rating (A+, A, B+, B, C, D)
-          +(s.fmpScore.overallRating
+            +'</div>':'')          +(s.fmpScore.overallRating
             ?'<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;text-align:center">'
               +'<div style="font-size:9px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace;margin-bottom:4px">FMP Rating</div>'
-              +'<div style="font-size:18px;font-weight:800;font-family:DM Mono,monospace;line-height:1;color:'+(s.fmpScore.overallRating[0]==='A'?'#00c864':s.fmpScore.overallRating[0]==='B'?'#c9f14f':'#ff5555')+'">'+(s.fmpScore.overallRating)+'</div>'
+              +'<div style="font-size:20px;font-weight:800;font-family:DM Mono,monospace;color:'+(s.fmpScore.overallRating[0]==='A'?'#00c864':s.fmpScore.overallRating[0]==='B'?'#c9f14f':'#ff5555')+'">'+(s.fmpScore.overallRating)+'</div>'
               +'<div style="font-size:8px;color:rgba(255,255,255,0.3);margin-top:2px">FMP Grade</div>'
-            +'</div>'
-            :'')
+            +'</div>':'')
         +'</div>'
-        // Analyst consensus bar if available
         +(s.fmpScore.analystCounts&&s.fmpScore.analystCounts.total>0
           ?'<div style="margin-top:10px">'
             +'<div style="font-size:8px;color:rgba(255,255,255,0.35);font-family:DM Mono,monospace;margin-bottom:5px">ANALYST CONSENSUS — '+s.fmpScore.analystCounts.total+' analysts</div>'
             +'<div style="display:flex;gap:2px;border-radius:4px;overflow:hidden">'
-              +['strongBuy','buy','hold','sell','strongSell'].map(function(k){
-                var v=s.fmpScore.analystCounts[k]||0;if(!v)return '';
-                var col=k.includes('Buy')?'#00c864':k==='hold'?'rgba(200,200,200,0.3)':'#ff4444';
-                return '<div style="flex:'+(v/s.fmpScore.analystCounts.total)+';background:'+col+';height:6px;border-radius:2px" title="'+k+': '+v+'"></div>';
-              }).join('')
+              +['strongBuy','buy','hold','sell','strongSell'].map(function(k){var v=s.fmpScore.analystCounts[k]||0;if(!v)return '';var col=k.includes('Buy')?'#00c864':k==='hold'?'rgba(200,200,200,0.3)':'#ff4444';return '<div style="flex:'+(v/s.fmpScore.analystCounts.total)+';background:'+col+';height:6px;border-radius:2px" title="'+k+': '+v+'"></div>';}).join('')
             +'</div>'
             +'<div style="display:flex;justify-content:space-between;margin-top:3px">'
               +'<div style="font-size:7px;color:#00c864;font-family:DM Mono,monospace">Buy: '+((s.fmpScore.analystCounts.strongBuy||0)+(s.fmpScore.analystCounts.buy||0))+'</div>'
               +'<div style="font-size:7px;color:rgba(200,200,200,0.4);font-family:DM Mono,monospace">Hold: '+(s.fmpScore.analystCounts.hold||0)+'</div>'
               +'<div style="font-size:7px;color:#ff4444;font-family:DM Mono,monospace">Sell: '+((s.fmpScore.analystCounts.sell||0)+(s.fmpScore.analystCounts.strongSell||0))+'</div>'
             +'</div>'
-          +'</div>'
-          :'')
-      +'</div>'
-      :'')
+          +'</div>':'')
+      +'</div>':'')
     +(s.newsImpact?'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:7px;padding:8px 10px;margin-bottom:8px"><div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">News Impact</div><div style="font-size:12px;color:'+(s.newsTone==='positive'?'var(--buy)':s.newsTone==='negative'?'var(--sell)':'var(--tx)')+'">'+escMinimalHtml(s.newsImpact)+'</div></div>':'')
     +buildEarningsRow(s)
     +(s.catalyst?'<div style="margin-bottom:6px"><span style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.1em">Catalyst: </span><span class="prose">'+s.catalyst+'</span></div>':'')
