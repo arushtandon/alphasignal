@@ -4220,6 +4220,27 @@ async function startApp() {
     } else {
       setHeaderKey('AI off (quotes OK)', false);
     }
+    try {
+      var ki = document.getElementById('keyIndicator');
+      if (ki && d && typeof d === 'object' && d.bloomberg_bridge_configured) {
+        var expB = String(d.bloomberg_bridge_build_expected || '').trim();
+        var lbs = d.bloomberg_bridge_last_snapshot;
+        var lbe = d.bloomberg_bridge_last_earnings;
+        var repB =
+          (lbs && lbs.bridgeBuild) ||
+          (lbe && lbe.bridgeBuild) ||
+          '';
+        var tip =
+          'AI status · Bloomberg bridge build: ' +
+          (repB ? repB : 'not sampled yet — run dashboard/analyze to probe') +
+          (expB ? ' · shipped expected: ' + expB : '');
+        if (expB && repB && repB !== expB) {
+          tip += ' — mismatch: update bloomberg-bridge on Terminal PC';
+        }
+        tip += ' · click for optional client key';
+        ki.title = tip;
+      }
+    } catch (_) {}
   } catch (e) {
     const aborted = String(e.name || e) === 'AbortError' || String(e.message || '').toLowerCase().includes('abort');
     setHeaderKey(aborted ? 'API timeout (>' + Math.round(API_TIMEOUT_MS / 1000) + 's)' : 'Cannot reach API', false);

@@ -1446,6 +1446,7 @@ def snapshot():
     if hits == 0:
         return jsonify({"error": "no data", "bbSecurity": sec}), 503
 
+    out["bridge_build"] = BRIDGE_BUILD
     return jsonify(out)
 
 
@@ -1571,7 +1572,9 @@ def earnings():
     while True:
         try:
             con = get_bcon()
-            return jsonify(_earnings_json_dict(con, sec, sym))
+            payload = _earnings_json_dict(con, sec, sym)
+            payload["bridge_build"] = BRIDGE_BUILD
+            return jsonify(payload)
         except Exception as e:
             if tried_reset or not _exc_suggests_bloomberg_restart(e):
                 return jsonify({"error": str(e), "bbSecurity": sec}), 503

@@ -1692,6 +1692,9 @@ const NSE_BB_OVERRIDES = /** @type {Record<string,string>} */ ({
   'M&M': 'MM'
 });
 
+/** Must match bloomberg-bridge `BRIDGE_BUILD` — bridge also echoes this on /snapshot, /earnings, /health. */
+const BLOOMBERG_BRIDGE_BUILD_EXPECTED = '20260520-nse-in-equity-mapping';
+
 /** Map app ticker to Bloomberg equity string for Desktop API ref() (examples: `AAPL US Equity`, `ASML NA Equity`, `9988 HK Equity`). */
 function toBloombergEquity(sym) {
   const s = String(sym || '')
@@ -1876,6 +1879,7 @@ let lastBloombergSnapshotProbe = {
   err: null,
   numericFieldsSeen: 0,
   bbSecurity: null,
+  bridgeBuild: /** @type {string|null} */ (null),
   elapsedMs: null
 };
 
@@ -1888,6 +1892,7 @@ let lastBloombergEarningsProbe = {
   err: null,
   bbSecurity: null,
   nextDateSeen: null,
+  bridgeBuild: /** @type {string|null} */ (null),
   elapsedMs: null
 };
 
@@ -1956,6 +1961,7 @@ async function fetchBloombergBridgeFundamentals(symbol) {
         err: typeof j?.error === 'string' ? j.error : `HTTP ${r.status}`,
         numericFieldsSeen: 0,
         bbSecurity: j?.bbSecurity || sec || null,
+        bridgeBuild: typeof j?.bridge_build === 'string' ? j.bridge_build : null,
         elapsedMs: Date.now() - t0
       };
       return null;
@@ -1969,6 +1975,7 @@ async function fetchBloombergBridgeFundamentals(symbol) {
         err: 'invalid_snapshot_json_body',
         numericFieldsSeen: 0,
         bbSecurity: sec,
+        bridgeBuild: typeof j?.bridge_build === 'string' ? j.bridge_build : null,
         elapsedMs: Date.now() - t0
       };
       return null;
@@ -1994,6 +2001,7 @@ async function fetchBloombergBridgeFundamentals(symbol) {
         err: String(j.error),
         numericFieldsSeen: 0,
         bbSecurity: j.bbSecurity || sec,
+        bridgeBuild: typeof j?.bridge_build === 'string' ? j.bridge_build : null,
         elapsedMs: Date.now() - t0
       };
       return null;
@@ -2042,6 +2050,7 @@ async function fetchBloombergBridgeFundamentals(symbol) {
       err: null,
       numericFieldsSeen: nNum,
       bbSecurity: out._bbSecurity || sec,
+      bridgeBuild: typeof j?.bridge_build === 'string' ? j.bridge_build : null,
       elapsedMs: Date.now() - t0
     };
     return hasAny ? out : null;
@@ -2054,6 +2063,7 @@ async function fetchBloombergBridgeFundamentals(symbol) {
       err: String(e.message || e),
       numericFieldsSeen: 0,
       bbSecurity: sec,
+      bridgeBuild: null,
       elapsedMs: Date.now() - t0
     };
     console.warn('Bloomberg bridge', symbol, e.message);
@@ -2069,7 +2079,7 @@ async function fetchBloombergBridgeEarnings(symbol) {
   const base = bloombergBridgeUrl();
   const symTrim = String(symbol || '').trim();
   const t0 = Date.now();
-  const stampFail = (httpStatus, err, bbSec) => {
+  const stampFail = (httpStatus, err, bbSec, bridgeBuild) => {
     lastBloombergEarningsProbe = {
       ts: Date.now(),
       symbol: symTrim,
@@ -2078,6 +2088,7 @@ async function fetchBloombergBridgeEarnings(symbol) {
       err,
       bbSecurity: bbSec || null,
       nextDateSeen: null,
+      bridgeBuild: typeof bridgeBuild === 'string' ? bridgeBuild : null,
       elapsedMs: Date.now() - t0
     };
   };
@@ -2103,7 +2114,7 @@ async function fetchBloombergBridgeEarnings(symbol) {
           : typeof j?.hint === 'string'
             ? j.hint
             : `HTTP_${r.status}`;
-      stampFail(r.status, errMsg, j?.bbSecurity || bb);
+      stampFail(r.status, errMsg, j?.bbSecurity || bb, j?.bridge_build);
       return j && typeof j === 'object' ? { ...j, _httpStatus: r.status } : null;
     }
     const nd =
@@ -2116,6 +2127,7 @@ async function fetchBloombergBridgeEarnings(symbol) {
       err: null,
       bbSecurity: bb,
       nextDateSeen: /^\d{4}-\d{2}-\d{2}$/.test(nd || '') ? nd : null,
+      bridgeBuild: typeof j?.bridge_build === 'string' ? j.bridge_build : null,
       elapsedMs: Date.now() - t0
     };
     return j && typeof j === 'object' ? j : null;
@@ -3386,10 +3398,12 @@ app.get('/api/health', (req, res) => {
     bloomberg_equity_example_samples: {
       AAPL: toBloombergEquity('AAPL'),
       ASML_AS: toBloombergEquity('ASML.AS'),
-      HK9988: toBloombergEquity('9988.HK')
+      HK9988: toBloombergEquity('9988.HK'),
+      RELIANCE_NS: toBloombergEquity('RELIANCE.NS')
     },
     danelfin_configured: !!(process.env.DANELFIN_API_KEY || '').trim(),
     hasKey: !!process.env.ANTHROPIC_API_KEY,
+    bloomberg_bridge_build_expected: BLOOMBERG_BRIDGE_BUILD_EXPECTED,
     bloomberg_bridge_configured: Boolean(bloombergBridgeUrl()),
     bloomberg_bridge_secret_configured_on_server: Boolean((process.env.BLOOMBERG_BRIDGE_SECRET || '').trim()),
     bloomberg_bridge_lan_unreachable_from_cloud:
@@ -3408,6 +3422,7 @@ app.get('/api/health', (req, res) => {
           httpStatus: lastBloombergSnapshotProbe.httpStatus,
           numericFieldsSeen: lastBloombergSnapshotProbe.numericFieldsSeen,
           bbSecurity: lastBloombergSnapshotProbe.bbSecurity,
+          bridgeBuild: lastBloombergSnapshotProbe.bridgeBuild,
           elapsedMs: lastBloombergSnapshotProbe.elapsedMs,
           error: lastBloombergSnapshotProbe.err
         }
@@ -3419,6 +3434,7 @@ app.get('/api/health', (req, res) => {
           ok: lastBloombergEarningsProbe.ok,
           httpStatus: lastBloombergEarningsProbe.httpStatus,
           bbSecurity: lastBloombergEarningsProbe.bbSecurity,
+          bridgeBuild: lastBloombergEarningsProbe.bridgeBuild,
           nextDateSeen: lastBloombergEarningsProbe.nextDateSeen,
           elapsedMs: lastBloombergEarningsProbe.elapsedMs,
           error: lastBloombergEarningsProbe.err
