@@ -1736,6 +1736,12 @@ async function runDashScan(){
       }
       const respText = await resp.text();
       console.log('API response status:', resp.status, respText.substring(0,200));
+      if(resp.status===529){
+        const log529=document.getElementById('pLog');
+        if(log529) log529.innerHTML+='<div style="color:#ff9933">Render overloaded (529) — waiting 35s before next batch...</div>';
+        await new Promise(r=>setTimeout(r,35000));
+        continue;
+      }
       if(resp.status===429){
         // Rate limited - wait 15 seconds and continue
         const logEl=document.getElementById('pLog');
@@ -1811,6 +1817,7 @@ async function runDashScan(){
             const news = batchNews[r.ticker] || null;
             const qs = tech && tech.quantSignal;
             if (qs && (news || tech)) {
+              const tierNow = classifyMarketTicker(r.ticker).tier;
               const newsScore = news != null && news.score != null ? news.score : 0;
               const newsBull  = news && news.sentiment === 'bullish' && newsScore > 20;
               const newsBear  = news && news.sentiment === 'bearish' && newsScore < -20;
@@ -1861,7 +1868,7 @@ async function runDashScan(){
               r.newsScore = newsScore;
               r.newsSummary = news && news.summary ? news.summary : '';
               r.avoidEarnings = avoidEarnings;
-              var _danBoost = batchDan[r.ticker];
+              var _danBoost = tierNow === 'danelfin_us' || tierNow === 'danelfin_eu' ? batchDan[r.ticker] : null;
               if (_danBoost) {
                 if (_danBoost.technical >= 7 && _danBoost.aiscore >= 6 && _danBoost.buy_track_record) {
                   var _sb = Math.round((_danBoost.technical - 5) * 2.5);
@@ -1907,19 +1914,20 @@ async function runDashScan(){
               var _hasCatalyst= news&&news.catalysts&&news.catalysts.length>0&&_newsScore>=40;
               if (_newsStrong||_hasCatalyst) {
                 var _t2Bump = _newsStrong?10:7;
+                var _catLbl = tierNow === 'fmp_quality' ? 'FMP tier + Catalyst' : 'Danelfin + SD + Catalyst';
                 if (_shortTier>=1) {
                   _shortTier=2;
-                  r.shortTierLabel='Danelfin + SD + Catalyst';
+                  r.shortTierLabel=_catLbl;
                   r.shortScore = Math.min(98, (r.shortScore||0) + _t2Bump);
                 }
                 if (_medTier>=1) {
                   _medTier=2;
-                  r.mediumTierLabel='Danelfin + SD + Catalyst';
+                  r.mediumTierLabel=_catLbl;
                   r.mediumScore = Math.min(98, (r.mediumScore||0) + _t2Bump);
                 }
                 if (_longTier>=1) {
                   _longTier=2;
-                  r.longTierLabel='Danelfin + Fund≥7 + Catalyst';
+                  r.longTierLabel=tierNow === 'fmp_quality' ? 'FMP long + Catalyst' : 'Danelfin + Fund≥7 + Catalyst';
                   r.longScore = Math.min(98, (r.longScore||0) + _t2Bump);
                 }
                 if (r.shortScore>55&&r.shortSellScore>55) { if (r.shortScore>=r.shortSellScore) r.shortSellScore=20; else r.shortScore=20; }
@@ -1957,7 +1965,7 @@ async function runDashScan(){
               if (r.mediumScore  > 55 && r.mediumSellScore  > 55) { if (r.mediumScore > r.mediumSellScore) r.mediumSellScore = 20; else r.mediumScore = 20; }
               if (r.longScore    > 55 && r.longSellScore    > 55) { if (r.longScore > r.longSellScore) r.longSellScore = 20; else r.longScore = 20; }
             }
-            var _dan = batchDan[r.ticker];
+            var _dan = tierNow === 'danelfin_us' || tierNow === 'danelfin_eu' ? batchDan[r.ticker] : null;
             if (_dan) {
               var _dn = function (x) { var v = Number(x); return isFinite(v) ? v : null; };
               var _ai = _dn(_dan.aiscore);
@@ -1980,13 +1988,15 @@ async function runDashScan(){
             }
           });
           res.forEach(function(r){
+            var tierNow = classifyMarketTicker(r.ticker).tier;
             var tech = batchTech[r.ticker];
             var fund = batchFund[r.ticker];
+            var _mktCls = classifyMarketTicker(r.ticker);
             if (tech) {
-              r.marketTier   = tech.marketTier   || 'danelfin_us';
-              r.marketLabel  = tech.marketLabel  || 'Danelfin AI (US)';
-              r.marketRegion = tech.marketRegion || 'us';
-              r.marketNote   = tech.marketNote   || '';
+              r.marketTier   = _mktCls.tier;
+              r.marketLabel  = _mktCls.label;
+              r.marketRegion = tech.marketRegion || _mktCls.region;
+              r.marketNote   = tech.marketNote || _mktCls.note || '';
               r.fmpScore     = tech.fmpScore     || null;
               r._atr = tech.atr || null;
               r._atrPct = tech.atrPct || null;
@@ -2060,14 +2070,15 @@ async function runDashScan(){
   });
   const deduped=Object.values(map);
 
-  // Only include stocks where action is actually 'Buy' in the Buy/Long section
-  const shortTop5=[...deduped].filter(s=>s.shortAction==='Buy').sort((a,b)=>(b.shortScore||0)-(a.shortScore||0)).slice(0,5);
-  const medTop5  =[...deduped].filter(s=>s.mediumAction==='Buy').sort((a,b)=>(b.mediumScore||0)-(a.mediumScore||0)).slice(0,5);
-  const longTop5 =[...deduped].filter(s=>s.longAction==='Buy').sort((a,b)=>(b.longScore||0)-(a.longScore||0)).slice(0,5);
+  // Buy panes: horizon action must be 'Buy' AND score ≥ rate() Buy floor (merged: clarity from Claude + repo score gate).
+  const BUY_MIN_SCORE = 62; // rate(): sc>=62 → 'Buy'
+  const shortTop5 = [...deduped].filter(s => (s.shortScore || 0) >= BUY_MIN_SCORE && s.shortAction === 'Buy').sort((a, b) => (b.shortScore || 0) - (a.shortScore || 0)).slice(0, 5);
+  const medTop5 = [...deduped].filter(s => (s.mediumScore || 0) >= BUY_MIN_SCORE && s.mediumAction === 'Buy').sort((a, b) => (b.mediumScore || 0) - (a.mediumScore || 0)).slice(0, 5);
+  const longTop5 = [...deduped].filter(s => (s.longScore || 0) >= BUY_MIN_SCORE && s.longAction === 'Buy').sort((a, b) => (b.longScore || 0) - (a.longScore || 0)).slice(0, 5);
   const shortBuys = new Set(shortTop5.map(s=>s.ticker));
   const medBuys = new Set(medTop5.map(s=>s.ticker));
   const longBuys = new Set(longTop5.map(s=>s.ticker));
-  const SELL_MIN = 58;
+  const SELL_MIN = 58; // rateS() Sell floor — Short/Sell section stays Sell-leaning (not crowded by Hold/low sell scores)
   let shortSell5=[...deduped].filter(s=>!shortBuys.has(s.ticker)&&(s.shortSellScore||0)>=SELL_MIN).sort((a,b)=>(b.shortSellScore||0)-(a.shortSellScore||0)).slice(0,5);
   let medSell5=[...deduped].filter(s=>!medBuys.has(s.ticker)&&(s.mediumSellScore||0)>=SELL_MIN).sort((a,b)=>(b.mediumSellScore||0)-(a.mediumSellScore||0)).slice(0,5);
   let longSell5=[...deduped].filter(s=>!longBuys.has(s.ticker)&&(s.longSellScore||0)>=SELL_MIN).sort((a,b)=>(b.longSellScore||0)-(a.longSellScore||0)).slice(0,5);
@@ -3047,16 +3058,62 @@ function formatRevenueCell(v) {
   return dollars.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
+/** Mirror server classifyMarket(symbol) — trust ticker suffix over stale/wrong merged marketTier (fixes Asian names showing Danelfin). */
+function classifyMarketTicker(symbol) {
+  var sym = String(symbol || '').toUpperCase().trim();
+  if (!sym) {
+    return { tier: 'danelfin_us', label: 'Danelfin AI (US)', region: 'us', note: '', danelfin: true };
+  }
+  if (sym.indexOf('=F') !== -1 || sym.endsWith('-USD') || sym.endsWith('-EUR')) {
+    return { tier: 'technical_only', label: 'Technical Only', region: 'commodity',
+      note: 'No fundamental scoring for commodities — pure SD channel + momentum', danelfin: false };
+  }
+  var eu = ['.L','.DE','.PA','.AS','.AMS','.BR','.MI','.MC','.ST','.CO','.OL','.HE','.VI'];
+  var i;
+  for (i = 0; i < eu.length; i++) {
+    if (sym.endsWith(eu[i])) {
+      return { tier: 'danelfin_eu', label: 'Danelfin AI (EU)', region: 'europe',
+        note: 'Danelfin European ML + FMP', danelfin: true };
+    }
+  }
+  var asia = ['.T','.HK','.NS','.BO','.KS','.KQ','.TW','.SI','.AX','.NZ','.BK'];
+  var j;
+  for (j = 0; j < asia.length; j++) {
+    if (sym.endsWith(asia[j])) {
+      return { tier: 'fmp_quality', label: 'FMP Quality Score', region: 'asia',
+        note: 'FMP rules-based quality (no Danelfin for Asian listings)', danelfin: false };
+    }
+  }
+  return { tier: 'danelfin_us', label: 'Danelfin AI (US)', region: 'us', note: 'Danelfin ML (US)', danelfin: true };
+}
+
+/** Prefer ticker-derived tier when server/dashboard merge contradicts ticker (e.g. .HK showing US Danelfin). */
+function resolvedMarketMeta(s) {
+  var inf = classifyMarketTicker(s && s.ticker);
+  var st = String((s && s.marketTier) || '').trim();
+  var tier = (st && st !== inf.tier) ? inf.tier : (st || inf.tier);
+  var dan = tier === 'danelfin_us' || tier === 'danelfin_eu';
+  var label = (st && st !== inf.tier) ? inf.label : ((s && s.marketLabel) || inf.label);
+  return {
+    tier: tier,
+    label: label,
+    region: (s && s.marketRegion) || inf.region,
+    note: (s && s.marketNote) || inf.note,
+    danelfin: dan
+  };
+}
+
 function renderCard(s){
-  const _tier=s.marketTier||'danelfin_us';
-  const _isML=_tier==='danelfin_us'||_tier==='danelfin_eu';
+  const _mm = resolvedMarketMeta(s);
+  const _tier = _mm.tier;
+  const _isML = _mm.danelfin;
   const _isFMP=_tier==='fmp_quality';
   const _isTech=_tier==='technical_only';
   const _badgeColor=_isML?'rgba(0,180,255,0.13)':_isFMP?'rgba(0,200,120,0.10)':'rgba(200,200,200,0.07)';
   const _badgeBorder=_isML?'rgba(0,180,255,0.32)':_isFMP?'rgba(0,200,120,0.28)':'rgba(200,200,200,0.22)';
   const _badgeText=_isML?'rgba(0,210,255,0.95)':_isFMP?'#00c864':'rgba(180,180,180,0.7)';
   const _badgeIcon=_isML?'🤖':_isFMP?'📊':'📈';
-  const _badgeLabel=s.marketLabel||(_isML?'Danelfin AI':_isFMP?'FMP Quality':'Technical Only');
+  const _badgeLabel=_mm.label||(_isML?'Danelfin AI':_isFMP?'FMP Quality':'Technical Only');
   const ac=aCls(s.action);
   const isSellCard=(s.action||'').toLowerCase()==='sell'||(s.shortRating||'').toLowerCase().includes('strong sell')||(s.shortRating||'').toLowerCase().includes('sell');
   const cardEntry=isSellCard?(s.sellEntry||s.entry):s.entry;
@@ -3066,7 +3123,7 @@ function renderCard(s){
 
   // Per-timeframe data — numeric levels come from server (distinct % bands per horizon)
   function hzIsSell(rat){ const v=(rat||'').toLowerCase(); return v.includes('sell'); }
-  const horizons = [
+  let horizons = [
     {
       key:'short', label:'Short', period:'1 day–1 month',
       tier:s.shortTier||0, tierLabel:s.shortTierLabel||'',
@@ -3120,6 +3177,53 @@ function renderCard(s){
     }
   ];
 
+  if (!_mm.danelfin && s.fmpScore && typeof s.fmpScore === 'object') {
+    var fm = s.fmpScore;
+    var qRaw = fm.qualityScore != null ? Number(fm.qualityScore) : null;
+    var pioN = fm.piotroski != null ? Number(fm.piotroski) : null;
+    var azN = fm.altmanZ != null ? Number(fm.altmanZ) : null;
+    var shortSc = pioN != null && !isNaN(pioN) ? Math.round((pioN / 9) * 100) / 10 : qRaw;
+    var medSc = qRaw != null && !isNaN(qRaw) ? qRaw : shortSc;
+    var longSc = medSc;
+    if (azN != null && !isNaN(azN)) {
+      longSc =
+        azN >= 5
+          ? 9
+          : azN >= 2.99
+            ? Math.min(10, Math.round((6 + (azN - 2.99) * 1.8) * 10) / 10)
+            : azN >= 1.81
+              ? Math.round((4 + (azN - 1.81) * 1.8) * 10) / 10
+              : 3;
+    }
+    horizons = horizons.map(function (hz) {
+      if (hz.key === 'short') {
+        return Object.assign({}, hz, {
+          danScore: shortSc,
+          danDriver: !isNaN(pioN) ? pioN : hz.danDriver,
+          danDriverLabel: 'Piotroski (/9)',
+          weighting: 'FMP fundamentals + technicals'
+        });
+      }
+      if (hz.key === 'medium') {
+        return Object.assign({}, hz, {
+          danScore: medSc,
+          danDriver: medSc,
+          danDriverLabel: 'Quality (/10)',
+          weighting: 'FMP quality + technicals'
+        });
+      }
+      if (hz.key === 'long') {
+        return Object.assign({}, hz, {
+          danScore: longSc,
+          danDriver: !isNaN(azN) ? fm.altmanZ : hz.danDriver,
+          danDriverLabel: 'Altman Z',
+          weighting: 'FMP distress risk + technicals'
+        });
+      }
+      return hz;
+    });
+  }
+
   const cid = 'chart_'+s.ticker.replace(/[^a-z0-9]/gi,'_');
 
   // Tab HTML for timeframe switching
@@ -3162,7 +3266,7 @@ function renderCard(s){
           +'<div style="font-size:18px">'+(hz.tier>=2?'🎯':'⭐')+'</div>'
           +'<div style="flex:1">'
             +'<div style="font-size:9px;font-weight:700;color:'+(hz.tier>=2?'#ffc800':'#00c864')+';font-family:DM Mono,monospace;letter-spacing:.10em">'+(hz.tier>=2?'TIER 2 — ELITE SIGNAL':'TIER 1 — INSTITUTIONAL GRADE')+'</div>'
-            +'<div style="font-size:8px;color:rgba(255,255,255,0.5);font-family:DM Mono,monospace;margin-top:1px">'+(hz.tierLabel||'Danelfin≥8 + SD channel')+'</div>'
+            +'<div style="font-size:8px;color:rgba(255,255,255,0.5);font-family:DM Mono,monospace;margin-top:1px">'+(hz.tierLabel||(_isFMP?'FMP tier + SD channel':'Danelfin≥8 + SD channel'))+'</div>'
           +'</div>'
           +'<div style="text-align:center">'
             +'<div style="font-size:17px;font-weight:800;font-family:DM Mono,monospace;color:'+(hz.tier>=2?'#ffc800':'#00c864')+'">~'+(hz.winRateEst||71)+'%</div>'
@@ -3173,22 +3277,24 @@ function renderCard(s){
       // Analysis text
       + (hz.analysis ? '<p class="prose" style="margin-top:8px">'+hz.analysis+'</p>' : '')
       // Danelfin/FMP mini-card (horizon-specific signal)
-      + (hz.danScore!=null
-        ?'<div style="background:linear-gradient(135deg,rgba(12,24,52,0.97),rgba(6,14,36,0.99));border:1px solid rgba(60,120,230,0.28);border-radius:8px;padding:9px 11px;margin-top:10px">'
+      + (hz.danScore!=null&&(_isML||_isFMP)
+        ?'<div style="background:linear-gradient(135deg,'+(_isFMP?'rgba(0,32,28,0.97),rgba(0,22,14,0.99)':'rgba(12,24,52,0.97),rgba(6,14,36,0.99)')+');border:1px solid '+(_isFMP?'rgba(0,200,100,0.35)':'rgba(60,120,230,0.28)')+';border-radius:8px;padding:9px 11px;margin-top:10px">'
           +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-          +'<div><div style="font-size:8px;font-weight:700;color:rgba(90,150,255,0.9);font-family:DM Mono,monospace">DANELFIN AI</div>'
-          +'<div style="font-size:7px;color:rgba(90,150,255,0.4);font-family:DM Mono,monospace">ML signal for this horizon</div></div>'
+          +'<div><div style="font-size:8px;font-weight:700;color:'+(_isFMP?'rgba(0,220,140,0.95)':'rgba(90,150,255,0.9)')+';font-family:DM Mono,monospace">'+(_isFMP?'FMP QUALITY':'DANELFIN AI')+'</div>'
+          +'<div style="font-size:7px;color:'+(_isFMP?'rgba(0,220,140,0.45)':'rgba(90,150,255,0.4)')+';font-family:DM Mono,monospace">'+(_isFMP?'Horizon-aligned quality driver':'ML signal for this horizon')+'</div></div>'
           +'<div style="display:flex;align-items:center;gap:7px">'
-          +(s.danelfinBuyTrack?'<div style="font-size:7px;background:rgba(0,180,90,0.12);color:#00c864;border:1px solid rgba(0,180,90,0.28);padding:1px 6px;border-radius:3px;font-family:DM Mono,monospace">✓ Track Record</div>':'')
-          +'<div style="text-align:right"><div style="font-size:17px;font-weight:800;font-family:DM Mono,monospace;line-height:1;color:'+(hz.danScore>=8?'#00d4ff':hz.danScore>=7?'#00c864':hz.danScore<=3?'#ff4444':'rgba(190,190,190,0.8)')+'">'+hz.danScore+'<span style="font-size:9px;opacity:0.4">/10</span></div>'
-          +'<div style="font-size:7px;color:rgba(255,255,255,0.3);font-family:DM Mono,monospace">AI Score</div></div></div></div>'
+          +(_isML&&s.danelfinBuyTrack?'<div style="font-size:7px;background:rgba(0,180,90,0.12);color:#00c864;border:1px solid rgba(0,180,90,0.28);padding:1px 6px;border-radius:3px;font-family:DM Mono,monospace">✓ Track Record</div>':'')
+          +'<div style="text-align:right"><div style="font-size:17px;font-weight:800;font-family:DM Mono,monospace;line-height:1;color:'+(hz.danScore>=8?'#00d4ff':hz.danScore>=7?'#00c864':hz.danScore<=3?'#ff4444':'rgba(190,190,190,0.8)')+'">'+hz.danScore+'<span style="font-size:9px;opacity:0.4">'+(_isFMP?(hz.key==='short'?'/9 equiv':'/10'):'/10')+'</span></div>'
+          +'<div style="font-size:7px;color:rgba(255,255,255,0.3);font-family:DM Mono,monospace">'+(_isFMP?'Quality driver':'AI Score')+'</div></div></div></div>'
           +'<div style="margin-bottom:5px">'
           +'<div style="font-size:7px;color:rgba(255,255,255,0.38);font-family:DM Mono,monospace;margin-bottom:2px">'+hz.danDriverLabel+' <span style="opacity:0.5">— primary driver for '+hz.key+' trades</span></div>'
-          +'<div style="background:rgba(255,255,255,0.07);border-radius:3px;height:5px;overflow:hidden;margin-bottom:2px"><div style="height:100%;border-radius:3px;background:'+((hz.danDriver||0)>=7?'#00c864':(hz.danDriver||0)>=5?'#c9f14f':(hz.danDriver||0)<=3?'#ff5555':'rgba(180,180,180,0.4)')+';width:'+((hz.danDriver||0)*10)+'%"></div></div>'
-          +'<div style="font-size:11px;font-weight:700;font-family:DM Mono,monospace;color:'+((hz.danDriver||0)>=7?'#00c864':(hz.danDriver||0)>=5?'#c9f14f':(hz.danDriver||0)<=3?'#ff5555':'rgba(180,180,180,0.6)')+'">'+(hz.danDriver||'—')+'</div></div>'
+          +'<div style="background:rgba(255,255,255,0.07);border-radius:3px;height:5px;overflow:hidden;margin-bottom:2px"><div style="height:100%;border-radius:3px;background:'+((hz.danDriver||0)>=7?'#00c864':(hz.danDriver||0)>=5?'#c9f14f':(hz.danDriver||0)<=3?'#ff5555':'rgba(180,180,180,0.4)')+';width:'+Math.min(100,(hz.key==='short'&&_isFMP?((Number(hz.danDriver)||0)/9)*100:(Number(hz.danScore)||0)*10))+'%"></div></div>'
+          +'<div style="font-size:11px;font-weight:700;font-family:DM Mono,monospace;color:'+((hz.danDriver||0)>=7?'#00c864':(hz.danDriver||0)>=5?'#c9f14f':(hz.danDriver||0)<=3?'#ff5555':'rgba(180,180,180,0.6)')+'">'+(hz.danDriver!=null&&!isNaN(Number(hz.danDriver))?hz.danDriver:'—')+'</div></div>'
           +(hz.compositeAlpha!=null?'<div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:8px;color:rgba(255,255,255,0.35);font-family:DM Mono,monospace">Composite Alpha</div><div style="font-size:12px;font-weight:700;font-family:DM Mono,monospace;color:'+(hz.compositeAlpha>=74?'#00c864':hz.compositeAlpha>=55?'#c9f14f':'rgba(180,180,180,0.5)')+' ">'+hz.compositeAlpha+'/100</div></div>':'')
           +'<div style="font-size:8px;font-family:DM Mono,monospace;margin-top:5px;color:'+(hz.danScore>=8?'#00c864':hz.danScore>=7?'rgba(170,255,170,0.8)':hz.danScore<=3?'#ff6666':'rgba(180,180,180,0.45)')+'">'
-          +(hz.danScore>=8&&s.danelfinBuyTrack?'🎯 ML confirms: high probability of beating market':hz.danScore>=7?'✓ ML signal: above-average probability':hz.danScore<=3?'⚠ ML flags: underperformance risk':'→ Neutral ML signal — technicals are the primary edge')
+          +(_isFMP
+            ? '📊 FMP quality driver for this horizon (not Danelfin ML). Prefer server FMP_API_KEY set for full scores.'
+            : (hz.danScore>=8&&s.danelfinBuyTrack?'🎯 ML confirms: high probability of beating market':hz.danScore>=7?'✓ ML signal: above-average probability':hz.danScore<=3?'⚠ ML flags: underperformance risk':'→ Neutral ML signal — technicals are the primary edge'))
           +'</div></div>'
         :'')
       + '</div>';
@@ -3296,35 +3402,6 @@ function renderCard(s){
         +(s.danelfinAiScore>=8&&s.danelfinBuyTrack?'🎯 ML confirms: high probability of beating market over 3M':s.danelfinAiScore>=7?'✓ ML: above-average market-beating probability':s.danelfinAiScore<=3?'⚠ ML flags underperformance risk':'→ Neutral ML signal — technical entry timing is the primary edge')
         +'</div></div>'
       :'')
-    // FMP quality card (Asian equities)
-    +(_isFMP&&s.fmpScore
-      ?'<div style="background:linear-gradient(135deg,rgba(0,32,22,0.97),rgba(0,18,12,0.99));border:1px solid rgba(0,180,100,0.28);border-radius:10px;padding:11px 13px;margin-bottom:4px">'
-        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-        +'<div><div style="font-size:9px;font-weight:700;color:rgba(0,220,130,0.95);font-family:DM Mono,monospace;letter-spacing:.08em">FMP QUALITY SCORE</div>'
-        +'<div style="font-size:7px;color:rgba(0,220,130,0.4);font-family:DM Mono,monospace">Piotroski F-Score · Altman Z · Analyst Consensus</div></div>'
-        +'<div style="text-align:center"><div style="font-size:22px;font-weight:800;font-family:DM Mono,monospace;line-height:1;color:'+(s.fmpScore.qualityScore>=7?'#00c864':s.fmpScore.qualityScore>=5?'#c9f14f':s.fmpScore.qualityScore<=3?'#ff4444':'rgba(200,200,200,0.8)')+'">'+( s.fmpScore.qualityScore||'—')+'<span style="font-size:10px;opacity:0.4">/10</span></div>'
-        +'<div style="font-size:7px;color:rgba(255,255,255,0.3);font-family:DM Mono,monospace">QUALITY</div></div></div>'
-        +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:6px">'
-        +(s.fmpScore.piotroski!=null?'<div style="background:rgba(255,255,255,0.04);border-radius:5px;padding:5px"><div style="font-size:7px;color:rgba(255,255,255,0.38);font-family:DM Mono,monospace">Piotroski</div>'
-          +'<div style="font-size:13px;font-weight:700;color:'+(s.fmpScore.piotroski>=7?'#00c864':s.fmpScore.piotroski>=5?'#c9f14f':'#ff5555')+';font-family:DM Mono,monospace">'+s.fmpScore.piotroski+'/9</div></div>':'')
-        +(s.fmpScore.altmanZ!=null?'<div style="background:rgba(255,255,255,0.04);border-radius:5px;padding:5px"><div style="font-size:7px;color:rgba(255,255,255,0.38);font-family:DM Mono,monospace">Altman Z</div>'
-          +'<div style="font-size:13px;font-weight:700;color:'+(s.fmpScore.altmanZ>2.99?'#00c864':s.fmpScore.altmanZ>1.81?'#c9f14f':'#ff5555')+';font-family:DM Mono,monospace">'+s.fmpScore.altmanZ.toFixed(1)+'</div></div>':'')
-        +(s.fmpScore.overallRating?'<div style="background:rgba(255,255,255,0.04);border-radius:5px;padding:5px"><div style="font-size:7px;color:rgba(255,255,255,0.38);font-family:DM Mono,monospace">Rating</div>'
-          +'<div style="font-size:16px;font-weight:800;color:'+(s.fmpScore.overallRating[0]==='A'?'#00c864':s.fmpScore.overallRating[0]==='B'?'#c9f14f':'#ff5555')+';font-family:DM Mono,monospace">'+s.fmpScore.overallRating+'</div></div>':'')
-        +'</div>'
-        +(s.fmpScore.analystCounts&&s.fmpScore.analystCounts.total>0
-          ?'<div style="display:flex;align-items:center;gap:4px;margin-bottom:5px"><div style="font-size:7px;color:rgba(255,255,255,0.38);font-family:DM Mono,monospace;min-width:52px">Analysts:</div>'
-           +'<div style="flex:1;display:flex;gap:2px;align-items:center">'
-           +['strongBuy','buy','hold','sell','strongSell'].map(function(k){
-             var v=s.fmpScore.analystCounts[k]||0;if(!v)return '';
-             var col=k.includes('Buy')?'#00c864':k==='hold'?'#c9f14f':'#ff5555';
-             return '<div style="background:'+col+';opacity:0.8;width:'+Math.round(v/s.fmpScore.analystCounts.total*60)+'px;min-width:3px;height:8px;border-radius:2px" title="'+k+': '+v+'"></div>';
-           }).join('')
-           +'</div><div style="font-size:8px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace">'+s.fmpScore.analystCounts.total+' analysts</div></div>'
-          :'')
-        +'<div style="font-size:8px;color:rgba(0,220,130,0.6);font-family:DM Mono,monospace">ℹ No AI model exists for Asian markets — FMP provides rules-based quality scoring</div>'
-        +'</div>'
-      :'')
     // Technical-only notice (commodities)
     +(_isTech
       ?'<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(200,200,200,0.12);border-radius:8px;padding:9px 11px;margin-bottom:4px">'
@@ -3362,48 +3439,6 @@ function renderCard(s){
     +'<div class="mt"><div class="ml">Fin Health</div><div class="mv '+(s.financialHealth==='Strong'?'g':s.financialHealth==='Weak'?'r':'y')+'">'+(s.financialHealth||'—')+'</div></div>'
     +'<div class="mt"><div class="ml">Industry Pos</div><div class="mv">'+(s.industryPos||'—')+'</div></div>'
     +'</div>'
-    +(s.fmpScore
-      ?'<div style="margin-top:10px;padding:10px 12px;background:linear-gradient(135deg,rgba(0,32,22,0.95),rgba(0,22,14,0.95));border:1px solid rgba(0,200,100,0.2);border-radius:8px">'
-        +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">'
-          +'<div style="font-size:8px;font-weight:700;color:#00dc82;font-family:DM Mono,monospace;letter-spacing:.12em">📊 FMP QUALITY SCORE</div>'
-          +'<div style="font-size:7px;color:rgba(0,220,130,0.4);font-family:DM Mono,monospace">Piotroski F-Score · Altman Z · Analyst Consensus</div>'
-        +'</div>'
-        +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">'
-          +(s.fmpScore.qualityScore!=null
-            ?'<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;text-align:center">'
-              +'<div style="font-size:9px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace;margin-bottom:4px">Quality</div>'
-              +'<div style="font-size:20px;font-weight:800;font-family:DM Mono,monospace;color:'+(s.fmpScore.qualityScore>=7?'#00c864':s.fmpScore.qualityScore>=5?'#c9f14f':'#ff5555')+'">'+(s.fmpScore.qualityScore)+'<span style="font-size:9px;opacity:0.4">/10</span></div>'
-              +'<div style="font-size:8px;color:rgba(255,255,255,0.3);margin-top:2px">'+(s.fmpScore.qualityScore>=7?'Strong':s.fmpScore.qualityScore>=5?'Moderate':'Weak')+'</div>'
-            +'</div>':'')          +(s.fmpScore.piotroski!=null
-            ?'<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;text-align:center">'
-              +'<div style="font-size:9px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace;margin-bottom:4px">Piotroski</div>'
-              +'<div style="font-size:20px;font-weight:800;font-family:DM Mono,monospace;color:'+(s.fmpScore.piotroski>=7?'#00c864':s.fmpScore.piotroski>=5?'#c9f14f':'#ff5555')+'">'+(s.fmpScore.piotroski)+'<span style="font-size:9px;opacity:0.4">/9</span></div>'
-              +'<div style="font-size:8px;color:rgba(255,255,255,0.3);margin-top:2px">'+(s.fmpScore.piotroski>=7?'Healthy':s.fmpScore.piotroski>=5?'Moderate':'Weak')+'</div>'
-            +'</div>':'')          +(s.fmpScore.altmanZ!=null
-            ?'<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;text-align:center">'
-              +'<div style="font-size:9px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace;margin-bottom:4px">Altman Z</div>'
-              +'<div style="font-size:20px;font-weight:800;font-family:DM Mono,monospace;color:'+(s.fmpScore.altmanZ>2.99?'#00c864':s.fmpScore.altmanZ>1.81?'#c9f14f':'#ff5555')+'">'+(s.fmpScore.altmanZ.toFixed(1))+'</div>'
-              +'<div style="font-size:8px;color:rgba(255,255,255,0.3);margin-top:2px">'+(s.fmpScore.altmanZ>2.99?'Safe Zone':s.fmpScore.altmanZ>1.81?'Grey Zone':'Distress')+'</div>'
-            +'</div>':'')          +(s.fmpScore.overallRating
-            ?'<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:8px;text-align:center">'
-              +'<div style="font-size:9px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace;margin-bottom:4px">FMP Rating</div>'
-              +'<div style="font-size:20px;font-weight:800;font-family:DM Mono,monospace;color:'+(s.fmpScore.overallRating[0]==='A'?'#00c864':s.fmpScore.overallRating[0]==='B'?'#c9f14f':'#ff5555')+'">'+(s.fmpScore.overallRating)+'</div>'
-              +'<div style="font-size:8px;color:rgba(255,255,255,0.3);margin-top:2px">FMP Grade</div>'
-            +'</div>':'')
-        +'</div>'
-        +(s.fmpScore.analystCounts&&s.fmpScore.analystCounts.total>0
-          ?'<div style="margin-top:10px">'
-            +'<div style="font-size:8px;color:rgba(255,255,255,0.35);font-family:DM Mono,monospace;margin-bottom:5px">ANALYST CONSENSUS — '+s.fmpScore.analystCounts.total+' analysts</div>'
-            +'<div style="display:flex;gap:2px;border-radius:4px;overflow:hidden">'
-              +['strongBuy','buy','hold','sell','strongSell'].map(function(k){var v=s.fmpScore.analystCounts[k]||0;if(!v)return '';var col=k.includes('Buy')?'#00c864':k==='hold'?'rgba(200,200,200,0.3)':'#ff4444';return '<div style="flex:'+(v/s.fmpScore.analystCounts.total)+';background:'+col+';height:6px;border-radius:2px" title="'+k+': '+v+'"></div>';}).join('')
-            +'</div>'
-            +'<div style="display:flex;justify-content:space-between;margin-top:3px">'
-              +'<div style="font-size:7px;color:#00c864;font-family:DM Mono,monospace">Buy: '+((s.fmpScore.analystCounts.strongBuy||0)+(s.fmpScore.analystCounts.buy||0))+'</div>'
-              +'<div style="font-size:7px;color:rgba(200,200,200,0.4);font-family:DM Mono,monospace">Hold: '+(s.fmpScore.analystCounts.hold||0)+'</div>'
-              +'<div style="font-size:7px;color:#ff4444;font-family:DM Mono,monospace">Sell: '+((s.fmpScore.analystCounts.sell||0)+(s.fmpScore.analystCounts.strongSell||0))+'</div>'
-            +'</div>'
-          +'</div>':'')
-      +'</div>':'')
     +(s.newsImpact?'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:7px;padding:8px 10px;margin-bottom:8px"><div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">News Impact</div><div style="font-size:12px;color:'+(s.newsTone==='positive'?'var(--buy)':s.newsTone==='negative'?'var(--sell)':'var(--tx)')+'">'+escMinimalHtml(s.newsImpact)+'</div></div>':'')
     +buildEarningsRow(s)
     +(s.catalyst?'<div style="margin-bottom:6px"><span style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.1em">Catalyst: </span><span class="prose">'+s.catalyst+'</span></div>':'')

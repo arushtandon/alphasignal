@@ -1693,7 +1693,7 @@ const NSE_BB_OVERRIDES = /** @type {Record<string,string>} */ ({
 });
 
 /** Must match bloomberg-bridge `BRIDGE_BUILD` — bridge also echoes this on /snapshot, /earnings, /health. */
-const BLOOMBERG_BRIDGE_BUILD_EXPECTED = '20260520-nse-in-equity-mapping';
+const BLOOMBERG_BRIDGE_BUILD_EXPECTED = '20260522-pdblp-ref-retry-soft';
 
 /** Map app ticker to Bloomberg equity string for Desktop API ref() (examples: `AAPL US Equity`, `ASML NA Equity`, `9988 HK Equity`). */
 function toBloombergEquity(sym) {
