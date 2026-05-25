@@ -1755,7 +1755,9 @@ function mergeFundSnapshots(y, f) {
 /** Yahoo NSE root → Bloomberg mnemonic (hyphen quirks). Keep in sync with bloomberg-bridge bridge.py `NSE_BB_OVERRIDES`. */
 const NSE_BB_OVERRIDES = /** @type {Record<string,string>} */ ({
   'BAJAJ-AUTO': 'BAJAUT',
-  'M&M': 'MM'
+  'M&M': 'MM',
+  /** Yahoo NSE ticker ≠ Bloomberg mnemonic (Bloomberg quote ICICIBC:IN) */
+  ICICIBANK: 'ICICIBC'
 });
 
 /** Must match bloomberg-bridge `BRIDGE_BUILD` — bridge also echoes this on /snapshot, /earnings, /health. */
@@ -2827,7 +2829,14 @@ app.post('/api/technicals/batch', async (req, res) => {
   if (!symbols?.length) return res.json({});
   const results = {};
 
-  await Promise.allSettled(symbols.map(async sym => {
+  const _dbc = Number.parseInt(String(process.env.DASHBOARD_BATCH_CONCURRENCY || '2'), 10);
+  let _chunks = Number.isFinite(_dbc) ? _dbc : 2;
+  if (_chunks < 1) _chunks = 1;
+  if (_chunks > 8) _chunks = 8;
+
+  for (let _off = 0; _off < symbols.length; _off += _chunks) {
+    const _slice = symbols.slice(_off, _off + _chunks);
+    await Promise.allSettled(_slice.map(async sym => {
     try {
       const cached = techCache.get(sym);
       if (cached && Date.now() - cached.ts < TECH_TTL && cached.data?.quantSignal) {
@@ -3092,7 +3101,8 @@ app.post('/api/technicals/batch', async (req, res) => {
       techCache.set(sym, { ts: Date.now(), data });
       results[sym] = data;
     } catch(e) { console.warn('Batch tech fail:', sym, e.message); }
-  }));
+    }));
+  }
 
   console.log(`Technicals batch: ${Object.keys(results).length}/${symbols.length} succeeded`);
   res.json(results);
@@ -3105,14 +3115,23 @@ app.post('/api/fundamentals/batch', async (req, res) => {
   const results = {};
   // Only fetch for equity symbols (skip BTC-USD, GC=F etc.)
   const equities = symbols.filter(s => !s.includes('=F') && !s.includes('-USD') && !s.includes('-EUR'));
-  await Promise.allSettled(equities.map(async sym => {
+  const _dbc = Number.parseInt(String(process.env.DASHBOARD_BATCH_CONCURRENCY || '2'), 10);
+  let _chunks = Number.isFinite(_dbc) ? _dbc : 2;
+  if (_chunks < 1) _chunks = 1;
+  if (_chunks > 8) _chunks = 8;
+
+  for (let _off = 0; _off < equities.length; _off += _chunks) {
+    const _slice = equities.slice(_off, _off + _chunks);
+    await Promise.allSettled(_slice.map(async sym => {
     try {
       const cached = fundCache.get(sym);
       if (cached && Date.now() - cached.ts < TECH_TTL * 4) { results[sym] = cached.data; return; }
       const data = await fetchFundamentals(sym);
       if (data) { fundCache.set(sym, { ts: Date.now(), data }); results[sym] = data; }
     } catch(e) { console.warn('Fund batch fail:', sym, e.message); }
-  }));
+    }));
+  }
+
   console.log(`Fundamentals batch: ${Object.keys(results).length}/${equities.length} succeeded`);
   res.json(results);
 });
@@ -3697,7 +3716,8 @@ app.get('/api/health', (req, res) => {
       AAPL: toBloombergEquity('AAPL'),
       ASML_AS: toBloombergEquity('ASML.AS'),
       HK9988: toBloombergEquity('9988.HK'),
-      RELIANCE_NS: toBloombergEquity('RELIANCE.NS')
+      RELIANCE_NS: toBloombergEquity('RELIANCE.NS'),
+      ICICIBANK_NS: toBloombergEquity('ICICIBANK.NS')
     },
     danelfin_configured: !!(process.env.DANELFIN_API_KEY || '').trim(),
     hasKey: !!process.env.ANTHROPIC_API_KEY,

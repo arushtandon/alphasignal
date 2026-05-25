@@ -157,6 +157,12 @@ Always pass **`bb=`** with the exact string from Terminal if a name does not res
 
 ---
 
+## Yahoo `.NS` vs Bloomberg India mnemonic
+
+Bloomberg equities use `… IN Equity` with a **ticker mnemonic** that is often identical to Yahoo’s `.NS` root (e.g. `RELIANCE.NS` → `RELIANCE IN Equity`), but sometimes not. Example: **`ICICIBANK.NS` → `ICICIBC IN Equity`**. Those cases are listed in `NSE_BB_OVERRIDES` in `bridge.py` (keep in sync with AlphaSignal `server.js`).
+
+If `/snapshot` returns HTTP **503** with `"error":"no data"`, the security string is wrong or Terminal has no permission for that name — check `bbSecurity` in the JSON and compare with `FLDS <Equity> <GO>` in Terminal.
+
 ## Fields (editable in `bridge.py`)
 
 `BEST_PE_NTM`, `PE_RATIO`, `BEST_PEG_RATIO`, `BEST_TARGET_MEDIAN`, `SALES_YOY_GR`, `BEST_EPS_GROWTH`.

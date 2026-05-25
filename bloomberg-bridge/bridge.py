@@ -173,6 +173,8 @@ def clean_bridge_symbol(raw: str) -> str:
 NSE_BB_OVERRIDES: dict[str, str] = {
     "BAJAJ-AUTO": "BAJAUT",
     "M&M": "MM",
+    # Yahoo: ICICIBANK.NS — Bloomberg Desktop: ICICIBC IN Equity
+    "ICICIBANK": "ICICIBC",
 }
 
 
@@ -996,7 +998,11 @@ def snapshot():
             return jsonify({"error": str(e), "bbSecurity": sec}), 503
 
     if hits == 0:
-        return jsonify({"error": "no data", "bbSecurity": sec}), 503
+        hint = ""
+        sym_up = (sym or "").strip().upper()
+        if ".NS" in sym_up:
+            hint = " For Indian *.NS symbols the Yahoo root often differs from the Bloomberg mnemonic (e.g. ICICIBANK.NS→ICICIBC IN Equity). Check NSE_BB_OVERRIDES in bridge.py."
+        return jsonify({"error": "no data", "hint": hint.strip(), "symbol": sym, "bbSecurity": sec}), 503
 
     out["bridge_build"] = BRIDGE_BUILD
     return jsonify(out)
