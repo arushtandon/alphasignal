@@ -1847,8 +1847,9 @@ async function runDashScan(){
             const fund = batchFund[r.ticker];
             const news = batchNews[r.ticker] || null;
             const qs = tech && tech.quantSignal;
+            /** Must be in forEach scope — used below for Danelfin row and tier labels (was block-scoped inside `if` → ReferenceError). */
+            const tierNow = classifyMarketTicker(r.ticker).tier;
             if (qs && (news || tech)) {
-              const tierNow = classifyMarketTicker(r.ticker).tier;
               const newsScore = news != null && news.score != null ? news.score : 0;
               const newsBull  = news && news.sentiment === 'bullish' && newsScore > 20;
               const newsBear  = news && news.sentiment === 'bearish' && newsScore < -20;
@@ -2019,7 +2020,6 @@ async function runDashScan(){
             }
           });
           res.forEach(function(r){
-            var tierNow = classifyMarketTicker(r.ticker).tier;
             var tech = batchTech[r.ticker];
             var fund = batchFund[r.ticker];
             var _mktCls = classifyMarketTicker(r.ticker);
@@ -2690,7 +2690,9 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
   }).filter(Boolean);
 
   if(priceLines.length === 0) {
-    if(!isTop5 && sEl) sEl.innerHTML = '<div class="eb"><strong>Could not fetch live prices.</strong> Yahoo Finance unavailable. Please try again.</div>';
+    if(!isTop5 && sEl) sEl.innerHTML = '<div class="eb"><strong>Could not fetch live prices.</strong> Yahoo has no quote for this exact symbol '
+      + '(check spelling). <strong>NSE:</strong> use <code>TICKER.NS</code> e.g. <code>ICICIBANK.NS</code>. <strong>Hong Kong:</strong> '
+      + '<code>9988.HK</code>. <strong>U.S.</strong> tickers normally have no suffix.</div>';
     if(btn) btn.disabled = false;
     return null;
   }
@@ -3255,7 +3257,7 @@ function renderCard(s){
       _fmpCard =
         '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(0,200,120,0.15);border-radius:8px;padding:9px 11px;margin-bottom:4px">'
         + '<div style="font-size:9px;font-weight:600;color:rgba(0,200,120,0.75);font-family:DM Mono,monospace;margin-bottom:4px">FMP SCORE UNAVAILABLE</div>'
-        + '<div style="font-size:8px;color:rgba(180,180,180,0.55);font-family:DM Mono,monospace;line-height:1.5">Ensure <strong>FMP_API_KEY</strong> <em>or</em> <strong>FINANCIAL_MODELING_PREP_API_KEY</strong> is set on Render (Financial Modeling Prep). HK/NSE tickers often need the padded variant (e.g. 09988.HK).</div></div>';
+        + '<div style="font-size:8px;color:rgba(180,180,180,0.55);font-family:DM Mono,monospace;line-height:1.5">If the server key is already set: FMP sometimes returns no score for this listing—try HK pad variants (<code>09988.HK</code> vs <code>9988.HK</code>) or verify on <code>/api/health</code> (<code>fmp.key_resolved</code>). Otherwise add <strong>FMP_API_KEY</strong> or <strong>FINANCIAL_MODELING_PREP_API_KEY</strong> on Render.</div></div>';
     }
   }
   const ac=aCls(s.action);

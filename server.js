@@ -5530,6 +5530,7 @@ function injectAnalyzeRowFromServerTech(row, tech) {
     else row.bollingerTone = 'neutral';
   }
   if (tech.candlePattern && isPlaceholderUiSlot(row.pattern)) row.pattern = tech.candlePattern;
+  if (tech.fmpScore && typeof tech.fmpScore === 'object') row.fmpScore = tech.fmpScore;
   const pToneSrc = String(tech.candlePattern || row.pattern || '').toLowerCase();
   if (/bearish/.test(pToneSrc)) row.patternTone = 'bearish';
   else if (/bullish/.test(pToneSrc)) row.patternTone = 'bullish';
