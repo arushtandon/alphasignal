@@ -3732,6 +3732,10 @@ app.get('/api/health', (req, res) => {
         : '',
     bloomberg_bridge_manual_test_hint:
       '401 on /snapshot or /earnings via browser: Bloomberg bridge expects HTTP header Authorization: Bearer <BLOOMBERG_BRIDGE_SECRET> when that env var is set on the Terminal PC. Use curl/Postman, or temporarily unset secret for local debugging. AlphaSignal sends this header automatically when Render BLOOMBERG_BRIDGE_SECRET matches.',
+    /** false until a real request pulls /snapshot via the bridge — opening /api/health alone does not call Bloomberg. */
+    bloomberg_bridge_snapshot_tried_since_boot: Boolean(lastBloombergSnapshotProbe.ts > 0),
+    /** false until a real request pulls /earnings via the bridge. */
+    bloomberg_bridge_earnings_tried_since_boot: Boolean(lastBloombergEarningsProbe.ts > 0),
     bloomberg_bridge_last_snapshot: lastBloombergSnapshotProbe.ts
       ? {
           ms_ago: Date.now() - lastBloombergSnapshotProbe.ts,
