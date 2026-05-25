@@ -74,7 +74,7 @@ BRIDGE_BIND = os.environ.get("BRIDGE_BIND", "127.0.0.1").strip() or "127.0.0.1"
 SECRET = os.environ.get("BLOOMBERG_BRIDGE_SECRET", "").strip()
 
 # Bump when changing ref parsing so /health proves which code is running on the Bloomberg PC.
-BRIDGE_BUILD = "20260522-pdblp-ref-retry-soft"
+BRIDGE_BUILD = "20260519-bridge-scores-from-fmp-only"
 
 # Legacy name retained for README references.
 FLDS = [
@@ -94,7 +94,13 @@ SAFE_SNAPSHOT_BB_FIELDS = [
     ("BEST_PEG_RATIO", "pegRatio"),
     ("BEST_TARGET_MEDIAN", "targetMeanPrice"),
     ("SALES_YOY_GR", "revenueGrowth"),
+    # Secondary revenue growth aliases (coverage differs on some IN/HK listings)
+    ("SALES_GROWTH", "revenueGrowth"),
+    ("BEST_SALES_GROWTH", "revenueGrowth"),
     ("BEST_EPS_GROWTH", "earningsGrowth"),
+    # Secondary EPS growth — some regional lines populate one but not the other
+    ("EPS_GROWTH", "earningsGrowth"),
+    ("IS_EPS_GROWTH", "earningsGrowth"),
     ("DEBT_TO_EQ_RATIO", "debtToEquity"),
     ("RETURN_ON_CAPITAL_ADJ", "returnOnCapital"),
     ("RETURN_ON_COMMON_EQUITY_ADJUSTED", "returnOnEquity"),

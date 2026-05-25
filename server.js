@@ -1591,7 +1591,17 @@ function fmpEnvKeyFund() {
 }
 
 /**
- * Alternate symbol spellings FMP indexes (HK is often padded; Render users may set FINANCIAL_MODELING_PREP_API_KEY only).
+ * Yahoo NSE root → Bloomberg mnemonic + FMP alternate listing (keep in sync with bloomberg-bridge `NSE_BB_OVERRIDES`).
+ */
+const NSE_BB_OVERRIDES = /** @type {Record<string,string>} */ ({
+  'BAJAJ-AUTO': 'BAJAUT',
+  'M&M': 'MM',
+  /** Yahoo NSE ticker ≠ Bloomberg mnemonic (Bloomberg ICICIBC:IN) — FMP often uses the same root */
+  ICICIBANK: 'ICICIBC'
+});
+
+/**
+ * Alternate symbol spellings FMP indexes (HK padding; NSE Yahoo root vs FMP/Bloomberg root).
  */
 function fmpSymbolVariantsForApi(symbol) {
   const raw = String(symbol || '').trim();
@@ -1614,6 +1624,15 @@ function fmpSymbolVariantsForApi(symbol) {
   };
   add(raw);
   add(u);
+  const dotNs = /^(.+)\.NS$/i.exec(u);
+  if (dotNs) {
+    const r0 = dotNs[1].trim().toUpperCase();
+    const bloomListing = NSE_BB_OVERRIDES[r0];
+    if (bloomListing) {
+      add(`${bloomListing}.NS`);
+      add(`${bloomListing}`);
+    }
+  }
   const mhk = /^(\d+)[.](HK)$/i.exec(u);
   if (mhk) {
     const suf = 'HK';
@@ -1752,16 +1771,47 @@ function mergeFundSnapshots(y, f) {
   return out;
 }
 
-/** Yahoo NSE root → Bloomberg mnemonic (hyphen quirks). Keep in sync with bloomberg-bridge bridge.py `NSE_BB_OVERRIDES`. */
-const NSE_BB_OVERRIDES = /** @type {Record<string,string>} */ ({
-  'BAJAJ-AUTO': 'BAJAUT',
-  'M&M': 'MM',
-  /** Yahoo NSE ticker ≠ Bloomberg mnemonic (Bloomberg quote ICICIBC:IN) */
-  ICICIBANK: 'ICICIBC'
-});
+/** FMP stable financial health scores (Piotroski + Altman) — fills gaps when legacy /score is empty for some intl names. */
+async function fetchFmpStableFinancialScores(symbol, key, tHttp) {
+  try {
+    const enc = encodeURIComponent(String(symbol || '').trim());
+    if (!enc) return null;
+    const u = `https://financialmodelingprep.com/stable/financial-scores?symbol=${enc}&apikey=${encodeURIComponent(key)}`;
+    const r = await fetch(u, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(Number(tHttp) || 12000)
+    });
+    if (!r.ok) return null;
+    let d = await r.json().catch(() => null);
+    if (d && typeof d === 'object' && !Array.isArray(d) && Array.isArray(d.data)) d = d.data;
+    const row = Array.isArray(d) ? d[0] : d && typeof d === 'object' ? d : null;
+    if (!row || row.error || row['Error Message']) return null;
+    const pick = (o, keys) => {
+      for (const k of keys) {
+        if (o[k] == null || o[k] === '') continue;
+        const n = typeof o[k] === 'number' ? o[k] : Number(String(o[k]).replace(/,/g, ''));
+        if (Number.isFinite(n)) return n;
+      }
+      return null;
+    };
+    const piotroski = pick(row, [
+      'piotroskiScore',
+      'piotroski',
+      'fScore',
+      'f_score',
+      'piotroskiFScore',
+      'financialScore'
+    ]);
+    const altmanZ = pick(row, ['altmanZScore', 'altmanZ', 'altman_z_score', 'altmanZscore', 'zScore']);
+    if (piotroski == null && altmanZ == null) return null;
+    return { piotroski, altmanZ };
+  } catch (_) {
+    return null;
+  }
+}
 
 /** Must match bloomberg-bridge `BRIDGE_BUILD` — bridge also echoes this on /snapshot, /earnings, /health. */
-const BLOOMBERG_BRIDGE_BUILD_EXPECTED = '20260522-pdblp-ref-retry-soft';
+const BLOOMBERG_BRIDGE_BUILD_EXPECTED = '20260519-bridge-scores-from-fmp-only';
 
 /** Map app ticker to Bloomberg equity string for Desktop API ref() (examples: `AAPL US Equity`, `ASML NA Equity`, `9988 HK Equity`). */
 function toBloombergEquity(sym) {
@@ -3263,7 +3313,7 @@ function computeCompositeAlpha(dan, tech, newsScore, hz) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// FMP QUALITY SCORE — Asian equities (Piotroski + Altman Z + analyst consensus)
+// FMP QUALITY SCORE — Asian equities (Piotroski + Altman Z + analyst consensus; all from FMP APIs, not Bloomberg)
 // ══════════════════════════════════════════════════════════════════════════════
 const _fmpCache = new Map(),
   _FMP_TTL = 6 * 60 * 60 * 1000,
@@ -3300,7 +3350,7 @@ async function fetchFmpScore(symbol, opts = {}) {
   }
 
   let candidates = fmpSymbolVariantsForApi(symbol);
-  if (batchMode) candidates = candidates.slice(0, 5);
+  if (batchMode) candidates = candidates.slice(0, 14);
   if (!batchMode) {
     console.log(`FMP fetchFmpScore variants for ${symbol}:`, candidates.slice(0, 12).join(' | '));
   }
@@ -3456,6 +3506,16 @@ async function fetchFmpScore(symbol, opts = {}) {
             strongSell: ss,
             total: t,
             consensus: t > 0 ? parseFloat(((sb * 2 + b - se - ss * 2) / t).toFixed(2)) : null
+          };
+        }
+      }
+
+      if (key && (scores == null || scores.piotroski == null || scores.altmanZ == null)) {
+        const fsPlus = await fetchFmpStableFinancialScores(sym, key, Math.min(tHttp + 5000, 22000));
+        if (fsPlus) {
+          scores = {
+            piotroski: scores?.piotroski ?? fsPlus.piotroski ?? null,
+            altmanZ: scores?.altmanZ ?? fsPlus.altmanZ ?? null
           };
         }
       }
@@ -5007,6 +5067,12 @@ function resolveEarningsCalendarWindow(req) {
 // ── Earnings data — Bloomberg bridge first, Yahoo fallback, Finnhub/FMP last ─
 app.get('/api/earnings/:symbol', async (req, res) => {
   const sym = req.params.symbol.toUpperCase();
+  const prefersFmpIntlHist = /\.(NS|BO|HK|T|L|DE|PA|AS|TW|SI|KS|KQ|AX|NZ|BK|ST|SW|MC|MI|TO|V)$/i.test(
+    sym
+  );
+  /** Start FMP surprises early for intl — runs in parallel with Yahoo chart / quoteSummary work. */
+  const fmpHistEarlyP =
+    prefersFmpIntlHist && fmpAnyApiKey() ? fmpEarningsSurprisesHistory(sym) : null;
   const todayISO = new Date().toISOString().slice(0, 10);
   /** One-day grace: avoid dropping "today" rows on timezone / feed lag vs strict UTC midnight */
   const upcomingCutoff = addUTCISODays(todayISO, -1);
@@ -5078,19 +5144,14 @@ app.get('/api/earnings/:symbol', async (req, res) => {
     }
 
     /** Intl listings: Yahoo often omits quoteSummary earningsHistory from cloud IPs; FMP surprises usually work for NSE/HK/JP/LSE when API key exists. */
-    if (!epsHistory.length && fmpAnyApiKey()) {
-      const prefersFmpIntl = /\.(NS|BO|HK|T|L|DE|PA|AS|TW|SI|KS|KQ|AX|NZ|BK|ST|SW|MC|MI|TO|V)$/i.test(
-        sym
-      );
-      if (prefersFmpIntl) {
-        try {
-          const fmpHist = await fmpEarningsSurprisesHistory(sym);
-          if (fmpHist.length) {
-            epsHistory = fmpHist;
-            historySource = 'fmp_earnings_surprises';
-          }
-        } catch (_) {}
-      }
+    if (!epsHistory.length && fmpHistEarlyP) {
+      try {
+        const fmpHist = await fmpHistEarlyP;
+        if (fmpHist.length) {
+          epsHistory = fmpHist;
+          historySource = 'fmp_earnings_surprises';
+        }
+      } catch (_) {}
     }
 
     const symbolsForChart =
@@ -5161,7 +5222,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
         }
       }
     }
-    if (!epsHistory.length && fmpAnyApiKey()) {
+    if (!epsHistory.length && fmpAnyApiKey() && !prefersFmpIntlHist) {
       const fmpH = await fmpEarningsSurprisesHistory(sym);
       if (fmpH.length) {
         epsHistory = fmpH;
@@ -5171,17 +5232,29 @@ app.get('/api/earnings/:symbol', async (req, res) => {
 
     if (!nextDate && fmpAnyApiKey()) {
       const fmpArr = await fmpEarningCalendarByRange(todayISO, toISOsym);
-      const symMatch = normalizeTickerMatch(sym);
-      let fmpHits = fmpArr.filter(
-        (r) => fmpSymbol(r) && normalizeTickerMatch(fmpSymbol(r)) === symMatch
-      );
-      const compact = symMatch.replace(/\./g, '');
-      if (!fmpHits.length && compact.length >= 2) {
-        fmpHits = fmpArr.filter((r) => {
+      const symVariants = [
+        ...new Set(
+          [sym, ...fmpSymbolVariantsForApi(sym)].map(s =>
+            normalizeTickerMatch(String(s || '').trim().toUpperCase())
+          )
+        )
+      ].filter(Boolean);
+      const symCompactSet = new Set(symVariants.map(s => s.replace(/\./g, '').toUpperCase()));
+      let fmpHits = fmpArr.filter(r => {
+        const fs = fmpSymbol(r);
+        if (!fs) return false;
+        const n = normalizeTickerMatch(String(fs).trim().toUpperCase());
+        return n && symVariants.includes(n);
+      });
+      if (!fmpHits.length) {
+        fmpHits = fmpArr.filter(r => {
           const fs = fmpSymbol(r);
-          return fs && normalizeTickerMatch(fs).replace(/\./g, '') === compact;
+          if (!fs) return false;
+          const compact = normalizeTickerMatch(String(fs).trim().toUpperCase()).replace(/\./g, '');
+          return compact && symCompactSet.has(compact);
         });
       }
+
       fmpHits.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
       const hit =
         fmpHits[0] ||
