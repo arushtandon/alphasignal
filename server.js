@@ -1565,24 +1565,79 @@ async function fetchYahooQuotePE(symbol) {
   return null;
 }
 
+/** Strip BOM / zero-width chars Render sometimes injects when pasting API keys. */
+function normalizeApiKeyString(raw) {
+  return String(raw || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim();
+}
+
 function fmpAnyApiKey() {
-  return (
-    process.env.FMP_API_KEY ||
-    process.env.FMP_KEY ||
-    process.env.FINANCIAL_MODELING_PREP_API_KEY ||
-    ''
-  ).trim();
+  const candidates = [
+    process.env.FMP_API_KEY,
+    process.env.FMP_KEY,
+    process.env.FINANCIAL_MODELING_PREP_API_KEY
+  ];
+  for (const c of candidates) {
+    const t = normalizeApiKeyString(c);
+    if (t) return t;
+  }
+  return '';
 }
 
 function fmpEnvKeyFund() {
   return fmpAnyApiKey();
 }
 
+/**
+ * Alternate symbol spellings FMP indexes (HK is often padded; Render users may set FINANCIAL_MODELING_PREP_API_KEY only).
+ */
+function fmpSymbolVariantsForApi(symbol) {
+  const raw = String(symbol || '').trim();
+  if (!raw) return [];
+  const u = raw.toUpperCase();
+  const out = [];
+  const seen = new Set();
+  const add = cand => {
+    const t = String(cand || '').trim();
+    if (!t) return;
+    const k = t.toUpperCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(t);
+    const hy = k.replace(/\./g, '-');
+    if (!seen.has(hy)) {
+      seen.add(hy);
+      out.push(k.replace(/\./g, '-'));
+    }
+  };
+  add(raw);
+  add(u);
+  const mhk = /^(\d+)[.](HK)$/i.exec(u);
+  if (mhk) {
+    const suf = 'HK';
+    const rawNum = mhk[1];
+    /** Keep Yahoo-style spelling and common FMP HKEX paddings */
+    add(`${rawNum}.${suf}`);
+    const noLeading = rawNum.replace(/^0+/, '') || '0';
+    if (noLeading !== rawNum) add(`${noLeading}.${suf}`);
+    add(`${noLeading.padStart(5, '0')}.${suf}`);
+    add(`${noLeading.padStart(4, '0')}.${suf}`);
+  }
+  const bare = u.replace(
+    /\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i,
+    ''
+  );
+  if (bare && bare !== u) add(bare);
+  return out;
+}
+
 async function fetchFundamentalsFMP(symbol) {
   const k = fmpEnvKeyFund();
   if (!k) return null;
   const _fmpFundBare = symbol.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i,'');
-  const variants = [...new Set([symbol, _fmpFundBare, symbol.replace(/\./g, '-')])];
+  const variants = [...new Set([...fmpSymbolVariantsForApi(symbol), symbol, _fmpFundBare, symbol.replace(/\./g, '-')])];
   for (const raw of variants) {
     try {
       const enc = encodeURIComponent(raw);
@@ -1672,11 +1727,22 @@ function mergeFundSnapshots(y, f) {
   if (!y) return f;
   if (!f) return y;
   const out = { ...y };
+  const sourceRank = s => {
+    if (s === 'bloomberg_bridge' || s === 'bloomberg_enterprise') return 4;
+    if (s === 'fmp' || s === 'finnhub_metric') return 2;
+    if (s) return 1;
+    return 0;
+  };
   for (const k of Object.keys(f)) {
     if (String(k).startsWith('_')) {
       if (!FUNDAMENTAL_MERGE_META.has(k)) continue;
       const fv = f[k];
-      if (fv != null && fv !== '') out[k] = fv;
+      if (fv == null || fv === '') continue;
+      if (k === '_source') {
+        if (sourceRank(fv) > sourceRank(out[k])) out[k] = fv;
+        continue;
+      }
+      out[k] = fv;
       continue;
     }
     const yv = out[k];
@@ -1923,6 +1989,14 @@ function bloombergBridgeFetchHeaders() {
     if (host.includes('ngrok')) {
       headers['ngrok-skip-browser-warning'] = '69420';
     }
+    /** Cloudflare quick tunnels sometimes serve a browser interstitial without a crawler-like UA */
+    if (
+      host.includes('trycloudflare.com') ||
+      host.endsWith('.cfargotunnel.com') ||
+      host.includes('loca.lt')
+    ) {
+      headers['User-Agent'] = 'curl/8.7.1';
+    }
   } catch (_) {}
   const secret = (process.env.BLOOMBERG_BRIDGE_SECRET || '').trim();
   if (secret) headers.Authorization = `Bearer ${secret}`;
@@ -1936,6 +2010,14 @@ function bloombergBridgeFetchHeaders() {
 async function fetchBloombergBridgeFundamentals(symbol) {
   const base = bloombergBridgeUrl();
   if (!base) return null;
+  /** Cloud hosts cannot reach LAN/loopback — skip fast instead of blocking every analyze on a 28s timeout. */
+  if (bloombergBridgeUrlIsUnreachableFromInternet()) {
+    console.warn(
+      'Bloomberg bridge skipped (LAN-only URL — set BLOOMBERG_BRIDGE_URL to an ngrok/HTTPS tunnel to reach Terminal from Render).',
+      symbol
+    );
+    return null;
+  }
   const sec = toBloombergEquity(symbol);
   if (!sec) return null;
   const t0 = Date.now();
@@ -2094,6 +2176,10 @@ async function fetchBloombergBridgeEarnings(symbol) {
   };
   if (!base) {
     stampFail(null, 'bloomberg_bridge_url_not_set');
+    return null;
+  }
+  if (bloombergBridgeUrlIsUnreachableFromInternet()) {
+    stampFail(null, 'bloomberg_bridge_lan_unreachable_from_host');
     return null;
   }
   const bb = toBloombergEquity(symbol);
@@ -2566,8 +2652,12 @@ function mergeFundamentalsForUi(row, fund) {
   if (!fund || !row || typeof row !== 'object') return row;
   const gap = v => isPlaceholderUiSlot(v);
   /** When Bloomberg or FMP supplied the row, allow overwriting placeholder Claude text aggressively. */
+  const bbSec =
+    typeof fund._bbSecurity === 'string' && /\s+[A-Z]{2}\s+Equity$/i.test(fund._bbSecurity.trim());
   const forceBb =
     fund._source === 'bloomberg_bridge' ||
+    fund._source === 'bloomberg_enterprise' ||
+    bbSec ||
     fund._source === 'fmp' ||
     fund._source === 'finnhub_metric';
   const set = (k, v, force) => {
@@ -2617,7 +2707,7 @@ function mergeFundamentalsForUi(row, fund) {
   const bits = [];
   if (fund._source === 'bloomberg_enterprise')
     bits.push(`Bloomberg Enterprise ${fund._bbSecurity ? '(' + fund._bbSecurity + ')' : ''}`.trim());
-  else if (fund._source === 'bloomberg_bridge')
+  else if (fund._source === 'bloomberg_bridge' || bbSec)
     bits.push(`Bloomberg ${fund._bbSecurity ? '(' + fund._bbSecurity + ')' : ''}`.trim());
   if (fund.forwardPE != null && Number.isFinite(+fund.forwardPE)) {
     const s = fmtPe(fund.forwardPE);
@@ -2833,9 +2923,9 @@ app.post('/api/technicals/batch', async (req, res) => {
       // FMP: PRIMARY for .NS/.T/.HK, fallback for EU — same Tier 1 as Danelfin
       if (_mkt.tier==='fmp_quality'||(_mkt.tier==='danelfin_eu'&&_mkt.fmp)) {
         try {
-          const _fk=(process.env.FMP_API_KEY||process.env.FMP_KEY||'').trim();
+          const _fk = fmpEnvKeyFund();
           if (_fk&&data.quantSignal) {
-            const _fmp=await fetchFmpScore(sym);
+            const _fmp = await fetchFmpScore(sym, { batchMode: true });
             if (_fmp) {
               data.fmpScore=_fmp;
               const _qs=_fmp.qualityScore??5,_pio=_fmp.piotroski??0;
@@ -3156,50 +3246,254 @@ function computeCompositeAlpha(dan, tech, newsScore, hz) {
 // ══════════════════════════════════════════════════════════════════════════════
 // FMP QUALITY SCORE — Asian equities (Piotroski + Altman Z + analyst consensus)
 // ══════════════════════════════════════════════════════════════════════════════
-const _fmpCache=new Map(), _FMP_TTL=6*60*60*1000;
-async function fetchFmpScore(symbol) {
-  const key=(process.env.FMP_API_KEY||process.env.FMP_KEY||'').trim();
-  if (!key) return null;
-  const cached=_fmpCache.get(symbol);
-  if (cached&&Date.now()-cached.ts<_FMP_TTL) return cached.data;
+const _fmpCache = new Map(),
+  _FMP_TTL = 6 * 60 * 60 * 1000,
+  /** Retry shortly after misses so env-key fixes propagate without restarting */
+  _FMP_MISS_SUPPRESS_MS = 90 * 1000;
 
-  // FMP uses native dot format: HAVELLS.NS, 0700.HK, 7203.T
-  // Try original first, then bare ticker without exchange suffix
-  const bare = symbol.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i,'');
-  const candidates = [...new Set([symbol, bare])].filter(Boolean);
+function fmpLetterBucketToTen(overall) {
+  const s = String(overall || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+  if (!s) return null;
+  if (s.startsWith('A+')) return 10;
+  if (s.startsWith('A')) return 9;
+  if (s.startsWith('B+')) return 8;
+  if (s.startsWith('B')) return 7;
+  if (s.startsWith('C+')) return 6;
+  if (s.startsWith('C')) return 6;
+  if (s.startsWith('D')) return 4;
+  return null;
+}
+
+async function fetchFmpScore(symbol, opts = {}) {
+  const batchMode = !!(opts && opts.batchMode);
+  const key = fmpEnvKeyFund();
+  if (!key) return null;
+
+  const cacheKey = batchMode ? `${String(symbol)}::fmp-lite` : String(symbol);
+  const now = Date.now();
+  const prev = _fmpCache.get(cacheKey);
+  if (prev && typeof prev.ts === 'number') {
+    if (prev.data != null && now - prev.ts < _FMP_TTL) return prev.data;
+    if (prev.data === null && now - prev.ts < _FMP_MISS_SUPPRESS_MS) return null;
+  }
+
+  let candidates = fmpSymbolVariantsForApi(symbol);
+  if (batchMode) candidates = candidates.slice(0, 5);
+  if (!batchMode) {
+    console.log(`FMP fetchFmpScore variants for ${symbol}:`, candidates.slice(0, 12).join(' | '));
+  }
+
+  const tHttp = batchMode ? 9000 : 14000;
 
   for (const sym of candidates) {
     try {
-      const enc=encodeURIComponent(sym);
-      const q=`?apikey=${encodeURIComponent(key)}`;
-      const H={Accept:'application/json'};
-      const [rR,sR,gR]=await Promise.allSettled([
-        fetch(`https://financialmodelingprep.com/stable/ratings-snapshot${q}&symbol=${enc}`,{headers:H,signal:AbortSignal.timeout(10000)}),
-        fetch(`https://financialmodelingprep.com/api/v3/score${q}&symbol=${enc}`,{headers:H,signal:AbortSignal.timeout(10000)}),
-        fetch(`https://financialmodelingprep.com/stable/grades-summary${q}&symbol=${enc}`,{headers:H,signal:AbortSignal.timeout(10000)}),
+      const enc = encodeURIComponent(sym);
+      const q = `?apikey=${encodeURIComponent(key)}`;
+      const H = { Accept: 'application/json' };
+      const baseStable = 'https://financialmodelingprep.com/stable';
+
+      const scorePathP = fetch(`https://financialmodelingprep.com/api/v3/score/${enc}${q}`, {
+        headers: H,
+        signal: AbortSignal.timeout(tHttp)
+      });
+      const scoreQueryP = batchMode
+        ? null
+        : fetch(`https://financialmodelingprep.com/api/v3/score${q}&symbol=${enc}`, {
+            headers: H,
+            signal: AbortSignal.timeout(tHttp)
+          });
+
+      const settled = await Promise.allSettled([
+        fetch(`${baseStable}/ratings-snapshot${q}&symbol=${enc}`, {
+          headers: H,
+          signal: AbortSignal.timeout(tHttp)
+        }),
+        scorePathP,
+        ...(scoreQueryP ? [scoreQueryP] : []),
+        fetch(`${baseStable}/grades-summary${q}&symbol=${enc}`, {
+          headers: H,
+          signal: AbortSignal.timeout(tHttp)
+        })
       ]);
-      let rating=null,scores=null,grades=null;
-      if (rR.status==='fulfilled'&&rR.value.ok){const d=await rR.value.json();const r=Array.isArray(d)?d[0]:d;if(r?.rating)rating={overall:r.rating,roe:r.roeScore??null,roa:r.roaScore??null};}
-      if (sR.status==='fulfilled'&&sR.value.ok){const d=await sR.value.json();const r=Array.isArray(d)?d[0]:d;if(r)scores={piotroski:r.piotroskiScore??null,altmanZ:r.altmanZScore??null};}
-      if (gR.status==='fulfilled'&&gR.value.ok){const d=await gR.value.json();const r=Array.isArray(d)?d[0]:(d?.data?.[0]??d);
-        if(r){const sb=r.strongBuy||0,b=r.buy||0,hh=r.hold||0,se=r.sell||0,ss=r.strongSell||0,t=sb+b+hh+se+ss;
-          grades={strongBuy:sb,buy:b,hold:hh,sell:se,strongSell:ss,total:t,consensus:t>0?parseFloat(((sb*2+b-se-ss*2)/t).toFixed(2)):null};}}
-      if (!rating&&!scores&&!grades) continue; // no data for this variant, try next
-      const rm={'A+':10,'A':9,'B+':8,'B':7,'C':6,'D':4};
-      const oS=rm[rating?.overall]??5;
-      const pS=scores?.piotroski!=null?Math.round(scores.piotroski*10/9):null;
-      const aS=scores?.altmanZ!=null?(scores.altmanZ>2.99?9:scores.altmanZ>1.81?6:3):null;
-      const gS=grades?.consensus!=null?Math.round((parseFloat(grades.consensus)+2)/4*10):null;
-      const inp=[oS,pS,aS,gS].filter(v=>v!=null);
-      const qs=inp.length?Math.round(inp.reduce((a,b)=>a+b,0)/inp.length):null;
-      const result={qualityScore:qs,overallRating:rating?.overall??null,piotroski:scores?.piotroski??null,
-        altmanZ:scores?.altmanZ??null,roeScore:rating?.roe??null,roaScore:rating?.roa??null,
-        analystScore:gS,analystCounts:grades,buy_track_record:qs!=null&&qs>=7};
-      _fmpCache.set(symbol,{ts:Date.now(),data:result});
+
+      const rR = settled[0];
+      const sRpath = settled[1];
+      const sRqs = batchMode ? { status: 'rejected' } : settled[2];
+      const gR = batchMode ? settled[2] : settled[3];
+
+      let rating = null;
+      let scores = null;
+      let grades = null;
+
+      if (rR.status === 'fulfilled' && rR.value.ok) {
+        const d = await rR.value.json().catch(() => null);
+        const r = Array.isArray(d) ? d[0] : d;
+        if (r && typeof r === 'object' && !(r.error || r['Error Message'])) {
+          const ov =
+            (typeof r.rating === 'string' && r.rating.trim()) ||
+            (typeof r.overallRating === 'string' && r.overallRating.trim()) ||
+            (typeof r.letterRating === 'string' && r.letterRating.trim()) ||
+            null;
+          if (ov || r.roeScore != null || r.roaScore != null) {
+            rating = {
+              overall: ov || null,
+              roe: r.roeScore ?? r.roe ?? null,
+              roa: r.roaScore ?? r.roa ?? null
+            };
+          }
+        }
+      }
+
+      if (!batchMode && !rating?.overall) {
+        const qAmp = q.replace(/^\?/, '&');
+        const ratingUrls = [
+          `https://financialmodelingprep.com/api/v3/historical-rating/${enc}?limit=1${qAmp}`,
+          `https://financialmodelingprep.com/api/v3/rating/${enc}${q}`
+        ];
+        for (let ri = 0; ri < ratingUrls.length && !rating?.overall; ri++) {
+          try {
+            const hr = await fetch(ratingUrls[ri], { headers: H, signal: AbortSignal.timeout(12000) });
+            if (!hr.ok) continue;
+            const arr = await hr.json().catch(() => null);
+            const r2 = Array.isArray(arr) && arr[0] ? arr[0] : null;
+            if (r2 && typeof r2 === 'object') {
+              const ov =
+                (typeof r2.rating === 'string' && r2.rating.trim()) ||
+                (typeof r2.ratingRecommendation === 'string' && r2.ratingRecommendation.trim()) ||
+                (typeof r2.recommendation === 'string' && r2.recommendation.trim()) ||
+                null;
+              rating = {
+                overall: ov ?? rating?.overall ?? null,
+                roe: r2.roeScore ?? r2.overallScore ?? rating?.roe ?? null,
+                roa: rating?.roa ?? null
+              };
+            }
+          } catch (_) {
+            /* optional */
+          }
+        }
+      }
+
+      const mergeScoreTxt = txt => {
+        try {
+          const d = txt ? JSON.parse(txt) : null;
+          const row = Array.isArray(d) ? d[0] : d;
+          if (!row || typeof row !== 'object' || row.error || row['Error Message']) return false;
+          const pio =
+            scores?.piotroski ??
+            row.piotroskiScore ??
+            row.piotroski ??
+            row.piotroski_score ??
+            row.fScore ??
+            null;
+          const az =
+            scores?.altmanZ ??
+            row.altmanZScore ??
+            row.altmanZ ??
+            row.altman_z_score ??
+            null;
+          const toNum = v => {
+            if (typeof v === 'number' && Number.isFinite(v)) return v;
+            if (typeof v === 'string' && v.trim() !== '') {
+              const n = Number(v);
+              return Number.isFinite(n) ? n : null;
+            }
+            return null;
+          };
+          scores = {
+            piotroski: toNum(pio),
+            altmanZ: toNum(az)
+          };
+          return scores.piotroski != null || scores.altmanZ != null;
+        } catch (_) {
+          return false;
+        }
+      };
+
+      let gotScoreUrl = false;
+      if (sRpath.status === 'fulfilled' && sRpath.value.ok)
+        gotScoreUrl = mergeScoreTxt(await sRpath.value.text());
+      if (!gotScoreUrl && sRqs.status === 'fulfilled' && sRqs.value.ok)
+        mergeScoreTxt(await sRqs.value.text());
+
+      if (gR.status === 'fulfilled' && gR.value.ok) {
+        const d = await gR.value.json().catch(() => null);
+        const r = Array.isArray(d) ? d[0] : d?.data?.[0] ?? d;
+        if (r && typeof r === 'object') {
+          const sb = r.strongBuy || 0,
+            b = r.buy || 0,
+            hh = r.hold || 0,
+            se = r.sell || 0,
+            ss = r.strongSell || 0,
+            t = sb + b + hh + se + ss;
+          grades = {
+            strongBuy: sb,
+            buy: b,
+            hold: hh,
+            sell: se,
+            strongSell: ss,
+            total: t,
+            consensus: t > 0 ? parseFloat(((sb * 2 + b - se - ss * 2) / t).toFixed(2)) : null
+          };
+        }
+      }
+
+      const hasNums = !!(scores?.piotroski != null || scores?.altmanZ != null);
+      if (!rating?.overall && !hasNums && !grades) continue;
+
+      const oS = fmpLetterBucketToTen(rating?.overall);
+
+      const pS =
+        scores?.piotroski != null && Number.isFinite(scores.piotroski)
+          ? Math.round((scores.piotroski * 10) / 9)
+          : null;
+      const aS =
+        scores?.altmanZ != null && Number.isFinite(scores.altmanZ)
+          ? scores.altmanZ > 2.99
+            ? 9
+            : scores.altmanZ > 1.81
+              ? 6
+              : 3
+          : null;
+      const gS =
+        grades?.consensus != null && Number.isFinite(parseFloat(String(grades.consensus)))
+          ? Math.round(((parseFloat(String(grades.consensus)) + 2) / 4) * 10)
+          : null;
+      const inp = [oS, pS, aS, gS].filter(v => v != null && Number.isFinite(v));
+      const qs =
+        inp.length >= 1 ? Math.round(inp.reduce((acc, x) => acc + Number(x), 0) / inp.length) : null;
+      const result = {
+        qualityScore: qs,
+        overallRating: rating?.overall ?? null,
+        piotroski: scores?.piotroski ?? null,
+        altmanZ: scores?.altmanZ ?? null,
+        roeScore: rating?.roe ?? null,
+        roaScore: rating?.roa ?? null,
+        analystScore: gS,
+        analystCounts: grades,
+        buy_track_record: qs != null && qs >= 7
+      };
+      _fmpCache.set(cacheKey, { ts: Date.now(), data: result });
+      if (batchMode) {
+        console.log(`FMP lite ${symbol} ← ${sym} qs=${qs ?? 'n/a'}`);
+      } else {
+        console.log(
+          `FMP fetchFmpScore hit ${symbol} via variant ${sym} qs=${qs} pio=${scores?.piotroski ?? 'n'} az=${scores?.altmanZ ?? 'n'}`
+        );
+      }
       return result;
-    } catch(e){console.warn('FMP score',sym,e.message); /* try next variant */ }
+    } catch (e) {
+      console.warn('FMP score', sym, e.message);
+    }
   }
-  _fmpCache.set(symbol,{ts:Date.now(),data:null});
+
+  _fmpCache.set(cacheKey, { ts: Date.now(), data: null });
+  if (!batchMode) {
+    console.warn(`FMP fetchFmpScore miss for ${symbol} (checked ${candidates.length} variants)`);
+  }
   return null;
 }
 
@@ -3363,15 +3657,19 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     quotes: 'yahoo_finance',
     earnings: {
-      finnhub_calendar: !!process.env.FINNHUB_API_KEY,
-      fmp_calendar: !!(
-        process.env.FMP_API_KEY ||
-        process.env.FMP_KEY ||
-        process.env.FINANCIAL_MODELING_PREP_API_KEY ||
-        ''
-      ).trim(),
+      finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
+      /** Uses same normalization as live FMP fetches (BOM/zero-width trimmed). */
+      fmp_calendar: Boolean(fmpAnyApiKey()),
       yahoo_fallback: true
     },
+    fmp: (() => {
+      const fk = fmpAnyApiKey();
+      return {
+        key_resolved: Boolean(fk),
+        key_chars: fk ? fk.length : 0,
+        key_suffix_masked: fk && fk.length >= 4 ? `****${fk.slice(-4)}` : fk ? '(short)' : null
+      };
+    })(),
     /** After first /api/earnings-calendar request: how many rows the merge produced (-1 = not run yet). */
     earnings_calendar_merge: {
       last_event_count: earningsMergeDiag.eventsOut,
@@ -4609,7 +4907,7 @@ async function fmpEarningsSurprisesHistory(sym) {
       .filter((r) => r.date || r.quarter);
   }
   const earningsBare = sym.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK)$/i, '');
-  const variants = [...new Set([sym, sym.replace(/\./g, '-'), earningsBare])].filter(Boolean);
+  const variants = [...new Set([...fmpSymbolVariantsForApi(sym), sym.replace(/\./g, '-'), earningsBare])].filter(Boolean);
   for (const v of variants) {
     try {
       const enc = encodeURIComponent(v);

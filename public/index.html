@@ -1621,7 +1621,8 @@ async function runDashScan(){
   ['hzShortBuy','hzShortSell','hzMediumBuy','hzMediumSell','hzLongBuy','hzLongSell'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.innerHTML='';
   });
-  document.getElementById('pickDetail').innerHTML='';
+  const pickDetailEl = document.getElementById('pickDetail');
+  if (pickDetailEl) pickDetailEl.innerHTML = '';
 
   const BATCH=4;
   const batches=[];
@@ -1631,12 +1632,15 @@ async function runDashScan(){
   for(let i=0;i<batches.length;i++){
     const batch=batches[i];
     const pct=Math.round(((i)/batches.length)*88);
-    document.getElementById('pBar').style.width=pct+'%';
-    document.getElementById('pSub').textContent=`Batch ${i+1}/${batches.length} — scoring ${batch.slice(0,5).join(', ')}...`;
-    const logEl=document.getElementById('pLog');
-    logEl.innerHTML+='<div>→ '+batch.join(', ')+'</div>';
-    logEl.scrollTop=logEl.scrollHeight;
-
+    const pBar = document.getElementById('pBar');
+    const pSub = document.getElementById('pSub');
+    const logEl = document.getElementById('pLog');
+    if (pBar) pBar.style.width = pct + '%';
+    if (pSub) pSub.textContent = `Batch ${i+1}/${batches.length} — scoring ${batch.slice(0,5).join(', ')}...`;
+    if (logEl) {
+      logEl.innerHTML += '<div>→ ' + batch.join(', ') + '</div>';
+      logEl.scrollTop = logEl.scrollHeight;
+    }
     let batchTech = {}, batchFund = {}, batchNews = {}, batchDan = {};
     let batchPriceCtx = '';
     const eqSyms = batch.filter(function (t) {
@@ -1650,7 +1654,10 @@ async function runDashScan(){
         fetch('/api/news-sentiment/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: batch }) }),
         fetch('/api/danelfin/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: batch }) })
       ]);
-      const prices = bpr.ok ? await bpr.json() : {};
+      let prices = {};
+      try {
+        if (bpr.ok && bpr.headers.get('content-type')?.includes('application/json')) prices = await bpr.json();
+      } catch (_) { prices = {}; }
       if (Object.keys(prices).length) {
         Object.entries(prices).forEach(function ([sym, info]) {
           const entry = Object.assign({}, info, { ts: Date.now() });
@@ -1664,10 +1671,30 @@ async function runDashScan(){
           }
         });
       }
-      if (techR.ok) batchTech = await techR.json();
-      if (fundR.ok) batchFund = await fundR.json();
-      if (newsR.ok) batchNews = await newsR.json();
-      if (danR && danR.ok) batchDan = await danR.json();
+      try {
+        if (techR.ok && techR.headers.get('content-type')?.includes('application/json'))
+          batchTech = await techR.json();
+      } catch (_) {
+        batchTech = {};
+      }
+      try {
+        if (fundR.ok && fundR.headers.get('content-type')?.includes('application/json'))
+          batchFund = await fundR.json();
+      } catch (_) {
+        batchFund = {};
+      }
+      try {
+        if (newsR.ok && newsR.headers.get('content-type')?.includes('application/json'))
+          batchNews = await newsR.json();
+      } catch (_) {
+        batchNews = {};
+      }
+      try {
+        if (danR && danR.ok && danR.headers.get('content-type')?.includes('application/json'))
+          batchDan = await danR.json();
+      } catch (_) {
+        batchDan = {};
+      }
       const priceLines = batch.map(function (t) {
         const p = getPriceQuoteFromMap(prices, t);
         return p && p.price ? t + '=' + p.price + (p.currency || '') : null;
@@ -2051,10 +2078,10 @@ async function runDashScan(){
     await new Promise(r=>setTimeout(r,12000));
   }
 
-  document.getElementById('pBar').style.width='100%';
-  document.getElementById('pSub').textContent='Ranking picks...';
+  const _pBarDone = document.getElementById('pBar'); if (_pBarDone) _pBarDone.style.width = '100%';
+  const _pSubDone = document.getElementById('pSub'); if (_pSubDone) _pSubDone.textContent = 'Ranking picks...';
   await new Promise(r=>setTimeout(r,300));
-  document.getElementById('dashStatus').innerHTML='';
+  const _dashClear = document.getElementById('dashStatus'); if (_dashClear) _dashClear.innerHTML = '';
 
   console.log('all array length after scan:', all.length);
   if(!all.length){
@@ -3228,7 +3255,7 @@ function renderCard(s){
       _fmpCard =
         '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(0,200,120,0.15);border-radius:8px;padding:9px 11px;margin-bottom:4px">'
         + '<div style="font-size:9px;font-weight:600;color:rgba(0,200,120,0.75);font-family:DM Mono,monospace;margin-bottom:4px">FMP SCORE UNAVAILABLE</div>'
-        + '<div style="font-size:8px;color:rgba(180,180,180,0.55);font-family:DM Mono,monospace;line-height:1.5">Add <strong>FMP_API_KEY</strong> on the Render service (Financial Modeling Prep) to load numeric quality, Piotroski, Altman Z, and better earnings history for HK/NSE/JP listings.</div></div>';
+        + '<div style="font-size:8px;color:rgba(180,180,180,0.55);font-family:DM Mono,monospace;line-height:1.5">Ensure <strong>FMP_API_KEY</strong> <em>or</em> <strong>FINANCIAL_MODELING_PREP_API_KEY</strong> is set on Render (Financial Modeling Prep). HK/NSE tickers often need the padded variant (e.g. 09988.HK).</div></div>';
     }
   }
   const ac=aCls(s.action);
