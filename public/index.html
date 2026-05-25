@@ -1878,6 +1878,14 @@ async function runDashScan(){
               r.shortScore = sh; r.shortSellScore = shS;
               r.mediumScore = me; r.mediumSellScore = meS;
               r.longScore = lo; r.longSellScore = loS;
+              // Store regime for each horizon (from quantSignal)
+              r._shortRegime  = qs.short?.regime  || 'neutral';
+              r._medRegime    = qs.medium?.regime  || 'neutral';
+              r._longRegime   = qs.long?.regime    || 'neutral';
+              // Overall regime = most common across horizons
+              const _regimes = [r._shortRegime, r._medRegime, r._longRegime];
+              r._regime = _regimes.filter(x=>x==='bear').length>=2 ? 'bear'
+                        : _regimes.filter(x=>x==='bull').length>=2 ? 'bull' : 'neutral';
 
               const rate = function(sc){ return sc>=78?'Strong Buy':sc>=62?'Buy':'Hold'; };
               const rateS = function(sc){ return sc>=74?'Strong Sell':sc>=58?'Sell':'Hold'; };
@@ -3273,7 +3281,7 @@ function renderCard(s){
     {
       key:'short', label:'Short', period:'1 day–1 month',
       tier:s.shortTier||0, tierLabel:s.shortTierLabel||'',
-      winRateEst:s.shortWinRateEst||null, danScore:s.danelfinAiScore||null, danDriver:s.danelfinTechnical||null, danDriverLabel:'Technical', compositeAlpha:s.compositeAlphaShort||null,
+      winRateEst:s.shortWinRateEst||null, regime:s._shortRegime||s._regime||'neutral', danScore:s.danelfinAiScore||null, danDriver:s.danelfinTechnical||null, danDriverLabel:'Technical', compositeAlpha:s.compositeAlphaShort||null,
       rating:applyWinRateThreshold(s.shortRating, s.backtestedWinRate), conf:s.shortConf,
       weighting:s.shortWeighting||'100% Technical',
       action: hzIsSell(s.shortRating)?'Sell':(s.shortRating||'').toLowerCase().includes('buy')?'Buy':'Hold',
@@ -3290,7 +3298,7 @@ function renderCard(s){
     {
       key:'medium', label:'Medium', period:'1–3 months',
       tier:s.mediumTier||0, tierLabel:s.mediumTierLabel||'',
-      winRateEst:s.mediumWinRateEst||null, danScore:s.danelfinAiScore||null, danDriver:s.danelfinAiScore||null, danDriverLabel:'AI Score', compositeAlpha:s.compositeAlphaMedium||s.compositeAlpha||null,
+      winRateEst:s.mediumWinRateEst||null, regime:s._medRegime||s._regime||'neutral', danScore:s.danelfinAiScore||null, danDriver:s.danelfinAiScore||null, danDriverLabel:'AI Score', compositeAlpha:s.compositeAlphaMedium||s.compositeAlpha||null,
       rating:applyWinRateThreshold(s.mediumRating, s.backtestedWinRate), conf:s.mediumConf,
       weighting:s.mediumWeighting||'70% Technical · 30% News',
       action: hzIsSell(s.mediumRating)?'Sell':(s.mediumRating||'').toLowerCase().includes('buy')?'Buy':'Hold',
@@ -3307,7 +3315,7 @@ function renderCard(s){
     {
       key:'long', label:'Long', period:'4–12 months',
       tier:s.longTier||0, tierLabel:s.longTierLabel||'',
-      winRateEst:s.longWinRateEst||null, danScore:s.danelfinAiScore||null, danDriver:s.danelfinFundamental||null, danDriverLabel:'Fundamental', compositeAlpha:s.compositeAlphaLong||null,
+      winRateEst:s.longWinRateEst||null, regime:s._longRegime||s._regime||'neutral', danScore:s.danelfinAiScore||null, danDriver:s.danelfinFundamental||null, danDriverLabel:'Fundamental', compositeAlpha:s.compositeAlphaLong||null,
       rating:applyWinRateThreshold(s.longRating, s.backtestedWinRate), conf:s.longConf,
       weighting:s.longWeighting||'60% Technical · 20% Fundamental · 20% News',
       action: hzIsSell(s.longRating)?'Sell':(s.longRating||'').toLowerCase().includes('buy')?'Buy':'Hold',
@@ -3420,6 +3428,12 @@ function renderCard(s){
           +'</div>'
         +'</div>'
         :'')
+      // Market regime badge — shows BULL/BEAR/NEUTRAL for this horizon
+      + (hz.regime && hz.regime !== 'neutral' ? '<div style="display:inline-flex;align-items:center;gap:5px;margin-bottom:6px;padding:3px 10px;border-radius:4px;'
+        + (hz.regime==='bull' ? 'background:rgba(0,200,100,0.1);border:1px solid rgba(0,200,100,0.3)' : 'background:rgba(255,60,60,0.1);border:1px solid rgba(255,60,60,0.3)') + '">'
+        + '<span style="font-size:11px">' + (hz.regime==='bull'?'📈':'📉') + '</span>'
+        + '<span style="font-size:8px;font-weight:700;font-family:DM Mono,monospace;color:' + (hz.regime==='bull'?'#00c864':'#ff4444') + '">' + hz.regime.toUpperCase() + ' REGIME</span>'
+        + '</div>' : '')
       // Analysis text
       + (hz.analysis ? '<p class="prose" style="margin-top:8px">'+hz.analysis+'</p>' : '')
       // Danelfin/FMP mini-card (horizon-specific signal)
@@ -3586,6 +3600,40 @@ function renderCard(s){
     +'<div class="mt"><div class="ml">Fin Health</div><div class="mv '+(s.financialHealth==='Strong'?'g':s.financialHealth==='Weak'?'r':'y')+'">'+(s.financialHealth||'—')+'</div></div>'
     +'<div class="mt"><div class="ml">Industry Pos</div><div class="mv">'+(s.industryPos||'—')+'</div></div>'
     +'</div>'
+    // FMP quality card — Piotroski, Altman Z, Quality Score, FMP Rating (Asian stocks only)
+    +(s.fmpScore
+      ?'<div style="margin-top:10px;padding:10px 12px;background:linear-gradient(135deg,rgba(0,32,22,0.97),rgba(0,22,14,0.97));border:1px solid rgba(0,200,100,0.25);border-radius:8px">'
+        +'<div style="font-size:8px;font-weight:700;color:#00dc82;font-family:DM Mono,monospace;letter-spacing:.12em;margin-bottom:8px">📊 FMP QUALITY — Piotroski · Altman Z · Analyst</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'
+          +(s.fmpScore.qualityScore!=null?'<div style="text-align:center;background:rgba(255,255,255,0.04);border-radius:5px;padding:6px">'
+            +'<div style="font-size:7px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace;margin-bottom:3px">Quality</div>'
+            +'<div style="font-size:17px;font-weight:800;font-family:DM Mono,monospace;color:'+(s.fmpScore.qualityScore>=7?'#00c864':s.fmpScore.qualityScore>=5?'#c9f14f':'#ff5555')+'">'+s.fmpScore.qualityScore+'<span style="font-size:8px;opacity:0.4">/10</span></div>'
+            +'<div style="font-size:7px;color:rgba(255,255,255,0.3)">'+(s.fmpScore.qualityScore>=7?'Strong':s.fmpScore.qualityScore>=5?'Moderate':'Weak')+'</div>'
+          +'</div>':'')
+          +(s.fmpScore.piotroski!=null?'<div style="text-align:center;background:rgba(255,255,255,0.04);border-radius:5px;padding:6px">'
+            +'<div style="font-size:7px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace;margin-bottom:3px">Piotroski</div>'
+            +'<div style="font-size:17px;font-weight:800;font-family:DM Mono,monospace;color:'+(s.fmpScore.piotroski>=7?'#00c864':s.fmpScore.piotroski>=5?'#c9f14f':'#ff5555')+'">'+s.fmpScore.piotroski+'<span style="font-size:8px;opacity:0.4">/9</span></div>'
+            +'<div style="font-size:7px;color:rgba(255,255,255,0.3)">'+(s.fmpScore.piotroski>=7?'Healthy':s.fmpScore.piotroski>=5?'Moderate':'Weak')+'</div>'
+          +'</div>':'')
+          +(s.fmpScore.altmanZ!=null?'<div style="text-align:center;background:rgba(255,255,255,0.04);border-radius:5px;padding:6px">'
+            +'<div style="font-size:7px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace;margin-bottom:3px">Altman Z</div>'
+            +'<div style="font-size:17px;font-weight:800;font-family:DM Mono,monospace;color:'+(s.fmpScore.altmanZ>2.99?'#00c864':s.fmpScore.altmanZ>1.81?'#c9f14f':'#ff5555')+'">'+s.fmpScore.altmanZ.toFixed(1)+'</div>'
+            +'<div style="font-size:7px;color:rgba(255,255,255,0.3)">'+(s.fmpScore.altmanZ>2.99?'Safe Zone':s.fmpScore.altmanZ>1.81?'Grey Zone':'Distress')+'</div>'
+          +'</div>':'')
+          +(s.fmpScore.overallRating?'<div style="text-align:center;background:rgba(255,255,255,0.04);border-radius:5px;padding:6px">'
+            +'<div style="font-size:7px;color:rgba(255,255,255,0.4);font-family:DM Mono,monospace;margin-bottom:3px">FMP Rating</div>'
+            +'<div style="font-size:17px;font-weight:800;font-family:DM Mono,monospace;color:'+(s.fmpScore.overallRating[0]==='A'?'#00c864':s.fmpScore.overallRating[0]==='B'?'#c9f14f':'#ff5555')+'">'+s.fmpScore.overallRating+'</div>'
+            +'<div style="font-size:7px;color:rgba(255,255,255,0.3)">FMP Grade</div>'
+          +'</div>':'')
+        +'</div>'
+        +(s.fmpScore.analystCounts&&s.fmpScore.analystCounts.total>0
+          ?'<div style="margin-top:8px">'
+            +'<div style="font-size:7px;color:rgba(255,255,255,0.3);font-family:DM Mono,monospace;margin-bottom:4px">ANALYST CONSENSUS — '+s.fmpScore.analystCounts.total+' analysts</div>'
+            +'<div style="display:flex;gap:2px;border-radius:3px;overflow:hidden">'
+              +['strongBuy','buy','hold','sell','strongSell'].map(function(k){var v=s.fmpScore.analystCounts[k]||0;if(!v)return '';var col=k.includes('Buy')?'#00c864':k==='hold'?'rgba(200,200,200,0.25)':'#ff4444';return '<div style="flex:'+(v/s.fmpScore.analystCounts.total)+';background:'+col+';height:5px" title="'+k+': '+v+'"></div>';}).join('')
+            +'</div>'
+          +'</div>':'')
+      +'</div>':'')
     +(s.newsImpact?'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:7px;padding:8px 10px;margin-bottom:8px"><div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">News Impact</div><div style="font-size:12px;color:'+(s.newsTone==='positive'?'var(--buy)':s.newsTone==='negative'?'var(--sell)':'var(--tx)')+'">'+escMinimalHtml(s.newsImpact)+'</div></div>':'')
     +buildEarningsRow(s)
     +(s.catalyst?'<div style="margin-bottom:6px"><span style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.1em">Catalyst: </span><span class="prose">'+s.catalyst+'</span></div>':'')
@@ -3628,8 +3676,46 @@ function renderWl(){
 // ══════════════════════════════════════════════
 // HISTORY
 // ══════════════════════════════════════════════
+function clearHistoryAll() {
+  if (!confirm('Clear ALL history?\nThis cannot be undone.')) return;
+  fetch('/api/history', { method: 'DELETE' })
+    .then(() => { ST.history = []; renderHist(); })
+    .catch(e => alert('Failed: ' + e.message));
+}
+
+function revalidateHistory() {
+  const btn = event?.target;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Checking...'; }
+  fetch('/api/history/revalidate', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ dryRun: false })
+  })
+  .then(r => r.json())
+  .then(d => {
+    const removed = d.removed || [];
+    const detail = removed.length > 0
+      ? '\n\nRemoved:\n' + removed.slice(0,10).map(t => `• ${t.ticker} (${t.hz}) — ${t.reason}`).join('\n')
+        + (removed.length > 10 ? `\n... and ${removed.length-10} more` : '')
+      : '';
+    alert(`Revalidation complete:\n✅ ${d.totalRemoved} invalid trades removed\n✓ ${d.kept} valid trades kept${detail}`);
+    if (d.totalRemoved > 0) { loadHistoryFromServer(); }
+  })
+  .catch(e => alert('Revalidation failed: ' + e.message))
+  .finally(() => { if(btn){btn.disabled=false;btn.textContent='🔄 Revalidate';} });
+}
+
 function renderHist() {
   const el = document.getElementById('histContent');
+  // Add revalidate + clear buttons to history header
+  const histPh = document.querySelector('#pane-history .ph');
+  if (histPh && !histPh.querySelector('.hist-actions')) {
+    const actDiv = document.createElement('div');
+    actDiv.className = 'hist-actions';
+    actDiv.style.cssText = 'display:flex;gap:8px;align-items:center';
+    actDiv.innerHTML = '<button onclick="revalidateHistory()" style="background:rgba(255,200,0,0.12);border:1px solid rgba(255,200,0,0.3);color:#ffc800;border-radius:5px;padding:4px 10px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer" title="Remove trades that contradict current market regime">🔄 Revalidate</button>'
+      + '<button onclick="clearHistoryAll()" style="background:rgba(255,60,60,0.1);border:1px solid rgba(255,60,60,0.25);color:#ff5555;border-radius:5px;padding:4px 10px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">✕ Clear all</button>';
+    histPh.appendChild(actDiv);
+  }
   if(!ST.history.length) {
     el.innerHTML = '<div class="emp"><div class="emp-a">◷</div>'
       +'<p>No recommendations yet.<br>'

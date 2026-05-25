@@ -658,6 +658,38 @@ async function fetchOHLCV(symbol, range = '6mo', interval = '1d') {
       } catch(e) { console.log('fetchOHLCV', sym, e.message); }
     }
   }
+  // ── Stooq.com fallback — free, no API key, good .NS/.T coverage ──────────
+  // India NSE: TCS.NS → tcs.ns | Japan TSE: 7203.T → 7203.jp | HK: 0700.HK → 0700.hk
+  if (interval === '1d' && /\.(NS|BO|T|HK)$/i.test(symbol)) {
+    try {
+      const stooqSym = /\.T$/i.test(symbol)
+        ? symbol.toLowerCase().replace(/\.t$/i, '.jp')
+        : symbol.toLowerCase();
+      const rangeMap = {'1mo':30,'3mo':90,'6mo':180,'1y':365,'2y':730,'5y':1825};
+      const days = rangeMap[range] ?? 730;
+      const cutoff = Date.now() - days * 86400000;
+      const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(stooqSym)}&i=d`;
+      const r = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/csv' },
+        signal: AbortSignal.timeout(15000)
+      });
+      if (r.ok) {
+        const csv = await r.text();
+        const lines = csv.trim().split('\n').slice(1).filter(l => /^\d{4}/.test(l));
+        if (lines.length >= 15) {
+          const data = lines.map(l => {
+            const [date,o,h,lo,c,v='0'] = l.split(',');
+            return { t: new Date(date).getTime()/1000, o:+o, h:+h, l:+lo, c:+c, v:+v };
+          }).filter(d => d.c > 0 && d.t*1000 >= cutoff);
+          if (data.length >= 15) {
+            console.log(`Stooq: ${symbol}→${stooqSym} ${data.length} bars`);
+            return data.sort((a,b) => a.t - b.t);
+          }
+        }
+      }
+    } catch(e) { console.log('Stooq fallback', symbol, e.message); }
+  }
+
   return null;
 }
 
@@ -1079,6 +1111,39 @@ function computeQuantSignal(tech, fund, hz) {
   const atSDTop       = chanSellQuality === 'excellent' || chanSellQuality === 'good'; // extended
   const inSDSellZone  = chanSellQuality === 'excellent' || chanSellQuality === 'good';
 
+  // ══ DYNAMIC MARKET REGIME DETECTION ═══════════════════════════════════════
+  // Regime is determined per-stock from its own technicals — no external index needed.
+  // The same stock has DIFFERENT optimal strategies in different market conditions:
+  //   BULL:    Price > MA200 + Golden Cross + weekly uptrend + ADX>20
+  //            → trend-following strategy, higher buy multipliers
+  //   BEAR:    Price < MA200 + Death Cross + weekly downtrend
+  //            → short-selling strategy, higher sell multipliers, no long buys
+  //   NEUTRAL: Mixed signals — sideways, consolidating, or transitioning
+  //            → mean-reversion strategy, SD channel timing dominates
+  //
+  // Regime scores (0-7 scale)
+  const _bullPts = (aboveMa200?2:0) + (goldenCross?2:0)
+                 + (weeklyTrend==='uptrend'?1:0) + (adx>22?0.5:0)
+                 + (macdBull?0.5:0) + (obvBullish===true?0.5:0)
+                 + (rsi>50&&rsi<70?0.5:0);
+  const _bearPts = (!aboveMa200?2:0) + (deathCross?2:0)
+                 + (weeklyTrend==='downtrend'?1:0)
+                 + (!macdBull&&!macdTurnUp?0.5:0)
+                 + (obvBullish===false?0.5:0)
+                 + (rsi<40?0.5:0);
+  const regime = _bearPts >= 4 ? 'bear'
+               : _bullPts >= 4 ? 'bull'
+               : 'neutral';
+
+  // Strategy multipliers — applied to buyGates/sellGates scoring
+  // BULL: reward momentum+trend, penalise counter-trend shorts
+  // BEAR: reward breakdown+distribution, prevent false longs
+  // NEUTRAL: reward mean-reversion timing (SD channel)
+  const _buyMult  = regime==='bull'  ? 1.30 : regime==='bear' ? 0.45 : 1.00;
+  const _sellMult = regime==='bear'  ? 1.35 : regime==='bull' ? 0.50 : 1.00;
+  const _mrMult   = regime==='neutral' ? 1.25 : 1.00; // mean-reversion bonus
+  // ════════════════════════════════════════════════════════════════════════════
+
   let buy=0, sell=0;
   const condBuy=[], condSell=[];
   let buyGates=0, sellGates=0;
@@ -1117,7 +1182,9 @@ function computeQuantSignal(tech, fund, hz) {
     if (atSDTop)    buyGates = Math.round(buyGates*0.4);  // extended — terrible short entry
     if (!aboveMa50) buyGates = Math.round(buyGates*0.45); // downtrend — skip
 
-    buy = buyGates>=5?88:buyGates>=4?74:buyGates>=3?58:buyGates>=2?40:Math.min(22,Math.round(buyGates*15));
+    // Regime-scaled short buy score — BULL boosts momentum plays, BEAR suppresses longs
+    buyGates *= _buyMult; buyGates = Math.max(0, buyGates);
+    buy = buyGates>=5.5?88:buyGates>=4.5?78:buyGates>=3.5?65:buyGates>=2.5?50:buyGates>=1.5?36:Math.min(22,Math.round(buyGates*14));
 
     // SELL gates (short-term reversal)
     if (!aboveMa50&&(deathCross||trend20==='downtrend')) { sellGates++; condSell.push('Below MA50 downtrend'); }
@@ -1127,7 +1194,9 @@ function computeQuantSignal(tech, fund, hz) {
     if (macdTurnDn||(!macdBull&&rsiFalling))  { sellGates++; condSell.push('MACD turning down'); }
     if (bearStruct||nearR1)                   { sellGates++; condSell.push(bearStruct?'LH+LL distribution':`Near R1 $${r1?.toFixed(2)}`); }
     if (rsi<26) sellGates=Math.round(sellGates*0.4);
-    sell = sellGates>=5?84:sellGates>=4?70:sellGates>=3?54:Math.min(22,Math.round(sellGates*11));
+    // Regime-scaled short sell score — BEAR boosts breakdown trades
+    sellGates *= _sellMult; sellGates = Math.max(0, sellGates);
+    sell = sellGates>=5.5?86:sellGates>=4.5?73:sellGates>=3.5?60:sellGates>=2.5?48:Math.min(22,Math.round(sellGates*11));
 
   // ════════════════════════════════════════════════════════════════════════════
   // MEDIUM (90 days = Danelfin 3M): Trend regime + Danelfin AI Score.
@@ -1166,7 +1235,10 @@ function computeQuantSignal(tech, fund, hz) {
     if (!aboveMa200&&!goldenCross) buyGates=Math.round(buyGates*0.20); // bear regime = no 3M buy
     if (deathCross)                buyGates=Math.round(buyGates*0.30);
 
-    buy = buyGates>=5?90:buyGates>=4?76:buyGates>=3?58:buyGates>=2?38:Math.min(20,Math.round(buyGates*12));
+    // Regime-scaled medium buy — BEAR prevents false medium-term longs
+    buyGates *= _buyMult; buyGates = Math.max(0, buyGates);
+    if (regime==='bear') buyGates = Math.min(buyGates, 1.5); // no medium buys in bear
+    buy = buyGates>=5.5?90:buyGates>=4.5?78:buyGates>=3.5?62:buyGates>=2.5?46:Math.min(22,Math.round(buyGates*14));
 
     // SELL: structural regime breakdown
     if (!aboveMa200&&deathCross)         { sellGates+=3; condSell.push('Bear regime: below MA200 + Death Cross'); }
@@ -1177,7 +1249,9 @@ function computeQuantSignal(tech, fund, hz) {
     if (inSDSellZone&&bearStruct)        { sellGates++;  condSell.push('SD top + distribution'); }
     else if (bearStruct||obvBullish===false) sellGates+=0.5;
     if (rsi<30) sellGates=Math.round(sellGates*0.4);
-    sell = sellGates>=5?86:sellGates>=4?72:sellGates>=3?56:Math.min(22,Math.round(sellGates*11));
+    // Regime-scaled medium sell — BEAR amplifies breakdown trades
+    sellGates *= _sellMult; sellGates = Math.max(0, sellGates);
+    sell = sellGates>=5.5?88:sellGates>=4.5?75:sellGates>=3.5?62:sellGates>=2.5?50:Math.min(24,Math.round(sellGates*11));
 
   // ════════════════════════════════════════════════════════════════════════════
   // LONG (1–6 months): Structural bull regime + fundamental quality.
@@ -1234,7 +1308,10 @@ function computeQuantSignal(tech, fund, hz) {
 
     if(rsi>76) buyGates=Math.round(buyGates*0.60);
     if(!aboveMa200) buyGates=0;
-    buy=buyGates>=8?92:buyGates>=7?84:buyGates>=6?74:buyGates>=5?60:buyGates>=4?46:buyGates>=3?32:0;
+    // Regime-scaled long buy — BEAR absolutely prevents 4-12mo longs
+    buyGates *= _buyMult; buyGates = Math.max(0, buyGates);
+    if (regime==='bear') buyGates = 0; // structural bear = no 4-12mo buys
+    buy=buyGates>=9?92:buyGates>=8?85:buyGates>=7?76:buyGates>=6?64:buyGates>=5?52:buyGates>=4?38:0;
     if(!aboveMa200) buy=0;
 
     if(!aboveMa200&&deathCross){sellGates+=3;condSell.push('Bear regime: below MA200+Death Cross');}
@@ -1243,7 +1320,9 @@ function computeQuantSignal(tech, fund, hz) {
     if(!macdBull&&!aboveMa200) sellGates++;
     if(bearStruct&&obvBullish===false){sellGates++;condSell.push('Distribution pattern');}
     if(rsi<28) sellGates=Math.round(sellGates*0.50);
-    sell=sellGates>=5?82:sellGates>=4?68:sellGates>=3?52:Math.min(20,Math.round(sellGates*10));
+    // Regime-scaled long sell — BEAR makes structural shorts primary
+    sellGates *= _sellMult; sellGates = Math.max(0, sellGates);
+    sell=sellGates>=5.5?86:sellGates>=4.5?73:sellGates>=3.5?60:sellGates>=2.5?48:Math.min(22,Math.round(sellGates*10));
   }
 
   // Clamp and mutual exclusivity
@@ -1278,6 +1357,7 @@ function computeQuantSignal(tech, fund, hz) {
     conditions:(buy>=sell?condBuy:condSell).slice(0,5),
     winRateHint,
     gatesMet: Math.floor(buy>=sell?buyGates:sellGates),
+    regime,        // 'bull' | 'bear' | 'neutral' — for UI display and history filtering
     tier: 0,       // upgraded to 1 or 2 in batch endpoint based on Danelfin/FMP
     tierLabel: '', // set by batch endpoint
   };
@@ -1662,15 +1742,18 @@ async function fetchFundamentalsFMP(symbol) {
       const enc = encodeURIComponent(raw);
       const kmUrl = `https://financialmodelingprep.com/api/v3/key-metrics-ttm/${enc}?apikey=${encodeURIComponent(k)}`;
       const grUrl = `https://financialmodelingprep.com/api/v3/financial-growth/${enc}?limit=1&apikey=${encodeURIComponent(k)}`;
+      // Income statement: best source for YoY growth for .NS/.T/.HK where financial-growth is sparse
+      const isUrl=`https://financialmodelingprep.com/api/v3/income-statement/${enc}?limit=2&apikey=${encodeURIComponent(k)}`;
       const prUrl = `https://financialmodelingprep.com/api/v3/profile/${enc}?apikey=${encodeURIComponent(k)}`;
       const anUrl=`https://financialmodelingprep.com/api/v3/analyst-stock-recommendations/${enc}?limit=1&apikey=${encodeURIComponent(k)}`;
       const ptUrl=`https://financialmodelingprep.com/api/v3/price-target-consensus/${enc}?apikey=${encodeURIComponent(k)}`;
-      const [kmTxt,grTxt,prTxt,anTxt,ptTxt]=await Promise.all([
+      const [kmTxt,grTxt,prTxt,anTxt,ptTxt,isTxt]=await Promise.all([
         fetch(kmUrl,{signal:AbortSignal.timeout(12000)}).then(r=>r.ok?r.text():''),
         fetch(grUrl,{signal:AbortSignal.timeout(12000)}).then(r=>r.ok?r.text():''),
         fetch(prUrl,{signal:AbortSignal.timeout(12000)}).then(r=>r.ok?r.text():''),
         fetch(anUrl,{signal:AbortSignal.timeout(10000)}).then(r=>r.ok?r.text():'').catch(()=>''),
         fetch(ptUrl,{signal:AbortSignal.timeout(10000)}).then(r=>r.ok?r.text():'').catch(()=>''),
+        fetch(isUrl,{signal:AbortSignal.timeout(10000)}).then(r=>r.ok?r.text():'').catch(()=>''),
       ]);
       let km = null;
       try {
@@ -1682,6 +1765,19 @@ async function fetchFundamentalsFMP(symbol) {
         const a = grTxt ? JSON.parse(grTxt) : [];
         gr = Array.isArray(a) && a[0] ? a[0] : null;
       } catch (_) { /* noop */ }
+      // YoY from income statement — best for .NS/.T/.HK where financial-growth is sparse
+      let isGr = null;
+      try {
+        const a = isTxt ? JSON.parse(isTxt) : [];
+        if (Array.isArray(a) && a.length >= 2) {
+          const cur = a[0], prev = a[1];
+          const calcG = (c,p) => (c!=null&&p!=null&&p!==0&&Math.abs(p)>1) ? Math.round((c-p)/Math.abs(p)*1000)/10 : null;
+          isGr = {
+            revenueGrowth:  calcG(cur?.revenue??cur?.totalRevenue, prev?.revenue??prev?.totalRevenue),
+            earningsGrowth: calcG(cur?.netIncome, prev?.netIncome)
+          };
+        }
+      } catch(_){}
       let pf=null;try{const a=prTxt?JSON.parse(prTxt):[];pf=Array.isArray(a)&&a[0]?a[0]:null;}catch(_){}
       let an=null;try{const a=anTxt?JSON.parse(anTxt):[];an=Array.isArray(a)&&a[0]?a[0]:null;}catch(_){}
       let pt=null;try{const a=ptTxt?JSON.parse(ptTxt):[];pt=Array.isArray(a)&&a[0]?a[0]:null;}catch(_){}
@@ -1705,8 +1801,10 @@ async function fetchFundamentalsFMP(symbol) {
         const asPct = Math.abs(t) < 25 ? +(t * 100).toFixed(1) : +t.toFixed(1);
         return Number.isFinite(asPct) ? asPct : null;
       };
-      const revenueGrowth = pctGrowth(gr?.revenueGrowth) ?? pctGrowth(gr?.growthRevenue);
-      const earningsGrowth = pctGrowth(gr?.epsgrowth ?? gr?.growthEps ?? gr?.netIncomeGrowth);
+      const revenueGrowth = pctGrowth(gr?.revenueGrowth) ?? pctGrowth(gr?.growthRevenue)
+        ?? isGr?.revenueGrowth;  // YoY from income statement
+      const earningsGrowth = pctGrowth(gr?.epsgrowth ?? gr?.growthEps ?? gr?.netIncomeGrowth)
+        ?? isGr?.earningsGrowth;  // YoY from income statement
       const peRatio = num(km?.peRatio);
       const pegRatio = num(km?.pegRatio);
       if (peRatio == null && pegRatio == null && revenueGrowth == null && pf == null) continue;
@@ -6321,6 +6419,83 @@ app.post('/api/history/cleanup-entries', async (req, res) => {
   saveHistoryFile(tradeHistory);
   console.log('Cleanup: fixed', fixed, 'bad entries');
   res.json({ fixed, total: tradeHistory.length });
+});
+
+
+// POST /api/history/revalidate
+// Re-runs computeQuantSignal on every open trade. Removes trades where the
+// current signal STRONGLY contradicts the trade direction (regime-aware).
+// A Buy trade in a BEAR regime gets removed. A Sell trade in a BULL regime gets removed.
+// Pass { dryRun: true } to preview without deleting.
+app.post('/api/history/revalidate', express.json(), async (req, res) => {
+  const dryRun = req.body?.dryRun === true;
+  const openTrades = tradeHistory.filter(h => {
+    const hz = h.hz || 'short';
+    return (h[hz+'Status'] || h.status || 'open') === 'open';
+  });
+
+  // Fetch current tech for all unique open tickers
+  const tickers = [...new Set(openTrades.map(h => h.ticker).filter(Boolean))];
+  console.log(`Revalidate: ${openTrades.length} open trades across ${tickers.length} tickers`);
+  const techMap = {};
+  await Promise.allSettled(tickers.map(async ticker => {
+    try {
+      let daily = await fetchOHLCV(ticker,'2y','1d').catch(()=>null);
+      if (!daily||daily.length<30) daily = await fetchOHLCV(ticker,'1y','1d').catch(()=>null);
+      const weekly = await fetchOHLCV(ticker,'2y','1wk').catch(()=>null);
+      if (daily&&daily.length>=30) techMap[ticker] = buildFullTechResult(ticker,daily,weekly);
+    } catch(e) { console.warn('Revalidate tech', ticker, e.message); }
+  }));
+
+  const toRemoveKeys = new Set();
+  const removed = [], kept = [], errors = [];
+
+  for (const trade of openTrades) {
+    const { ticker, hz='short', entryDate, timestamp } = trade;
+    const tech = techMap[ticker];
+    if (!tech) { errors.push({ ticker, reason:'no tech data' }); continue; }
+
+    const sig = computeQuantSignal(tech, null, hz);
+    const isBuy  = (trade.action||'').toLowerCase() !== 'sell';
+    const isSell = !isBuy;
+    const regime = sig.regime || 'neutral';
+
+    // REMOVE conditions (trade contradicts current market signal):
+    // 1. Long trade in BEAR regime (structural downtrend)
+    // 2. Short trade in BULL regime (structural uptrend)
+    // 3. Signal directly contradicts with strong conviction (score >= 68)
+    const bearKillsLong  = isBuy  && regime === 'bear';
+    const bullKillsShort = isSell && regime === 'bull';
+    const signalFlipped  = (isBuy  && sig.action==='Sell' && sig.sellScore>=68)
+                        || (isSell && sig.action==='Buy'  && sig.buyScore>=68);
+    const shouldRemove = bearKillsLong || bullKillsShort || signalFlipped;
+
+    const key = `${ticker}|${hz}|${entryDate||timestamp||''}`;
+    if (shouldRemove) {
+      toRemoveKeys.add(key);
+      removed.push({ ticker, hz, regime, action: trade.action, signal: sig.action,
+        buyScore: sig.buyScore, sellScore: sig.sellScore,
+        reason: bearKillsLong ? 'Long trade in BEAR regime'
+               : bullKillsShort ? 'Short trade in BULL regime'
+               : `Signal flipped: ${sig.action}` });
+    } else {
+      kept.push({ ticker, hz, regime, action: trade.action });
+    }
+  }
+
+  if (!dryRun && toRemoveKeys.size > 0) {
+    const before = tradeHistory.length;
+    tradeHistory = tradeHistory.filter(h => {
+      const hz = h.hz || 'short';
+      if ((h[hz+'Status']||h.status||'open') !== 'open') return true;
+      return !toRemoveKeys.has(`${h.ticker}|${hz}|${h.entryDate||h.timestamp||''}`);
+    });
+    saveHistoryFile(tradeHistory);
+    console.log(`Revalidate: removed ${before - tradeHistory.length} trades`);
+  }
+
+  res.json({ dryRun, removed, kept: kept.length, errors,
+             totalBefore: openTrades.length, totalRemoved: removed.length });
 });
 
 // Static files AFTER /api routes so `/api/*` never gets swallowed by filesystem lookup
