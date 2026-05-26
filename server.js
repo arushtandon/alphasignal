@@ -2623,10 +2623,9 @@ function applyDerivedFundamentals(merged) {
 }
 
 async function fetchFundamentals(symbol) {
-  // ── Bloomberg Bridge is ALWAYS running — fetch it FIRST, sequential, authoritative ──
-  // Bloomberg has the highest data quality for ALL markets (US, EU, Asia, commodities).
-  // FMP fills gaps (global coverage, reliable for non-US).
-  // Yahoo is last resort for any remaining gaps.
+  // Bloomberg **Desktop** bridge (LAN/tunnel → bridge.py) always runs first when URL is reachable.
+  // FMP / Yahoo / Finnhub only fill merge keys that are still null; _source rank keeps bloomberg_bridge
+  // over fmp (see mergeFundSnapshots). Bloomberg **Enterprise** HTTP (BLOOMBERG_ENTERPRISE_API_BASE) is optional and separate.
 
   // Step 1: Bloomberg Bridge — primary source, awaited first
   const bb = await fetchBloombergBridgeFundamentals(symbol).catch(() => null);
@@ -3876,6 +3875,9 @@ app.get('/api/health', (req, res) => {
         }
       : null,
     bloomberg_enterprise_configured: Boolean(bloombergEnterpriseBase()),
+    /** Documents that Desktop API bridge data is not overwritten by vendors for the same field — for ops review. */
+    bloomberg_desktop_bridge_merge_policy:
+      'fetchFundamentals awaits bridge /snapshot first; FMP/Yahoo/Finnhub only set keys that are still null. mergeFundSnapshots keeps _source=bloomberg_bridge over fmp. Enterprise HTTP API is optional and skipped when BLOOMBERG_ENTERPRISE_API_BASE is unset.',
     ts: Date.now(),
     historyVersion: HISTORY_VERSION,
     historyCount: tradeHistory.length
