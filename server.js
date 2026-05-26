@@ -1446,7 +1446,7 @@ function backtestSignal(data, hz) {
       if (rsi>72) buyGates=Math.min(buyGates,1.5);
       if (atSDTop) buyGates=Math.round(buyGates*0.4);
       if (!aboveMa50) buyGates=Math.round(buyGates*0.45);
-      isBuy=buyGates>=4&&aboveMa50&&!atSDTop;
+      isBuy=buyGates>=3&&aboveMa50&&!atSDTop;
       if (!aboveMa50&&(deathCross||weeklyDn)) sellGates++;
       if (atSDTop||nearR1) sellGates++;
       if (rsi>=64&&rsiFalling) sellGates++; else if(rsi>=64) sellGates+=0.5;
@@ -1539,7 +1539,7 @@ function backtestSignal(data, hz) {
       nextAllowed=exitIdx+1;
     }
   }
-  if (trades<8) return null;
+  if (trades<5) return null; // 5 minimum for statistical signal
   return {winRate:Math.round(wins/trades*100),trades,avgReturnPct:parseFloat((totalReturn/trades*100).toFixed(2)),profitFactor:losses>0?parseFloat((wins/losses).toFixed(2)):99};
 }
 
@@ -1805,9 +1805,13 @@ async function fetchFundamentalsFMP(symbol) {
         ?? isGr?.revenueGrowth;  // YoY from income statement
       const earningsGrowth = pctGrowth(gr?.epsgrowth ?? gr?.growthEps ?? gr?.netIncomeGrowth)
         ?? isGr?.earningsGrowth;  // YoY from income statement
-      const peRatio = num(km?.peRatio);
-      const pegRatio = num(km?.pegRatio);
-      if (peRatio == null && pegRatio == null && revenueGrowth == null && pf == null) continue;
+      // FMP key-metrics-ttm uses TTM suffix; key-metrics uses plain names — try both
+      const peRatio  = num(km?.peRatioTTM ?? km?.peRatio ?? km?.priceEarningsRatio);
+      const fwdPE    = num(km?.priceToEarningsRatioFwd ?? km?.forwardPE);
+      const pegRatio = num(km?.pegRatioTTM ?? km?.pegRatio ?? km?.priceToEarningsGrowthRatio);
+      // Only skip if truly nothing useful from any source
+      if (peRatio == null && pegRatio == null && fwdPE == null &&
+          revenueGrowth == null && earningsGrowth == null && pf == null) continue;
       console.log('fetchFundamentalsFMP', normalizeTickerMatch(raw));
       return {
         targetMeanPrice: derivedTarget!=null?parseFloat(derivedTarget):null,
@@ -1871,193 +1875,51 @@ function mergeFundSnapshots(y, f) {
 
 /** FMP stable financial health scores (Piotroski + Altman) — fills gaps when legacy /score is empty for some intl names. */
 async function fetchFmpStableFinancialScores(symbol, key, tHttp) {
-  try {
-    const enc = encodeURIComponent(String(symbol || '').trim());
-    if (!enc) return null;
-    const u = `https://financialmodelingprep.com/stable/financial-scores?symbol=${enc}&apikey=${encodeURIComponent(key)}`;
-    const r = await fetch(u, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(Number(tHttp) || 12000)
-    });
-    if (!r.ok) return null;
-    let d = await r.json().catch(() => null);
-    if (d && typeof d === 'object' && !Array.isArray(d) && Array.isArray(d.data)) d = d.data;
-    const row = Array.isArray(d) ? d[0] : d && typeof d === 'object' ? d : null;
-    if (!row || row.error || row['Error Message']) return null;
-    const pick = (o, keys) => {
-      for (const k of keys) {
-        if (o[k] == null || o[k] === '') continue;
-        const n = typeof o[k] === 'number' ? o[k] : Number(String(o[k]).replace(/,/g, ''));
-        if (Number.isFinite(n)) return n;
-      }
-      return null;
-    };
-    const piotroski = pick(row, [
-      'piotroskiScore',
-      'piotroski',
-      'fScore',
-      'f_score',
-      'piotroskiFScore',
-      'financialScore'
-    ]);
-    const altmanZ = pick(row, ['altmanZScore', 'altmanZ', 'altman_z_score', 'altmanZscore', 'zScore']);
-    if (piotroski == null && altmanZ == null) return null;
-    return { piotroski, altmanZ };
-  } catch (_) {
-    return null;
-  }
-}
+  if (!symbol || !key) return null;
+  const q = `?apikey=${encodeURIComponent(key)}`;
+  const H = { Accept: 'application/json' };
+  const t = Number(tHttp) || 12000;
 
-/** Must match bloomberg-bridge `BRIDGE_BUILD` — bridge also echoes this on /snapshot, /earnings, /health. */
-const BLOOMBERG_BRIDGE_BUILD_EXPECTED = '20260519-bridge-scores-from-fmp-only';
+  // Try symbol variants: original + bare ticker (e.g. 9988.HK → 9988 for some FMP endpoints)
+  const bare = String(symbol).replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI)$/i, '');
+  const symVariants = [...new Set([symbol, bare !== symbol ? bare : null].filter(Boolean))];
 
-/** Map app ticker to Bloomberg equity string for Desktop API ref() (examples: `AAPL US Equity`, `ASML NA Equity`, `9988 HK Equity`). */
-function toBloombergEquity(sym) {
-  const s = String(sym || '')
-    .trim()
-    .toUpperCase();
-  if (!s) return '';
-  if (s === 'BRK.B' || s === 'BRK-B') return 'BRK/B US Equity';
-  /** Bloomberg Terminal style: numeric + exchange mnemonic (already uppercased). */
-  let m;
-  if ((m = /^(\d+)\s+HK$/i.exec(s))) return `${m[1]} HK Equity`;
-  if ((m = /^(\d+)\s+JT$/i.exec(s))) return `${m[1]} JT Equity`;
-  if (/^\d+\.HK$/i.test(s)) return `${s.replace(/\.HK$/i, '')} HK Equity`;
-  if (/\.L$/i.test(s)) return `${s.replace(/\.L$/i, '')} LN Equity`;
-  if (/\.PA$/i.test(s)) return `${s.replace(/\.PA$/i, '')} FP Equity`;
-  if (/\.DE$/i.test(s)) return `${s.replace(/\.DE$/i, '')} GR Equity`;
-  if (/\.AS$/i.test(s)) return `${s.replace(/\.AS$/i, '')} NA Equity`;
-  if (/\.NS$/i.test(s)) {
-    let root = s.replace(/\.NS$/i, '');
-    root = NSE_BB_OVERRIDES[root] || root.replace(/-/g, ' ');
-    root = root.replace(/\s+/g, ' ').trim();
-    return `${root} IN Equity`;
-  }
-  /** Swedish .ST before Japanese .T — e.g. ERIC.ST vs 6758.T */
-  if (/\.ST$/i.test(s)) return `${s.replace(/\.ST$/i, '')} SS Equity`;
-  if (/\.T$/i.test(s)) return `${s.replace(/\.T$/i, '')} JT Equity`;
-  /** Aligned with bloomberg-bridge bridge.py map_to_bb_security */
-  if (/\.SW$/i.test(s)) return `${s.replace(/\.SW$/i, '')} SW Equity`;
-  if (/\.SI$/i.test(s)) return `${s.replace(/\.SI$/i, '')} SP Equity`;
-  if (/\.AX$/i.test(s)) return `${s.replace(/\.AX$/i, '')} AU Equity`;
-  if (/\.OL$/i.test(s)) return `${s.replace(/\.OL$/i, '')} NO Equity`;
-  if (/\.CO$/i.test(s)) return `${s.replace(/\.CO$/i, '')} DC Equity`;
-  if (/\.MI$/i.test(s)) return `${s.replace(/\.MI$/i, '')} IM Equity`;
-  if (/\.MC$/i.test(s)) return `${s.replace(/\.MC$/i, '')} SM Equity`;
-  if (/\.TO$/i.test(s)) return `${s.replace(/\.TO$/i, '')} CN Equity`;
-  if (/\.V$/i.test(s)) return `${s.replace(/\.V$/i, '')} CN Equity`;
-  if (/^[A-Z]{1,5}$/.test(s.replace(/\./g, '')) && !s.includes('.')) return `${s} US Equity`;
-  if (s.includes('.')) return `${s.replace(/\./g, '/')} Equity`;
-  return `${s} US Equity`;
-}
-
-/** Bloomberg Enterprise HTTP API (ReferenceDataRequest). Your Bloomberg team supplies host + often mTLS certs. */
-const BBG_ENT_FIELDS = [
-  'BEST_PE_NTM',
-  'PE_RATIO',
-  'BEST_PEG_RATIO',
-  'BEST_TARGET_MEDIAN',
-  'SALES_GROWTH',
-  'SALES_YOY_GR',
-  'EPS_GROWTH',
-  'BEST_EPS_GROWTH',
-  'IS_EPS'
-];
-
-function bloombergEnterpriseBase() {
-  return (process.env.BLOOMBERG_ENTERPRISE_API_BASE || '').trim().replace(/\/$/, '');
-}
-
-function loadBloombergEnterpriseTls() {
-  const ca = (process.env.BLOOMBERG_ENTERPRISE_CA_PATH || '').trim();
-  const cert = (process.env.BLOOMBERG_ENTERPRISE_CERT_PATH || '').trim();
-  const key = (process.env.BLOOMBERG_ENTERPRISE_KEY_PATH || '').trim();
-  const o = {};
-  try {
-    if (ca && fs.existsSync(ca)) o.ca = fs.readFileSync(ca);
-    if (cert && fs.existsSync(cert)) o.cert = fs.readFileSync(cert);
-    if (key && fs.existsSync(key)) o.key = fs.readFileSync(key);
-  } catch (e) {
-    console.warn('Bloomberg Enterprise TLS read', e.message);
-  }
-  return o;
-}
-
-function enterpriseHttpsRequest(urlStr, bodyStr) {
-  const tls = loadBloombergEnterpriseTls();
-  const u = new URL(urlStr);
-  const isHttps = u.protocol === 'https:';
-  const lib = isHttps ? https : http;
-  const token = (process.env.BLOOMBERG_ENTERPRISE_TOKEN || '').trim();
-  const insecure = String(process.env.BLOOMBERG_ENTERPRISE_TLS_INSECURE || '').trim() === '1';
-  const opts = {
-    hostname: u.hostname,
-    port: u.port || (isHttps ? 443 : 80),
-    path: `${u.pathname}${u.search}`,
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      'accept-version': '1.0.0',
-      'Content-Length': Buffer.byteLength(bodyStr, 'utf8'),
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    timeout: 28000
-  };
-  if (isHttps) {
-    Object.assign(opts, tls);
-    if (insecure) opts.rejectUnauthorized = false;
-  }
-
-  return new Promise((resolve, reject) => {
-    const req = lib.request(opts, res => {
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => {
-        const buf = Buffer.concat(chunks).toString('utf8');
-        if (res.statusCode && res.statusCode >= 400) {
-          reject(new Error(`HTTP ${res.statusCode}: ${buf.slice(0, 240)}`));
-          return;
+  for (const sym of symVariants) {
+    const enc = encodeURIComponent(sym);
+    // Endpoints in order of Piotroski/AltmanZ coverage
+    const endpoints = [
+      `https://financialmodelingprep.com/api/v3/score/${enc}${q}`,
+      `https://financialmodelingprep.com/api/v4/score${q}&symbol=${enc}`,
+      `https://financialmodelingprep.com/stable/financial-scores${q}&symbol=${enc}`,
+    ];
+    for (const url of endpoints) {
+      try {
+        const r = await fetch(url, { headers: H, signal: AbortSignal.timeout(t) });
+        if (!r.ok) continue;
+        let d = await r.json().catch(() => null);
+        if (!d) continue;
+        if (typeof d === 'object' && !Array.isArray(d) && Array.isArray(d.data)) d = d.data;
+        const row = Array.isArray(d) ? d[0] : (typeof d === 'object' ? d : null);
+        if (!row || row.error || row['Error Message']) continue;
+        const pick = (o, keys) => {
+          for (const k of keys) {
+            if (o[k] == null || o[k] === '') continue;
+            const n = typeof o[k] === 'number' ? o[k] : Number(String(o[k]).replace(/,/g, ''));
+            if (Number.isFinite(n)) return n;
+          }
+          return null;
+        };
+        const pio = pick(row, ['piotroskiScore','piotroski','fScore','f_score','piotroskiFScore']);
+        const az  = pick(row, ['altmanZScore','altmanZ','altman_z_score','altmanZscore','zScore']);
+        if (pio != null || az != null) {
+          console.log(`FMP scores ${symbol}→${sym} (${url.split('/').slice(-2,-1)[0]}): pio=${pio} az=${az}`);
+          return { piotroski: pio, altmanZ: az };
         }
-        resolve(buf);
-      });
-    });
-    req.on('error', reject);
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error('Bloomberg Enterprise request timeout'));
-    });
-    req.write(bodyStr);
-    req.end();
-  });
-}
-
-function parseBloombergEnterpriseRefData(respJson) {
-  if (!respJson || respJson.message !== 'OK' || respJson.status !== 0) return null;
-  const block = respJson.data?.[0];
-  const arr = block?.securityData;
-  if (!Array.isArray(arr) || !arr.length) return null;
-  const row = arr[0];
-  const fd = row.fieldData || {};
-  const num = v => {
-    const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
-    return Number.isFinite(n) ? n : null;
-  };
-  const out = {
-    _source: 'bloomberg_enterprise',
-    forwardPE: num(fd.BEST_PE_NTM),
-    trailingPE: num(fd.PE_RATIO),
-    pegRatio: num(fd.BEST_PEG_RATIO),
-    targetMeanPrice: num(fd.BEST_TARGET_MEDIAN),
-    revenueGrowth: num(fd.SALES_GROWTH ?? fd.SALES_YOY_GR),
-    earningsGrowth: num(fd.EPS_GROWTH ?? fd.BEST_EPS_GROWTH),
-    fundamentalTrailingEps: num(fd.IS_EPS),
-    _bbSecurity: row.security || null
-  };
-  const hasAny = Object.keys(out).some(
-    k => !k.startsWith('_') && out[k] != null && out[k] !== ''
-  );
-  return hasAny ? out : null;
+      } catch(e) { /* try next */ }
+    }
+  }
+  console.log(`FMP scores ${symbol}: no Piotroski/AltmanZ data from any endpoint`);
+  return null;
 }
 
 async function fetchBloombergEnterpriseFundamentals(symbol) {

@@ -3203,7 +3203,7 @@ function renderCard(s){
       var _av = '';
       var _az = '';
       if (_fa == null) {
-        _ak = ''; _av = '<span style="color:rgba(200,200,200,0.45)">—</span>'; _az = '<span style="color:rgba(200,200,200,0.45)">n/a</span>';
+        _ak = ''; _av = '<span style="color:rgba(200,200,200,0.45)">—</span>'; _az = '<span style="color:rgba(200,200,200,0.35);font-size:9px">Not available</span>';
       } else if (_fa > 2.99) {
         _ak = '🟢'; _av = '<span style="color:#00e68a;font-weight:800">' + escMinimalHtml(_fa.toFixed(2)) + '</span>';
         _az = '<span style="color:#00e68a;font-size:10px;font-weight:600">Safe zone</span>';
