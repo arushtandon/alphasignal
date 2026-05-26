@@ -4540,7 +4540,7 @@ async function startApp() {
     const ds = document.getElementById('dashStatus');
     if (!hasKey && ds) {
       ds.innerHTML =
-        '<div class="eb" style="opacity:.92">Live prices/charts use Yahoo Finance. Set server <strong>ANTHROPIC_API_KEY</strong> to enable dashboard scans &amp; full analysis.</div>';
+        '<div class="eb" style="opacity:.92">Live prices/charts use Yahoo Finance. Dashboard AI needs <strong>ANTHROPIC_API_KEY</strong> on the <strong>Render Web Service</strong> that runs this API (not only a key pasted in the browser). Open <code style="font-size:11px">/api/health</code> and confirm <code style="font-size:11px">hasKey: true</code> and <code style="font-size:11px">anthropic.key_chars</code> &gt; 0 after Save + redeploy.</div>';
     }
     await (hasKey ? loadDashboard() : loadDashboard(false));
   } catch (e) {

@@ -1671,6 +1671,23 @@ function fmpEnvKeyFund() {
 }
 
 /**
+ * Claude / Anthropic — same normalization as FMP keys (Render UI pastes sometimes include BOM/zero-width).
+ * Prefer ANTHROPIC_API_KEY; CLAUDE_API_KEY is accepted as a typo alias only on the server.
+ */
+function anthropicApiKey() {
+  const candidates = [
+    process.env.ANTHROPIC_API_KEY,
+    process.env.CLAUDE_API_KEY,
+    process.env.ANTHROPIC_KEY
+  ];
+  for (const c of candidates) {
+    const t = normalizeApiKeyString(c);
+    if (t) return t;
+  }
+  return '';
+}
+
+/**
  * Yahoo NSE root → Bloomberg mnemonic + FMP alternate listing (keep in sync with bloomberg-bridge `NSE_BB_OVERRIDES`).
  */
 const NSE_BB_OVERRIDES = /** @type {Record<string,string>} */ ({
@@ -3149,7 +3166,7 @@ app.post('/api/fundamentals/batch', async (req, res) => {
 // POST /api/news-sentiment/batch — Yahoo headlines + Claude JSON sentiment per symbol
 app.post('/api/news-sentiment/batch', async (req, res) => {
   const { symbols } = req.body;
-  const apiKey = (process.env.ANTHROPIC_API_KEY || '').trim();
+  const apiKey = anthropicApiKey();
   if (!symbols?.length || !apiKey) return res.json({});
 
   const results = {};
@@ -3692,7 +3709,9 @@ app.get('/api/history/status', (req, res) => {
 
 app.get('/api/health', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  res.json({
+  try {
+    const ak = anthropicApiKey();
+    res.json({
     status: 'ok',
     quotes: 'yahoo_finance',
     earnings: {
@@ -3740,7 +3759,15 @@ app.get('/api/health', (req, res) => {
       ICICIBANK_NS: toBloombergEquity('ICICIBANK.NS')
     },
     danelfin_configured: !!(process.env.DANELFIN_API_KEY || '').trim(),
-    hasKey: !!process.env.ANTHROPIC_API_KEY,
+    /** True only when server env has a non-empty key after trim/BOM cleanup (browser paste does not set this). */
+    hasKey: Boolean(ak),
+    anthropic: {
+      key_resolved: Boolean(ak),
+      key_chars: ak ? ak.length : 0,
+      key_suffix_masked: ak && ak.length >= 8 ? `****${ak.slice(-4)}` : ak ? '(too_short)' : null,
+      hint:
+        'Set ANTHROPIC_API_KEY on the Render Web Service that runs Node (same service as this URL), Save, then clear build cache redeploy / restart if the UI still shows no key.'
+    },
     bloomberg_bridge_build_expected: BLOOMBERG_BRIDGE_BUILD_EXPECTED,
     bloomberg_bridge_configured: Boolean(bloombergBridgeUrl()),
     bloomberg_bridge_secret_configured_on_server: Boolean((process.env.BLOOMBERG_BRIDGE_SECRET || '').trim()),
@@ -3787,6 +3814,10 @@ app.get('/api/health', (req, res) => {
     historyVersion: HISTORY_VERSION,
     historyCount: tradeHistory.length
   });
+  } catch (healthErr) {
+    console.error('/api/health failed:', healthErr.message);
+    res.status(500).json({ status: 'error', message: healthErr.message || String(healthErr) });
+  }
 });
 
 // GET all history
@@ -5770,7 +5801,7 @@ const ANALYSIS_SCHEMA_HINT = `{"ticker":"AAPL","name":"Apple Inc","sector":"Tech
 "risks":["","",""],"techSummary":"","fundSummary":"","nextEarningsDate":"","earningsTime":"","epsEstimate":"","epsPrior":""}`;
 
 app.post('/api/analyze', async (req, res) => {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = anthropicApiKey();
   if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
 
   const tickers = Array.isArray(req.body?.tickers) ? req.body.tickers : req.body?.ticker ? [req.body.ticker] : [];
@@ -6118,7 +6149,7 @@ app.get('/api/earnings-calendar', async (req, res) => {
 });
 
 app.get('/api/test-claude', async (req, res) => {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = anthropicApiKey();
   if (!apiKey) return res.json({ error: 'No API key set' });
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -6136,10 +6167,9 @@ app.get('/api/test-claude', async (req, res) => {
 
 function resolveAnthropicApiKey(req) {
   const raw = req.headers['x-anthropic-key'];
-  const fromHeader = typeof raw === 'string' ? raw.trim() : '';
+  const fromHeader = typeof raw === 'string' ? normalizeApiKeyString(raw) : '';
   if (fromHeader.startsWith('sk-ant-') && fromHeader.length > 24) return fromHeader;
-  const env = (process.env.ANTHROPIC_API_KEY || '').trim();
-  return env || '';
+  return anthropicApiKey();
 }
 
 app.post('/api/claude', async (req, res) => {
@@ -6367,7 +6397,7 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 
 app.listen(PORT, () => {
   console.log('AlphaSignal on port', PORT);
-  console.log('API key set:', !!process.env.ANTHROPIC_API_KEY);
+  console.log('Anthropic API key set:', !!anthropicApiKey());
   const likelyRender =
     String(process.env.RENDER || '').toLowerCase() === 'true' ||
     /\bonrender\.com\b/i.test(
