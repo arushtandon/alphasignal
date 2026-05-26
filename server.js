@@ -1697,6 +1697,72 @@ const NSE_BB_OVERRIDES = /** @type {Record<string,string>} */ ({
   ICICIBANK: 'ICICIBC'
 });
 
+/** Must match bloomberg-bridge `BRIDGE_BUILD` — bridge echoes this on /snapshot, /earnings, /health. */
+const BLOOMBERG_BRIDGE_BUILD_EXPECTED = '20260519-bridge-scores-from-fmp-only';
+
+/** Map app ticker to Bloomberg equity string for Desktop API ref() (e.g. `AAPL US Equity`, `9988 HK Equity`). */
+function toBloombergEquity(sym) {
+  const s = String(sym || '')
+    .trim()
+    .toUpperCase();
+  if (!s) return '';
+  if (s === 'BRK.B' || s === 'BRK-B') return 'BRK/B US Equity';
+  let m;
+  if ((m = /^(\d+)\s+HK$/i.exec(s))) return `${m[1]} HK Equity`;
+  if ((m = /^(\d+)\s+JT$/i.exec(s))) return `${m[1]} JT Equity`;
+  if (/^\d+\.HK$/i.test(s)) return `${s.replace(/\.HK$/i, '')} HK Equity`;
+  if (/\.L$/i.test(s)) return `${s.replace(/\.L$/i, '')} LN Equity`;
+  if (/\.PA$/i.test(s)) return `${s.replace(/\.PA$/i, '')} FP Equity`;
+  if (/\.DE$/i.test(s)) return `${s.replace(/\.DE$/i, '')} GR Equity`;
+  if (/\.AS$/i.test(s)) return `${s.replace(/\.AS$/i, '')} NA Equity`;
+  if (/\.NS$/i.test(s)) {
+    let root = s.replace(/\.NS$/i, '');
+    root = NSE_BB_OVERRIDES[root] || root.replace(/-/g, ' ');
+    root = root.replace(/\s+/g, ' ').trim();
+    return `${root} IN Equity`;
+  }
+  if (/\.ST$/i.test(s)) return `${s.replace(/\.ST$/i, '')} SS Equity`;
+  if (/\.T$/i.test(s)) return `${s.replace(/\.T$/i, '')} JT Equity`;
+  if (/\.SW$/i.test(s)) return `${s.replace(/\.SW$/i, '')} SW Equity`;
+  if (/\.SI$/i.test(s)) return `${s.replace(/\.SI$/i, '')} SP Equity`;
+  if (/\.AX$/i.test(s)) return `${s.replace(/\.AX$/i, '')} AU Equity`;
+  if (/\.OL$/i.test(s)) return `${s.replace(/\.OL$/i, '')} NO Equity`;
+  if (/\.CO$/i.test(s)) return `${s.replace(/\.CO$/i, '')} DC Equity`;
+  if (/\.MI$/i.test(s)) return `${s.replace(/\.MI$/i, '')} IM Equity`;
+  if (/\.MC$/i.test(s)) return `${s.replace(/\.MC$/i, '')} SM Equity`;
+  if (/\.TO$/i.test(s)) return `${s.replace(/\.TO$/i, '')} CN Equity`;
+  if (/\.V$/i.test(s)) return `${s.replace(/\.V$/i, '')} CN Equity`;
+  if (/^[A-Z]{1,5}$/.test(s.replace(/\./g, '')) && !s.includes('.')) return `${s} US Equity`;
+  if (s.includes('.')) return `${s.replace(/\./g, '/')} Equity`;
+  return `${s} US Equity`;
+}
+
+/** Bloomberg Enterprise HTTP API base (optional). When unset, enterprise fetches are skipped. */
+function bloombergEnterpriseBase() {
+  return (process.env.BLOOMBERG_ENTERPRISE_API_BASE || '').trim().replace(/\/$/, '');
+}
+
+const BBG_ENT_FIELDS = [
+  'BEST_PE_NTM',
+  'PE_RATIO',
+  'BEST_PEG_RATIO',
+  'BEST_TARGET_MEDIAN',
+  'SALES_GROWTH',
+  'SALES_YOY_GR',
+  'EPS_GROWTH',
+  'BEST_EPS_GROWTH',
+  'IS_EPS'
+];
+
+/** Placeholder — full mTLS client lives in enterprise deployments; keeps symbol references valid. */
+async function enterpriseHttpsRequest(_url, _body) {
+  throw new Error('Bloomberg Enterprise HTTPS client not configured');
+}
+
+function parseBloombergEnterpriseRefData(_j) {
+  return null;
+}
+
 /**
  * Alternate symbol spellings FMP indexes (HK padding; NSE Yahoo root vs FMP/Bloomberg root).
  */
