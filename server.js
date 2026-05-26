@@ -1905,11 +1905,16 @@ async function fetchFundamentalsFMP(symbol) {
         analystSellCount: anSell||null,
         revenueGrowth,
         earningsGrowth,
-        grossMargins: pctGrowth(km?.grossProfitMargin ?? gr?.growthGrossProfit),
-        operatingMargins: pctGrowth(km?.operatingProfitMargin),
-        debtToEquity: km?.debtToEquity != null ? Number(num(km.debtToEquity).toFixed(1)) : null,
-        /* key-metrics-ttm peRatio is TTM — never treat as forward P/E */
-        forwardPE: null,
+        grossMargins: pctGrowth(km?.grossProfitMarginTTM ?? km?.grossProfitMargin ?? gr?.growthGrossProfit),
+        operatingMargins: pctGrowth(
+          km?.operatingIncomeRatioTTM ?? km?.operatingProfitMarginTTM ?? km?.operatingProfitMargin
+        ),
+        debtToEquity:
+          (km?.debtToEquityTTM ?? km?.debtToEquity) != null
+            ? Number(num(km?.debtToEquityTTM ?? km?.debtToEquity).toFixed(1))
+            : null,
+        // Forward P/E from priceToEarningsRatioFwd (may be null); trailing is TTM below
+        forwardPE: fwdPE,
         pegRatio,
         trailingPE: peRatio,
         dividendYield: pctGrowth(km?.dividendYield),
