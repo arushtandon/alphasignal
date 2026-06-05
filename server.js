@@ -1734,11 +1734,13 @@ async function probeFmpGlobalCoverage(force = false) {
   const key = fmpEnvKeyFund();
   if (!key || !fmpGlobalCoverageEnabled()) return fmpGlobalCoverageProbe;
   const now = Date.now();
-  if (!force && fmpGlobalCoverageProbe.ts && now - fmpGlobalCoverageProbe.ts < 6 * 60 * 60 * 1000) {
+  const age = fmpGlobalCoverageProbe.ts ? now - fmpGlobalCoverageProbe.ts : Infinity;
+  const cacheTtl = fmpGlobalCoverageProbe.ok ? 6 * 60 * 60 * 1000 : 5 * 60 * 1000;
+  if (!force && fmpGlobalCoverageProbe.ts && age < cacheTtl) {
     return fmpGlobalCoverageProbe;
   }
   const sym = fmpGlobalCoverageProbe.symbol;
-  fmpGlobalCoverageProbe = {
+  const next = {
     ...fmpGlobalCoverageProbe,
     ts: now,
     ok: false,
@@ -1750,25 +1752,24 @@ async function probeFmpGlobalCoverage(force = false) {
     error: null
   };
   try {
-    const variants = await fmpAllSymbolVariants(sym, key).catch(() => intlVendorSymbolVariants(sym));
-    for (const v of variants.slice(0, 8)) {
-      const fund = await fetchFmpStableFundamentalsBundle(v, key).catch(() => null);
-      if (fund?.trailingPE || fund?.pegRatio || fund?.revenueGrowth) {
-        fmpGlobalCoverageProbe.fundamentals = true;
-        fmpGlobalCoverageProbe.trailingPE = fund.trailingPE ?? null;
-        break;
-      }
+    const fund =
+      (await fetchFundamentalsFMP(sym).catch(() => null)) ||
+      (await fetchFundamentals(sym).catch(() => null));
+    if (fund?.trailingPE || fund?.pegRatio || fund?.revenueGrowth) {
+      next.fundamentals = true;
+      next.trailingPE = fund.trailingPE ?? null;
     }
-    const scores = await fetchFmpStableFinancialScores(sym, key, 14000).catch(() => null);
-    if (scores?.piotroski != null || scores?.altmanZ != null) {
-      fmpGlobalCoverageProbe.scores = true;
-      fmpGlobalCoverageProbe.piotroski = scores.piotroski ?? null;
-      fmpGlobalCoverageProbe.altmanZ = scores.altmanZ ?? null;
+    const fmpQ = await fetchFmpScore(sym).catch(() => null);
+    if (fmpQ?.piotroski != null || fmpQ?.altmanZ != null) {
+      next.scores = true;
+      next.piotroski = fmpQ.piotroski ?? null;
+      next.altmanZ = fmpQ.altmanZ ?? null;
     }
-    fmpGlobalCoverageProbe.ok =
-      fmpGlobalCoverageProbe.fundamentals || fmpGlobalCoverageProbe.scores;
+    next.ok = next.fundamentals || next.scores;
+    fmpGlobalCoverageProbe = next;
   } catch (e) {
-    fmpGlobalCoverageProbe.error = e.message || String(e);
+    next.error = e.message || String(e);
+    fmpGlobalCoverageProbe = next;
   }
   return fmpGlobalCoverageProbe;
 }
@@ -4816,7 +4817,7 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
         fk ? fmpExchangeSymbolVariants(sym, fk).catch(() => []) : []
       ]);
     res.json({
-      build: '20260605-fmp-ultimate-v7',
+      build: '20260605-fmp-ultimate-v7.1',
       symbol: sym,
       is_intl_symbol: isIntlEquitySymbol(sym),
       fmp_plan: fmpPlanTier(),
@@ -4840,20 +4841,21 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
       merge_policy: 'FMP+Finnhub+AV+Yahoo primary; Bloomberg gap-fill only'
     });
   } catch (e) {
-    res.status(500).json({ error: e.message || 'debug failed', build: '20260605-fmp-ultimate-v7' });
+    res.status(500).json({ error: e.message || 'debug failed', build: '20260605-fmp-ultimate-v7.1' });
   }
 });
 
 app.get('/api/health', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  if (fmpGlobalCoverageEnabled() && fmpEnvKeyFund()) {
-    probeFmpGlobalCoverage().catch(() => null);
-  }
   try {
+    if (fmpGlobalCoverageEnabled() && fmpEnvKeyFund()) {
+      const forceProbe = String(req.query?.probe || '') === '1';
+      await probeFmpGlobalCoverage(forceProbe).catch(() => null);
+    }
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7',
+    server_build: '20260605-fmp-ultimate-v7.1.1',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
