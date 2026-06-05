@@ -1616,42 +1616,15 @@ async function fetchFundamentalsYahoo(symbol) {
 
 /** Lightweight v7 quote — often still returns forward/trailing P/E when quoteSummary modules are empty from the server IP. */
 async function fetchYahooQuotePE(symbol) {
-  // Build comprehensive variants for global exchanges:
-  // FMP supports: INFY.NS (India NSE), 0700.HK (HK), 7203.T (Japan), AZN.L (LSE)
-  // Also try bare ticker (without exchange suffix) as FMP fallback
-  const bare = symbol.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i, '');
-  const variants = [...new Set([symbol, symbol.replace(/\./g, '-'), bare])].filter(Boolean);
-  const num = v => {
-    const n = v?.raw ?? v;
-    return Number.isFinite(+n) ? +n : null;
-  };
-  async function parseQuote(url) {
-    const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(10000) });
-    if (!r.ok) return null;
-    const d = await r.json();
-    const q = d?.quoteResponse?.result?.[0];
-    if (!q) return null;
-    const fp = num(q.forwardPE);
-    const tp = num(q.trailingPE);
-    const peg = num(q.trailingPegRatio ?? q.pegRatio);
-    if (fp != null || tp != null || peg != null) {
-      return { forwardPE: fp, trailingPE: tp, pegRatio: peg, _source: 'yahoo_v7_quote' };
-    }
-    return null;
-  }
-  for (const sym of variants) {
-    for (const base of ['query1', 'query2']) {
-      try {
-        const narrow = `https://${base}.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(sym)}&fields=forwardPE,trailingPE,pegRatio,trailingPegRatio`;
-        let hit = await parseQuote(narrow);
-        if (hit) return hit;
-        const wide = `https://${base}.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(sym)}`;
-        hit = await parseQuote(wide);
-        if (hit) return hit;
-      } catch (e) {
-        console.warn('fetchYahooQuotePE', sym, e.message);
-      }
-    }
+  const hit = await fetchFundamentalsFromYahooV7Quote(symbol);
+  if (!hit) return null;
+  if (hit.forwardPE != null || hit.trailingPE != null || hit.pegRatio != null) {
+    return {
+      forwardPE: hit.forwardPE,
+      trailingPE: hit.trailingPE,
+      pegRatio: hit.pegRatio,
+      _source: 'yahoo_v7_quote'
+    };
   }
   return null;
 }
@@ -2079,6 +2052,129 @@ async function alphaVantageNextEarningsDate(sym, fromISO, toISO) {
   return { date, epsEst, source: 'alpha_vantage' };
 }
 
+/** Finnhub often wants bare NSE root or NSE: prefix — not only Yahoo-style *.NS. */
+function finnhubSymbolVariants(symbol) {
+  const u = String(symbol || '').trim().toUpperCase();
+  const out = [...intlVendorSymbolVariants(symbol)];
+  const dotNs = /^(.+)\.NS$/i.exec(u);
+  if (dotNs) {
+    const r0 = dotNs[1].trim();
+    out.unshift(r0, `NSE:${r0}`);
+    const bloom = NSE_BB_OVERRIDES[r0];
+    if (bloom && bloom !== r0) out.unshift(bloom, `NSE:${bloom}`);
+  }
+  const dotBo = /^(.+)\.BO$/i.exec(u);
+  if (dotBo) {
+    const r0 = dotBo[1].trim();
+    out.unshift(r0, `BSE:${r0}`);
+  }
+  const mhk = /^(\d+)\.HK$/i.exec(u);
+  if (mhk) {
+    const rawNum = mhk[1];
+    const noLead = rawNum.replace(/^0+/, '') || '0';
+    out.unshift(`${noLead}.HK`, `${noLead.padStart(4, '0')}.HK`, `${noLead.padStart(5, '0')}.HK`, noLead);
+  }
+  return [...new Set(out.filter(Boolean))];
+}
+
+/** FMP exchange-variant lookup — maps 9988.HK / ASIANPAINT.NS to the symbol FMP indexes for metrics/scores. */
+async function fmpExchangeSymbolVariants(symbol, key) {
+  if (!symbol || !key) return [];
+  const found = [];
+  const seen = new Set();
+  const add = s => {
+    const t = String(s || '').trim();
+    if (!t) return;
+    const k = t.toUpperCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    found.push(t);
+  };
+  for (const seed of intlVendorSymbolVariants(symbol).slice(0, 5)) {
+    try {
+      const url = `https://financialmodelingprep.com/stable/search-exchange-variants?symbol=${encodeURIComponent(seed)}&apikey=${encodeURIComponent(key)}`;
+      const r = await fetch(url, { signal: AbortSignal.timeout(12000), headers: { Accept: 'application/json' } });
+      if (!r.ok) continue;
+      const j = await r.json().catch(() => null);
+      const rows = Array.isArray(j) ? j : Array.isArray(j?.data) ? j.data : [];
+      for (const row of rows) {
+        add(row?.symbol ?? row?.ticker ?? row?.companySymbol);
+      }
+    } catch (_) {}
+  }
+  return found;
+}
+
+/** All FMP API symbol spellings: intl variants + exchange-variant discovery. */
+async function fmpAllSymbolVariants(symbol, key) {
+  const staticV = intlVendorSymbolVariants(symbol);
+  const exch = key ? await fmpExchangeSymbolVariants(symbol, key).catch(() => []) : [];
+  return [...new Set([...exch, ...staticV])].filter(Boolean);
+}
+
+/** Yahoo v7 quote fundamentals — works from cloud when quoteSummary modules are blocked (same path as live prices). */
+async function fetchFundamentalsFromYahooV7Quote(symbol) {
+  const variants = intlVendorSymbolVariants(symbol).slice(0, 10);
+  const num = v => {
+    const n = v?.raw ?? v;
+    return Number.isFinite(+n) ? +n : null;
+  };
+  const pct = v => {
+    const n = num(v);
+    if (n == null) return null;
+    if (Math.abs(n) <= 4.5 && Math.abs(n) > 1e-8) return +((n * 100).toFixed(1));
+    return +n.toFixed(1);
+  };
+  for (const sym of variants) {
+    for (const base of ['query1', 'query2']) {
+      try {
+        const url = `https://${base}.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(sym)}`;
+        const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(12000) });
+        if (!r.ok) continue;
+        const d = await r.json().catch(() => null);
+        const q = d?.quoteResponse?.result?.[0];
+        if (!q) continue;
+        const price = num(q.regularMarketPrice);
+        const eps = num(
+          q.epsTrailingTwelveMonths ?? q.trailingEps ?? q.epsCurrentYear ?? q.epsForward
+        );
+        let trailingPE = num(q.trailingPE);
+        if (trailingPE == null && price != null && eps != null && Math.abs(eps) > 1e-6) {
+          trailingPE = +Math.abs(price / eps).toFixed(2);
+        }
+        const forwardPE = num(q.forwardPE);
+        const pegRatio = num(q.trailingPegRatio ?? q.pegRatio);
+        const revenueGrowth = pct(q.revenueGrowth);
+        const earningsGrowth = pct(q.earningsGrowth);
+        const sector = String(q.sector || q.industry || '').trim() || null;
+        if (
+          trailingPE == null &&
+          forwardPE == null &&
+          pegRatio == null &&
+          revenueGrowth == null &&
+          earningsGrowth == null &&
+          !sector
+        )
+          continue;
+        console.log(`fetchFundamentalsFromYahooV7Quote ${symbol} ← ${sym}`);
+        return {
+          forwardPE,
+          trailingPE,
+          pegRatio,
+          revenueGrowth,
+          earningsGrowth,
+          marketCap: num(q.marketCap),
+          _fmpSector: sector,
+          _source: 'yahoo_v7_quote'
+        };
+      } catch (e) {
+        console.warn('fetchFundamentalsFromYahooV7Quote', sym, e.message);
+      }
+    }
+  }
+  return null;
+}
+
 /** FMP /stable/* bundle — often the only path that returns TTM metrics for .NS/.HK on newer FMP plans. */
 async function fetchFmpStableFundamentalsBundle(raw, key) {
   if (!raw || !key) return null;
@@ -2099,11 +2195,12 @@ async function fetchFmpStableFundamentalsBundle(raw, key) {
     return Number.isFinite(asPct) ? asPct : null;
   };
   try {
-    const [kmR, ratR, prR, isR] = await Promise.allSettled([
+    const [kmR, ratR, prR, isR, isgR] = await Promise.allSettled([
       fetch(`${base}/key-metrics-ttm?symbol=${enc}&${q}`, { headers: H, signal: AbortSignal.timeout(t) }),
       fetch(`${base}/ratios-ttm?symbol=${enc}&${q}`, { headers: H, signal: AbortSignal.timeout(t) }),
       fetch(`${base}/profile?symbol=${enc}&${q}`, { headers: H, signal: AbortSignal.timeout(t) }),
-      fetch(`${base}/income-statement?symbol=${enc}&limit=2&${q}`, { headers: H, signal: AbortSignal.timeout(t) })
+      fetch(`${base}/income-statement?symbol=${enc}&limit=2&${q}`, { headers: H, signal: AbortSignal.timeout(t) }),
+      fetch(`${base}/income-statement-growth?symbol=${enc}&limit=1&${q}`, { headers: H, signal: AbortSignal.timeout(t) })
     ]);
     const parseArr = async settled => {
       if (settled.status !== 'fulfilled' || !settled.value.ok) return null;
@@ -2138,21 +2235,31 @@ async function fetchFmpStableFundamentalsBundle(raw, key) {
     const pegRatio = num(
       km?.pegRatioTTM ?? km?.pegRatio ?? rat?.priceToEarningsGrowthRatioTTM ?? rat?.pegRatioTTM
     );
-    const revenueGrowth =
+    let revenueGrowth =
       pctGrowth(km?.revenueGrowth ?? rat?.revenueGrowth) ?? isGr?.revenueGrowth ?? null;
-    const earningsGrowth =
+    let earningsGrowth =
       pctGrowth(km?.epsgrowth ?? km?.netIncomeGrowth ?? rat?.netIncomeGrowth) ??
       isGr?.earningsGrowth ??
       null;
-    if (
-      peRatio == null &&
-      pegRatio == null &&
-      fwdPE == null &&
-      revenueGrowth == null &&
-      earningsGrowth == null &&
-      !pf
-    )
-      return null;
+    const isg = await parseArr(isgR);
+    if (isg) {
+      revenueGrowth =
+        revenueGrowth ??
+        pctGrowth(isg?.growthRevenue ?? isg?.growthTotalRevenue ?? isg?.revenueGrowth);
+      earningsGrowth =
+        earningsGrowth ??
+        pctGrowth(
+          isg?.growthNetIncome ?? isg?.growthEPS ?? isg?.growthEpsDiluted ?? isg?.netIncomeGrowth
+        );
+    }
+    const hasNumeric =
+      peRatio != null ||
+      pegRatio != null ||
+      fwdPE != null ||
+      revenueGrowth != null ||
+      earningsGrowth != null ||
+      num(km?.marketCap ?? pf?.mktCap) != null;
+    if (!hasNumeric) return null;
     console.log(`fetchFmpStableFundamentals ${normalizeTickerMatch(raw)}`);
     return {
       targetMeanPrice: num(pf?.priceTarget ?? pf?.targetConsensus) ?? null,
@@ -2182,7 +2289,15 @@ async function fetchFundamentalsFMP(symbol) {
   const k = fmpEnvKeyFund();
   if (!k) return null;
   const _fmpFundBare = symbol.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i,'');
-  const variants = [...new Set([...intlVendorSymbolVariants(symbol), symbol, _fmpFundBare, symbol.replace(/\./g, '-')])];
+  const variants = [
+    ...new Set([
+      ...(await fmpAllSymbolVariants(symbol, k).catch(() => [])),
+      ...intlVendorSymbolVariants(symbol),
+      symbol,
+      _fmpFundBare,
+      symbol.replace(/\./g, '-')
+    ])
+  ];
   const isIntl = /\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i.test(symbol);
   for (const raw of variants) {
     if (isIntl) {
@@ -2306,7 +2421,7 @@ function mergeFundSnapshots(y, f) {
   const out = { ...y };
   const sourceRank = s => {
     if (s === 'bloomberg_bridge' || s === 'bloomberg_enterprise') return 4;
-    if (s === 'fmp' || s === 'finnhub_metric' || s === 'alpha_vantage') return 2;
+    if (s === 'fmp' || s === 'finnhub_metric' || s === 'alpha_vantage' || s === 'yahoo_v7_quote') return 2;
     if (s) return 1;
     return 0;
   };
@@ -2336,7 +2451,7 @@ async function fetchFmpStableFinancialScores(symbol, key, tHttp) {
   const H = { Accept: 'application/json' };
   const t = Number(tHttp) || 12000;
 
-  const symVariants = [...new Set(intlVendorSymbolVariants(symbol))].slice(0, 14);
+  const symVariants = [...new Set([...(await fmpAllSymbolVariants(symbol, key).catch(() => [])), ...intlVendorSymbolVariants(symbol)])].slice(0, 18);
 
   for (const sym of symVariants) {
     const enc = encodeURIComponent(sym);
@@ -2363,8 +2478,22 @@ async function fetchFmpStableFinancialScores(symbol, key, tHttp) {
           }
           return null;
         };
-        const pio = pick(row, ['piotroskiScore','piotroski','fScore','f_score','piotroskiFScore']);
-        const az  = pick(row, ['altmanZScore','altmanZ','altman_z_score','altmanZscore','zScore']);
+        const pio = pick(row, [
+          'piotroskiScore',
+          'piotroski',
+          'fScore',
+          'f_score',
+          'piotroskiFScore',
+          'piotroskiScoreTTM'
+        ]);
+        const az = pick(row, [
+          'altmanZScore',
+          'altmanZ',
+          'altman_z_score',
+          'altmanZscore',
+          'zScore',
+          'altmanZScoreTTM'
+        ]);
         if (pio != null || az != null) {
           console.log(`FMP scores ${symbol}→${sym} (${url.split('/').slice(-2,-1)[0]}): pio=${pio} az=${az}`);
           return { piotroski: pio, altmanZ: az };
@@ -3041,6 +3170,11 @@ async function fetchFundamentals(symbol) {
           .then(f => ({ f }))
           .catch(() => ({ f: null }))
       );
+    vendorTasks.push(
+      fetchFundamentalsFromYahooV7Quote(symbol)
+        .then(f => ({ f }))
+        .catch(() => ({ f: null }))
+    );
     const vendorHits = await Promise.all(vendorTasks);
     for (const hit of vendorHits) {
       if (hit?.f) merged = mergeFundSnapshots(merged, hit.f);
@@ -3061,6 +3195,8 @@ async function fetchFundamentals(symbol) {
     merged._fmpSector == null ||
     merged._fmpSector === '';
   if (needsYahoo) {
+    const yV7 = await fetchFundamentalsFromYahooV7Quote(symbol).catch(() => null);
+    if (yV7) merged = mergeFundSnapshots(merged, yV7);
     // For non-US, also try bare ticker (e.g. INFY for INFY.NS, TCS for TCS.NS)
     const bare = isNonUS ? symbol.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK)$/i, '') : symbol;
     const yFund = await fetchFundamentalsYahoo(symbol).catch(() => null)
@@ -3164,6 +3300,7 @@ function mergeFundamentalsForUi(row, fund) {
     bbSec ||
     fund._source === 'fmp' ||
     fund._source === 'alpha_vantage' ||
+    fund._source === 'yahoo_v7_quote' ||
     fund._source === 'finnhub_metric';
   const set = (k, v, force) => {
     if (!force && !gap(row[k])) return;
@@ -3794,7 +3931,7 @@ async function fetchFmpScore(symbol, opts = {}) {
   const key = fmpEnvKeyFund();
   if (!key) return null;
 
-  const cacheKey = batchMode ? `${String(symbol)}::fmp-lite-v3` : String(symbol);
+  const cacheKey = batchMode ? `${String(symbol)}::fmp-lite-v4` : String(symbol);
   const now = Date.now();
   const prev = _fmpCache.get(cacheKey);
   if (prev && typeof prev.ts === 'number') {
@@ -3802,7 +3939,12 @@ async function fetchFmpScore(symbol, opts = {}) {
     if (prev.data === null && now - prev.ts < _FMP_MISS_SUPPRESS_MS) return null;
   }
 
-  let candidates = [...new Set(intlVendorSymbolVariants(symbol))];
+  let candidates = [
+    ...new Set([
+      ...(await fmpAllSymbolVariants(symbol, key).catch(() => [])),
+      ...intlVendorSymbolVariants(symbol)
+    ])
+  ];
   if (batchMode) candidates = candidates.slice(0, 14);
   if (!batchMode) {
     console.log(`FMP fetchFmpScore variants for ${symbol}:`, candidates.slice(0, 12).join(' | '));
@@ -4202,28 +4344,33 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const fk = fmpAnyApiKey();
   try {
-    const [fmpStable, fmpScores, finnhub, av, yahoo, merged, fmpScore] = await Promise.all([
-      fk ? fetchFmpStableFundamentalsBundle(sym, fk).catch(() => null) : null,
-      fk ? fetchFmpStableFinancialScores(sym, fk, 12000).catch(() => null) : null,
-      fetchFundamentalsFinnhub(sym).catch(() => null),
-      fetchFundamentalsAlphaVantage(sym).catch(() => null),
-      fetchFundamentalsYahoo(sym).catch(() => null),
-      fetchFundamentals(sym).catch(() => null),
-      fk ? fetchFmpScore(sym).catch(() => null) : null
-    ]);
+    const [fmpStable, fmpScores, finnhub, av, yahoo, yahooV7, merged, fmpScore, fmpExch] =
+      await Promise.all([
+        fk ? fetchFundamentalsFMP(sym).catch(() => null) : null,
+        fk ? fetchFmpStableFinancialScores(sym, fk, 12000).catch(() => null) : null,
+        fetchFundamentalsFinnhub(sym).catch(() => null),
+        fetchFundamentalsAlphaVantage(sym).catch(() => null),
+        fetchFundamentalsYahoo(sym).catch(() => null),
+        fetchFundamentalsFromYahooV7Quote(sym).catch(() => null),
+        fetchFundamentals(sym).catch(() => null),
+        fk ? fetchFmpScore(sym).catch(() => null) : null,
+        fk ? fmpExchangeSymbolVariants(sym, fk).catch(() => []) : []
+      ]);
     res.json({
-      build: '20260605-asian-vendors-v2',
+      build: '20260605-asian-vendors-v3',
       symbol: sym,
-      fmp_stable: fmpStable,
+      fmp_exchange_variants: fmpExch,
+      fmp_fundamentals: fmpStable,
       fmp_scores: fmpScores,
       finnhub_metric: finnhub,
       alpha_vantage: av,
       yahoo: yahoo,
+      yahoo_v7: yahooV7,
       merged,
       fmp_quality: fmpScore
     });
   } catch (e) {
-    res.status(500).json({ error: e.message || 'debug failed', build: '20260605-asian-vendors-v2' });
+    res.status(500).json({ error: e.message || 'debug failed', build: '20260605-asian-vendors-v3' });
   }
 });
 
@@ -4233,7 +4380,7 @@ app.get('/api/health', (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-asian-vendors-v2',
+    server_build: '20260605-asian-vendors-v3',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -4823,7 +4970,7 @@ async function fetchFinnhubCompanyNewsForSymbol(sym) {
 async function fetchFundamentalsFinnhub(symbol) {
   const token = (process.env.FINNHUB_API_KEY || '').trim();
   if (!token || !symbol) return null;
-  const variants = intlVendorSymbolVariants(symbol);
+  const variants = finnhubSymbolVariants(symbol);
   const num = (v) => {
     const x = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
     return Number.isFinite(x) ? x : null;
@@ -4919,7 +5066,7 @@ function finnhubPeriodToHistIso(period) {
 async function finnhubHistoricalEpsSurprisesPool(sym, maxRows = 16) {
   const token = (process.env.FINNHUB_API_KEY || '').trim();
   if (!token || !sym) return [];
-  const variants = intlVendorSymbolVariants(sym);
+  const variants = finnhubSymbolVariants(sym);
   const pickNum = (v) => {
     const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
     return Number.isFinite(n) ? n : null;
