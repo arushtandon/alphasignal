@@ -1670,6 +1670,19 @@ function fmpEnvKeyFund() {
   return fmpAnyApiKey();
 }
 
+function alphaVantageApiKey() {
+  const candidates = [
+    process.env.ALPHA_VANTAGE_API_KEY,
+    process.env.ALPHAVANTAGE_API_KEY,
+    process.env.ALPHA_VANTAGE_KEY
+  ];
+  for (const c of candidates) {
+    const t = normalizeApiKeyString(c);
+    if (t) return t;
+  }
+  return '';
+}
+
 /**
  * Claude / Anthropic — same normalization as FMP keys (Render UI pastes sometimes include BOM/zero-width).
  * Prefer ANTHROPIC_API_KEY; CLAUDE_API_KEY is accepted as a typo alias only on the server.
@@ -1815,6 +1828,244 @@ function fmpSymbolVariantsForApi(symbol) {
   return out;
 }
 
+/** Yahoo / vendor spellings for intl earnings + Finnhub (NSE/HK padding, Bloomberg root overrides). */
+function intlVendorSymbolVariants(symbol) {
+  return [
+    ...new Set([
+      ...fmpSymbolVariantsForApi(symbol),
+      ...alphaVantageSymbolVariantsForApi(symbol),
+      String(symbol || '').trim(),
+      String(symbol || '')
+        .trim()
+        .toUpperCase(),
+      String(symbol || '')
+        .trim()
+        .replace(/\./g, '-')
+    ])
+  ].filter(Boolean);
+}
+
+const _avCache = new Map();
+const _AV_TTL_MS = 60 * 60 * 1000;
+let _avQueue = Promise.resolve();
+let _avLastFetchMs = 0;
+/** Free tier ≈5 req/min — serialize + gap to avoid burst 429/Note responses on Asian batch scans. */
+const _AV_MIN_GAP_MS = 12500;
+
+async function alphaVantageQuery(params) {
+  const key = alphaVantageApiKey();
+  if (!key) return null;
+  const cacheKey = JSON.stringify(params);
+  const hit = _avCache.get(cacheKey);
+  if (hit && Date.now() - hit.ts < _AV_TTL_MS) return hit.data;
+
+  const run = async () => {
+    const wait = _AV_MIN_GAP_MS - (Date.now() - _avLastFetchMs);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    _avLastFetchMs = Date.now();
+    const u = new URL('https://www.alphavantage.co/query');
+    for (const [k, v] of Object.entries(params || {})) {
+      if (v != null && v !== '') u.searchParams.set(k, String(v));
+    }
+    u.searchParams.set('apikey', key);
+    const r = await fetch(u.toString(), {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(18000)
+    });
+    const j = await r.json().catch(() => null);
+    if (!j || typeof j !== 'object') return null;
+    if (j.Note || j.Information || j['Error Message']) {
+      console.warn('AlphaVantage throttle/info:', String(j.Note || j.Information || j['Error Message']).slice(0, 120));
+      return null;
+    }
+    _avCache.set(cacheKey, { ts: Date.now(), data: j });
+    return j;
+  };
+  _avQueue = _avQueue.then(run, run);
+  return _avQueue;
+}
+
+/**
+ * Alpha Vantage symbol spellings (NSE:ROOT, INFY.NS, padded HK, etc.).
+ */
+function alphaVantageSymbolVariantsForApi(symbol) {
+  const raw = String(symbol || '').trim();
+  if (!raw) return [];
+  const u = raw.toUpperCase();
+  const out = [];
+  const seen = new Set();
+  const add = cand => {
+    const t = String(cand || '').trim();
+    if (!t) return;
+    const k = t.toUpperCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(t);
+  };
+  add(raw);
+  add(u);
+  const dotNs = /^(.+)\.NS$/i.exec(u);
+  if (dotNs) {
+    const r0 = dotNs[1].trim().toUpperCase();
+    const bloom = NSE_BB_OVERRIDES[r0] || r0;
+    add(`${r0}.NS`);
+    add(`NSE:${r0}`);
+    add(`NSE:${bloom}`);
+    if (bloom !== r0) {
+      add(`${bloom}.NS`);
+      add(`NSE:${bloom}`);
+    }
+  }
+  const dotBo = /^(.+)\.BO$/i.exec(u);
+  if (dotBo) {
+    const r0 = dotBo[1].trim().toUpperCase();
+    add(`${r0}.BO`);
+    add(`BSE:${r0}`);
+  }
+  const mhk = /^(\d+)\.HK$/i.exec(u);
+  if (mhk) {
+    const num = mhk[1];
+    add(`${num}.HK`);
+    const noLead = num.replace(/^0+/, '') || '0';
+    if (noLead !== num) add(`${noLead}.HK`);
+    add(`${noLead.padStart(4, '0')}.HK`);
+    add(`${noLead.padStart(5, '0')}.HK`);
+  }
+  add(u.replace(/\./g, '-'));
+  const bare = u.replace(
+    /\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|SI|AX|BK|ST|CO|OL|MI|MC|VI|SW|TO|V)$/i,
+    ''
+  );
+  if (bare && bare !== u) add(bare);
+  return out;
+}
+
+async function fetchFundamentalsAlphaVantage(symbol) {
+  if (!alphaVantageApiKey()) return null;
+  const variants = alphaVantageSymbolVariantsForApi(symbol);
+  const num = v => {
+    const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/,/g, ''));
+    return Number.isFinite(n) ? n : null;
+  };
+  const pctGrowth = v => {
+    const n = num(v);
+    if (n == null) return null;
+    if (Math.abs(n) < 5 && Math.abs(n) > 1e-8) return +((n * 100).toFixed(2));
+    return +n.toFixed(2);
+  };
+  for (const sym of variants.slice(0, 8)) {
+    const j = await alphaVantageQuery({ function: 'OVERVIEW', symbol: sym });
+    if (!j || !j.Symbol || j.Symbol === 'None') continue;
+    const trailingPE = num(j.PERatio ?? j.TrailingPE);
+    const forwardPE = num(j.ForwardPE);
+    const pegRatio = num(j.PEGRatio);
+    const revenueGrowth = pctGrowth(j.QuarterlyRevenueGrowthYOY ?? j.RevenueGrowth);
+    const earningsGrowth = pctGrowth(j.QuarterlyEarningsGrowthYOY ?? j.EarningsGrowth);
+    const marketCap = num(j.MarketCapitalization);
+    const sector = j.Sector || j.Industry || null;
+    if (
+      trailingPE == null &&
+      forwardPE == null &&
+      pegRatio == null &&
+      revenueGrowth == null &&
+      earningsGrowth == null &&
+      !sector
+    )
+      continue;
+    console.log(`AlphaVantage OVERVIEW ${symbol} ← ${sym}`);
+    return {
+      _source: 'alpha_vantage',
+      trailingPE,
+      forwardPE,
+      pegRatio,
+      revenueGrowth,
+      earningsGrowth,
+      marketCap,
+      dividendYield: pctGrowth(j.DividendYield),
+      _fmpSector: sector
+    };
+  }
+  return null;
+}
+
+/** Quarterly EPS history — same row shape as FMP/Yahoo earnings helpers. */
+async function alphaVantageEarningsHistory(sym, maxRows = 4) {
+  if (!alphaVantageApiKey() || !sym) return [];
+  const pickNum = v => {
+    if (v == null || v === '' || v === 'None') return null;
+    const n = Number(String(v).replace(/,/g, ''));
+    return Number.isFinite(n) ? n : null;
+  };
+  for (const v of intlVendorSymbolVariants(sym).slice(0, 8)) {
+    const j = await alphaVantageQuery({ function: 'EARNINGS', symbol: v });
+    const reports = j?.quarterlyEarnings || j?.quarterlyReports;
+    if (!Array.isArray(reports) || !reports.length) continue;
+    const out = reports
+      .slice(0, maxRows)
+      .map(row => {
+        const dateStr = String(row.reportedDate || row.fiscalDateEnding || '').slice(0, 10);
+        const ea = pickNum(row.reportedEPS ?? row.actual);
+        const ee = pickNum(row.estimatedEPS ?? row.estimate);
+        let surpPct = pickNum(row.surprisePercentage);
+        if (surpPct == null && ea != null && ee != null && Math.abs(ee) > 1e-9) {
+          surpPct = ((ea - ee) / Math.abs(ee)) * 100;
+        }
+        const quarter = dateStr
+          ? new Date(dateStr + 'T12:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+          : '';
+        const surpLabel =
+          surpPct != null && Number.isFinite(surpPct)
+            ? (surpPct >= 0 ? '+' : '') + surpPct.toFixed(1) + '%'
+            : null;
+        return {
+          quarter,
+          date: dateStr,
+          epsActual: ea != null ? String(ea) : null,
+          epsEstimate: ee != null ? String(ee) : null,
+          epsSurprise: surpLabel,
+          beat: surpPct != null ? surpPct >= 0 : null,
+          revenueActual: null,
+          stockReaction: null
+        };
+      })
+      .filter(r => r.date || r.quarter);
+    if (out.length) {
+      console.log(`AlphaVantage EARNINGS ${sym} ← ${v} (${out.length} rows)`);
+      return out;
+    }
+  }
+  return [];
+}
+
+/** Next earnings date from Alpha Vantage calendar (horizon=3month), matched via intl symbol variants. */
+async function alphaVantageNextEarningsDate(sym, fromISO, toISO) {
+  if (!alphaVantageApiKey() || !sym) return null;
+  const j = await alphaVantageQuery({ function: 'EARNINGS_CALENDAR', horizon: '3month' });
+  const rows = j?.earningsCalendar || j?.earnings;
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const symVariants = new Set(
+    intlVendorSymbolVariants(sym).map(s => normalizeTickerMatch(String(s).trim().toUpperCase()))
+  );
+  const compactSet = new Set([...symVariants].map(s => s.replace(/\./g, '').replace(/^NSE:/, '').replace(/^BSE:/, '')));
+  const inWindow = rows.filter(r => {
+    const d = String(r.reportDate || r.date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+    if (fromISO && d < fromISO) return false;
+    if (toISO && d > toISO) return false;
+    const rs = normalizeTickerMatch(String(r.symbol || '').trim().toUpperCase());
+    if (symVariants.has(rs)) return true;
+    const rc = rs.replace(/\./g, '').replace(/^NSE:/, '').replace(/^BSE:/, '');
+    return compactSet.has(rc);
+  });
+  inWindow.sort((a, b) => String(a.reportDate || a.date).localeCompare(String(b.reportDate || b.date)));
+  const hit = inWindow[0];
+  if (!hit) return null;
+  const date = String(hit.reportDate || hit.date).slice(0, 10);
+  const epsEst = hit.estimate != null ? String(hit.estimate) : hit.epsEstimate != null ? String(hit.epsEstimate) : null;
+  console.log(`AlphaVantage EARNINGS_CALENDAR ${sym} → ${date}`);
+  return { date, epsEst, source: 'alpha_vantage' };
+}
+
 async function fetchFundamentalsFMP(symbol) {
   const k = fmpEnvKeyFund();
   if (!k) return null;
@@ -1938,7 +2189,7 @@ function mergeFundSnapshots(y, f) {
   const out = { ...y };
   const sourceRank = s => {
     if (s === 'bloomberg_bridge' || s === 'bloomberg_enterprise') return 4;
-    if (s === 'fmp' || s === 'finnhub_metric') return 2;
+    if (s === 'fmp' || s === 'finnhub_metric' || s === 'alpha_vantage') return 2;
     if (s) return 1;
     return 0;
   };
@@ -2726,6 +2977,21 @@ async function fetchFundamentals(symbol) {
       if (fhFund) merged = mergeFundSnapshots(merged, fhFund);
     } catch (_) {}
   }
+  if (
+    alphaVantageApiKey() &&
+    (merged.pegRatio == null ||
+      merged.revenueGrowth == null ||
+      merged.earningsGrowth == null ||
+      merged.forwardPE == null ||
+      merged.trailingPE == null ||
+      merged._fmpSector == null ||
+      merged._fmpSector === '')
+  ) {
+    try {
+      const avFund = await fetchFundamentalsAlphaVantage(symbol);
+      if (avFund) merged = mergeFundSnapshots(merged, avFund);
+    } catch (_) {}
+  }
   applyDerivedFundamentals(merged);
   const hasAny = Object.keys(merged).some(
     k => !k.startsWith('_') && merged[k] != null && merged[k] !== ''
@@ -2758,6 +3024,7 @@ function mergeFundamentalsForUi(row, fund) {
     fund._source === 'bloomberg_enterprise' ||
     bbSec ||
     fund._source === 'fmp' ||
+    fund._source === 'alpha_vantage' ||
     fund._source === 'finnhub_metric';
   const set = (k, v, force) => {
     if (!force && !gap(row[k])) return;
@@ -3798,6 +4065,16 @@ app.get('/api/health', (req, res) => {
         key_suffix_masked: fk && fk.length >= 4 ? `****${fk.slice(-4)}` : fk ? '(short)' : null
       };
     })(),
+    alpha_vantage: (() => {
+      const ak = alphaVantageApiKey();
+      return {
+        key_resolved: Boolean(ak),
+        key_chars: ak ? ak.length : 0,
+        key_suffix_masked: ak && ak.length >= 4 ? `****${ak.slice(-4)}` : ak ? '(short)' : null,
+        env_names: ['ALPHA_VANTAGE_API_KEY', 'ALPHAVANTAGE_API_KEY', 'ALPHA_VANTAGE_KEY'],
+        used_for: 'intl fundamentals gap-fill (OVERVIEW) + earnings history/calendar for .NS/.HK/.T etc.'
+      };
+    })(),
     /** After first /api/earnings-calendar request: how many rows the merge produced (-1 = not run yet). */
     earnings_calendar_merge: {
       last_event_count: earningsMergeDiag.eventsOut,
@@ -4362,7 +4639,7 @@ async function fetchFinnhubCompanyNewsForSymbol(sym) {
 async function fetchFundamentalsFinnhub(symbol) {
   const token = (process.env.FINNHUB_API_KEY || '').trim();
   if (!token || !symbol) return null;
-  const variants = [...new Set([symbol, symbol.replace(/\./g, '-')])].filter(Boolean);
+  const variants = intlVendorSymbolVariants(symbol);
   const num = (v) => {
     const x = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
     return Number.isFinite(x) ? x : null;
@@ -4458,7 +4735,7 @@ function finnhubPeriodToHistIso(period) {
 async function finnhubHistoricalEpsSurprisesPool(sym, maxRows = 16) {
   const token = (process.env.FINNHUB_API_KEY || '').trim();
   if (!token || !sym) return [];
-  const variants = [...new Set([sym, sym.replace(/\./g, '-')])].filter(Boolean);
+  const variants = intlVendorSymbolVariants(sym);
   const pickNum = (v) => {
     const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/,/g, ''));
     return Number.isFinite(n) ? n : null;
@@ -5055,7 +5332,7 @@ async function fmpEarningsSurprisesHistory(sym) {
       .filter((r) => r.date || r.quarter);
   }
   const earningsBare = sym.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK)$/i, '');
-  const variants = [...new Set([...fmpSymbolVariantsForApi(sym), sym.replace(/\./g, '-'), earningsBare])].filter(Boolean);
+  const variants = [...new Set([...intlVendorSymbolVariants(sym), sym.replace(/\./g, '-'), earningsBare])].filter(Boolean);
   for (const v of variants) {
     try {
       const enc = encodeURIComponent(v);
@@ -5134,9 +5411,11 @@ app.get('/api/earnings/:symbol', async (req, res) => {
   const prefersFmpIntlHist = /\.(NS|BO|HK|T|L|DE|PA|AS|TW|SI|KS|KQ|AX|NZ|BK|ST|SW|MC|MI|TO|V)$/i.test(
     sym
   );
-  /** Start FMP surprises early for intl — runs in parallel with Yahoo chart / quoteSummary work. */
+  /** Start FMP + Alpha Vantage surprises early for intl — parallel with Yahoo chart / quoteSummary work. */
   const fmpHistEarlyP =
     prefersFmpIntlHist && fmpAnyApiKey() ? fmpEarningsSurprisesHistory(sym) : null;
+  const avHistEarlyP =
+    prefersFmpIntlHist && alphaVantageApiKey() ? alphaVantageEarningsHistory(sym) : null;
   const todayISO = new Date().toISOString().slice(0, 10);
   /** One-day grace: avoid dropping "today" rows on timezone / feed lag vs strict UTC midnight */
   const upcomingCutoff = addUTCISODays(todayISO, -1);
@@ -5207,13 +5486,22 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
 
-    /** Intl listings: Yahoo often omits quoteSummary earningsHistory from cloud IPs; FMP surprises usually work for NSE/HK/JP/LSE when API key exists. */
+    /** Intl listings: Yahoo often omits quoteSummary earningsHistory from cloud IPs; FMP/AV surprises for NSE/HK/JP/LSE. */
     if (!epsHistory.length && fmpHistEarlyP) {
       try {
         const fmpHist = await fmpHistEarlyP;
         if (fmpHist.length) {
           epsHistory = fmpHist;
           historySource = 'fmp_earnings_surprises';
+        }
+      } catch (_) {}
+    }
+    if (!epsHistory.length && avHistEarlyP) {
+      try {
+        const avHist = await avHistEarlyP;
+        if (avHist.length) {
+          epsHistory = avHist;
+          historySource = 'alpha_vantage_earnings';
         }
       } catch (_) {}
     }
@@ -5293,6 +5581,13 @@ app.get('/api/earnings/:symbol', async (req, res) => {
         historySource = 'fmp_earnings_surprises';
       }
     }
+    if (!epsHistory.length && alphaVantageApiKey() && !prefersFmpIntlHist) {
+      const avH = await alphaVantageEarningsHistory(sym);
+      if (avH.length) {
+        epsHistory = avH;
+        historySource = 'alpha_vantage_earnings';
+      }
+    }
 
     if (!nextDate && fmpAnyApiKey()) {
       const fmpArr = await fmpEarningCalendarByRange(todayISO, toISOsym);
@@ -5361,9 +5656,21 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
 
+    if (!nextDate && alphaVantageApiKey()) {
+      try {
+        const avCal = await alphaVantageNextEarningsDate(sym, upcomingCutoff, toISOsym);
+        if (avCal?.date) {
+          nextDate = avCal.date;
+          if (avCal.epsEst) epsEst = epsEst || avCal.epsEst;
+          calendarPrimary = calendarPrimary || 'alpha_vantage';
+        }
+      } catch (_) {}
+    }
+
     const sourcesUsed = {};
     if (process.env.FINNHUB_API_KEY) sourcesUsed.finnhub = true;
     if (fmpAnyApiKey()) sourcesUsed.fmp = true;
+    if (alphaVantageApiKey()) sourcesUsed.alpha_vantage = true;
     sourcesUsed.yahoo = true;
     if (bloombergBridgeUrl()) sourcesUsed.bloomberg_bridge = true;
 
@@ -5418,6 +5725,16 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       if (fmpH.length) histSend = enrichEarningsHistFromYahooRows(histSend, fmpH);
     }
     if (
+      histSend.length &&
+      histSend.some(
+        (r) => isEmptyHistEps(r.epsActual) || isEmptyHistEps(r.epsEstimate) || isEmptyHistEps(r.epsSurprise)
+      ) &&
+      alphaVantageApiKey()
+    ) {
+      const avH = await alphaVantageEarningsHistory(sym, 8);
+      if (avH.length) histSend = enrichEarningsHistFromYahooRows(histSend, avH);
+    }
+    if (
       (process.env.FINNHUB_API_KEY || '').trim() &&
       histSend.length &&
       histSend.some(
@@ -5438,6 +5755,13 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       if (fmpFall.length) {
         histSend = sortEarningsHistDesc(fmpFall).slice(0, 4).map((r) => ({ ...r }));
         histSourceOut = 'fmp_earnings_surprises';
+      }
+    }
+    if (!histSend.length && alphaVantageApiKey()) {
+      const avFall = await alphaVantageEarningsHistory(sym);
+      if (avFall.length) {
+        histSend = sortEarningsHistDesc(avFall).slice(0, 4).map((r) => ({ ...r }));
+        histSourceOut = 'alpha_vantage_earnings';
       }
     }
     if (!histSend.length && (process.env.FINNHUB_API_KEY || '').trim()) {
