@@ -2112,8 +2112,10 @@ async function fmpAllSymbolVariants(symbol, key) {
   return [...new Set([...exch, ...staticV])].filter(Boolean);
 }
 
+const YAHOO_PRICE_FIELDS =
+  'regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose,currency,regularMarketOpen,regularMarketDayHigh,regularMarketDayLow';
 const YAHOO_QUOTE_FUND_FIELDS = [
-  'regularMarketPrice',
+  YAHOO_PRICE_FIELDS,
   'trailingPE',
   'forwardPE',
   'pegRatio',
@@ -2140,9 +2142,16 @@ function mergeGapFillOnly(base, overlay) {
   return out;
 }
 
-/** Yahoo v7 quote fundamentals — uses the same narrowed fields list as live prices (full quote often 401 from cloud). */
+/** Yahoo v7 quote fundamentals — same symbol variants as fetchSinglePrice (intl spellings often 401). */
 async function fetchFundamentalsFromYahooV7Quote(symbol) {
-  const variants = intlVendorSymbolVariants(symbol).slice(0, 10);
+  const base = String(symbol || '').trim();
+  const variants = [
+    ...new Set([
+      base,
+      base.replace(/\./g, '-'),
+      ...intlVendorSymbolVariants(symbol).slice(0, 6)
+    ])
+  ].filter(Boolean);
   const num = v => {
     const n = v?.raw ?? v;
     return Number.isFinite(+n) ? +n : null;
@@ -2199,6 +2208,13 @@ async function fetchFundamentalsFromYahooV7Quote(symbol) {
           const hit = parseQ(d?.quoteResponse?.result?.[0], sym);
           if (hit) return hit;
         }
+        const priceOnly = `https://${base}.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(sym)}&fields=${YAHOO_PRICE_FIELDS},trailingPE,forwardPE,pegRatio,epsTrailingTwelveMonths`;
+        r = await fetch(priceOnly, { headers: YF_HEADERS, signal: AbortSignal.timeout(12000) });
+        if (r.ok) {
+          const d = await r.json().catch(() => null);
+          const hit = parseQ(d?.quoteResponse?.result?.[0], sym);
+          if (hit) return hit;
+        }
         const wide = `https://${base}.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(sym)}`;
         r = await fetch(wide, { headers: YF_HEADERS, signal: AbortSignal.timeout(12000) });
         if (r.ok) {
@@ -2210,13 +2226,121 @@ async function fetchFundamentalsFromYahooV7Quote(symbol) {
         console.warn('fetchFundamentalsFromYahooV7Quote', sym, e.message);
       }
     }
+    try {
+      const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`;
+      const r = await fetch(chartUrl, { headers: YF_HEADERS, signal: AbortSignal.timeout(12000) });
+      if (r.ok) {
+        const d = await r.json().catch(() => null);
+        const meta = d?.chart?.result?.[0]?.meta;
+        if (meta) {
+          const price = num(meta.regularMarketPrice);
+          let trailingPE = num(meta.trailingPE);
+          const eps = num(meta.epsTrailingTwelveMonths);
+          if (trailingPE == null && price != null && eps != null && Math.abs(eps) > 1e-6) {
+            trailingPE = +Math.abs(price / eps).toFixed(2);
+          }
+          const hit = parseQ(
+            {
+              regularMarketPrice: price,
+              trailingPE,
+              forwardPE: meta.forwardPE,
+              pegRatio: meta.pegRatio,
+              epsTrailingTwelveMonths: eps
+            },
+            sym + ':v8'
+          );
+          if (hit) return hit;
+        }
+      }
+    } catch (e) {
+      console.warn('fetchFundamentalsFromYahooV7Quote chart', sym, e.message);
+    }
+  }
+  return null;
+}
+
+/** FMP /quote — often returns pe + eps for .NS/.HK when key-metrics endpoints are empty on plan. */
+async function fetchFundamentalsFromFmpQuote(symbol) {
+  const k = fmpEnvKeyFund();
+  if (!k) return null;
+  const variants = await fmpAllSymbolVariants(symbol, k).catch(() => intlVendorSymbolVariants(symbol));
+  const num = x => {
+    const t = typeof x === 'number' ? x : parseFloat(String(x ?? '').replace(/,/g, ''));
+    return Number.isFinite(t) ? t : null;
+  };
+  for (const raw of variants.slice(0, 14)) {
+    for (const makeUrl of [
+      () =>
+        `https://financialmodelingprep.com/api/v3/quote/${encodeURIComponent(raw)}?apikey=${encodeURIComponent(k)}`,
+      () =>
+        `https://financialmodelingprep.com/stable/quote?symbol=${encodeURIComponent(raw)}&apikey=${encodeURIComponent(k)}`
+    ]) {
+      try {
+        const url = makeUrl();
+        const r = await fetch(url, { signal: AbortSignal.timeout(12000), headers: { Accept: 'application/json' } });
+        if (!r.ok) continue;
+        let arr = await r.json().catch(() => []);
+        if (!Array.isArray(arr) && arr && typeof arr === 'object') {
+          arr = Array.isArray(arr.data) ? arr.data : [arr];
+        }
+        const row = Array.isArray(arr) && arr[0] ? arr[0] : null;
+        if (!row) continue;
+        const price = num(row.price ?? row.close);
+        const eps = num(row.eps);
+        let trailingPE = num(row.pe ?? row.peRatio);
+        if (trailingPE == null && price != null && eps != null && Math.abs(eps) > 1e-6) {
+          trailingPE = +Math.abs(price / eps).toFixed(2);
+        }
+        if (trailingPE == null && eps == null) continue;
+        console.log(`fetchFundamentalsFromFmpQuote ${symbol} ← ${raw}`);
+        return {
+          trailingPE,
+          fundamentalTrailingEps: eps,
+          marketCap: num(row.marketCap),
+          _source: 'fmp'
+        };
+      } catch (e) {
+        console.warn('fetchFundamentalsFromFmpQuote', raw, e.message);
+      }
+    }
+  }
+  return null;
+}
+
+/** Finnhub profile2 — sector + market cap when /stock/metric is empty for intl listings. */
+async function fetchFinnhubProfileFundamentals(symbol) {
+  const token = (process.env.FINNHUB_API_KEY || '').trim();
+  if (!token || !symbol) return null;
+  for (const v of finnhubSymbolVariants(symbol).slice(0, 12)) {
+    try {
+      const url = new URL('https://finnhub.io/api/v1/stock/profile2');
+      url.searchParams.set('symbol', v);
+      url.searchParams.set('token', token);
+      const r = await fetch(url.toString(), { signal: AbortSignal.timeout(12000) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j || typeof j !== 'object' || j.error) continue;
+      const sector = j.finnhubIndustry || j.industry || null;
+      const marketCap = Number(j.marketCapitalization);
+      if (!sector && !Number.isFinite(marketCap)) continue;
+      console.log(`fetchFinnhubProfileFundamentals ${symbol} ← ${v}`);
+      return {
+        marketCap: Number.isFinite(marketCap) ? marketCap * 1e6 : null,
+        _fmpSector: sector,
+        _source: 'finnhub_metric'
+      };
+    } catch (e) {
+      console.warn('fetchFinnhubProfileFundamentals', v, e.message);
+    }
   }
   return null;
 }
 
 /** Yahoo v8 chart meta — fallback when v7 quote omits fundamentals (same path as live price chart). */
 async function fetchFundamentalsFromYahooV8Chart(symbol) {
-  const variants = intlVendorSymbolVariants(symbol).slice(0, 8);
+  const base = String(symbol || '').trim();
+  const variants = [
+    ...new Set([base, base.replace(/\./g, '-'), ...intlVendorSymbolVariants(symbol).slice(0, 6)])
+  ].filter(Boolean);
   const num = v => (Number.isFinite(+v) ? +v : null);
   for (const sym of variants) {
     for (const host of ['query1', 'query2']) {
@@ -2262,48 +2386,61 @@ async function fetchFmpIncomeDerivedFundamentals(symbol, livePrice) {
     return Number.isFinite(t) ? t : null;
   };
   for (const raw of variants.slice(0, 14)) {
-    try {
-      const enc = encodeURIComponent(raw);
-      const isUrl = `https://financialmodelingprep.com/api/v3/income-statement/${enc}?limit=2&apikey=${encodeURIComponent(k)}`;
-      const r = await fetch(isUrl, { signal: AbortSignal.timeout(14000) });
-      if (!r.ok) continue;
-      const arr = await r.json().catch(() => []);
-      if (!Array.isArray(arr) || !arr.length) continue;
-      const cur = arr[0];
-      const prev = arr.length > 1 ? arr[1] : null;
-      const calcG = (c, p) =>
-        c != null && p != null && p !== 0 && Math.abs(p) > 1
-          ? Math.round(((c - p) / Math.abs(p)) * 1000) / 10
-          : null;
-      const revenueGrowth = calcG(cur?.revenue ?? cur?.totalRevenue, prev?.revenue ?? prev?.totalRevenue);
-      const earningsGrowth = calcG(cur?.netIncome, prev?.netIncome);
-      let eps = num(cur?.eps ?? cur?.epsDiluted);
-      if (eps == null && cur?.netIncome != null && cur?.weightedAverageShsOut) {
-        const sh = num(cur.weightedAverageShsOut);
-        if (sh && Math.abs(sh) > 1) eps = cur.netIncome / sh;
+    for (const isUrl of [
+      `https://financialmodelingprep.com/api/v3/income-statement/${encodeURIComponent(raw)}?limit=2&apikey=${encodeURIComponent(k)}`,
+      `https://financialmodelingprep.com/stable/income-statement?symbol=${encodeURIComponent(raw)}&limit=2&apikey=${encodeURIComponent(k)}`
+    ]) {
+      try {
+        const r = await fetch(isUrl, { signal: AbortSignal.timeout(14000) });
+        if (!r.ok) continue;
+        let arr = await r.json().catch(() => []);
+        if (!Array.isArray(arr) && arr && typeof arr === 'object') {
+          arr = Array.isArray(arr.data) ? arr.data : [];
+        }
+        if (!Array.isArray(arr) || !arr.length) continue;
+        const cur = arr[0];
+        const prev = arr.length > 1 ? arr[1] : null;
+        const calcG = (c, p) =>
+          c != null && p != null && p !== 0 && Math.abs(p) > 1
+            ? Math.round(((c - p) / Math.abs(p)) * 1000) / 10
+            : null;
+        const revenueGrowth = calcG(cur?.revenue ?? cur?.totalRevenue, prev?.revenue ?? prev?.totalRevenue);
+        const earningsGrowth = calcG(cur?.netIncome, prev?.netIncome);
+        let eps = num(cur?.eps ?? cur?.epsDiluted);
+        if (eps == null && cur?.netIncome != null && cur?.weightedAverageShsOut) {
+          const sh = num(cur.weightedAverageShsOut);
+          if (sh && Math.abs(sh) > 1) eps = cur.netIncome / sh;
+        }
+        let trailingPE = null;
+        if (livePrice != null && eps != null && Math.abs(eps) > 1e-6) {
+          trailingPE = +Math.abs(Number(livePrice) / eps).toFixed(2);
+        }
+        if (
+          trailingPE == null &&
+          revenueGrowth == null &&
+          earningsGrowth == null &&
+          eps == null
+        )
+          continue;
+        console.log(`fetchFmpIncomeDerivedFundamentals ${symbol} ← ${raw}`);
+        return {
+          trailingPE,
+          revenueGrowth,
+          earningsGrowth,
+          fundamentalTrailingEps: eps,
+          _source: 'fmp'
+        };
+      } catch (e) {
+        console.warn('fetchFmpIncomeDerivedFundamentals', raw, e.message);
       }
-      let trailingPE = null;
-      if (livePrice != null && eps != null && Math.abs(eps) > 1e-6) {
-        trailingPE = +Math.abs(Number(livePrice) / eps).toFixed(2);
-      }
-      if (
-        trailingPE == null &&
-        revenueGrowth == null &&
-        earningsGrowth == null &&
-        eps == null
-      )
-        continue;
-      console.log(`fetchFmpIncomeDerivedFundamentals ${symbol} ← ${raw}`);
-      return {
-        trailingPE,
-        revenueGrowth,
-        earningsGrowth,
-        fundamentalTrailingEps: eps,
-        _source: 'fmp'
-      };
-    } catch (e) {
-      console.warn('fetchFmpIncomeDerivedFundamentals', raw, e.message);
     }
+  }
+  if (livePrice != null) {
+    const q = await fetchFundamentalsFromFmpQuote(symbol).catch(() => null);
+    if (q?.fundamentalTrailingEps && q.trailingPE == null) {
+      q.trailingPE = +Math.abs(Number(livePrice) / q.fundamentalTrailingEps).toFixed(2);
+    }
+    if (q?.trailingPE != null) return q;
   }
   return null;
 }
@@ -3334,6 +3471,7 @@ async function fetchFundamentals(symbol) {
   const vendorTasks = [];
   if (fmpEnvKeyFund()) {
     vendorTasks.push(fetchFundamentalsFMP(symbol).catch(() => null));
+    vendorTasks.push(fetchFundamentalsFromFmpQuote(symbol).catch(() => null));
     if (livePx?.price) {
       vendorTasks.push(fetchFmpIncomeDerivedFundamentals(symbol, livePx.price).catch(() => null));
     }
@@ -3341,6 +3479,7 @@ async function fetchFundamentals(symbol) {
   if ((process.env.FINNHUB_API_KEY || '').trim()) {
     vendorTasks.push(fetchFundamentalsFinnhub(symbol).catch(() => null));
     vendorTasks.push(fetchFinnhubFinancialsFundamentals(symbol).catch(() => null));
+    vendorTasks.push(fetchFinnhubProfileFundamentals(symbol).catch(() => null));
   }
   if (alphaVantageApiKey()) {
     vendorTasks.push(fetchFundamentalsAlphaVantage(symbol).catch(() => null));
@@ -4472,12 +4611,14 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
   const fk = fmpAnyApiKey();
   try {
     const livePxDbg = await fetchSinglePrice(sym).catch(() => null);
-    const [fmpFund, fmpScores, finnhub, fhFin, av, yahoo, yahooV7, yahooV8, fmpIncome, merged, fmpScore, fmpExch] =
+    const [fmpFund, fmpQuote, fmpScores, finnhub, fhFin, fhProf, av, yahoo, yahooV7, yahooV8, fmpIncome, merged, fmpScore, fmpExch] =
       await Promise.all([
         fk ? fetchFundamentalsFMP(sym).catch(() => null) : null,
+        fk ? fetchFundamentalsFromFmpQuote(sym).catch(() => null) : null,
         fk ? fetchFmpStableFinancialScores(sym, fk, 12000).catch(() => null) : null,
         fetchFundamentalsFinnhub(sym).catch(() => null),
         fetchFinnhubFinancialsFundamentals(sym).catch(() => null),
+        fetchFinnhubProfileFundamentals(sym).catch(() => null),
         fetchFundamentalsAlphaVantage(sym).catch(() => null),
         fetchFundamentalsYahoo(sym).catch(() => null),
         fetchFundamentalsFromYahooV7Quote(sym).catch(() => null),
@@ -4490,15 +4631,17 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
         fk ? fmpExchangeSymbolVariants(sym, fk).catch(() => []) : []
       ]);
     res.json({
-      build: '20260605-asian-vendors-v4',
+      build: '20260605-asian-vendors-v5',
       symbol: sym,
       live_price: livePxDbg?.price ?? null,
       fmp_exchange_variants: fmpExch,
       fmp_fundamentals: fmpFund,
+      fmp_quote: fmpQuote,
       fmp_income_derived: fmpIncome,
       fmp_scores: fmpScores,
       finnhub_metric: finnhub,
       finnhub_financials: fhFin,
+      finnhub_profile: fhProf,
       alpha_vantage: av,
       yahoo: yahoo,
       yahoo_v7: yahooV7,
@@ -4508,7 +4651,7 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
       merge_policy: 'FMP+Finnhub+AV+Yahoo primary; Bloomberg gap-fill only'
     });
   } catch (e) {
-    res.status(500).json({ error: e.message || 'debug failed', build: '20260605-asian-vendors-v4' });
+    res.status(500).json({ error: e.message || 'debug failed', build: '20260605-asian-vendors-v5' });
   }
 });
 
@@ -4518,7 +4661,7 @@ app.get('/api/health', (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-asian-vendors-v4',
+    server_build: '20260605-asian-vendors-v5',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
