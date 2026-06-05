@@ -1547,33 +1547,35 @@ function backtestSignal(data, hz) {
 
 
 async function fetchFundamentalsYahoo(symbol) {
-  try {
-    const qs = await quoteSummary(
-      symbol,
-      'financialData,defaultKeyStatistics,summaryDetail,assetProfile'
-    );
-    const res = qs?.quoteSummary?.result?.[0];
-    if (!res) return null;
-    const fd = res.financialData || {};
-    const ks = res.defaultKeyStatistics || {};
-    const sd = res.summaryDetail || {};
-    const ap = res.assetProfile || {};
-    const num = v => {
-      const n = v?.raw ?? v;
-      return Number.isFinite(+n) ? +n : null;
-    };
-    const pct = v => {
-      const n = num(v);
-      return n != null ? +(n * 100).toFixed(1) : null;
-    };
-    const fmt = (v, dec = 2) => {
-      const n = num(v);
-      return n != null ? +n.toFixed(dec) : null;
-    };
-    const sect = String(ap.sector || ap.industry || '')
-      .trim()
-      .slice(0, 120);
-    return {
+  const variants = [...new Set(intlVendorSymbolVariants(symbol))].slice(0, 8);
+  const num = v => {
+    const n = v?.raw ?? v;
+    return Number.isFinite(+n) ? +n : null;
+  };
+  const pct = v => {
+    const n = num(v);
+    return n != null ? +(n * 100).toFixed(1) : null;
+  };
+  const fmt = (v, dec = 2) => {
+    const n = num(v);
+    return n != null ? +n.toFixed(dec) : null;
+  };
+  for (const sym of variants) {
+    try {
+      const qs = await quoteSummary(
+        sym,
+        'financialData,defaultKeyStatistics,summaryDetail,assetProfile'
+      );
+      const res = qs?.quoteSummary?.result?.[0];
+      if (!res) continue;
+      const fd = res.financialData || {};
+      const ks = res.defaultKeyStatistics || {};
+      const sd = res.summaryDetail || {};
+      const ap = res.assetProfile || {};
+      const sect = String(ap.sector || ap.industry || '')
+        .trim()
+        .slice(0, 120);
+      const snap = {
       targetMeanPrice: fmt(fd.targetMeanPrice),
       targetHighPrice: fmt(fd.targetHighPrice),
       targetLowPrice: fmt(fd.targetLowPrice),
@@ -1595,12 +1597,21 @@ async function fetchFundamentalsYahoo(symbol) {
       marketCap: num(sd.marketCap),
       /** Populates Industry Pos tile when FMP omit (_fmpSector); merge prefers first non-null. */
       _fmpSector: sect || null,
-      _yahooSector: sect || null
+      _yahooSector: sect || null,
+      _source: 'yahoo'
     };
-  } catch (e) {
-    console.warn('fetchFundamentalsYahoo', symbol, e.message);
-    return null;
+    const hasAny = Object.keys(snap).some(
+      k => !k.startsWith('_') && snap[k] != null && snap[k] !== ''
+    );
+      if (hasAny) {
+        console.log(`fetchFundamentalsYahoo ${symbol} ← ${sym}`);
+        return snap;
+      }
+    } catch (e) {
+      console.warn('fetchFundamentalsYahoo', sym, e.message);
+    }
   }
+  return null;
 }
 
 /** Lightweight v7 quote — often still returns forward/trailing P/E when quoteSummary modules are empty from the server IP. */
@@ -3617,7 +3628,7 @@ app.post('/api/fundamentals/batch', async (req, res) => {
     await Promise.allSettled(_slice.map(async sym => {
     try {
       const cached = fundCache.get(sym);
-      if (cached && Date.now() - cached.ts < TECH_TTL * 4) { results[sym] = cached.data; return; }
+      if (cached && !req.body?.force && Date.now() - cached.ts < TECH_TTL * 4) { results[sym] = cached.data; return; }
       const data = await fetchFundamentals(sym);
       if (data) { fundCache.set(sym, { ts: Date.now(), data }); results[sym] = data; }
     } catch(e) { console.warn('Fund batch fail:', sym, e.message); }
@@ -4182,12 +4193,47 @@ app.get('/api/history/status', (req, res) => {
   res.json({total:tradeHistory.length, todayCount:todayCnt, byHz, file:HISTORY_FILE});
 });
 
+/** Per-vendor probe for intl symbol debugging (safe JSON — no API keys). */
+app.get('/api/debug/vendors/:symbol', async (req, res) => {
+  const sym = String(req.params.symbol || '')
+    .trim()
+    .toUpperCase();
+  if (!sym) return res.status(400).json({ error: 'symbol required' });
+  res.setHeader('Cache-Control', 'no-store');
+  const fk = fmpAnyApiKey();
+  try {
+    const [fmpStable, fmpScores, finnhub, av, yahoo, merged, fmpScore] = await Promise.all([
+      fk ? fetchFmpStableFundamentalsBundle(sym, fk).catch(() => null) : null,
+      fk ? fetchFmpStableFinancialScores(sym, fk, 12000).catch(() => null) : null,
+      fetchFundamentalsFinnhub(sym).catch(() => null),
+      fetchFundamentalsAlphaVantage(sym).catch(() => null),
+      fetchFundamentalsYahoo(sym).catch(() => null),
+      fetchFundamentals(sym).catch(() => null),
+      fk ? fetchFmpScore(sym).catch(() => null) : null
+    ]);
+    res.json({
+      build: '20260605-asian-vendors-v2',
+      symbol: sym,
+      fmp_stable: fmpStable,
+      fmp_scores: fmpScores,
+      finnhub_metric: finnhub,
+      alpha_vantage: av,
+      yahoo: yahoo,
+      merged,
+      fmp_quality: fmpScore
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message || 'debug failed', build: '20260605-asian-vendors-v2' });
+  }
+});
+
 app.get('/api/health', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
+    server_build: '20260605-asian-vendors-v2',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
