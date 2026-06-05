@@ -5062,7 +5062,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.2.4',
+    server_build: '20260605-fmp-ultimate-v7.2.5',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -5282,8 +5282,98 @@ app.delete('/api/history', (req, res) => {
 });
 
 
+/** US-listed tickers without intl exchange suffix (no .HK, .NS, etc.). */
+function isUsDomesticEquity(sym) {
+  const s = String(sym || '').trim().toUpperCase();
+  if (!s || /[=]/.test(s)) return false;
+  return !/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|SW|MC|MI|TO|V|MX|NZ|CO|OL|VI)$/i.test(s);
+}
+
+function earningsMsToIsoDate(ms, sym) {
+  if (ms == null || !Number.isFinite(ms)) return '';
+  if (isUsDomesticEquity(sym)) {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date(ms));
+    } catch (_) {}
+  }
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function isoDateSpanDays(a, b) {
+  const da = String(a || '').slice(0, 10);
+  const db = String(b || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(da) || !/^\d{4}-\d{2}-\d{2}$/.test(db)) return 999;
+  const t0 = Date.parse(da + 'T12:00:00Z');
+  const t1 = Date.parse(db + 'T12:00:00Z');
+  if (!Number.isFinite(t0) || !Number.isFinite(t1)) return 999;
+  return Math.round(Math.abs(t1 - t0) / 86400000);
+}
+
+/** Yahoo calendarEvents often sends [windowStart, windowEnd] — report day is the later slot. */
+function pickUpcomingEarningsTimestampMs(candidates) {
+  if (!candidates.length) return null;
+  const slack = 86400000 * 14;
+  const todayUtc0 =
+    Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()) - 86400000;
+  const nextLike = candidates.filter((m) => m >= todayUtc0).sort((a, b) => a - b);
+  const now = Date.now();
+  const future = candidates.filter((m) => m >= now - slack).sort((a, b) => a - b);
+  const pool = nextLike.length ? nextLike : future.length ? future : [...candidates].sort((a, b) => a - b);
+  if (!pool.length) return null;
+  if (pool.length >= 2 && pool[pool.length - 1] - pool[0] <= slack) return pool[pool.length - 1];
+  return pool[0];
+}
+
+/** Among upcoming calendar rows, prefer the latest date in the first earnings window (confirmed report day). */
+function pickUpcomingEarningsCalendarRow(rows, fromISO) {
+  const future = rows
+    .map((r) => ({
+      ...r,
+      date: String(r.date || r.reportDate || '').slice(0, 10),
+      epsActual: r.epsActual ?? r.actualEPS ?? r.eps,
+      epsEstimated: r.epsEstimated ?? r.estimatedEPS ?? r.estimate ?? r.epsEstimated
+    }))
+    .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.date >= fromISO)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (!future.length) return null;
+  const cluster = future.filter((r) => isoDateSpanDays(future[0].date, r.date) <= 7);
+  const pending = cluster.filter((r) => r.epsActual == null);
+  const pickFrom = pending.length ? pending : cluster;
+  return pickFrom[pickFrom.length - 1];
+}
+
+function mergeNextEarningsCandidate(state, cand, sourceLabel, upcomingCutoff) {
+  if (!cand?.date || cand.date < upcomingCutoff) return state;
+  const lowTrust = sourceLabel === 'finnhub';
+  if (state.nextDate && lowTrust) return state;
+  if (
+    state.nextDate &&
+    state.nextDate !== cand.date &&
+    isoDateSpanDays(state.nextDate, cand.date) <= 7 &&
+    cand.date > state.nextDate &&
+    ['fmp_confirmed', 'fmp_stable_earnings', 'fmp_symbol_calendar', 'yahoo_quoteSummary', 'yahoo_chart'].includes(
+      sourceLabel
+    )
+  ) {
+    // Prefer later date in the same earnings window (e.g. confirmed report day vs window start)
+  } else if (state.nextDate && cand.date <= state.nextDate && sourceLabel !== 'bloomberg_bridge') {
+    return state;
+  }
+  return {
+    nextDate: cand.date,
+    epsEst: cand.epsEst ?? state.epsEst,
+    callTime: cand.callTime || state.callTime,
+    calendarPrimary: sourceLabel
+  };
+}
+
 /** Next earnings ISO date + optional EPS avg from Yahoo quoteSummary.calendarEvents. */
-function nextEarningsFromCalendar(qs) {
+function nextEarningsFromCalendar(qs, sym) {
   const out = {};
   try {
     const ce = qs?.quoteSummary?.result?.[0]?.calendarEvents?.earnings;
@@ -5312,16 +5402,9 @@ function nextEarningsFromCalendar(qs) {
       candidates.push(ms);
     }
     if (!candidates.length) return {};
-    const now = Date.now();
-    const slack = 86400000 * 14;
-    const future = candidates.filter((m) => m >= now - slack);
-    const todayUtc0 =
-      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()) - 86400000;
-    const nextLike = candidates.filter((m) => m >= todayUtc0);
-    const pickMs =
-      nextLike.length ? Math.min(...nextLike) : future.length ? Math.min(...future) : Math.min(...candidates);
-    const d = new Date(pickMs);
-    const nextDate = d.toISOString().slice(0, 10);
+    const pickMs = pickUpcomingEarningsTimestampMs(candidates);
+    if (pickMs == null) return {};
+    const nextDate = earningsMsToIsoDate(pickMs, sym);
     let eps = null;
     if (ce.epsAverage?.fmt != null) eps = String(ce.epsAverage.fmt);
     else if (ce.epsEstimate?.average?.fmt != null) eps = String(ce.epsEstimate.average.fmt);
@@ -6092,7 +6175,7 @@ async function yahooEarningsGapRow(ticker, mergeFromISO = null, mergeEndISO = nu
   const tryOne = async (t) => {
     try {
       const qs = await quoteSummary(t, 'calendarEvents,summaryProfile');
-      const cal = nextEarningsFromCalendar(qs);
+      const cal = nextEarningsFromCalendar(qs, t);
       if (!cal.nextDate) return null;
       const dStr = String(cal.nextDate).slice(0, 10);
       if (mf && mt && (!/^\d{4}-\d{2}-\d{2}$/.test(dStr) || dStr < mf || dStr > mt)) return null;
@@ -6416,23 +6499,23 @@ async function fmpStableEarningsBundle(sym, fromISO) {
       const past = mapped
         .filter((row) => row.date < cutoff && (row.epsActual != null || row.epsEstimated != null))
         .sort((a, b) => b.date.localeCompare(a.date));
-      const future = mapped.filter((row) => row.date >= cutoff).sort((a, b) => a.date.localeCompare(b.date));
-      const nextHit = future.find((row) => row.epsActual == null) || future[0] || null;
+      const future = mapped.filter((row) => row.date >= cutoff);
+      const nextRow = pickUpcomingEarningsCalendarRow(future, cutoff);
       const history = fmpNormalizeEarningsHistRows(past.length ? past : mapped);
       let callTime = null;
-      const tl = String(nextHit?.time || '').toLowerCase();
+      const tl = String(nextRow?.time || '').toLowerCase();
       if (tl.includes('bmo') || tl.includes('before')) callTime = 'pre-market';
       else if (tl.includes('amc') || tl.includes('after')) callTime = 'post-market';
       return {
         history,
-        next: nextHit
+        next: nextRow
           ? {
-              date: nextHit.date,
+              date: nextRow.date,
               epsEst:
-                nextHit.epsEstimated != null
-                  ? String(nextHit.epsEstimated)
-                  : nextHit.epsActual != null
-                    ? String(nextHit.epsActual)
+                nextRow.epsEstimated != null
+                  ? String(nextRow.epsEstimated)
+                  : nextRow.epsActual != null
+                    ? String(nextRow.epsActual)
                     : null,
               callTime
             }
@@ -6477,14 +6560,13 @@ async function fmpEarningsSurprisesHistory(sym) {
   return [];
 }
 
-/** FMP Ultimate — next earnings date for one symbol (avoids scanning full global calendar). */
+/** FMP Ultimate — next earnings date for one symbol (confirmed calendar first). */
 async function fmpNextEarningsForSymbol(sym, fromISO, toISO) {
   const k = fmpAnyApiKey();
   if (!k || !sym) return null;
-  const stable = await fmpStableEarningsBundle(sym, fromISO);
-  if (stable?.next?.date) return { ...stable.next, source: 'fmp_stable_earnings' };
   const variants = [
     ...new Set([
+      ...earningsCrossListVariants(sym),
       ...(await fmpAllSymbolVariants(sym, k).catch(() => [])),
       ...intlVendorSymbolVariants(sym),
       sym,
@@ -6492,11 +6574,46 @@ async function fmpNextEarningsForSymbol(sym, fromISO, toISO) {
     ])
   ].filter(Boolean);
   const qAmp = `&from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}&apikey=${encodeURIComponent(k)}`;
+  let best = null;
+  for (const v of variants.slice(0, 14)) {
+    const enc = encodeURIComponent(v);
+    const confirmedUrl = `https://financialmodelingprep.com/stable/earning-calendar-confirmed?symbol=${enc}${qAmp}`;
+    try {
+      const r = await fetch(confirmedUrl, { signal: AbortSignal.timeout(14000), headers: { Accept: 'application/json' } });
+      if (r.ok) {
+        let rows = await r.json().catch(() => []);
+        if (!Array.isArray(rows) && rows && typeof rows === 'object') {
+          rows = Array.isArray(rows.data) ? rows.data : rows.earningsCalendar || [];
+        }
+        if (Array.isArray(rows) && rows.length) {
+          const hit = pickUpcomingEarningsCalendarRow(rows, fromISO);
+          if (hit?.date && (!best || hit.date >= best.date)) {
+            best = {
+              date: hit.date,
+              epsEst:
+                hit.epsEstimated != null
+                  ? String(hit.epsEstimated)
+                  : hit.epsActual != null
+                    ? String(hit.epsActual)
+                    : null,
+              source: 'fmp_confirmed'
+            };
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('fmpNextEarningsForSymbol confirmed', v, e.message);
+    }
+  }
+  const stable = await fmpStableEarningsBundle(sym, fromISO);
+  if (stable?.next?.date && (!best || stable.next.date >= best.date)) {
+    best = { ...stable.next, source: 'fmp_stable_earnings' };
+  }
+  if (best) return best;
   for (const v of variants.slice(0, 14)) {
     const enc = encodeURIComponent(v);
     const urls = [
       `https://financialmodelingprep.com/stable/earning-calendar?symbol=${enc}${qAmp}`,
-      `https://financialmodelingprep.com/stable/earning-calendar-confirmed?symbol=${enc}${qAmp}`,
       `https://financialmodelingprep.com/api/v3/historical/earning_calendar/${enc}?${qAmp.slice(1)}`
     ];
     for (const url of urls) {
@@ -6508,19 +6625,16 @@ async function fmpNextEarningsForSymbol(sym, fromISO, toISO) {
           rows = Array.isArray(rows.data) ? rows.data : rows.earningsCalendar || [];
         }
         if (!Array.isArray(rows) || !rows.length) continue;
-        const sorted = rows
-          .map((row) => ({
-            date: String(row.date || row.reportDate || '').slice(0, 10),
-            epsEstimated: row.epsEstimated ?? row.eps ?? row.estimatedEPS ?? row.estimate,
-            eps: row.eps ?? row.actualEPS
-          }))
-          .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date))
-          .sort((a, b) => a.date.localeCompare(b.date));
-        const hit = sorted.find((row) => row.date >= fromISO) || sorted[0];
+        const hit = pickUpcomingEarningsCalendarRow(rows, fromISO);
         if (hit?.date) {
           return {
             date: hit.date,
-            epsEst: hit.epsEstimated != null ? String(hit.epsEstimated) : hit.eps != null ? String(hit.eps) : null,
+            epsEst:
+              hit.epsEstimated != null
+                ? String(hit.epsEstimated)
+                : hit.epsActual != null
+                  ? String(hit.epsActual)
+                  : null,
             source: 'fmp_symbol_calendar'
           };
         }
@@ -6597,23 +6711,19 @@ app.get('/api/earnings/:symbol', async (req, res) => {
   const toFar = new Date();
   toFar.setUTCDate(toFar.getUTCDate() + 120);
   const toISOsym = toFar.toISOString().slice(0, 10);
-  /** Start FMP + Alpha Vantage surprises early for intl — parallel with Yahoo chart / quoteSummary work. */
-  const fmpStableEarlyP =
-    prefersFmpIntlHist && fmpAnyApiKey() ? fmpStableEarningsBundle(sym, todayISO) : null;
+  /** One-day grace: avoid dropping "today" rows on timezone / feed lag vs strict UTC midnight */
+  const upcomingCutoff = addUTCISODays(todayISO, -1);
+  /** FMP stable/confirmed earnings for all symbols (Yahoo often blocked from Render). */
+  const fmpStableEarlyP = fmpAnyApiKey() ? fmpStableEarningsBundle(sym, upcomingCutoff) : null;
+  const fmpNextEarlyP = fmpAnyApiKey() ? fmpNextEarningsForSymbol(sym, upcomingCutoff, toISOsym) : null;
   const fmpHistEarlyP =
     prefersFmpIntlHist && fmpAnyApiKey() ? fmpEarningsSurprisesHistory(sym) : null;
-  const fmpNextEarlyP =
-    prefersFmpIntlHist && fmpAnyApiKey()
-      ? fmpNextEarningsForSymbol(sym, todayISO, toISOsym)
-      : null;
   const avHistEarlyP =
     prefersFmpIntlHist && alphaVantageApiKey() ? alphaVantageEarningsHistory(sym) : null;
   const fhHistEarlyP =
     prefersFmpIntlHist && (process.env.FINNHUB_API_KEY || '').trim()
       ? finnhubHistoricalEpsSurprisesPool(sym, 4)
       : null;
-  /** One-day grace: avoid dropping "today" rows on timezone / feed lag vs strict UTC midnight */
-  const upcomingCutoff = addUTCISODays(todayISO, -1);
   // Bloomberg bridge is always running — fetch unconditionally, no URL check needed
   const bbEarnPromise = fetchBloombergBridgeEarnings(sym);
   try {
@@ -6650,13 +6760,13 @@ app.get('/api/earnings/:symbol', async (req, res) => {
     toFar.setUTCDate(toFar.getUTCDate() + 120);
 
     let qs = await quoteSummary(sym, 'calendarEvents,earnings,earningsHistory');
-    let fromCal = nextEarningsFromCalendar(qs);
+    let fromCal = nextEarningsFromCalendar(qs, sym);
     if ((!fromCal.nextDate || fromCal.nextDate < todayISO) && (sym === 'GOOGL' || sym === 'GOOG')) {
       const altQs = await quoteSummary(
         sym === 'GOOGL' ? 'GOOG' : 'GOOGL',
         'calendarEvents,earnings,earningsHistory'
       );
-      const altCal = nextEarningsFromCalendar(altQs);
+      const altCal = nextEarningsFromCalendar(altQs, sym);
       if (altCal.nextDate && (!fromCal.nextDate || fromCal.nextDate < todayISO)) fromCal = altCal;
     }
     if (!nextDate && fromCal.nextDate && fromCal.nextDate >= upcomingCutoff) {
@@ -6680,22 +6790,39 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
 
-    /** Intl listings: FMP stable/earnings + surprises (Yahoo often blocked from cloud IPs). */
-    if (fmpStableEarlyP) {
+    /** FMP stable/confirmed — primary for US when Yahoo is unavailable; also fills intl gaps. */
+    if (fmpStableEarlyP || fmpNextEarlyP) {
       try {
-        const stable = await fmpStableEarlyP;
+        const [stable, fmpNext] = await Promise.all([
+          fmpStableEarlyP || Promise.resolve(null),
+          fmpNextEarlyP || Promise.resolve(null)
+        ]);
         if (stable?.history?.length) {
-          epsHistory = stable.history;
-          historySource = stable.source || 'fmp_stable_earnings';
+          if (prefersFmpIntlHist || !epsHistory.length || isUsDomesticEquity(sym)) {
+            epsHistory = stable.history;
+            historySource = stable.source || 'fmp_stable_earnings';
+          }
         }
-        if (stable?.next?.date && stable.next.date >= upcomingCutoff) {
-          nextDate = stable.next.date;
-          epsEst = epsEst || stable.next.epsEst || null;
-          callTime = callTime || stable.next.callTime || null;
-          calendarPrimary = calendarPrimary || 'fmp';
+        const fmpCand = fmpNext?.date
+          ? fmpNext
+          : stable?.next?.date
+            ? { ...stable.next, source: stable.source || 'fmp_stable_earnings' }
+            : null;
+        if (fmpCand?.date) {
+          const mergedNext = mergeNextEarningsCandidate(
+            { nextDate, epsEst, callTime, calendarPrimary },
+            fmpCand,
+            fmpCand.source || 'fmp_stable_earnings',
+            upcomingCutoff
+          );
+          nextDate = mergedNext.nextDate;
+          epsEst = mergedNext.epsEst;
+          callTime = mergedNext.callTime;
+          calendarPrimary = mergedNext.calendarPrimary || calendarPrimary;
         }
       } catch (_) {}
     }
+
     if (!epsHistory.length && fmpHistEarlyP) {
       try {
         const fmpHist = await fmpHistEarlyP;
@@ -6730,17 +6857,6 @@ app.get('/api/earnings/:symbol', async (req, res) => {
         if (fhHist.length) {
           epsHistory = fhHist;
           historySource = 'finnhub_historical_eps_surprises';
-        }
-      } catch (_) {}
-    }
-
-    if (!nextDate && fmpNextEarlyP) {
-      try {
-        const fmpNext = await fmpNextEarlyP;
-        if (fmpNext?.date && fmpNext.date >= upcomingCutoff) {
-          nextDate = fmpNext.date;
-          epsEst = epsEst || fmpNext.epsEst || null;
-          calendarPrimary = calendarPrimary || 'fmp';
         }
       } catch (_) {}
     }
@@ -6883,7 +6999,26 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
 
-    if (!nextDate) {
+    if (!nextDate && alphaVantageApiKey()) {
+      try {
+        const avCal = await alphaVantageNextEarningsDate(sym, upcomingCutoff, toISOsym);
+        if (avCal?.date) {
+          const mergedNext = mergeNextEarningsCandidate(
+            { nextDate, epsEst, callTime, calendarPrimary },
+            avCal,
+            'alpha_vantage',
+            upcomingCutoff
+          );
+          nextDate = mergedNext.nextDate;
+          epsEst = mergedNext.epsEst;
+          callTime = mergedNext.callTime;
+          calendarPrimary = mergedNext.calendarPrimary || calendarPrimary;
+        }
+      } catch (_) {}
+    }
+
+    /** Finnhub last — often 1–2 days early vs FMP/Yahoo for US report dates. */
+    if (!nextDate && (process.env.FINNHUB_API_KEY || '').trim()) {
       const fhVariants =
         sym === 'GOOGL' || sym === 'GOOG'
           ? ['GOOGL', 'GOOG']
@@ -6905,17 +7040,6 @@ app.get('/api/earnings/:symbol', async (req, res) => {
           quarter = `Q${e.quarter} FY${e.year}`;
         calendarPrimary = calendarPrimary || 'finnhub';
       }
-    }
-
-    if (!nextDate && alphaVantageApiKey()) {
-      try {
-        const avCal = await alphaVantageNextEarningsDate(sym, upcomingCutoff, toISOsym);
-        if (avCal?.date) {
-          nextDate = avCal.date;
-          if (avCal.epsEst) epsEst = epsEst || avCal.epsEst;
-          calendarPrimary = calendarPrimary || 'alpha_vantage';
-        }
-      } catch (_) {}
     }
 
     const sourcesUsed = {};
