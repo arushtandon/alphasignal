@@ -1595,7 +1595,12 @@ async function loadDashboard(force=false){
 
   if(!force&&ST.dashData&&ST.dashTs){
     const age=(Date.now()-ST.dashTs)/1000/3600;
-    if(age<4){
+    const hasPicks=['short','medium','long','shortSell','medSell','longSell'].some(function(k){
+      return Array.isArray(ST.dashData[k])&&ST.dashData[k].length>0;
+    });
+    if(age<4&&hasPicks){
+      const dashTsEl=document.getElementById('dashTs');
+      if(dashTsEl) dashTsEl.textContent='Showing cached picks · '+new Date(ST.dashTs).toLocaleString();
       waitForEl('hzShortBuy', function(){
         renderDashboard(ST.dashData).catch(function(e){ console.warn('renderDashboard', e); });
       });
@@ -4433,6 +4438,42 @@ function openQuickStartModal() {
   modal.setAttribute('aria-hidden', 'false');
 }
 
+async function syncHistoryInBackground() {
+  try {
+    await fetch('/api/history/cleanup-entries', { method: 'POST' });
+  } catch (_) { /* optional */ }
+  try {
+    await loadHistoryFromServer();
+  } catch (e) {
+    console.warn('History load failed:', e.message || e);
+  }
+  try {
+    await fetch('/api/history/revalidate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+  } catch (e) {
+    console.warn('History revalidate failed:', e.message || e);
+  }
+  try {
+    await loadHistoryFromServer();
+    if (ST.history.length) await refreshHistoryPnl();
+    renderHist();
+  } catch (e) {
+    console.warn('History reload after revalidate failed:', e.message || e);
+  }
+  if (!ST.history.length && ST.dashData) {
+    try {
+      await saveDashPicksToHistory(ST.dashData);
+      await loadHistoryFromServer();
+      renderHist();
+    } catch (e) {
+      console.warn('History seed from dashData failed:', e.message || e);
+    }
+  }
+}
+
 async function startApp() {
   window.CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 
@@ -4512,44 +4553,6 @@ async function startApp() {
   }
 
   try {
-    await fetch('/api/history/cleanup-entries', { method: 'POST', signal: apiSignal() });
-  } catch (_) { /* optional */ }
-
-  try {
-    await loadHistoryFromServer({ signal: apiSignal() });
-  } catch (e) {
-    console.warn('History load failed:', e.message || e);
-  }
-
-  try {
-    await fetch('/api/history/revalidate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-      signal: apiSignal()
-    });
-  } catch (e) {
-    console.warn('History revalidate failed:', e.message || e);
-  }
-
-  try {
-    await loadHistoryFromServer({ signal: apiSignal() });
-  } catch (e) {
-    console.warn('History reload after revalidate failed:', e.message || e);
-  }
-
-  if (!ST.history.length && ST.dashData) {
-    try {
-      console.log('Seeding history from cached dashData');
-      await saveDashPicksToHistory(ST.dashData);
-    } catch (e) { /* ignore */ }
-  }
-
-  if (ST.history.length) {
-    try { await refreshHistoryPnl(); } catch (_) { /* ignore */ }
-  }
-
-  try {
     const ds = document.getElementById('dashStatus');
     if (!hasKey && ds) {
       ds.innerHTML =
@@ -4559,9 +4562,13 @@ async function startApp() {
   } catch (e) {
     console.warn('Dashboard bootstrap:', e);
     try {
-      await loadDashboard();
+      await loadDashboard(true);
     } catch (_) { /* ignore */ }
   }
+
+  syncHistoryInBackground().catch(function (e) {
+    console.warn('Background history sync:', e.message || e);
+  });
 }
 
 function skipApiModal() {

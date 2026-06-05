@@ -5047,12 +5047,17 @@ app.get('/api/health', async (req, res) => {
   try {
     if (fmpGlobalCoverageEnabled() && fmpEnvKeyFund()) {
       const forceProbe = String(req.query?.probe || '') === '1';
-      await probeFmpGlobalCoverage(forceProbe).catch(() => null);
+      const probeAge = fmpGlobalCoverageProbe.ts ? Date.now() - fmpGlobalCoverageProbe.ts : Infinity;
+      if (forceProbe) {
+        await probeFmpGlobalCoverage(true).catch(() => null);
+      } else if (!fmpGlobalCoverageProbe.ts || probeAge > 6 * 60 * 60 * 1000) {
+        probeFmpGlobalCoverage(false).catch(() => null);
+      }
     }
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.2.1',
+    server_build: '20260605-fmp-ultimate-v7.2.2',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
