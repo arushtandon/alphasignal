@@ -1752,9 +1752,7 @@ async function probeFmpGlobalCoverage(force = false) {
     error: null
   };
   try {
-    const fund =
-      (await fetchFundamentalsFMP(sym).catch(() => null)) ||
-      (await fetchFundamentals(sym).catch(() => null));
+    const fund = await fetchFundamentalsFMP(sym).catch(() => null);
     if (fund?.trailingPE || fund?.pegRatio || fund?.revenueGrowth) {
       next.fundamentals = true;
       next.trailingPE = fund.trailingPE ?? null;
