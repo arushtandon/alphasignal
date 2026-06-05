@@ -4993,7 +4993,7 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
   const fk = fmpAnyApiKey();
   try {
     const livePxDbg = await fetchSinglePrice(sym).catch(() => null);
-    const [fmpFund, fmpQuote, fmpScores, finnhub, fhFin, fhProf, av, avSearch, yahoo, yahooV7, yahooV8, fmpIncome, merged, fmpScore, fmpExch] =
+    const [fmpFund, fmpQuote, fmpScores, finnhub, fhFin, fhProf, av, avSearch, yahoo, yahooV7, yahooV8, fmpIncome, merged, fmpScore, fmpExch, fmpEarnStable, avEarnHist] =
       await Promise.all([
         fk ? fetchFundamentalsFMP(sym).catch(() => null) : null,
         fk ? fetchFundamentalsFromFmpQuote(sym).catch(() => null) : null,
@@ -5011,10 +5011,12 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
           : null,
         fetchFundamentals(sym).catch(() => null),
         fk ? fetchFmpScore(sym).catch(() => null) : null,
-        fk ? fmpExchangeSymbolVariants(sym, fk).catch(() => []) : []
+        fk ? fmpExchangeSymbolVariants(sym, fk).catch(() => []) : [],
+        fk ? fmpStableEarningsBundle(sym).catch(() => null) : null,
+        alphaVantageApiKey() ? alphaVantageEarningsHistory(sym).catch(() => []) : []
       ]);
     res.json({
-      build: '20260605-fmp-ultimate-v7.2',
+      build: '20260605-fmp-ultimate-v7.2.4',
       symbol: sym,
       is_intl_symbol: isIntlEquitySymbol(sym),
       fmp_plan: fmpPlanTier(),
@@ -5035,6 +5037,9 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
       yahoo_v8: yahooV8,
       merged,
       fmp_quality: fmpScore,
+      fmp_stable_earnings: fmpEarnStable,
+      alpha_vantage_earnings: avEarnHist,
+      earnings_cross_list: earningsCrossListVariants(sym),
       merge_policy: 'FMP+Finnhub+AV+Yahoo primary; Bloomberg gap-fill only'
     });
   } catch (e) {
@@ -6365,13 +6370,28 @@ function fmpNormalizeEarningsHistRows(arr) {
     .filter((r) => r.date || r.quarter);
 }
 
+/** US/other listings that share earnings with HK/NSE primary tickers (FMP often indexes under ADR). */
+function earningsCrossListVariants(sym) {
+  const u = String(sym || '').trim().toUpperCase();
+  const map = {
+    '9988.HK': ['BABA', 'BABAF', '09988.HK'],
+    '0700.HK': ['TCEHY', '700.HK', '00700.HK'],
+    '9618.HK': ['JD', '9618.HK'],
+    '9888.HK': ['BIDU', '9888.HK'],
+    '3690.HK': ['MPNGY', '3690.HK']
+  };
+  return map[u] ? [...map[u]] : [];
+}
+
 async function fmpStableEarningsBundle(sym, fromISO) {
   const k = fmpAnyApiKey();
   if (!k || !sym) return null;
   const cutoff = fromISO || new Date().toISOString().slice(0, 10);
   const staticV = intlVendorSymbolVariants(sym);
   const exchV = await fmpAllSymbolVariants(sym, k).catch(() => []);
-  const variants = [...new Set([...exchV, ...staticV, sym.replace(/\./g, '-'), sym])].filter(Boolean);
+  const variants = [
+    ...new Set([...earningsCrossListVariants(sym), ...exchV, ...staticV, sym.replace(/\./g, '-'), sym])
+  ].filter(Boolean);
   for (const v of variants.slice(0, 16)) {
     try {
       const enc = encodeURIComponent(v);
@@ -6691,6 +6711,16 @@ app.get('/api/earnings/:symbol', async (req, res) => {
         if (avHist.length) {
           epsHistory = avHist;
           historySource = 'alpha_vantage_earnings';
+        }
+      } catch (_) {}
+    }
+    if (!nextDate && alphaVantageApiKey() && prefersFmpIntlHist) {
+      try {
+        const avCal = await alphaVantageNextEarningsDate(sym, upcomingCutoff, toISOsym);
+        if (avCal?.date) {
+          nextDate = avCal.date;
+          epsEst = epsEst || avCal.epsEst || null;
+          calendarPrimary = calendarPrimary || 'alpha_vantage';
         }
       } catch (_) {}
     }
