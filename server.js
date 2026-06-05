@@ -5057,7 +5057,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.2.3',
+    server_build: '20260605-fmp-ultimate-v7.2.4',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -6318,47 +6318,117 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
 }
 
 /** Last quarters EPS actual vs estimate when Yahoo earnings modules are blocked (same shape as other history helpers). */
-async function fmpEarningsSurprisesHistory(sym) {
-  const k = fmpAnyApiKey();
-  if (!k) return [];
+function fmpNormalizeEarningsHistRows(arr) {
   function pickNum(v) {
     if (v == null || v === '') return null;
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   }
-  function normalizeRows(arr) {
-    const sorted = [...arr].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-    return sorted
-      .slice(0, 4)
-      .map((row) => {
-        const dateStr = String(row.date || row.reportDate || '').slice(0, 10);
-        const ea = pickNum(row.actualEPS ?? row.actual ?? row.actualEarningResult);
-        const ee = pickNum(row.estimatedEPS ?? row.estimate ?? row.estimatesAvg ?? row.estimatedEarning);
-        let surp = pickNum(row.surprisePercent ?? row.surprise);
-        if ((surp == null || Number.isNaN(surp)) && ea != null && ee != null && Math.abs(ee) > 1e-9) {
-          surp = ((ea - ee) / Math.abs(ee)) * 100;
-        }
-        const quarter = dateStr
-          ? new Date(dateStr + 'T12:00:00Z').toLocaleDateString('en-GB', {
-              month: 'short',
-              year: 'numeric'
-            })
-          : '';
-        const surpLabel =
-          surp != null && Number.isFinite(surp) ? (surp >= 0 ? '+' : '') + surp.toFixed(1) + '%' : null;
-        return {
-          quarter,
-          date: dateStr,
-          epsActual: ea != null ? String(ea) : null,
-          epsEstimate: ee != null ? String(ee) : null,
-          epsSurprise: surpLabel,
-          beat: surp != null ? surp >= 0 : null,
-          revenueActual: null,
-          stockReaction: null
-        };
-      })
-      .filter((r) => r.date || r.quarter);
+  const sorted = [...arr].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  return sorted
+    .slice(0, 4)
+    .map((row) => {
+      const dateStr = String(row.date || row.reportDate || '').slice(0, 10);
+      const ea = pickNum(
+        row.epsActual ?? row.actualEPS ?? row.actual ?? row.actualEarningResult ?? row.eps
+      );
+      const ee = pickNum(
+        row.epsEstimated ??
+          row.estimatedEPS ??
+          row.estimate ??
+          row.estimatesAvg ??
+          row.estimatedEarning
+      );
+      let surp = pickNum(row.surprisePercent ?? row.surprise);
+      if ((surp == null || Number.isNaN(surp)) && ea != null && ee != null && Math.abs(ee) > 1e-9) {
+        surp = ((ea - ee) / Math.abs(ee)) * 100;
+      }
+      const quarter = dateStr
+        ? new Date(dateStr + 'T12:00:00Z').toLocaleDateString('en-GB', {
+            month: 'short',
+            year: 'numeric'
+          })
+        : '';
+      const surpLabel =
+        surp != null && Number.isFinite(surp) ? (surp >= 0 ? '+' : '') + surp.toFixed(1) + '%' : null;
+      return {
+        quarter,
+        date: dateStr,
+        epsActual: ea != null ? String(ea) : null,
+        epsEstimate: ee != null ? String(ee) : null,
+        epsSurprise: surpLabel,
+        beat: surp != null ? surp >= 0 : null,
+        revenueActual: row.revenueActual != null ? String(row.revenueActual) : null,
+        stockReaction: null
+      };
+    })
+    .filter((r) => r.date || r.quarter);
+}
+
+async function fmpStableEarningsBundle(sym, fromISO) {
+  const k = fmpAnyApiKey();
+  if (!k || !sym) return null;
+  const cutoff = fromISO || new Date().toISOString().slice(0, 10);
+  const staticV = intlVendorSymbolVariants(sym);
+  const exchV = await fmpAllSymbolVariants(sym, k).catch(() => []);
+  const variants = [...new Set([...exchV, ...staticV, sym.replace(/\./g, '-'), sym])].filter(Boolean);
+  for (const v of variants.slice(0, 16)) {
+    try {
+      const enc = encodeURIComponent(v);
+      const url = `https://financialmodelingprep.com/stable/earnings?symbol=${enc}&apikey=${encodeURIComponent(k)}`;
+      const r = await fetch(url, { signal: AbortSignal.timeout(14000), headers: { Accept: 'application/json' } });
+      if (!r.ok) continue;
+      let arr = await r.json().catch(() => []);
+      if (!Array.isArray(arr) && arr && typeof arr === 'object') {
+        arr = Array.isArray(arr.data) ? arr.data : [];
+      }
+      if (!Array.isArray(arr) || !arr.length) continue;
+      const mapped = arr
+        .map((row) => ({
+          date: String(row.date || row.reportDate || '').slice(0, 10),
+          epsActual: row.epsActual ?? row.actualEPS ?? row.eps,
+          epsEstimated: row.epsEstimated ?? row.estimatedEPS ?? row.estimate,
+          revenueActual: row.revenueActual,
+          time: row.time || row.hour
+        }))
+        .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date));
+      if (!mapped.length) continue;
+      const past = mapped
+        .filter((row) => row.date < cutoff && (row.epsActual != null || row.epsEstimated != null))
+        .sort((a, b) => b.date.localeCompare(a.date));
+      const future = mapped.filter((row) => row.date >= cutoff).sort((a, b) => a.date.localeCompare(b.date));
+      const nextHit = future.find((row) => row.epsActual == null) || future[0] || null;
+      const history = fmpNormalizeEarningsHistRows(past.length ? past : mapped);
+      let callTime = null;
+      const tl = String(nextHit?.time || '').toLowerCase();
+      if (tl.includes('bmo') || tl.includes('before')) callTime = 'pre-market';
+      else if (tl.includes('amc') || tl.includes('after')) callTime = 'post-market';
+      return {
+        history,
+        next: nextHit
+          ? {
+              date: nextHit.date,
+              epsEst:
+                nextHit.epsEstimated != null
+                  ? String(nextHit.epsEstimated)
+                  : nextHit.epsActual != null
+                    ? String(nextHit.epsActual)
+                    : null,
+              callTime
+            }
+          : null,
+        source: 'fmp_stable_earnings'
+      };
+    } catch (e) {
+      console.warn('fmpStableEarningsBundle', v, e.message);
+    }
   }
+  return null;
+}
+
+async function fmpEarningsSurprisesHistory(sym) {
+  const k = fmpAnyApiKey();
+  if (!k) return [];
   const staticV = intlVendorSymbolVariants(sym);
   const exchV = await fmpAllSymbolVariants(sym, k).catch(() => []);
   const variants = [...new Set([...exchV, ...staticV, sym.replace(/\./g, '-'), sym])].filter(Boolean);
@@ -6377,7 +6447,7 @@ async function fmpEarningsSurprisesHistory(sym) {
           arr = Array.isArray(arr.data) ? arr.data : [];
         }
         if (!Array.isArray(arr) || !arr.length) continue;
-        const out = normalizeRows(arr);
+        const out = fmpNormalizeEarningsHistRows(arr);
         if (out.length) return out;
       }
     } catch (e) {
@@ -6391,6 +6461,8 @@ async function fmpEarningsSurprisesHistory(sym) {
 async function fmpNextEarningsForSymbol(sym, fromISO, toISO) {
   const k = fmpAnyApiKey();
   if (!k || !sym) return null;
+  const stable = await fmpStableEarningsBundle(sym, fromISO);
+  if (stable?.next?.date) return { ...stable.next, source: 'fmp_stable_earnings' };
   const variants = [
     ...new Set([
       ...(await fmpAllSymbolVariants(sym, k).catch(() => [])),
@@ -6506,6 +6578,8 @@ app.get('/api/earnings/:symbol', async (req, res) => {
   toFar.setUTCDate(toFar.getUTCDate() + 120);
   const toISOsym = toFar.toISOString().slice(0, 10);
   /** Start FMP + Alpha Vantage surprises early for intl — parallel with Yahoo chart / quoteSummary work. */
+  const fmpStableEarlyP =
+    prefersFmpIntlHist && fmpAnyApiKey() ? fmpStableEarningsBundle(sym, todayISO) : null;
   const fmpHistEarlyP =
     prefersFmpIntlHist && fmpAnyApiKey() ? fmpEarningsSurprisesHistory(sym) : null;
   const fmpNextEarlyP =
@@ -6586,7 +6660,22 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       }
     }
 
-    /** Intl listings: Yahoo often omits quoteSummary earningsHistory from cloud IPs; FMP/AV surprises for NSE/HK/JP/LSE. */
+    /** Intl listings: FMP stable/earnings + surprises (Yahoo often blocked from cloud IPs). */
+    if (fmpStableEarlyP) {
+      try {
+        const stable = await fmpStableEarlyP;
+        if (stable?.history?.length) {
+          epsHistory = stable.history;
+          historySource = stable.source || 'fmp_stable_earnings';
+        }
+        if (stable?.next?.date && stable.next.date >= upcomingCutoff) {
+          nextDate = stable.next.date;
+          epsEst = epsEst || stable.next.epsEst || null;
+          callTime = callTime || stable.next.callTime || null;
+          calendarPrimary = calendarPrimary || 'fmp';
+        }
+      } catch (_) {}
+    }
     if (!epsHistory.length && fmpHistEarlyP) {
       try {
         const fmpHist = await fmpHistEarlyP;
