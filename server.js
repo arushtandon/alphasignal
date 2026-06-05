@@ -1847,22 +1847,24 @@ function intlVendorSymbolVariants(symbol) {
 
 const _avCache = new Map();
 const _AV_TTL_MS = 60 * 60 * 1000;
-let _avQueue = Promise.resolve();
-let _avLastFetchMs = 0;
-/** Free tier ≈5 req/min — serialize + gap to avoid burst 429/Note responses on Asian batch scans. */
-const _AV_MIN_GAP_MS = 12500;
+/** Separate AV lanes — earnings/fundamentals must not block each other for 12s+ on every variant. */
+const _avLanes = {
+  default: { chain: Promise.resolve(), lastMs: 0, gapMs: 12500 },
+  fast: { chain: Promise.resolve(), lastMs: 0, gapMs: 1200 }
+};
 
-async function alphaVantageQuery(params) {
+async function alphaVantageQuery(params, opts = {}) {
   const key = alphaVantageApiKey();
   if (!key) return null;
-  const cacheKey = JSON.stringify(params);
+  const cacheKey = JSON.stringify({ params, fast: !!opts.fast });
   const hit = _avCache.get(cacheKey);
   if (hit && Date.now() - hit.ts < _AV_TTL_MS) return hit.data;
 
+  const lane = opts.fast ? _avLanes.fast : _avLanes.default;
   const run = async () => {
-    const wait = _AV_MIN_GAP_MS - (Date.now() - _avLastFetchMs);
+    const wait = lane.gapMs - (Date.now() - lane.lastMs);
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
-    _avLastFetchMs = Date.now();
+    lane.lastMs = Date.now();
     const u = new URL('https://www.alphavantage.co/query');
     for (const [k, v] of Object.entries(params || {})) {
       if (v != null && v !== '') u.searchParams.set(k, String(v));
@@ -1881,8 +1883,8 @@ async function alphaVantageQuery(params) {
     _avCache.set(cacheKey, { ts: Date.now(), data: j });
     return j;
   };
-  _avQueue = _avQueue.then(run, run);
-  return _avQueue;
+  lane.chain = lane.chain.then(run, run);
+  return lane.chain;
 }
 
 /**
@@ -1953,8 +1955,8 @@ async function fetchFundamentalsAlphaVantage(symbol) {
     if (Math.abs(n) < 5 && Math.abs(n) > 1e-8) return +((n * 100).toFixed(2));
     return +n.toFixed(2);
   };
-  for (const sym of variants.slice(0, 8)) {
-    const j = await alphaVantageQuery({ function: 'OVERVIEW', symbol: sym });
+  for (const sym of variants.slice(0, 4)) {
+    const j = await alphaVantageQuery({ function: 'OVERVIEW', symbol: sym }, { fast: true });
     if (!j || !j.Symbol || j.Symbol === 'None') continue;
     const trailingPE = num(j.PERatio ?? j.TrailingPE);
     const forwardPE = num(j.ForwardPE);
@@ -1996,8 +1998,8 @@ async function alphaVantageEarningsHistory(sym, maxRows = 4) {
     const n = Number(String(v).replace(/,/g, ''));
     return Number.isFinite(n) ? n : null;
   };
-  for (const v of intlVendorSymbolVariants(sym).slice(0, 8)) {
-    const j = await alphaVantageQuery({ function: 'EARNINGS', symbol: v });
+  for (const v of intlVendorSymbolVariants(sym).slice(0, 6)) {
+    const j = await alphaVantageQuery({ function: 'EARNINGS', symbol: v }, { fast: true });
     const reports = j?.quarterlyEarnings || j?.quarterlyReports;
     if (!Array.isArray(reports) || !reports.length) continue;
     const out = reports
@@ -2040,7 +2042,7 @@ async function alphaVantageEarningsHistory(sym, maxRows = 4) {
 /** Next earnings date from Alpha Vantage calendar (horizon=3month), matched via intl symbol variants. */
 async function alphaVantageNextEarningsDate(sym, fromISO, toISO) {
   if (!alphaVantageApiKey() || !sym) return null;
-  const j = await alphaVantageQuery({ function: 'EARNINGS_CALENDAR', horizon: '3month' });
+  const j = await alphaVantageQuery({ function: 'EARNINGS_CALENDAR', horizon: '3month' }, { fast: true });
   const rows = j?.earningsCalendar || j?.earnings;
   if (!Array.isArray(rows) || !rows.length) return null;
   const symVariants = new Set(
@@ -2066,12 +2068,116 @@ async function alphaVantageNextEarningsDate(sym, fromISO, toISO) {
   return { date, epsEst, source: 'alpha_vantage' };
 }
 
+/** FMP /stable/* bundle — often the only path that returns TTM metrics for .NS/.HK on newer FMP plans. */
+async function fetchFmpStableFundamentalsBundle(raw, key) {
+  if (!raw || !key) return null;
+  const enc = encodeURIComponent(raw);
+  const q = `apikey=${encodeURIComponent(key)}`;
+  const base = 'https://financialmodelingprep.com/stable';
+  const H = { Accept: 'application/json' };
+  const t = 12000;
+  const num = x => {
+    const v = x?.raw ?? x;
+    const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/,/g, ''));
+    return Number.isFinite(n) ? n : null;
+  };
+  const pctGrowth = x => {
+    const t0 = num(x);
+    if (t0 == null) return null;
+    const asPct = Math.abs(t0) < 25 ? +(t0 * 100).toFixed(1) : +t0.toFixed(1);
+    return Number.isFinite(asPct) ? asPct : null;
+  };
+  try {
+    const [kmR, ratR, prR, isR] = await Promise.allSettled([
+      fetch(`${base}/key-metrics-ttm?symbol=${enc}&${q}`, { headers: H, signal: AbortSignal.timeout(t) }),
+      fetch(`${base}/ratios-ttm?symbol=${enc}&${q}`, { headers: H, signal: AbortSignal.timeout(t) }),
+      fetch(`${base}/profile?symbol=${enc}&${q}`, { headers: H, signal: AbortSignal.timeout(t) }),
+      fetch(`${base}/income-statement?symbol=${enc}&limit=2&${q}`, { headers: H, signal: AbortSignal.timeout(t) })
+    ]);
+    const parseArr = async settled => {
+      if (settled.status !== 'fulfilled' || !settled.value.ok) return null;
+      const j = await settled.value.json().catch(() => null);
+      if (Array.isArray(j) && j[0]) return j[0];
+      if (j && typeof j === 'object' && Array.isArray(j.data) && j.data[0]) return j.data[0];
+      return j && typeof j === 'object' && !Array.isArray(j) ? j : null;
+    };
+    const km = await parseArr(kmR);
+    const rat = await parseArr(ratR);
+    const pf = await parseArr(prR);
+    let isGr = null;
+    if (isR.status === 'fulfilled' && isR.value.ok) {
+      const arr = await isR.value.json().catch(() => []);
+      const rows = Array.isArray(arr) ? arr : Array.isArray(arr?.data) ? arr.data : [];
+      if (rows.length >= 2) {
+        const cur = rows[0];
+        const prev = rows[1];
+        const calcG = (c, p) =>
+          c != null && p != null && p !== 0 && Math.abs(p) > 1
+            ? Math.round(((c - p) / Math.abs(p)) * 1000) / 10
+            : null;
+        isGr = {
+          revenueGrowth: calcG(cur?.revenue ?? cur?.totalRevenue, prev?.revenue ?? prev?.totalRevenue),
+          earningsGrowth: calcG(cur?.netIncome, prev?.netIncome)
+        };
+      }
+    }
+    const peRatio =
+      num(km?.peRatioTTM ?? km?.peRatio ?? rat?.priceToEarningsRatioTTM ?? rat?.priceEarningsRatioTTM);
+    const fwdPE = num(km?.forwardPE ?? km?.priceToEarningsRatioFwd ?? rat?.forwardPE);
+    const pegRatio = num(
+      km?.pegRatioTTM ?? km?.pegRatio ?? rat?.priceToEarningsGrowthRatioTTM ?? rat?.pegRatioTTM
+    );
+    const revenueGrowth =
+      pctGrowth(km?.revenueGrowth ?? rat?.revenueGrowth) ?? isGr?.revenueGrowth ?? null;
+    const earningsGrowth =
+      pctGrowth(km?.epsgrowth ?? km?.netIncomeGrowth ?? rat?.netIncomeGrowth) ??
+      isGr?.earningsGrowth ??
+      null;
+    if (
+      peRatio == null &&
+      pegRatio == null &&
+      fwdPE == null &&
+      revenueGrowth == null &&
+      earningsGrowth == null &&
+      !pf
+    )
+      return null;
+    console.log(`fetchFmpStableFundamentals ${normalizeTickerMatch(raw)}`);
+    return {
+      targetMeanPrice: num(pf?.priceTarget ?? pf?.targetConsensus) ?? null,
+      revenueGrowth,
+      earningsGrowth,
+      grossMargins: pctGrowth(km?.grossProfitMarginTTM ?? rat?.grossProfitMarginTTM),
+      operatingMargins: pctGrowth(km?.operatingProfitMarginTTM ?? rat?.operatingProfitMarginTTM),
+      debtToEquity:
+        num(km?.debtToEquityTTM ?? rat?.debtToEquityRatioTTM) != null
+          ? Number(num(km?.debtToEquityTTM ?? rat?.debtToEquityRatioTTM).toFixed(1))
+          : null,
+      forwardPE: fwdPE,
+      pegRatio,
+      trailingPE: peRatio,
+      dividendYield: pctGrowth(km?.dividendYieldTTM ?? rat?.dividendYieldTTM),
+      marketCap: num(km?.marketCap ?? pf?.mktCap),
+      _fmpSector: pf?.sector || pf?.industry || null,
+      _source: 'fmp'
+    };
+  } catch (e) {
+    console.warn('fetchFmpStableFundamentals', raw, e.message);
+    return null;
+  }
+}
+
 async function fetchFundamentalsFMP(symbol) {
   const k = fmpEnvKeyFund();
   if (!k) return null;
   const _fmpFundBare = symbol.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i,'');
-  const variants = [...new Set([...fmpSymbolVariantsForApi(symbol), symbol, _fmpFundBare, symbol.replace(/\./g, '-')])];
+  const variants = [...new Set([...intlVendorSymbolVariants(symbol), symbol, _fmpFundBare, symbol.replace(/\./g, '-')])];
+  const isIntl = /\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i.test(symbol);
   for (const raw of variants) {
+    if (isIntl) {
+      const stableHit = await fetchFmpStableFundamentalsBundle(raw, k).catch(() => null);
+      if (stableHit) return stableHit;
+    }
     try {
       const enc = encodeURIComponent(raw);
       const kmUrl = `https://financialmodelingprep.com/api/v3/key-metrics-ttm/${enc}?apikey=${encodeURIComponent(k)}`;
@@ -2115,7 +2221,7 @@ async function fetchFundamentalsFMP(symbol) {
       let pf=null;try{const a=prTxt?JSON.parse(prTxt):[];pf=Array.isArray(a)&&a[0]?a[0]:null;}catch(_){}
       let an=null;try{const a=anTxt?JSON.parse(anTxt):[];an=Array.isArray(a)&&a[0]?a[0]:null;}catch(_){}
       let pt=null;try{const a=ptTxt?JSON.parse(ptTxt):[];pt=Array.isArray(a)&&a[0]?a[0]:null;}catch(_){}
-      if(!km&&!gr&&!pf) continue;
+      if (!km && !gr && !pf && !isGr?.revenueGrowth && !isGr?.earningsGrowth) continue;
       const anBuy=(an?.analystRatingsBuy||0)+(an?.analystRatingsStrongBuy||0);
       const anHold=an?.analystRatingsHold||0;
       const anSell=(an?.analystRatingsSell||0)+(an?.analystRatingsStrongSell||0);
@@ -2219,17 +2325,15 @@ async function fetchFmpStableFinancialScores(symbol, key, tHttp) {
   const H = { Accept: 'application/json' };
   const t = Number(tHttp) || 12000;
 
-  // Try symbol variants: original + bare ticker (e.g. 9988.HK → 9988 for some FMP endpoints)
-  const bare = String(symbol).replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI)$/i, '');
-  const symVariants = [...new Set([symbol, bare !== symbol ? bare : null].filter(Boolean))];
+  const symVariants = [...new Set(intlVendorSymbolVariants(symbol))].slice(0, 14);
 
   for (const sym of symVariants) {
     const enc = encodeURIComponent(sym);
     // Endpoints in order of Piotroski/AltmanZ coverage
     const endpoints = [
+      `https://financialmodelingprep.com/stable/financial-scores${q}&symbol=${enc}`,
       `https://financialmodelingprep.com/api/v3/score/${enc}${q}`,
       `https://financialmodelingprep.com/api/v4/score${q}&symbol=${enc}`,
-      `https://financialmodelingprep.com/stable/financial-scores${q}&symbol=${enc}`,
     ];
     for (const url of endpoints) {
       try {
@@ -2893,33 +2997,56 @@ async function fetchFundamentals(symbol) {
   const ent = await fetchBloombergEnterpriseFundamentals(symbol).catch(() => null);
   if (ent) merged = mergeBloombergPriority(merged, ent);
 
-  // Step 3: FMP — fill missing fields (Bloomberg returns price but NOT growth/ratings)
-  const needsFMPGapFill =
+  // Step 3: FMP / Finnhub / Alpha Vantage — parallel for intl; gap-fill otherwise
+  const isNonUS = /\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i.test(symbol);
+  const needsVendor =
+    isNonUS ||
     merged.revenueGrowth == null ||
     merged.earningsGrowth == null ||
     merged.pegRatio == null ||
     merged.forwardPE == null ||
+    merged.trailingPE == null ||
     merged.recommendationKey == null ||
     merged.targetMeanPrice == null ||
     merged._fmpSector == null ||
     merged._fmpSector === '';
-  let fMp=null;
-  if (needsFMPGapFill&&fmpEnvKeyFund()) {
-    fMp=await fetchFundamentalsFMP(symbol).catch(()=>null);
-    if (fMp) {
-      for(const [k,v] of Object.entries(fMp)){if(merged[k]==null&&v!=null&&v!=='')merged[k]=v;}
-      console.log(`FMP gap-fill: ${symbol} rev=${merged.revenueGrowth} eps=${merged.earningsGrowth}`);
+  if (needsVendor) {
+    const vendorTasks = [];
+    if (fmpEnvKeyFund())
+      vendorTasks.push(
+        fetchFundamentalsFMP(symbol)
+          .then(f => ({ f }))
+          .catch(() => ({ f: null }))
+      );
+    if ((process.env.FINNHUB_API_KEY || '').trim())
+      vendorTasks.push(
+        fetchFundamentalsFinnhub(symbol)
+          .then(f => ({ f }))
+          .catch(() => ({ f: null }))
+      );
+    if (alphaVantageApiKey())
+      vendorTasks.push(
+        fetchFundamentalsAlphaVantage(symbol)
+          .then(f => ({ f }))
+          .catch(() => ({ f: null }))
+      );
+    const vendorHits = await Promise.all(vendorTasks);
+    for (const hit of vendorHits) {
+      if (hit?.f) merged = mergeFundSnapshots(merged, hit.f);
     }
+    if (vendorHits.some(h => h?.f))
+      console.log(
+        `Fundamentals vendors ${symbol}: pe=${merged.trailingPE ?? merged.forwardPE ?? 'n/a'} peg=${merged.pegRatio ?? 'n/a'} rev=${merged.revenueGrowth ?? 'n/a'}`
+      );
   }
 
   // Step 4: Yahoo — last resort for any still-missing fields
-  // For non-US tickers, also try bare ticker without exchange suffix
-  const isNonUS = /\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i.test(symbol);
   const needsYahoo =
     merged.revenueGrowth == null ||
     merged.earningsGrowth == null ||
     merged.pegRatio == null ||
     merged.forwardPE == null ||
+    merged.trailingPE == null ||
     merged._fmpSector == null ||
     merged._fmpSector === '';
   if (needsYahoo) {
@@ -2946,13 +3073,14 @@ async function fetchFundamentals(symbol) {
   const yFund = null; // already handled above
   // Yahoo gap-fill already handled above in the restructured fetchFundamentals
 
-  /** Fill PEG / YoY / sector / analyst grid gaps even when Bloomberg returned a rich price snapshot. */
+  /** Final FMP pass if Yahoo still left PEG / growth gaps. */
   if (
     fmpEnvKeyFund() &&
     (merged.pegRatio == null ||
       merged.revenueGrowth == null ||
       merged.earningsGrowth == null ||
       merged.forwardPE == null ||
+      merged.trailingPE == null ||
       merged._fmpSector == null ||
       merged._fmpSector === '' ||
       merged.recommendationKey == null)
@@ -3655,7 +3783,7 @@ async function fetchFmpScore(symbol, opts = {}) {
   const key = fmpEnvKeyFund();
   if (!key) return null;
 
-  const cacheKey = batchMode ? `${String(symbol)}::fmp-lite` : String(symbol);
+  const cacheKey = batchMode ? `${String(symbol)}::fmp-lite-v3` : String(symbol);
   const now = Date.now();
   const prev = _fmpCache.get(cacheKey);
   if (prev && typeof prev.ts === 'number') {
@@ -3663,7 +3791,7 @@ async function fetchFmpScore(symbol, opts = {}) {
     if (prev.data === null && now - prev.ts < _FMP_MISS_SUPPRESS_MS) return null;
   }
 
-  let candidates = fmpSymbolVariantsForApi(symbol);
+  let candidates = [...new Set(intlVendorSymbolVariants(symbol))];
   if (batchMode) candidates = candidates.slice(0, 14);
   if (!batchMode) {
     console.log(`FMP fetchFmpScore variants for ${symbol}:`, candidates.slice(0, 12).join(' | '));
@@ -3830,6 +3958,16 @@ async function fetchFmpScore(symbol, opts = {}) {
           scores = {
             piotroski: scores?.piotroski ?? fsPlus.piotroski ?? null,
             altmanZ: scores?.altmanZ ?? fsPlus.altmanZ ?? null
+          };
+        }
+      }
+
+      if (key && (scores?.piotroski == null || scores?.altmanZ == null)) {
+        const fsAll = await fetchFmpStableFinancialScores(symbol, key, Math.min(tHttp + 8000, 24000));
+        if (fsAll) {
+          scores = {
+            piotroski: scores?.piotroski ?? fsAll.piotroski ?? null,
+            altmanZ: scores?.altmanZ ?? fsAll.altmanZ ?? null
           };
         }
       }
@@ -5416,6 +5554,10 @@ app.get('/api/earnings/:symbol', async (req, res) => {
     prefersFmpIntlHist && fmpAnyApiKey() ? fmpEarningsSurprisesHistory(sym) : null;
   const avHistEarlyP =
     prefersFmpIntlHist && alphaVantageApiKey() ? alphaVantageEarningsHistory(sym) : null;
+  const fhHistEarlyP =
+    prefersFmpIntlHist && (process.env.FINNHUB_API_KEY || '').trim()
+      ? finnhubHistoricalEpsSurprisesPool(sym, 4)
+      : null;
   const todayISO = new Date().toISOString().slice(0, 10);
   /** One-day grace: avoid dropping "today" rows on timezone / feed lag vs strict UTC midnight */
   const upcomingCutoff = addUTCISODays(todayISO, -1);
@@ -5502,6 +5644,15 @@ app.get('/api/earnings/:symbol', async (req, res) => {
         if (avHist.length) {
           epsHistory = avHist;
           historySource = 'alpha_vantage_earnings';
+        }
+      } catch (_) {}
+    }
+    if (!epsHistory.length && fhHistEarlyP) {
+      try {
+        const fhHist = await fhHistEarlyP;
+        if (fhHist.length) {
+          epsHistory = fhHist;
+          historySource = 'finnhub_historical_eps_surprises';
         }
       } catch (_) {}
     }
@@ -5634,9 +5785,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       const fhVariants =
         sym === 'GOOGL' || sym === 'GOOG'
           ? ['GOOGL', 'GOOG']
-          : sym.includes('.')
-            ? [sym, sym.replace(/\./g, '-')]
-            : [sym];
+          : [...new Set(intlVendorSymbolVariants(sym))].slice(0, 10);
       let fhRows = [];
       for (const fv of fhVariants) {
         fhRows = await finnhubEarningsCalendar(todayISO, toISOsym, { symbol: fv });
