@@ -2290,6 +2290,24 @@ async function saveDashPicksToHistory(data) {
       sellEntry: entry, sellTarget1: isSell?tp1:null, sellTarget2: isSell?tp2:null, sellStopLoss: isSell?sl:null,
       reason: isSell?(s.sellReason||s.reason||''):(s[hz+'Analysis']||s.reason||''),
       shortScore: s.shortScore, mediumScore: s.mediumScore, longScore: s.longScore,
+      shortSellScore: s.shortSellScore, mediumSellScore: s.mediumSellScore, longSellScore: s.longSellScore,
+      fmpScore: s.fmpScore || null,
+      marketTier: s.marketTier || null,
+      pe: s.pe || null,
+      peg: s.peg || null,
+      revenueGrowth: s.revenueGrowth || null,
+      earningsGrowth: s.earningsGrowth || null,
+      fundSnapshot: fundSnap && (fundSnap.targetMeanPrice || s._forwardPE) ? {
+        trailingPE: s._trailingPE || null,
+        forwardPE: s._forwardPE || null,
+        pegRatio: s.peg || null,
+        revenueGrowth: s._revenueGrowth || s.revenueGrowth || null,
+        earningsGrowth: s._earningsGrowth || s.earningsGrowth || null,
+        targetMeanPrice: fundSnap.targetMeanPrice || null
+      } : null,
+      quantRegime: s['_'+(hz==='medium'?'med':hz)+'Regime'] || s._regime || null,
+      revalidatedAt: ts,
+      analyticsVersion: 2,
       shortPnlDollar: null, shortPnlPct: null, shortStatus: hz==='short'?'open':'n/a',
       mediumPnlDollar: null, mediumPnlPct: null, mediumStatus: hz==='medium'?'open':'n/a',
       longPnlDollar: null, longPnlPct: null, longStatus: hz==='long'?'open':'n/a',
@@ -3684,37 +3702,14 @@ function clearHistoryAll() {
     .catch(e => alert('Failed: ' + e.message));
 }
 
-function revalidateHistory() {
-  const btn = event?.target;
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Checking...'; }
-  fetch('/api/history/revalidate', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ dryRun: false })
-  })
-  .then(r => r.json())
-  .then(d => {
-    const removed = d.removed || [];
-    const detail = removed.length > 0
-      ? '\n\nRemoved:\n' + removed.slice(0,10).map(t => `• ${t.ticker} (${t.hz}) — ${t.reason}`).join('\n')
-        + (removed.length > 10 ? `\n... and ${removed.length-10} more` : '')
-      : '';
-    alert(`Revalidation complete:\n✅ ${d.totalRemoved} invalid trades removed\n✓ ${d.kept} valid trades kept${detail}`);
-    if (d.totalRemoved > 0) { loadHistoryFromServer(); }
-  })
-  .catch(e => alert('Revalidation failed: ' + e.message))
-  .finally(() => { if(btn){btn.disabled=false;btn.textContent='🔄 Revalidate';} });
-}
-
 function renderHist() {
   const el = document.getElementById('histContent');
-  // Add revalidate + clear buttons to history header
   const histPh = document.querySelector('#pane-history .ph');
   if (histPh && !histPh.querySelector('.hist-actions')) {
     const actDiv = document.createElement('div');
     actDiv.className = 'hist-actions';
     actDiv.style.cssText = 'display:flex;gap:8px;align-items:center';
-    actDiv.innerHTML = '<button onclick="revalidateHistory()" style="background:rgba(255,200,0,0.12);border:1px solid rgba(255,200,0,0.3);color:#ffc800;border-radius:5px;padding:4px 10px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer" title="Remove trades that contradict current market regime">🔄 Revalidate</button>'
-      + '<button onclick="clearHistoryAll()" style="background:rgba(255,60,60,0.1);border:1px solid rgba(255,60,60,0.25);color:#ff5555;border-radius:5px;padding:4px 10px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">✕ Clear all</button>';
+    actDiv.innerHTML = '<button onclick="clearHistoryAll()" style="background:rgba(255,60,60,0.1);border:1px solid rgba(255,60,60,0.25);color:#ff5555;border-radius:5px;padding:4px 10px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">✕ Clear all</button>';
     histPh.appendChild(actDiv);
   }
   if(!ST.history.length) {
@@ -3728,8 +3723,8 @@ function renderHist() {
   // Only show Buy/Sell trades (no Hold), deduplicated by ticker+day
   const seen = new Set();
   const hist = ST.history.filter(h => {
-    // Need hz field for tab filtering; _v not strictly required
     if(!h.hz) return false;
+    if(!h.revalidatedAt) return false;
     const mainAct = (h.action||'').toLowerCase();
     const hasMainAction = mainAct === 'buy' || mainAct === 'sell';
     const hasHzAction = ['short','medium','long'].some(hz => {
@@ -3744,8 +3739,8 @@ function renderHist() {
 
   if(!hist.length) {
     el.innerHTML = '<div class="emp"><div class="emp-a">◷</div>'
-      +'<p>No Buy/Sell recommendations recorded yet.<br>'
-      +'<span style="font-size:11px;color:var(--m1)">Only Buy and Sell trades are tracked. Run a dashboard scan to generate picks.</span></p>'
+      +'<p>No validated recommendations yet.<br>'
+      +'<span style="font-size:11px;color:var(--m1)">History refreshes automatically with FMP analytics when you open this page. Run a dashboard scan to add new picks.</span></p>'
       +'</div>';
     return;
   }
@@ -4524,6 +4519,23 @@ async function startApp() {
     await loadHistoryFromServer({ signal: apiSignal() });
   } catch (e) {
     console.warn('History load failed:', e.message || e);
+  }
+
+  try {
+    await fetch('/api/history/revalidate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+      signal: apiSignal()
+    });
+  } catch (e) {
+    console.warn('History revalidate failed:', e.message || e);
+  }
+
+  try {
+    await loadHistoryFromServer({ signal: apiSignal() });
+  } catch (e) {
+    console.warn('History reload after revalidate failed:', e.message || e);
   }
 
   if (!ST.history.length && ST.dashData) {

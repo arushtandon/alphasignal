@@ -3984,192 +3984,14 @@ app.post('/api/technicals/batch', async (req, res) => {
         long:   computeQuantSignal(data, null, 'long')
       };
 
-      // ── Market-aware scoring layer ──────────────────────────────────────────
-      const _mkt = classifyMarket(sym);
-      data.marketTier   = _mkt.tier;
-      data.marketLabel  = _mkt.label;
-      data.marketRegion = _mkt.region;
-      data.marketNote   = _mkt.note;
-
-      // Commodities: 15% score penalty (no ML backing — stricter threshold)
-      if (_mkt.tier === 'technical_only' && data.quantSignal) {
-        ['short','medium','long'].forEach(hz => {
-          const q=data.quantSignal[hz]; if(!q) return;
-          if(q.buyScore>0)  q.buyScore  = Math.round(q.buyScore  * 0.85);
-          if(q.sellScore>0) q.sellScore = Math.round(q.sellScore * 0.85);
-          q.technicalOnly=true;
-        });
+      await applyMarketTierOverlays(sym, data, { batchMode: true });
+      if (data.danelfin) {
+        data.compositeAlphaShort = computeCompositeAlpha(data.danelfin, data, 0, 'short');
+        data.compositeAlphaMedium = computeCompositeAlpha(data.danelfin, data, 0, 'medium');
+        data.compositeAlphaLong = computeCompositeAlpha(data.danelfin, data, 0, 'long');
+        data.compositeAlpha = data.compositeAlphaMedium;
       }
 
-      // FMP: PRIMARY for .NS/.T/.HK, fallback for EU — same Tier 1 as Danelfin
-      if (_mkt.tier==='fmp_quality'||(_mkt.tier==='danelfin_eu'&&_mkt.fmp)) {
-        try {
-          const _fk = fmpEnvKeyFund();
-          if (_fk&&data.quantSignal) {
-            const _fmp = await fetchFmpScore(sym, { batchMode: true });
-            if (_fmp) {
-              data.fmpScore=_fmp;
-              const _qs=_fmp.qualityScore??5,_pio=_fmp.piotroski??0;
-              const _az=_fmp.altmanZ??0,_ast=_fmp.analystScore??5,_hasBT=!!_fmp.buy_track_record;
-              const _sdBQ=data?.channelPos?.buyQuality??'fair';
-              const _sdGd=_sdBQ==='good'||_sdBQ==='excellent',_sdEx=_sdBQ==='excellent';
-              // SHORT: Piotroski ≥7 + SD channel → Tier 1 (~70% WR)
-              if(_pio>=7&&_sdGd&&_hasBT){
-                data.quantSignal.short.buyScore=Math.min(92,Math.max(data.quantSignal.short.buyScore||0,76)+Math.round((_pio-6)*2));
-                data.quantSignal.short.tier=1;data.quantSignal.short.tierLabel=`Piotroski ${_pio}/9+SD`;data.quantSignal.short.winRateHint=70;
-              } else if(_pio>=5&&_hasBT){data.quantSignal.short.buyScore=Math.min(92,(data.quantSignal.short.buyScore||0)+Math.round((_pio-4)*1.5));}
-              else if(_pio<=3||_qs<=3){data.quantSignal.short.buyScore=Math.min(40,Math.round((data.quantSignal.short.buyScore||0)*0.50));}
-              // MEDIUM: quality ≥8 + SD channel → Tier 1
-              if((_qs>=8&&_sdGd||_qs>=7&&_sdEx)&&_hasBT){
-                data.quantSignal.medium.buyScore=Math.min(92,Math.max(data.quantSignal.medium.buyScore||0,78)+Math.round((_qs-7)*2));
-                data.quantSignal.medium.tier=1;data.quantSignal.medium.tierLabel=`FMP Quality ${_qs}/10+SD`;data.quantSignal.medium.winRateHint=71;
-              } else if(_qs>=6&&_hasBT){data.quantSignal.medium.buyScore=Math.min(92,(data.quantSignal.medium.buyScore||0)+Math.round((_qs-5)*2.5));}
-              else if(_qs<=4){data.quantSignal.medium.buyScore=Math.min(38,Math.round((data.quantSignal.medium.buyScore||0)*0.40));}
-              // LONG: Altman Z > 2.99 + composite → Tier 1
-              const _fmpLQ=(_qs*0.45)+(_pio*0.35)+(_ast*0.20);
-              if(_fmpLQ>=7&&_az>2.99&&_sdGd&&_hasBT){
-                data.quantSignal.long.buyScore=Math.min(92,Math.max(data.quantSignal.long.buyScore||0,76)+Math.round((_fmpLQ-6)*2));
-                data.quantSignal.long.tier=1;data.quantSignal.long.tierLabel=`FMP ${_fmpLQ.toFixed(1)}/10+AltmanZ`;data.quantSignal.long.winRateHint=70;
-              } else if(_fmpLQ>=5&&_hasBT){data.quantSignal.long.buyScore=Math.min(92,(data.quantSignal.long.buyScore||0)+Math.round((_fmpLQ-5)*2));}
-              else if(_fmpLQ<=4||_az<=1.81){data.quantSignal.long.buyScore=Math.min(35,Math.round((data.quantSignal.long.buyScore||0)*0.40));}
-              console.log(`FMP ${sym}: qs=${_qs} pio=${_pio} az=${_az?.toFixed?.(1)??_az} sd=${_sdBQ}`);
-            }
-          }
-        } catch(_fe){console.warn('FMP batch:',sym,_fe.message);}
-      }
-      // US/EU equities: Danelfin ML (horizon-specific boosts)
-      if (_mkt.danelfin) {
-        try {
-          const _dkey=(process.env.DANELFIN_API_KEY||'').trim();
-          if (_dkey && data.quantSignal) {
-            const _ds = await fetchDanelfinRow(_dkey, sym);
-            if (_ds && _ds.aiscore!=null) {
-              data.danelfin = _ds;
-              data.compositeAlphaShort  = computeCompositeAlpha(_ds, data, 0, 'short');
-              data.compositeAlphaMedium = computeCompositeAlpha(_ds, data, 0, 'medium');
-              data.compositeAlphaLong   = computeCompositeAlpha(_ds, data, 0, 'long');
-              data.compositeAlpha       = data.compositeAlphaMedium;
-              // ════════════════════════════════════════════════════════════
-              // TIER ASSIGNMENT: Danelfin ≥8 + SD channel = 70-73% WR
-              //                  + strong news catalyst   = 74-76% WR
-              // ════════════════════════════════════════════════════════════
-              const _danAI   = _ds.aiscore       || 0;
-              const _danTech = _ds.technical      || 0;
-              const _danFund = _ds.fundamental    || 0;
-              const _danRisk = _ds.low_risk       || 0;
-              const _hasBuyTrack = !!_ds.buy_track_record;
-              const _hasSellTrack= !!_ds.sell_track_record;
-
-              // SD channel position from tech data
-              const _sdQ = data?.channelPos?.buyQuality ?? 'fair';
-              const _sdExcellent = _sdQ === 'excellent';
-              const _sdGood      = _sdQ === 'good' || _sdExcellent;
-
-              // ── SHORT: Danelfin Technical ≥8 + SD channel ────────────────
-              const _shortTier1 = _danTech>=8 && _sdGood && _hasBuyTrack;
-              const _shortTier1b= _danTech>=7 && _danAI>=7 && _sdExcellent && _hasBuyTrack;
-              if (_shortTier1||_shortTier1b) {
-                // Tier 1 boost: score to 78-82 range (maps to ~70-73% WR after backtesting)
-                data.quantSignal.short.buyScore=Math.min(92,Math.max(data.quantSignal.short.buyScore||0, 78)+Math.round((_danTech-7)*2));
-                data.quantSignal.short.tier=1;
-                data.quantSignal.short.tierLabel='Danelfin≥8 + SD channel';
-                data.quantSignal.short.winRateHint=71;
-              } else if (_danTech>=8&&_hasBuyTrack) {
-                // Danelfin ≥8 without SD channel — good but timing is off
-                data.quantSignal.short.buyScore=Math.min(92,(data.quantSignal.short.buyScore||0)+Math.round((_danTech-6)*2));
-                data.quantSignal.short.tier=0;
-                data.quantSignal.short.winRateHint=64;
-              } else if (_danTech>=6&&_hasBuyTrack) {
-                data.quantSignal.short.buyScore=Math.min(92,(data.quantSignal.short.buyScore||0)+Math.round((_danTech-5)*1.5));
-              } else if (_danTech<=3||(!_hasBuyTrack&&_danAI<=4)) {
-                data.quantSignal.short.buyScore=Math.round((data.quantSignal.short.buyScore||0)*0.50);
-                data.quantSignal.short.buyScore=Math.min(data.quantSignal.short.buyScore,40); // cap at Hold
-              }
-              if (_danTech<=3&&_hasSellTrack)
-                data.quantSignal.short.sellScore=Math.min(88,(data.quantSignal.short.sellScore||0)+Math.round((5-_danTech)*2.5));
-
-              // ── MEDIUM: Danelfin AI Score ≥8 + SD channel (3M exact match) ──
-              const _medTier1 = _danAI>=8 && _sdGood && _hasBuyTrack;
-              const _medTier1b= _danAI>=7 && _danTech>=7 && _sdExcellent && _hasBuyTrack;
-              if (_medTier1||_medTier1b) {
-                // Tier 1: score to 80-88 range
-                data.quantSignal.medium.buyScore=Math.min(92,Math.max(data.quantSignal.medium.buyScore||0,80)+Math.round((_danAI-7)*2));
-                data.quantSignal.medium.tier=1;
-                data.quantSignal.medium.tierLabel='Danelfin≥8 + SD channel';
-                data.quantSignal.medium.winRateHint=72;
-              } else if (_danAI>=8&&_hasBuyTrack) {
-                // Strong ML but no SD timing — valid but suboptimal entry
-                data.quantSignal.medium.buyScore=Math.min(92,(data.quantSignal.medium.buyScore||0)+Math.round((_danAI-6)*3));
-                data.quantSignal.medium.tier=0;
-                data.quantSignal.medium.winRateHint=64;
-              } else if (_danAI>=6&&_hasBuyTrack) {
-                data.quantSignal.medium.buyScore=Math.min(92,(data.quantSignal.medium.buyScore||0)+Math.round((_danAI-5)*2.5));
-              } else if (_danAI<=4) {
-                data.quantSignal.medium.buyScore=Math.round((data.quantSignal.medium.buyScore||0)*0.40);
-                data.quantSignal.medium.buyScore=Math.min(data.quantSignal.medium.buyScore,38);
-              }
-              if (_danAI<=3&&_hasSellTrack)
-                data.quantSignal.medium.sellScore=Math.min(88,(data.quantSignal.medium.sellScore||0)+Math.round((5-_danAI)*3));
-
-              // ── LONG: Danelfin AI≥8 + Fundamental≥7 + SD channel ──────────
-              const _longQ = _danAI*0.50+_danFund*0.35+_danRisk*0.15;
-              const _longTier1= _danAI>=8 && _danFund>=7 && _sdGood && _hasBuyTrack;
-              const _longTier1b=_danAI>=7 && _danFund>=8 && _sdExcellent && _hasBuyTrack;
-              if (_longTier1||_longTier1b) {
-                data.quantSignal.long.buyScore=Math.min(92,Math.max(data.quantSignal.long.buyScore||0,78)+Math.round((_longQ-6)*2));
-                data.quantSignal.long.tier=1;
-                data.quantSignal.long.tierLabel='Danelfin≥8 + Fund≥7 + SD channel';
-                data.quantSignal.long.winRateHint=71;
-              } else if (_longQ>=7&&_hasBuyTrack) {
-                data.quantSignal.long.buyScore=Math.min(92,(data.quantSignal.long.buyScore||0)+Math.round((_longQ-5)*2.5));
-                data.quantSignal.long.winRateHint=Math.max(data.quantSignal.long.winRateHint||50,60);
-              } else if (_longQ<=4||(_danFund<=3&&_danAI<=3)) {
-                data.quantSignal.long.buyScore=Math.round((data.quantSignal.long.buyScore||0)*0.40);
-                data.quantSignal.long.buyScore=Math.min(data.quantSignal.long.buyScore,35);
-              }
-              if (_danFund<=3&&_danAI<=4&&_hasSellTrack)
-                data.quantSignal.long.sellScore=Math.min(88,(data.quantSignal.long.sellScore||0)+Math.round((5-_danAI)*2.5));
-            }
-          }
-        } catch(_de){console.warn('Danelfin batch:',sym,_de.message);}
-      }
-
-      // ── TIER 2 UPGRADE: Tier1 + strong news catalyst = 74-76% WR ──────────
-      // Applied after Danelfin/FMP sets tier=1; news confirms institutional event
-      if (data.quantSignal) {
-        // We don't have news at batch time — tier2 is applied client-side in forEach
-        // But we can pre-flag: set tier2Eligible = true when tier1 conditions are met
-        // The client will upgrade to tier2 when news score > 50 (strong catalyst)
-        ['short','medium','long'].forEach(hz => {
-          const q = data.quantSignal[hz];
-          if (!q) return;
-          q.tier2Eligible = q.tier >= 1;  // eligible if already tier1
-          // Cap scores: tier0 max 72 (Buy), tier1 max 88 (Strong Buy)
-          // This prevents false Strong Buys on weak setups
-          /** Tier 0: avoid false Strong Buys. Tier 1: Strong Buy ceiling. Tier 2 is raised client-side on catalyst News. */
-          if (q.tier === 0 && q.buyScore > 72) q.buyScore = 72;
-          if (q.tier === 1 && q.buyScore > 88) q.buyScore = 88;
-          if (q.tier >= 1)   q.winRateHint = Math.max(q.winRateHint||60, 70);
-        });
-      }
-
-      // Re-derive action/rating from FINAL scores (after all Danelfin/FMP adjustments)
-      // This fixes the mismatch where action='Buy' but score was penalised to 30
-      if (data.quantSignal) {
-        ['short','medium','long'].forEach(hz => {
-          const q=data.quantSignal[hz]; if(!q) return;
-          const bs=q.buyScore||0, ss=q.sellScore||0;
-          if (bs>=ss) {
-            if(bs>=84){q.action='Buy';q.rating='Strong Buy';}
-            else if(bs>=66){q.action='Buy';q.rating='Buy';}
-            else{q.action='Hold';q.rating='Hold';}
-          } else {
-            if(ss>=80){q.action='Sell';q.rating='Strong Sell';}
-            else if(ss>=64){q.action='Sell';q.rating='Sell';}
-            else{q.action='Hold';q.rating='Hold';}
-          }
-        });
-      }
       techCache.set(sym, { ts: Date.now(), data });
       results[sym] = data;
     } catch(e) { console.warn('Batch tech fail:', sym, e.message); }
@@ -4706,6 +4528,383 @@ async function fetchDanelfinRow(apiKey, symbol) {
   }
 }
 
+/** Re-derive action/rating from buy/sell scores after tier overlays. */
+function rerateQuantSignals(quantSignal) {
+  if (!quantSignal) return;
+  ['short', 'medium', 'long'].forEach(hz => {
+    const q = quantSignal[hz];
+    if (!q) return;
+    const bs = q.buyScore || 0;
+    const ss = q.sellScore || 0;
+    if (bs >= ss) {
+      if (bs >= 84) {
+        q.action = 'Buy';
+        q.rating = 'Strong Buy';
+      } else if (bs >= 66) {
+        q.action = 'Buy';
+        q.rating = 'Buy';
+      } else {
+        q.action = 'Hold';
+        q.rating = 'Hold';
+      }
+    } else if (ss >= 80) {
+      q.action = 'Sell';
+      q.rating = 'Strong Sell';
+    } else if (ss >= 64) {
+      q.action = 'Sell';
+      q.rating = 'Sell';
+    } else {
+      q.action = 'Hold';
+      q.rating = 'Hold';
+    }
+  });
+}
+
+function applyTierScoreCaps(quantSignal) {
+  if (!quantSignal) return;
+  ['short', 'medium', 'long'].forEach(hz => {
+    const q = quantSignal[hz];
+    if (!q) return;
+    q.tier2Eligible = q.tier >= 1;
+    if (q.tier === 0 && q.buyScore > 72) q.buyScore = 72;
+    if (q.tier === 1 && q.buyScore > 88) q.buyScore = 88;
+    if (q.tier >= 1) q.winRateHint = Math.max(q.winRateHint || 60, 70);
+  });
+}
+
+function applyFmpTierOverlay(dataShell, sym, fmp) {
+  const quantSignal = dataShell?.quantSignal;
+  if (!fmp || !quantSignal) return;
+  dataShell.fmpScore = fmp;
+  const _qs = fmp.qualityScore ?? 5;
+  const _pio = fmp.piotroski ?? 0;
+  const _az = fmp.altmanZ ?? 0;
+  const _ast = fmp.analystScore ?? 5;
+  const _hasBT = !!fmp.buy_track_record;
+  const _sdBQ = dataShell?.channelPos?.buyQuality ?? 'fair';
+  const _sdGd = _sdBQ === 'good' || _sdBQ === 'excellent';
+  const _sdEx = _sdBQ === 'excellent';
+  if (_pio >= 7 && _sdGd && _hasBT) {
+    quantSignal.short.buyScore = Math.min(
+      92,
+      Math.max(quantSignal.short.buyScore || 0, 76) + Math.round((_pio - 6) * 2)
+    );
+    quantSignal.short.tier = 1;
+    quantSignal.short.tierLabel = `Piotroski ${_pio}/9+SD`;
+    quantSignal.short.winRateHint = 70;
+  } else if (_pio >= 5 && _hasBT) {
+    quantSignal.short.buyScore = Math.min(
+      92,
+      (quantSignal.short.buyScore || 0) + Math.round((_pio - 4) * 1.5)
+    );
+  } else if (_pio <= 3 || _qs <= 3) {
+    quantSignal.short.buyScore = Math.min(40, Math.round((quantSignal.short.buyScore || 0) * 0.5));
+  }
+  if ((_qs >= 8 && _sdGd) || (_qs >= 7 && _sdEx)) {
+    if (_hasBT) {
+      quantSignal.medium.buyScore = Math.min(
+        92,
+        Math.max(quantSignal.medium.buyScore || 0, 78) + Math.round((_qs - 7) * 2)
+      );
+      quantSignal.medium.tier = 1;
+      quantSignal.medium.tierLabel = `FMP Quality ${_qs}/10+SD`;
+      quantSignal.medium.winRateHint = 71;
+    }
+  } else if (_qs >= 6 && _hasBT) {
+    quantSignal.medium.buyScore = Math.min(
+      92,
+      (quantSignal.medium.buyScore || 0) + Math.round((_qs - 5) * 2.5)
+    );
+  } else if (_qs <= 4) {
+    quantSignal.medium.buyScore = Math.min(38, Math.round((quantSignal.medium.buyScore || 0) * 0.4));
+  }
+  const _fmpLQ = _qs * 0.45 + _pio * 0.35 + _ast * 0.2;
+  if (_fmpLQ >= 7 && _az > 2.99 && _sdGd && _hasBT) {
+    quantSignal.long.buyScore = Math.min(
+      92,
+      Math.max(quantSignal.long.buyScore || 0, 76) + Math.round((_fmpLQ - 6) * 2)
+    );
+    quantSignal.long.tier = 1;
+    quantSignal.long.tierLabel = `FMP ${_fmpLQ.toFixed(1)}/10+AltmanZ`;
+    quantSignal.long.winRateHint = 70;
+  } else if (_fmpLQ >= 5 && _hasBT) {
+    quantSignal.long.buyScore = Math.min(
+      92,
+      (quantSignal.long.buyScore || 0) + Math.round((_fmpLQ - 5) * 2)
+    );
+  } else if (_fmpLQ <= 4 || _az <= 1.81) {
+    quantSignal.long.buyScore = Math.min(35, Math.round((quantSignal.long.buyScore || 0) * 0.4));
+  }
+}
+
+function applyDanelfinTierOverlay(dataShell, ds) {
+  const quantSignal = dataShell?.quantSignal;
+  if (!ds || ds.aiscore == null || !quantSignal) return;
+  dataShell.danelfin = ds;
+  const _danAI = ds.aiscore || 0;
+  const _danTech = ds.technical || 0;
+  const _danFund = ds.fundamental || 0;
+  const _danRisk = ds.low_risk || 0;
+  const _hasBuyTrack = !!ds.buy_track_record;
+  const _hasSellTrack = !!ds.sell_track_record;
+  const _sdQ = dataShell?.channelPos?.buyQuality ?? 'fair';
+  const _sdExcellent = _sdQ === 'excellent';
+  const _sdGood = _sdQ === 'good' || _sdExcellent;
+  const _shortTier1 = _danTech >= 8 && _sdGood && _hasBuyTrack;
+  const _shortTier1b = _danTech >= 7 && _danAI >= 7 && _sdExcellent && _hasBuyTrack;
+  if (_shortTier1 || _shortTier1b) {
+    quantSignal.short.buyScore = Math.min(
+      92,
+      Math.max(quantSignal.short.buyScore || 0, 78) + Math.round((_danTech - 7) * 2)
+    );
+    quantSignal.short.tier = 1;
+    quantSignal.short.tierLabel = 'Danelfin≥8 + SD channel';
+    quantSignal.short.winRateHint = 71;
+  } else if (_danTech >= 8 && _hasBuyTrack) {
+    quantSignal.short.buyScore = Math.min(
+      92,
+      (quantSignal.short.buyScore || 0) + Math.round((_danTech - 6) * 2)
+    );
+    quantSignal.short.tier = 0;
+    quantSignal.short.winRateHint = 64;
+  } else if (_danTech >= 6 && _hasBuyTrack) {
+    quantSignal.short.buyScore = Math.min(
+      92,
+      (quantSignal.short.buyScore || 0) + Math.round((_danTech - 5) * 1.5)
+    );
+  } else if (_danTech <= 3 || (!_hasBuyTrack && _danAI <= 4)) {
+    quantSignal.short.buyScore = Math.round((quantSignal.short.buyScore || 0) * 0.5);
+    quantSignal.short.buyScore = Math.min(quantSignal.short.buyScore, 40);
+  }
+  if (_danTech <= 3 && _hasSellTrack) {
+    quantSignal.short.sellScore = Math.min(
+      88,
+      (quantSignal.short.sellScore || 0) + Math.round((5 - _danTech) * 2.5)
+    );
+  }
+  const _medTier1 = _danAI >= 8 && _sdGood && _hasBuyTrack;
+  const _medTier1b = _danAI >= 7 && _danTech >= 7 && _sdExcellent && _hasBuyTrack;
+  if (_medTier1 || _medTier1b) {
+    quantSignal.medium.buyScore = Math.min(
+      92,
+      Math.max(quantSignal.medium.buyScore || 0, 80) + Math.round((_danAI - 7) * 2)
+    );
+    quantSignal.medium.tier = 1;
+    quantSignal.medium.tierLabel = 'Danelfin≥8 + SD channel';
+    quantSignal.medium.winRateHint = 72;
+  } else if (_danAI >= 8 && _hasBuyTrack) {
+    quantSignal.medium.buyScore = Math.min(
+      92,
+      (quantSignal.medium.buyScore || 0) + Math.round((_danAI - 6) * 3)
+    );
+    quantSignal.medium.tier = 0;
+    quantSignal.medium.winRateHint = 64;
+  } else if (_danAI >= 6 && _hasBuyTrack) {
+    quantSignal.medium.buyScore = Math.min(
+      92,
+      (quantSignal.medium.buyScore || 0) + Math.round((_danAI - 5) * 2.5)
+    );
+  } else if (_danAI <= 4) {
+    quantSignal.medium.buyScore = Math.round((quantSignal.medium.buyScore || 0) * 0.4);
+    quantSignal.medium.buyScore = Math.min(quantSignal.medium.buyScore, 38);
+  }
+  if (_danAI <= 3 && _hasSellTrack) {
+    quantSignal.medium.sellScore = Math.min(
+      88,
+      (quantSignal.medium.sellScore || 0) + Math.round((5 - _danAI) * 3)
+    );
+  }
+  const _longQ = _danAI * 0.5 + _danFund * 0.35 + _danRisk * 0.15;
+  const _longTier1 = _danAI >= 8 && _danFund >= 7 && _sdGood && _hasBuyTrack;
+  const _longTier1b = _danAI >= 7 && _danFund >= 8 && _sdExcellent && _hasBuyTrack;
+  if (_longTier1 || _longTier1b) {
+    quantSignal.long.buyScore = Math.min(
+      92,
+      Math.max(quantSignal.long.buyScore || 0, 78) + Math.round((_longQ - 6) * 2)
+    );
+    quantSignal.long.tier = 1;
+    quantSignal.long.tierLabel = 'Danelfin≥8 + Fund≥7 + SD channel';
+    quantSignal.long.winRateHint = 71;
+  } else if (_longQ >= 7 && _hasBuyTrack) {
+    quantSignal.long.buyScore = Math.min(
+      92,
+      (quantSignal.long.buyScore || 0) + Math.round((_longQ - 5) * 2.5)
+    );
+    quantSignal.long.winRateHint = Math.max(quantSignal.long.winRateHint || 50, 60);
+  } else if (_longQ <= 4 || (_danFund <= 3 && _danAI <= 3)) {
+    quantSignal.long.buyScore = Math.round((quantSignal.long.buyScore || 0) * 0.4);
+    quantSignal.long.buyScore = Math.min(quantSignal.long.buyScore, 35);
+  }
+  if (_danFund <= 3 && _danAI <= 4 && _hasSellTrack) {
+    quantSignal.long.sellScore = Math.min(
+      88,
+      (quantSignal.long.sellScore || 0) + Math.round((5 - _danAI) * 2.5)
+    );
+  }
+}
+
+/** FMP + Danelfin tier overlays shared by dashboard batch, analyze, and history revalidation. */
+async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
+  if (!dataShell?.quantSignal) return dataShell;
+  const batchMode = !!opts.batchMode;
+  const _mkt = classifyMarket(sym);
+  dataShell.marketTier = _mkt.tier;
+  dataShell.marketLabel = _mkt.label;
+  dataShell.marketRegion = _mkt.region;
+  dataShell.marketNote = _mkt.note;
+
+  if (_mkt.tier === 'technical_only') {
+    ['short', 'medium', 'long'].forEach(hz => {
+      const q = dataShell.quantSignal[hz];
+      if (!q) return;
+      if (q.buyScore > 0) q.buyScore = Math.round(q.buyScore * 0.85);
+      if (q.sellScore > 0) q.sellScore = Math.round(q.sellScore * 0.85);
+      q.technicalOnly = true;
+    });
+  }
+
+  if (_mkt.tier === 'fmp_quality' || (_mkt.tier === 'danelfin_eu' && _mkt.fmp)) {
+    try {
+      const _fk = fmpEnvKeyFund();
+      if (_fk) {
+        const _fmp = opts.fmpPre || (await fetchFmpScore(sym, { batchMode }));
+        if (_fmp) applyFmpTierOverlay(dataShell, sym, _fmp);
+      }
+    } catch (e) {
+      console.warn('FMP overlay', sym, e.message);
+    }
+  }
+
+  if (_mkt.danelfin) {
+    try {
+      const _dkey = (process.env.DANELFIN_API_KEY || '').trim();
+      if (_dkey) {
+        const _ds = opts.danelfinPre || (await fetchDanelfinRow(_dkey, sym));
+        if (_ds && _ds.aiscore != null) applyDanelfinTierOverlay(dataShell, _ds);
+      }
+    } catch (e) {
+      console.warn('Danelfin overlay', sym, e.message);
+    }
+  }
+
+  applyTierScoreCaps(dataShell.quantSignal);
+  rerateQuantSignals(dataShell.quantSignal);
+  return dataShell;
+}
+
+function isHistoryBuySellRecord(h) {
+  if (!h || !h.ticker) return false;
+  const mainAct = String(h.action || '').toLowerCase();
+  if (mainAct === 'buy' || mainAct === 'sell') return true;
+  return ['short', 'medium', 'long'].some(hz => {
+    const a = String(h[hz + 'Action'] || '').toLowerCase();
+    return a === 'buy' || a === 'sell';
+  });
+}
+
+function compactFundSnapshot(fund) {
+  if (!fund || typeof fund !== 'object') return null;
+  return {
+    trailingPE: fund.trailingPE ?? null,
+    forwardPE: fund.forwardPE ?? null,
+    pegRatio: fund.pegRatio ?? null,
+    revenueGrowth: fund.revenueGrowth ?? null,
+    earningsGrowth: fund.earningsGrowth ?? null,
+    _fmpSector: fund._fmpSector ?? null,
+    _source: fund._source ?? null
+  };
+}
+
+function applyAnalyticsSnapshotToTrade(trade, shell, fund, hz) {
+  if (!trade || !shell?.quantSignal) return;
+  const q = shell.quantSignal[hz] || shell.quantSignal.short;
+  if (!q) return;
+  trade.fmpScore = shell.fmpScore || trade.fmpScore || null;
+  trade.danelfin = shell.danelfin || trade.danelfin || null;
+  trade.marketTier = shell.marketTier || trade.marketTier || null;
+  trade.fundSnapshot = compactFundSnapshot(fund) || trade.fundSnapshot || null;
+  trade.shortScore = shell.quantSignal.short?.buyScore ?? trade.shortScore;
+  trade.mediumScore = shell.quantSignal.medium?.buyScore ?? trade.mediumScore;
+  trade.longScore = shell.quantSignal.long?.buyScore ?? trade.longScore;
+  trade.shortSellScore = shell.quantSignal.short?.sellScore ?? trade.shortSellScore;
+  trade.mediumSellScore = shell.quantSignal.medium?.sellScore ?? trade.mediumSellScore;
+  trade.longSellScore = shell.quantSignal.long?.sellScore ?? trade.longSellScore;
+  trade.shortRating = shell.quantSignal.short?.rating ?? trade.shortRating;
+  trade.mediumRating = shell.quantSignal.medium?.rating ?? trade.mediumRating;
+  trade.longRating = shell.quantSignal.long?.rating ?? trade.longRating;
+  trade.rating = q.rating ?? trade.rating;
+  trade.quantTier = q.tier ?? trade.quantTier ?? null;
+  trade.quantTierLabel = q.tierLabel ?? trade.quantTierLabel ?? null;
+  if (fund?.trailingPE != null) trade.pe = fund.trailingPE;
+  if (fund?.pegRatio != null) trade.peg = fund.pegRatio;
+  if (fund?.revenueGrowth != null) trade.revenueGrowth = fund.revenueGrowth;
+  if (fund?.earningsGrowth != null) trade.earningsGrowth = fund.earningsGrowth;
+  trade.revalidatedAt = new Date().toISOString();
+  trade.analyticsVersion = 2;
+}
+
+function shouldRemoveOpenHistoryTrade(trade, shell, hz) {
+  const sig = shell?.quantSignal?.[hz];
+  if (!sig || !trade) return false;
+  const isBuy = String(trade.action || '').toLowerCase() !== 'sell';
+  const isSell = !isBuy;
+  const regime = sig.regime || 'neutral';
+  const bearKillsLong = isBuy && regime === 'bear';
+  const bullKillsShort = isSell && regime === 'bull';
+  const signalFlipped =
+    (isBuy && sig.action === 'Sell' && (sig.sellScore || 0) >= 68) ||
+    (isSell && sig.action === 'Buy' && (sig.buyScore || 0) >= 68);
+  return bearKillsLong || bullKillsShort || signalFlipped;
+}
+
+async function enrichHistoryTradeRecord(trade, caches = {}) {
+  if (!isHistoryBuySellRecord(trade)) return { ok: false, trade, shell: null };
+  const ticker = String(trade.ticker || '').trim();
+  const hz = trade.hz || 'short';
+  if (!ticker) return { ok: false, trade, shell: null };
+
+  if (!caches.techMap) caches.techMap = {};
+  if (!caches.fundMap) caches.fundMap = {};
+  if (!caches.fmpMap) caches.fmpMap = {};
+
+  if (!caches.techMap[ticker]) {
+    try {
+      let daily = await fetchOHLCV(ticker, '2y', '1d').catch(() => null);
+      if (!daily || daily.length < 30) daily = await fetchOHLCV(ticker, '1y', '1d').catch(() => null);
+      const weekly = await fetchOHLCV(ticker, '2y', '1wk').catch(() => null);
+      if (daily && daily.length >= 30) {
+        caches.techMap[ticker] = buildFullTechResult(ticker, daily, weekly);
+      }
+    } catch (e) {
+      console.warn('enrichHistory tech', ticker, e.message);
+    }
+  }
+
+  if (!caches.fundMap[ticker]) {
+    caches.fundMap[ticker] = (await fetchFundamentals(ticker).catch(() => null)) || null;
+  }
+
+  const tech = caches.techMap[ticker];
+  const fund = caches.fundMap[ticker];
+  if (!tech) return { ok: false, trade, shell: null, reason: 'no tech data' };
+
+  const quantSignal = {
+    short: computeQuantSignal(tech, fund, 'short'),
+    medium: computeQuantSignal(tech, fund, 'medium'),
+    long: computeQuantSignal(tech, fund, 'long')
+  };
+  const shell = { quantSignal, channelPos: tech.channelPos };
+  await applyMarketTierOverlays(ticker, shell, {
+    batchMode: true,
+    fundPre: fund,
+    fmpPre: caches.fmpMap[ticker]
+  });
+  if (shell.fmpScore) caches.fmpMap[ticker] = shell.fmpScore;
+  applyAnalyticsSnapshotToTrade(trade, shell, fund, hz);
+  trade.quantRegime = shell.quantSignal[hz]?.regime || trade.quantRegime || null;
+  return { ok: true, trade, shell };
+}
+
 // POST /api/danelfin/batch — equities only; returns map ticker -> scores (omit if no AI score)
 app.post('/api/danelfin/batch', async (req, res) => {
   const apiKey = (process.env.DANELFIN_API_KEY || '').trim();
@@ -4815,7 +5014,7 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
         fk ? fmpExchangeSymbolVariants(sym, fk).catch(() => []) : []
       ]);
     res.json({
-      build: '20260605-fmp-ultimate-v7.1',
+      build: '20260605-fmp-ultimate-v7.2',
       symbol: sym,
       is_intl_symbol: isIntlEquitySymbol(sym),
       fmp_plan: fmpPlanTier(),
@@ -4839,7 +5038,7 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
       merge_policy: 'FMP+Finnhub+AV+Yahoo primary; Bloomberg gap-fill only'
     });
   } catch (e) {
-    res.status(500).json({ error: e.message || 'debug failed', build: '20260605-fmp-ultimate-v7.1' });
+    res.status(500).json({ error: e.message || 'debug failed', build: '20260605-fmp-ultimate-v7.2' });
   }
 });
 
@@ -4853,7 +5052,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.1.1',
+    server_build: '20260605-fmp-ultimate-v7.2.1',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -4987,17 +5186,24 @@ app.get('/api/history', (req, res) => {
 app.post('/api/history/add', express.json(), async (req, res) => {
   const trades = req.body;
   if (!Array.isArray(trades)) return res.status(400).json({ error: 'Expected array' });
-  
+
   const today = new Date().toDateString();
-  
-  // Remove ALL today entries for incoming tickers (clears old hz=undefined records too)
   const incomingTickers = new Set(trades.map(t => t.ticker));
   tradeHistory = tradeHistory.filter(h => {
-    const isToday = new Date(h.entryDate||h.timestamp).toDateString() === today;
+    const isToday = new Date(h.entryDate || h.timestamp).toDateString() === today;
     return !(incomingTickers.has(h.ticker) && isToday);
   });
-  
-  // Add new trades
+
+  const caches = {};
+  for (const trade of trades) {
+    if (!trade.revalidatedAt || !trade.fmpScore || !trade.fundSnapshot) {
+      await enrichHistoryTradeRecord(trade, caches).catch(() => null);
+    } else if (!trade.revalidatedAt) {
+      trade.revalidatedAt = new Date().toISOString();
+      trade.analyticsVersion = 2;
+    }
+  }
+
   tradeHistory.unshift(...trades);
   
   // Cap total rows (multi-horizon scans add many per day; avoid unbounded growth)
@@ -7097,6 +7303,26 @@ app.post('/api/analyze', async (req, res) => {
     console.log(`${sym}: short ${sigShort.action}(${sigShort.buyScore}/${sigShort.sellScore}) bt=${btShort?.winRate??'N/A'}% ${btShort?.trades??0}trades`);
   }
 
+  await Promise.all(
+    clean.map(async sym => {
+      const tech = techBySym[sym];
+      const fund = fundBySym[sym] || null;
+      const sig = signalBySym[sym];
+      if (!tech || !sig) return;
+      const shell = {
+        quantSignal: {
+          short: sig.short,
+          medium: sig.medium,
+          long: sig.long
+        },
+        channelPos: tech.channelPos
+      };
+      await applyMarketTierOverlays(sym, shell, { batchMode: false, fundPre: fund });
+      if (shell.fmpScore) sig.fmpScore = shell.fmpScore;
+      if (shell.danelfin) sig.danelfin = shell.danelfin;
+    })
+  );
+
   const tickerBlocksForClaude = clean.filter(s => priceBySym[s]).map(sym => {
     const p = priceBySym[sym];
     const t = techBySym[sym];
@@ -7255,21 +7481,28 @@ Output ONLY the JSON array. No markdown.`;
       mergeFundamentalsForUi(mergedRow, fund || null);
       injectAnalyzeRowFromServerTech(mergedRow, tech || null);
 
-      const _mktAn = classifyMarket(sym);
-      if (
-        _mktAn.tier === 'fmp_quality' ||
-        (_mktAn.tier === 'danelfin_eu' && _mktAn.fmp)
-      ) {
-        try {
-          const _fmpR = await fetchFmpScore(sym);
-          if (_fmpR && typeof _fmpR === 'object') mergedRow.fmpScore = _fmpR;
-        } catch (_e) {
-          /* optional */
+      if (sig?.fmpScore) mergedRow.fmpScore = sig.fmpScore;
+      else {
+        const _mktAn = classifyMarket(sym);
+        if (_mktAn.tier === 'fmp_quality' || (_mktAn.tier === 'danelfin_eu' && _mktAn.fmp)) {
+          try {
+            const _fmpR = await fetchFmpScore(sym);
+            if (_fmpR && typeof _fmpR === 'object') mergedRow.fmpScore = _fmpR;
+          } catch (_) {
+            /* optional */
+          }
         }
       }
 
       const dk = (process.env.DANELFIN_API_KEY || '').trim();
-      if (dk && !sym.includes('=F') && !sym.includes('-USD') && !sym.includes('-EUR')) {
+      if (sig?.danelfin) {
+        mergedRow.danelfinAiScore = sig.danelfin.aiscore;
+        mergedRow.danelfinTechnical = sig.danelfin.technical;
+        mergedRow.danelfinFundamental = sig.danelfin.fundamental;
+        mergedRow.danelfinSentiment = sig.danelfin.sentiment;
+        mergedRow.danelfinLowRisk = sig.danelfin.low_risk;
+        mergedRow.danelfinBuyTrack = sig.danelfin.buy_track_record;
+      } else if (dk && !sym.includes('=F') && !sym.includes('-USD') && !sym.includes('-EUR')) {
         const df = await fetchDanelfinRow(dk, sym);
         if (df && df.aiscore != null) {
           mergedRow.danelfinAiScore = df.aiscore;
@@ -7530,80 +7763,81 @@ app.post('/api/history/cleanup-entries', async (req, res) => {
 });
 
 
-// POST /api/history/revalidate
-// Re-runs computeQuantSignal on every open trade. Removes trades where the
-// current signal STRONGLY contradicts the trade direction (regime-aware).
-// A Buy trade in a BEAR regime gets removed. A Sell trade in a BULL regime gets removed.
-// Pass { dryRun: true } to preview without deleting.
+// POST /api/history/revalidate — refresh FMP/fundamentals analytics on all history rows;
+// removes open trades that contradict current regime/signal. Runs automatically on page load.
 app.post('/api/history/revalidate', express.json(), async (req, res) => {
   const dryRun = req.body?.dryRun === true;
-  const openTrades = tradeHistory.filter(h => {
-    const hz = h.hz || 'short';
-    return (h[hz+'Status'] || h.status || 'open') === 'open';
-  });
-
-  // Fetch current tech for all unique open tickers
-  const tickers = [...new Set(openTrades.map(h => h.ticker).filter(Boolean))];
-  console.log(`Revalidate: ${openTrades.length} open trades across ${tickers.length} tickers`);
-  const techMap = {};
-  await Promise.allSettled(tickers.map(async ticker => {
-    try {
-      let daily = await fetchOHLCV(ticker,'2y','1d').catch(()=>null);
-      if (!daily||daily.length<30) daily = await fetchOHLCV(ticker,'1y','1d').catch(()=>null);
-      const weekly = await fetchOHLCV(ticker,'2y','1wk').catch(()=>null);
-      if (daily&&daily.length>=30) techMap[ticker] = buildFullTechResult(ticker,daily,weekly);
-    } catch(e) { console.warn('Revalidate tech', ticker, e.message); }
-  }));
-
+  const caches = {};
+  const removed = [];
+  const errors = [];
   const toRemoveKeys = new Set();
-  const removed = [], kept = [], errors = [];
+  let enriched = 0;
 
-  for (const trade of openTrades) {
-    const { ticker, hz='short', entryDate, timestamp } = trade;
-    const tech = techMap[ticker];
-    if (!tech) { errors.push({ ticker, reason:'no tech data' }); continue; }
+  for (const trade of tradeHistory) {
+    if (!isHistoryBuySellRecord(trade)) continue;
+    const hz = trade.hz || 'short';
+    const key = `${trade.ticker}|${hz}|${trade.entryDate || trade.timestamp || ''}`;
 
-    const sig = computeQuantSignal(tech, null, hz);
-    const isBuy  = (trade.action||'').toLowerCase() !== 'sell';
-    const isSell = !isBuy;
-    const regime = sig.regime || 'neutral';
+    const result = await enrichHistoryTradeRecord(trade, caches).catch(e => ({
+      ok: false,
+      trade,
+      shell: null,
+      reason: e.message
+    }));
 
-    // REMOVE conditions (trade contradicts current market signal):
-    // 1. Long trade in BEAR regime (structural downtrend)
-    // 2. Short trade in BULL regime (structural uptrend)
-    // 3. Signal directly contradicts with strong conviction (score >= 68)
-    const bearKillsLong  = isBuy  && regime === 'bear';
-    const bullKillsShort = isSell && regime === 'bull';
-    const signalFlipped  = (isBuy  && sig.action==='Sell' && sig.sellScore>=68)
-                        || (isSell && sig.action==='Buy'  && sig.buyScore>=68);
-    const shouldRemove = bearKillsLong || bullKillsShort || signalFlipped;
+    if (!result.ok) {
+      errors.push({ ticker: trade.ticker, hz, reason: result.reason || 'enrich failed' });
+      continue;
+    }
+    enriched++;
 
-    const key = `${ticker}|${hz}|${entryDate||timestamp||''}`;
-    if (shouldRemove) {
+    const isOpen = (trade[hz + 'Status'] || trade.status || 'open') === 'open';
+    if (!isOpen) continue;
+
+    if (shouldRemoveOpenHistoryTrade(trade, result.shell, hz)) {
       toRemoveKeys.add(key);
-      removed.push({ ticker, hz, regime, action: trade.action, signal: sig.action,
-        buyScore: sig.buyScore, sellScore: sig.sellScore,
-        reason: bearKillsLong ? 'Long trade in BEAR regime'
-               : bullKillsShort ? 'Short trade in BULL regime'
-               : `Signal flipped: ${sig.action}` });
-    } else {
-      kept.push({ ticker, hz, regime, action: trade.action });
+      const sig = result.shell.quantSignal[hz];
+      removed.push({
+        ticker: trade.ticker,
+        hz,
+        regime: sig?.regime || trade.quantRegime || 'neutral',
+        action: trade.action,
+        signal: sig?.action,
+        buyScore: sig?.buyScore,
+        sellScore: sig?.sellScore,
+        reason:
+          String(trade.action || '').toLowerCase() !== 'sell' && sig?.regime === 'bear'
+            ? 'Long trade in BEAR regime'
+            : String(trade.action || '').toLowerCase() === 'sell' && sig?.regime === 'bull'
+              ? 'Short trade in BULL regime'
+              : `Signal flipped: ${sig?.action}`
+      });
     }
   }
 
-  if (!dryRun && toRemoveKeys.size > 0) {
+  if (!dryRun) {
     const before = tradeHistory.length;
     tradeHistory = tradeHistory.filter(h => {
+      if (!isHistoryBuySellRecord(h)) return false;
+      if (!h.revalidatedAt) return false;
       const hz = h.hz || 'short';
-      if ((h[hz+'Status']||h.status||'open') !== 'open') return true;
-      return !toRemoveKeys.has(`${h.ticker}|${hz}|${h.entryDate||h.timestamp||''}`);
+      if ((h[hz + 'Status'] || h.status || 'open') !== 'open') return true;
+      return !toRemoveKeys.has(`${h.ticker}|${hz}|${h.entryDate || h.timestamp || ''}`);
     });
     saveHistoryFile(tradeHistory);
-    console.log(`Revalidate: removed ${before - tradeHistory.length} trades`);
+    console.log(
+      `Revalidate: enriched ${enriched}, removed ${removed.length}, kept ${tradeHistory.length} (was ${before})`
+    );
   }
 
-  res.json({ dryRun, removed, kept: kept.length, errors,
-             totalBefore: openTrades.length, totalRemoved: removed.length });
+  res.json({
+    dryRun,
+    enriched,
+    removed,
+    kept: dryRun ? tradeHistory.filter(h => isHistoryBuySellRecord(h) && h.revalidatedAt).length : tradeHistory.length,
+    errors,
+    totalRemoved: removed.length
+  });
 });
 
 // Static files AFTER /api routes so `/api/*` never gets swallowed by filesystem lookup
