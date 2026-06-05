@@ -5057,7 +5057,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.2.2',
+    server_build: '20260605-fmp-ultimate-v7.2.3',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -5184,6 +5184,15 @@ app.get('/api/health', async (req, res) => {
 
 // GET all history
 app.get('/api/history', (req, res) => {
+  let migrated = false;
+  for (const h of tradeHistory) {
+    if (isHistoryBuySellRecord(h) && !h.revalidatedAt) {
+      h.revalidatedAt = h.entryDate || h.timestamp || new Date().toISOString();
+      h.legacyRecord = true;
+      migrated = true;
+    }
+  }
+  if (migrated) saveHistoryFile(tradeHistory);
   res.json(tradeHistory);
 });
 
@@ -6322,10 +6331,10 @@ async function fmpEarningsSurprisesHistory(sym) {
     return sorted
       .slice(0, 4)
       .map((row) => {
-        const dateStr = String(row.date || '').slice(0, 10);
-        const ea = pickNum(row.actualEPS ?? row.actual);
-        const ee = pickNum(row.estimatedEPS ?? row.estimate ?? row.estimatesAvg);
-        let surp = pickNum(row.surprisePercent);
+        const dateStr = String(row.date || row.reportDate || '').slice(0, 10);
+        const ea = pickNum(row.actualEPS ?? row.actual ?? row.actualEarningResult);
+        const ee = pickNum(row.estimatedEPS ?? row.estimate ?? row.estimatesAvg ?? row.estimatedEarning);
+        let surp = pickNum(row.surprisePercent ?? row.surprise);
         if ((surp == null || Number.isNaN(surp)) && ea != null && ee != null && Math.abs(ee) > 1e-9) {
           surp = ((ea - ee) / Math.abs(ee)) * 100;
         }
@@ -6350,23 +6359,85 @@ async function fmpEarningsSurprisesHistory(sym) {
       })
       .filter((r) => r.date || r.quarter);
   }
-  const earningsBare = sym.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK)$/i, '');
-  const variants = [...new Set([...intlVendorSymbolVariants(sym), sym.replace(/\./g, '-'), earningsBare])].filter(Boolean);
-  for (const v of variants) {
+  const staticV = intlVendorSymbolVariants(sym);
+  const exchV = await fmpAllSymbolVariants(sym, k).catch(() => []);
+  const variants = [...new Set([...exchV, ...staticV, sym.replace(/\./g, '-'), sym])].filter(Boolean);
+  for (const v of variants.slice(0, 16)) {
     try {
       const enc = encodeURIComponent(v);
-      const url = `https://financialmodelingprep.com/api/v3/earnings-surprises/${enc}?apikey=${encodeURIComponent(k)}`;
-      const r = await fetch(url, { signal: AbortSignal.timeout(12000) });
-      if (!r.ok) continue;
-      const arr = await r.json();
-      if (!Array.isArray(arr) || !arr.length) continue;
-      const out = normalizeRows(arr);
-      if (out.length) return out;
+      const urls = [
+        `https://financialmodelingprep.com/stable/earnings-surprises?symbol=${enc}&apikey=${encodeURIComponent(k)}`,
+        `https://financialmodelingprep.com/api/v3/earnings-surprises/${enc}?apikey=${encodeURIComponent(k)}`
+      ];
+      for (const url of urls) {
+        const r = await fetch(url, { signal: AbortSignal.timeout(14000), headers: { Accept: 'application/json' } });
+        if (!r.ok) continue;
+        let arr = await r.json().catch(() => []);
+        if (!Array.isArray(arr) && arr && typeof arr === 'object') {
+          arr = Array.isArray(arr.data) ? arr.data : [];
+        }
+        if (!Array.isArray(arr) || !arr.length) continue;
+        const out = normalizeRows(arr);
+        if (out.length) return out;
+      }
     } catch (e) {
       console.warn('fmpEarningsSurprisesHistory', v, e.message);
     }
   }
   return [];
+}
+
+/** FMP Ultimate — next earnings date for one symbol (avoids scanning full global calendar). */
+async function fmpNextEarningsForSymbol(sym, fromISO, toISO) {
+  const k = fmpAnyApiKey();
+  if (!k || !sym) return null;
+  const variants = [
+    ...new Set([
+      ...(await fmpAllSymbolVariants(sym, k).catch(() => [])),
+      ...intlVendorSymbolVariants(sym),
+      sym,
+      sym.replace(/\./g, '-')
+    ])
+  ].filter(Boolean);
+  const qAmp = `&from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}&apikey=${encodeURIComponent(k)}`;
+  for (const v of variants.slice(0, 14)) {
+    const enc = encodeURIComponent(v);
+    const urls = [
+      `https://financialmodelingprep.com/stable/earning-calendar?symbol=${enc}${qAmp}`,
+      `https://financialmodelingprep.com/stable/earning-calendar-confirmed?symbol=${enc}${qAmp}`,
+      `https://financialmodelingprep.com/api/v3/historical/earning_calendar/${enc}?${qAmp.slice(1)}`
+    ];
+    for (const url of urls) {
+      try {
+        const r = await fetch(url, { signal: AbortSignal.timeout(14000), headers: { Accept: 'application/json' } });
+        if (!r.ok) continue;
+        let rows = await r.json().catch(() => []);
+        if (!Array.isArray(rows) && rows && typeof rows === 'object') {
+          rows = Array.isArray(rows.data) ? rows.data : rows.earningsCalendar || [];
+        }
+        if (!Array.isArray(rows) || !rows.length) continue;
+        const sorted = rows
+          .map((row) => ({
+            date: String(row.date || row.reportDate || '').slice(0, 10),
+            epsEstimated: row.epsEstimated ?? row.eps ?? row.estimatedEPS ?? row.estimate,
+            eps: row.eps ?? row.actualEPS
+          }))
+          .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date))
+          .sort((a, b) => a.date.localeCompare(b.date));
+        const hit = sorted.find((row) => row.date >= fromISO) || sorted[0];
+        if (hit?.date) {
+          return {
+            date: hit.date,
+            epsEst: hit.epsEstimated != null ? String(hit.epsEstimated) : hit.eps != null ? String(hit.eps) : null,
+            source: 'fmp_symbol_calendar'
+          };
+        }
+      } catch (e) {
+        console.warn('fmpNextEarningsForSymbol', v, e.message);
+      }
+    }
+  }
+  return null;
 }
 
 /** Calendar-day arithmetic in UTC (for earnings cutoffs vs vendor date strings). */
@@ -6430,16 +6501,23 @@ app.get('/api/earnings/:symbol', async (req, res) => {
   const prefersFmpIntlHist = /\.(NS|BO|HK|T|L|DE|PA|AS|TW|SI|KS|KQ|AX|NZ|BK|ST|SW|MC|MI|TO|V)$/i.test(
     sym
   );
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const toFar = new Date();
+  toFar.setUTCDate(toFar.getUTCDate() + 120);
+  const toISOsym = toFar.toISOString().slice(0, 10);
   /** Start FMP + Alpha Vantage surprises early for intl — parallel with Yahoo chart / quoteSummary work. */
   const fmpHistEarlyP =
     prefersFmpIntlHist && fmpAnyApiKey() ? fmpEarningsSurprisesHistory(sym) : null;
+  const fmpNextEarlyP =
+    prefersFmpIntlHist && fmpAnyApiKey()
+      ? fmpNextEarningsForSymbol(sym, todayISO, toISOsym)
+      : null;
   const avHistEarlyP =
     prefersFmpIntlHist && alphaVantageApiKey() ? alphaVantageEarningsHistory(sym) : null;
   const fhHistEarlyP =
     prefersFmpIntlHist && (process.env.FINNHUB_API_KEY || '').trim()
       ? finnhubHistoricalEpsSurprisesPool(sym, 4)
       : null;
-  const todayISO = new Date().toISOString().slice(0, 10);
   /** One-day grace: avoid dropping "today" rows on timezone / feed lag vs strict UTC midnight */
   const upcomingCutoff = addUTCISODays(todayISO, -1);
   // Bloomberg bridge is always running — fetch unconditionally, no URL check needed
@@ -6476,7 +6554,6 @@ app.get('/api/earnings/:symbol', async (req, res) => {
 
     const toFar = new Date();
     toFar.setUTCDate(toFar.getUTCDate() + 120);
-    const toISOsym = toFar.toISOString().slice(0, 10);
 
     let qs = await quoteSummary(sym, 'calendarEvents,earnings,earningsHistory');
     let fromCal = nextEarningsFromCalendar(qs);
@@ -6538,6 +6615,21 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       } catch (_) {}
     }
 
+    if (!nextDate && fmpNextEarlyP) {
+      try {
+        const fmpNext = await fmpNextEarlyP;
+        if (fmpNext?.date && fmpNext.date >= upcomingCutoff) {
+          nextDate = fmpNext.date;
+          epsEst = epsEst || fmpNext.epsEst || null;
+          calendarPrimary = calendarPrimary || 'fmp';
+        }
+      } catch (_) {}
+    }
+
+    const intlFmpSkipYahoo =
+      prefersFmpIntlHist && epsHistory.length >= 1 && historySource === 'fmp_earnings_surprises';
+
+    if (!intlFmpSkipYahoo) {
     const symbolsForChart =
       sym === 'GOOGL' || sym === 'GOOG'
         ? ['GOOGL', 'GOOG']
@@ -6620,8 +6712,17 @@ app.get('/api/earnings/:symbol', async (req, res) => {
         historySource = 'alpha_vantage_earnings';
       }
     }
+    } /* end !intlFmpFastPath */
 
     if (!nextDate && fmpAnyApiKey()) {
+      if (prefersFmpIntlHist) {
+        const fmpNext = await fmpNextEarningsForSymbol(sym, todayISO, toISOsym);
+        if (fmpNext?.date && fmpNext.date >= upcomingCutoff) {
+          nextDate = fmpNext.date;
+          epsEst = epsEst || fmpNext.epsEst || null;
+          calendarPrimary = calendarPrimary || 'fmp';
+        }
+      } else {
       const fmpArr = await fmpEarningCalendarByRange(todayISO, toISOsym);
       const symVariants = [
         ...new Set(
@@ -6659,6 +6760,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
         if (hit.epsEstimated != null) epsEst = epsEst || String(hit.epsEstimated);
         else if (hit.eps != null) epsEst = epsEst || String(hit.eps);
         calendarPrimary = calendarPrimary || 'fmp';
+      }
       }
     }
 
@@ -7791,7 +7893,12 @@ app.post('/api/history/revalidate', express.json(), async (req, res) => {
     }));
 
     if (!result.ok) {
+      trade.revalidatedAt =
+        trade.revalidatedAt || trade.entryDate || trade.timestamp || new Date().toISOString();
+      trade.analyticsPartial = true;
+      trade.analyticsError = result.reason || 'enrich failed';
       errors.push({ ticker: trade.ticker, hz, reason: result.reason || 'enrich failed' });
+      enriched++;
       continue;
     }
     enriched++;
@@ -7824,7 +7931,6 @@ app.post('/api/history/revalidate', express.json(), async (req, res) => {
     const before = tradeHistory.length;
     tradeHistory = tradeHistory.filter(h => {
       if (!isHistoryBuySellRecord(h)) return false;
-      if (!h.revalidatedAt) return false;
       const hz = h.hz || 'short';
       if ((h[hz + 'Status'] || h.status || 'open') !== 'open') return true;
       return !toRemoveKeys.has(`${h.ticker}|${hz}|${h.entryDate || h.timestamp || ''}`);
@@ -7839,7 +7945,9 @@ app.post('/api/history/revalidate', express.json(), async (req, res) => {
     dryRun,
     enriched,
     removed,
-    kept: dryRun ? tradeHistory.filter(h => isHistoryBuySellRecord(h) && h.revalidatedAt).length : tradeHistory.length,
+    kept: dryRun
+      ? tradeHistory.filter(h => isHistoryBuySellRecord(h)).length
+      : tradeHistory.length,
     errors,
     totalRemoved: removed.length
   });

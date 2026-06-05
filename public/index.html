@@ -2366,7 +2366,13 @@ async function loadHistoryFromServer(fetchOpts) {
     if(r.ok) {
       const serverData = await r.json();
       if(serverData.length > 0) {
-        serverData.forEach(h => { if(!h.hz) h.hz = 'short'; });
+        serverData.forEach(h => {
+          if(!h.hz) h.hz = 'short';
+          if(!h.revalidatedAt && h.ticker) {
+            h.revalidatedAt = h.entryDate || h.timestamp || new Date().toISOString();
+            h.legacyRecord = true;
+          }
+        });
         const serverKeys = new Set(serverData.map(h => h.ticker+'_'+(h.hz||'short')+'_'+new Date(h.entryDate||h.timestamp).toDateString()));
         const localOnly  = (ST.history||[]).filter(h => h.hz&&!serverKeys.has(h.ticker+'_'+h.hz+'_'+new Date(h.entryDate||h.timestamp).toDateString()));
         ST.history = [...serverData, ...localOnly];
@@ -2375,7 +2381,14 @@ async function loadHistoryFromServer(fetchOpts) {
         });
       } else if(ST.history&&ST.history.length>0) {
         console.log('Server empty, re-uploading', ST.history.length, 'local records');
-        try { await fetch('/api/history/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ST.history)}); } catch(e){}
+        const toUpload = ST.history.filter(h => h.hz).map(h => {
+          if(!h.revalidatedAt) {
+            h.revalidatedAt = h.entryDate || h.timestamp || new Date().toISOString();
+            h.legacyRecord = true;
+          }
+          return h;
+        });
+        try { await fetch('/api/history/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(toUpload)}); } catch(e){}
       } else {
         ST.history = serverData;
       }
@@ -2955,7 +2968,10 @@ async function fetchEarningsForTicker(ticker) {
   if(nextEl) nextEl.innerHTML='<div style="color:var(--m1);font-size:11px">Fetching earnings…</div>';
   if(histEl) histEl.innerHTML='<div style="color:var(--m1);font-size:11px">Loading...</div>';
   try {
-    const r = await fetch('/api/earnings/'+encodeURIComponent(ticker));
+    const earnSignal = (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function')
+      ? AbortSignal.timeout(55000)
+      : undefined;
+    const r = await fetch('/api/earnings/'+encodeURIComponent(ticker), earnSignal ? { signal: earnSignal } : {});
     if(!r.ok) throw new Error('Server error '+r.status);
     const data = await r.json();
     if(data.error) throw new Error(data.error);
@@ -3720,7 +3736,7 @@ function renderHist() {
   if(!ST.history.length) {
     el.innerHTML = '<div class="emp"><div class="emp-a">◷</div>'
       +'<p>No recommendations yet.<br>'
-      +'<span style="font-size:11px;color:var(--m1)">Run a dashboard scan or analyse — Buy/Sell trades are saved automatically.</span></p>'
+      +'<span style="font-size:11px;color:var(--m1)">Run a dashboard scan or analyse — Buy/Sell trades are saved automatically. If history was cleared on the server, open Dashboard once — local records will re-sync.</span></p>'
       +'</div>';
     return;
   }
@@ -3729,7 +3745,6 @@ function renderHist() {
   const seen = new Set();
   const hist = ST.history.filter(h => {
     if(!h.hz) return false;
-    if(!h.revalidatedAt) return false;
     const mainAct = (h.action||'').toLowerCase();
     const hasMainAction = mainAct === 'buy' || mainAct === 'sell';
     const hasHzAction = ['short','medium','long'].some(hz => {
