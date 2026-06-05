@@ -1939,7 +1939,7 @@ async function fetchFundamentalsAlphaVantage(symbol) {
     if (Math.abs(n) < 5 && Math.abs(n) > 1e-8) return +((n * 100).toFixed(2));
     return +n.toFixed(2);
   };
-  for (const sym of variants.slice(0, 4)) {
+  for (const sym of variants.slice(0, 6)) {
     const j = await alphaVantageQuery({ function: 'OVERVIEW', symbol: sym }, { fast: true });
     if (!j || !j.Symbol || j.Symbol === 'None') continue;
     const trailingPE = num(j.PERatio ?? j.TrailingPE);
@@ -1971,7 +1971,7 @@ async function fetchFundamentalsAlphaVantage(symbol) {
       _fmpSector: sector
     };
   }
-  return null;
+  return (await fetchFundamentalsAlphaVantageQuote(symbol)) || null;
 }
 
 /** Quarterly EPS history — same row shape as FMP/Yahoo earnings helpers. */
@@ -2112,7 +2112,35 @@ async function fmpAllSymbolVariants(symbol, key) {
   return [...new Set([...exch, ...staticV])].filter(Boolean);
 }
 
-/** Yahoo v7 quote fundamentals — works from cloud when quoteSummary modules are blocked (same path as live prices). */
+const YAHOO_QUOTE_FUND_FIELDS = [
+  'regularMarketPrice',
+  'trailingPE',
+  'forwardPE',
+  'pegRatio',
+  'trailingPegRatio',
+  'epsTrailingTwelveMonths',
+  'revenueGrowth',
+  'earningsGrowth',
+  'sector',
+  'industry',
+  'marketCap'
+].join(',');
+
+/** Merge overlay into base only where base keys are still empty (Bloomberg backup mode). */
+function mergeGapFillOnly(base, overlay) {
+  if (!overlay || typeof overlay !== 'object') return base || {};
+  const out = { ...(base || {}) };
+  for (const [k, v] of Object.entries(overlay)) {
+    if (v == null || v === '') continue;
+    if (String(k).startsWith('_') && !FUNDAMENTAL_MERGE_META.has(k)) continue;
+    if (out[k] == null || out[k] === '') out[k] = v;
+  }
+  if (overlay._source && !out._source) out._source = overlay._source;
+  if (overlay._bbSecurity && !out._bbSecurity) out._bbSecurity = overlay._bbSecurity;
+  return out;
+}
+
+/** Yahoo v7 quote fundamentals — uses the same narrowed fields list as live prices (full quote often 401 from cloud). */
 async function fetchFundamentalsFromYahooV7Quote(symbol) {
   const variants = intlVendorSymbolVariants(symbol).slice(0, 10);
   const num = v => {
@@ -2125,52 +2153,223 @@ async function fetchFundamentalsFromYahooV7Quote(symbol) {
     if (Math.abs(n) <= 4.5 && Math.abs(n) > 1e-8) return +((n * 100).toFixed(1));
     return +n.toFixed(1);
   };
+  const parseQ = (q, symLabel) => {
+    if (!q) return null;
+    const price = num(q.regularMarketPrice);
+    const eps = num(
+      q.epsTrailingTwelveMonths ?? q.trailingEps ?? q.epsCurrentYear ?? q.epsForward
+    );
+    let trailingPE = num(q.trailingPE);
+    if (trailingPE == null && price != null && eps != null && Math.abs(eps) > 1e-6) {
+      trailingPE = +Math.abs(price / eps).toFixed(2);
+    }
+    const forwardPE = num(q.forwardPE);
+    const pegRatio = num(q.trailingPegRatio ?? q.pegRatio);
+    const revenueGrowth = pct(q.revenueGrowth);
+    const earningsGrowth = pct(q.earningsGrowth);
+    const sector = String(q.sector || q.industry || '').trim() || null;
+    if (
+      trailingPE == null &&
+      forwardPE == null &&
+      pegRatio == null &&
+      revenueGrowth == null &&
+      earningsGrowth == null &&
+      !sector
+    )
+      return null;
+    console.log(`fetchFundamentalsFromYahooV7Quote ${symbol} ← ${symLabel}`);
+    return {
+      forwardPE,
+      trailingPE,
+      pegRatio,
+      revenueGrowth,
+      earningsGrowth,
+      marketCap: num(q.marketCap),
+      _fmpSector: sector,
+      _source: 'yahoo_v7_quote'
+    };
+  };
   for (const sym of variants) {
     for (const base of ['query1', 'query2']) {
       try {
-        const url = `https://${base}.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(sym)}`;
-        const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(12000) });
-        if (!r.ok) continue;
-        const d = await r.json().catch(() => null);
-        const q = d?.quoteResponse?.result?.[0];
-        if (!q) continue;
-        const price = num(q.regularMarketPrice);
-        const eps = num(
-          q.epsTrailingTwelveMonths ?? q.trailingEps ?? q.epsCurrentYear ?? q.epsForward
-        );
-        let trailingPE = num(q.trailingPE);
-        if (trailingPE == null && price != null && eps != null && Math.abs(eps) > 1e-6) {
-          trailingPE = +Math.abs(price / eps).toFixed(2);
+        const narrow = `https://${base}.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(sym)}&fields=${YAHOO_QUOTE_FUND_FIELDS}`;
+        let r = await fetch(narrow, { headers: YF_HEADERS, signal: AbortSignal.timeout(12000) });
+        if (r.ok) {
+          const d = await r.json().catch(() => null);
+          const hit = parseQ(d?.quoteResponse?.result?.[0], sym);
+          if (hit) return hit;
         }
-        const forwardPE = num(q.forwardPE);
-        const pegRatio = num(q.trailingPegRatio ?? q.pegRatio);
-        const revenueGrowth = pct(q.revenueGrowth);
-        const earningsGrowth = pct(q.earningsGrowth);
-        const sector = String(q.sector || q.industry || '').trim() || null;
-        if (
-          trailingPE == null &&
-          forwardPE == null &&
-          pegRatio == null &&
-          revenueGrowth == null &&
-          earningsGrowth == null &&
-          !sector
-        )
-          continue;
-        console.log(`fetchFundamentalsFromYahooV7Quote ${symbol} ← ${sym}`);
-        return {
-          forwardPE,
-          trailingPE,
-          pegRatio,
-          revenueGrowth,
-          earningsGrowth,
-          marketCap: num(q.marketCap),
-          _fmpSector: sector,
-          _source: 'yahoo_v7_quote'
-        };
+        const wide = `https://${base}.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(sym)}`;
+        r = await fetch(wide, { headers: YF_HEADERS, signal: AbortSignal.timeout(12000) });
+        if (r.ok) {
+          const d = await r.json().catch(() => null);
+          const hit = parseQ(d?.quoteResponse?.result?.[0], sym);
+          if (hit) return hit;
+        }
       } catch (e) {
         console.warn('fetchFundamentalsFromYahooV7Quote', sym, e.message);
       }
     }
+  }
+  return null;
+}
+
+/** Yahoo v8 chart meta — fallback when v7 quote omits fundamentals (same path as live price chart). */
+async function fetchFundamentalsFromYahooV8Chart(symbol) {
+  const variants = intlVendorSymbolVariants(symbol).slice(0, 8);
+  const num = v => (Number.isFinite(+v) ? +v : null);
+  for (const sym of variants) {
+    for (const host of ['query1', 'query2']) {
+      try {
+        const url = `https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5d&interval=1d`;
+        const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(12000) });
+        if (!r.ok) continue;
+        const d = await r.json().catch(() => null);
+        const meta = d?.chart?.result?.[0]?.meta;
+        if (!meta) continue;
+        const price = num(meta.regularMarketPrice);
+        let trailingPE = num(meta.trailingPE);
+        const forwardPE = num(meta.forwardPE);
+        const pegRatio = num(meta.pegRatio ?? meta.trailingPegRatio);
+        if (trailingPE == null && price != null && meta.epsTrailingTwelveMonths != null) {
+          const eps = num(meta.epsTrailingTwelveMonths);
+          if (eps != null && Math.abs(eps) > 1e-6) trailingPE = +Math.abs(price / eps).toFixed(2);
+        }
+        if (trailingPE == null && forwardPE == null && pegRatio == null) continue;
+        console.log(`fetchFundamentalsFromYahooV8Chart ${symbol} ← ${sym}`);
+        return {
+          trailingPE,
+          forwardPE,
+          pegRatio,
+          marketCap: num(meta.marketCap),
+          _source: 'yahoo_v8_chart'
+        };
+      } catch (e) {
+        console.warn('fetchFundamentalsFromYahooV8Chart', sym, e.message);
+      }
+    }
+  }
+  return null;
+}
+
+/** FMP income statement + live price → trailing P/E and YoY growth when key-metrics endpoints are empty. */
+async function fetchFmpIncomeDerivedFundamentals(symbol, livePrice) {
+  const k = fmpEnvKeyFund();
+  if (!k) return null;
+  const variants = await fmpAllSymbolVariants(symbol, k).catch(() => intlVendorSymbolVariants(symbol));
+  const num = x => {
+    const t = typeof x === 'number' ? x : parseFloat(String(x ?? '').replace(/,/g, ''));
+    return Number.isFinite(t) ? t : null;
+  };
+  for (const raw of variants.slice(0, 14)) {
+    try {
+      const enc = encodeURIComponent(raw);
+      const isUrl = `https://financialmodelingprep.com/api/v3/income-statement/${enc}?limit=2&apikey=${encodeURIComponent(k)}`;
+      const r = await fetch(isUrl, { signal: AbortSignal.timeout(14000) });
+      if (!r.ok) continue;
+      const arr = await r.json().catch(() => []);
+      if (!Array.isArray(arr) || !arr.length) continue;
+      const cur = arr[0];
+      const prev = arr.length > 1 ? arr[1] : null;
+      const calcG = (c, p) =>
+        c != null && p != null && p !== 0 && Math.abs(p) > 1
+          ? Math.round(((c - p) / Math.abs(p)) * 1000) / 10
+          : null;
+      const revenueGrowth = calcG(cur?.revenue ?? cur?.totalRevenue, prev?.revenue ?? prev?.totalRevenue);
+      const earningsGrowth = calcG(cur?.netIncome, prev?.netIncome);
+      let eps = num(cur?.eps ?? cur?.epsDiluted);
+      if (eps == null && cur?.netIncome != null && cur?.weightedAverageShsOut) {
+        const sh = num(cur.weightedAverageShsOut);
+        if (sh && Math.abs(sh) > 1) eps = cur.netIncome / sh;
+      }
+      let trailingPE = null;
+      if (livePrice != null && eps != null && Math.abs(eps) > 1e-6) {
+        trailingPE = +Math.abs(Number(livePrice) / eps).toFixed(2);
+      }
+      if (
+        trailingPE == null &&
+        revenueGrowth == null &&
+        earningsGrowth == null &&
+        eps == null
+      )
+        continue;
+      console.log(`fetchFmpIncomeDerivedFundamentals ${symbol} ← ${raw}`);
+      return {
+        trailingPE,
+        revenueGrowth,
+        earningsGrowth,
+        fundamentalTrailingEps: eps,
+        _source: 'fmp'
+      };
+    } catch (e) {
+      console.warn('fetchFmpIncomeDerivedFundamentals', raw, e.message);
+    }
+  }
+  return null;
+}
+
+/** Finnhub annual income statement — growth + implied metrics for intl when /stock/metric is empty. */
+async function fetchFinnhubFinancialsFundamentals(symbol) {
+  const token = (process.env.FINNHUB_API_KEY || '').trim();
+  if (!token || !symbol) return null;
+  const num = v => {
+    const x = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/,/g, ''));
+    return Number.isFinite(x) ? x : null;
+  };
+  for (const v of finnhubSymbolVariants(symbol).slice(0, 12)) {
+    try {
+      const url = new URL('https://finnhub.io/api/v1/stock/financials');
+      url.searchParams.set('symbol', v);
+      url.searchParams.set('statement', 'ic');
+      url.searchParams.set('freq', 'annual');
+      url.searchParams.set('token', token);
+      const r = await fetch(url.toString(), { signal: AbortSignal.timeout(14000) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j || !Array.isArray(j.financials) || !j.financials.length) continue;
+      const rows = j.financials.filter(x => x && x.period);
+      if (rows.length < 2) continue;
+      const cur = rows[0];
+      const prev = rows[1];
+      const calcG = (c, p) =>
+        c != null && p != null && p !== 0 && Math.abs(p) > 1
+          ? Math.round(((c - p) / Math.abs(p)) * 1000) / 10
+          : null;
+      const revenueGrowth = calcG(num(cur.revenue ?? cur.netSales), num(prev.revenue ?? prev.netSales));
+      const earningsGrowth = calcG(num(cur.netIncome), num(prev.netIncome));
+      if (revenueGrowth == null && earningsGrowth == null) continue;
+      console.log(`fetchFinnhubFinancialsFundamentals ${symbol} ← ${v}`);
+      return {
+        revenueGrowth,
+        earningsGrowth,
+        _source: 'finnhub_metric'
+      };
+    } catch (e) {
+      console.warn('fetchFinnhubFinancialsFundamentals', v, e.message);
+    }
+  }
+  return null;
+}
+
+/** Alpha Vantage GLOBAL_QUOTE — PERatio when OVERVIEW is empty/throttled. */
+async function fetchFundamentalsAlphaVantageQuote(symbol) {
+  if (!alphaVantageApiKey()) return null;
+  const num = v => {
+    const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/,/g, ''));
+    return Number.isFinite(n) ? n : null;
+  };
+  for (const sym of alphaVantageSymbolVariantsForApi(symbol).slice(0, 6)) {
+    const j = await alphaVantageQuery({ function: 'GLOBAL_QUOTE', symbol: sym }, { fast: true });
+    const q = j?.['Global Quote'] || j?.globalQuote;
+    if (!q || typeof q !== 'object') continue;
+    const trailingPE = num(q['PERatio'] ?? q.pe);
+    const pegRatio = num(q['PEGRatio'] ?? q.pegRatio);
+    if (trailingPE == null && pegRatio == null) continue;
+    console.log(`AlphaVantage GLOBAL_QUOTE ${symbol} ← ${sym}`);
+    return {
+      trailingPE,
+      pegRatio,
+      _source: 'alpha_vantage'
+    };
   }
   return null;
 }
@@ -2375,9 +2574,15 @@ async function fetchFundamentalsFMP(symbol) {
       const peRatio  = num(km?.peRatioTTM ?? km?.peRatio ?? km?.priceEarningsRatio);
       const fwdPE    = num(km?.priceToEarningsRatioFwd ?? km?.forwardPE);
       const pegRatio = num(km?.pegRatioTTM ?? km?.pegRatio ?? km?.priceToEarningsGrowthRatio);
-      // Only skip if truly nothing useful from any source
-      if (peRatio == null && pegRatio == null && fwdPE == null &&
-          revenueGrowth == null && earningsGrowth == null && pf == null) continue;
+      // Skip profile-only rows — sector alone is not enough for fundamentals tiles
+      if (
+        peRatio == null &&
+        pegRatio == null &&
+        fwdPE == null &&
+        revenueGrowth == null &&
+        earningsGrowth == null
+      )
+        continue;
       console.log('fetchFundamentalsFMP', normalizeTickerMatch(raw));
       return {
         targetMeanPrice: derivedTarget!=null?parseFloat(derivedTarget):null,
@@ -3123,154 +3328,76 @@ function applyDerivedFundamentals(merged) {
 }
 
 async function fetchFundamentals(symbol) {
-  // Bloomberg **Desktop** bridge (LAN/tunnel → bridge.py) always runs first when URL is reachable.
-  // FMP / Yahoo / Finnhub only fill merge keys that are still null; _source rank keeps bloomberg_bridge
-  // over fmp (see mergeFundSnapshots). Bloomberg **Enterprise** HTTP (BLOOMBERG_ENTERPRISE_API_BASE) is optional and separate.
+  // PRIMARY: FMP + Finnhub + Alpha Vantage + Yahoo (parallel). Bloomberg is backup only.
+  let merged = {};
+  const livePx = await fetchSinglePrice(symbol).catch(() => null);
+  const vendorTasks = [];
+  if (fmpEnvKeyFund()) {
+    vendorTasks.push(fetchFundamentalsFMP(symbol).catch(() => null));
+    if (livePx?.price) {
+      vendorTasks.push(fetchFmpIncomeDerivedFundamentals(symbol, livePx.price).catch(() => null));
+    }
+  }
+  if ((process.env.FINNHUB_API_KEY || '').trim()) {
+    vendorTasks.push(fetchFundamentalsFinnhub(symbol).catch(() => null));
+    vendorTasks.push(fetchFinnhubFinancialsFundamentals(symbol).catch(() => null));
+  }
+  if (alphaVantageApiKey()) {
+    vendorTasks.push(fetchFundamentalsAlphaVantage(symbol).catch(() => null));
+  }
+  vendorTasks.push(
+    fetchFundamentalsFromYahooV7Quote(symbol).catch(() => null),
+    fetchFundamentalsFromYahooV8Chart(symbol).catch(() => null),
+    fetchFundamentalsYahoo(symbol).catch(() => null)
+  );
 
-  // Step 1: Bloomberg Bridge — primary source, awaited first
+  const vendorHits = await Promise.all(vendorTasks);
+  for (const hit of vendorHits) {
+    if (hit) merged = mergeFundSnapshots(merged, hit);
+  }
+
+  if (
+    livePx?.price &&
+    merged.trailingPE == null &&
+    merged.forwardPE == null &&
+    fmpEnvKeyFund()
+  ) {
+    const fmpDer = await fetchFmpIncomeDerivedFundamentals(symbol, livePx.price).catch(() => null);
+    if (fmpDer) merged = mergeFundSnapshots(merged, fmpDer);
+  }
+
+  applyDerivedFundamentals(merged);
+
+  // BACKUP: Bloomberg Desktop bridge + Enterprise — fill null keys only, never override FMP/Finnhub/AV/Yahoo
   const bb = await fetchBloombergBridgeFundamentals(symbol).catch(() => null);
-  // Use Bloomberg as base if it returned data; otherwise start empty
-  let merged = bb ? mergeBloombergPriority({}, bb) : {};
-  if (bb) console.log(`Fundamentals: Bloomberg bridge hit for ${symbol}`);
-
-  // Step 2: Bloomberg Enterprise (secondary Bloomberg source)
+  if (bb) {
+    merged = mergeGapFillOnly(merged, bb);
+    console.log(`Fundamentals: Bloomberg bridge gap-fill for ${symbol}`);
+  }
   const ent = await fetchBloombergEnterpriseFundamentals(symbol).catch(() => null);
-  if (ent) merged = mergeBloombergPriority(merged, ent);
+  if (ent) merged = mergeGapFillOnly(merged, ent);
 
-  // Step 3: FMP / Finnhub / Alpha Vantage — parallel for intl; gap-fill otherwise
-  const isNonUS = /\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i.test(symbol);
-  const needsVendor =
-    isNonUS ||
-    merged.revenueGrowth == null ||
-    merged.earningsGrowth == null ||
-    merged.pegRatio == null ||
-    merged.forwardPE == null ||
+  // Last-resort Yahoo PE pass
+  if (
     merged.trailingPE == null ||
-    merged.recommendationKey == null ||
-    merged.targetMeanPrice == null ||
-    merged._fmpSector == null ||
-    merged._fmpSector === '';
-  if (needsVendor) {
-    const vendorTasks = [];
-    if (fmpEnvKeyFund())
-      vendorTasks.push(
-        fetchFundamentalsFMP(symbol)
-          .then(f => ({ f }))
-          .catch(() => ({ f: null }))
-      );
-    if ((process.env.FINNHUB_API_KEY || '').trim())
-      vendorTasks.push(
-        fetchFundamentalsFinnhub(symbol)
-          .then(f => ({ f }))
-          .catch(() => ({ f: null }))
-      );
-    if (alphaVantageApiKey())
-      vendorTasks.push(
-        fetchFundamentalsAlphaVantage(symbol)
-          .then(f => ({ f }))
-          .catch(() => ({ f: null }))
-      );
-    vendorTasks.push(
-      fetchFundamentalsFromYahooV7Quote(symbol)
-        .then(f => ({ f }))
-        .catch(() => ({ f: null }))
-    );
-    const vendorHits = await Promise.all(vendorTasks);
-    for (const hit of vendorHits) {
-      if (hit?.f) merged = mergeFundSnapshots(merged, hit.f);
-    }
-    if (vendorHits.some(h => h?.f))
-      console.log(
-        `Fundamentals vendors ${symbol}: pe=${merged.trailingPE ?? merged.forwardPE ?? 'n/a'} peg=${merged.pegRatio ?? 'n/a'} rev=${merged.revenueGrowth ?? 'n/a'}`
-      );
-  }
-
-  // Step 4: Yahoo — last resort for any still-missing fields
-  const needsYahoo =
-    merged.revenueGrowth == null ||
-    merged.earningsGrowth == null ||
-    merged.pegRatio == null ||
     merged.forwardPE == null ||
-    merged.trailingPE == null ||
-    merged._fmpSector == null ||
-    merged._fmpSector === '';
-  if (needsYahoo) {
-    const yV7 = await fetchFundamentalsFromYahooV7Quote(symbol).catch(() => null);
-    if (yV7) merged = mergeFundSnapshots(merged, yV7);
-    // For non-US, also try bare ticker (e.g. INFY for INFY.NS, TCS for TCS.NS)
-    const bare = isNonUS ? symbol.replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK)$/i, '') : symbol;
-    const yFund = await fetchFundamentalsYahoo(symbol).catch(() => null)
-      || (bare !== symbol ? await fetchFundamentalsYahoo(bare).catch(() => null) : null);
-    if (yFund) {
-      for (const [k, v] of Object.entries(yFund)) {
-        if (merged[k] == null && v != null && v !== '') merged[k] = v;
-      }
-    }
-    // Yahoo PE fallback for forward PE / PEG
+    merged.pegRatio == null ||
+    merged.revenueGrowth == null ||
+    merged.earningsGrowth == null
+  ) {
     const qPe = await fetchYahooQuotePE(symbol).catch(() => null);
-    if (qPe) {
-      if (merged.forwardPE == null && qPe.forwardPE != null) merged.forwardPE = qPe.forwardPE;
-      if (merged.trailingPE == null && qPe.trailingPE != null) merged.trailingPE = qPe.trailingPE;
-      if (merged.pegRatio == null && qPe.pegRatio != null) merged.pegRatio = qPe.pegRatio;
-    }
+    if (qPe) merged = mergeFundSnapshots(merged, qPe);
   }
 
-  // Legacy compatibility: run old Yahoo fill chain only if we still have nothing
-  const useBridge = bloombergBridgeUrl(); // kept for backward compat references below
-  const yFund = null; // already handled above
-  // Yahoo gap-fill already handled above in the restructured fetchFundamentals
-
-  /** Final FMP pass if Yahoo still left PEG / growth gaps. */
-  if (
-    fmpEnvKeyFund() &&
-    (merged.pegRatio == null ||
-      merged.revenueGrowth == null ||
-      merged.earningsGrowth == null ||
-      merged.forwardPE == null ||
-      merged.trailingPE == null ||
-      merged._fmpSector == null ||
-      merged._fmpSector === '' ||
-      merged.recommendationKey == null)
-  ) {
-    try {
-      const fGap = await fetchFundamentalsFMP(symbol);
-      if (fGap) merged = mergeFundSnapshots(merged, fGap);
-    } catch (_) {}
-  }
-  if (
-    (process.env.FINNHUB_API_KEY || '').trim() &&
-    (merged.pegRatio == null ||
-      merged.revenueGrowth == null ||
-      merged.earningsGrowth == null ||
-      merged.forwardPE == null ||
-      merged.trailingPE == null ||
-      merged._fmpSector == null ||
-      merged._fmpSector === '')
-  ) {
-    try {
-      const fhFund = await fetchFundamentalsFinnhub(symbol);
-      if (fhFund) merged = mergeFundSnapshots(merged, fhFund);
-    } catch (_) {}
-  }
-  if (
-    alphaVantageApiKey() &&
-    (merged.pegRatio == null ||
-      merged.revenueGrowth == null ||
-      merged.earningsGrowth == null ||
-      merged.forwardPE == null ||
-      merged.trailingPE == null ||
-      merged._fmpSector == null ||
-      merged._fmpSector === '')
-  ) {
-    try {
-      const avFund = await fetchFundamentalsAlphaVantage(symbol);
-      if (avFund) merged = mergeFundSnapshots(merged, avFund);
-    } catch (_) {}
-  }
   applyDerivedFundamentals(merged);
   const hasAny = Object.keys(merged).some(
     k => !k.startsWith('_') && merged[k] != null && merged[k] !== ''
   );
+  if (hasAny) {
+    console.log(
+      `Fundamentals ${symbol}: src=${merged._source || 'multi'} pe=${merged.trailingPE ?? merged.forwardPE ?? 'n/a'} peg=${merged.pegRatio ?? 'n/a'} rev=${merged.revenueGrowth ?? 'n/a'}`
+    );
+  }
   return hasAny ? merged : null;
 }
 
@@ -4344,33 +4471,44 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   const fk = fmpAnyApiKey();
   try {
-    const [fmpStable, fmpScores, finnhub, av, yahoo, yahooV7, merged, fmpScore, fmpExch] =
+    const livePxDbg = await fetchSinglePrice(sym).catch(() => null);
+    const [fmpFund, fmpScores, finnhub, fhFin, av, yahoo, yahooV7, yahooV8, fmpIncome, merged, fmpScore, fmpExch] =
       await Promise.all([
         fk ? fetchFundamentalsFMP(sym).catch(() => null) : null,
         fk ? fetchFmpStableFinancialScores(sym, fk, 12000).catch(() => null) : null,
         fetchFundamentalsFinnhub(sym).catch(() => null),
+        fetchFinnhubFinancialsFundamentals(sym).catch(() => null),
         fetchFundamentalsAlphaVantage(sym).catch(() => null),
         fetchFundamentalsYahoo(sym).catch(() => null),
         fetchFundamentalsFromYahooV7Quote(sym).catch(() => null),
+        fetchFundamentalsFromYahooV8Chart(sym).catch(() => null),
+        fk && livePxDbg?.price
+          ? fetchFmpIncomeDerivedFundamentals(sym, livePxDbg.price).catch(() => null)
+          : null,
         fetchFundamentals(sym).catch(() => null),
         fk ? fetchFmpScore(sym).catch(() => null) : null,
         fk ? fmpExchangeSymbolVariants(sym, fk).catch(() => []) : []
       ]);
     res.json({
-      build: '20260605-asian-vendors-v3',
+      build: '20260605-asian-vendors-v4',
       symbol: sym,
+      live_price: livePxDbg?.price ?? null,
       fmp_exchange_variants: fmpExch,
-      fmp_fundamentals: fmpStable,
+      fmp_fundamentals: fmpFund,
+      fmp_income_derived: fmpIncome,
       fmp_scores: fmpScores,
       finnhub_metric: finnhub,
+      finnhub_financials: fhFin,
       alpha_vantage: av,
       yahoo: yahoo,
       yahoo_v7: yahooV7,
+      yahoo_v8: yahooV8,
       merged,
-      fmp_quality: fmpScore
+      fmp_quality: fmpScore,
+      merge_policy: 'FMP+Finnhub+AV+Yahoo primary; Bloomberg gap-fill only'
     });
   } catch (e) {
-    res.status(500).json({ error: e.message || 'debug failed', build: '20260605-asian-vendors-v3' });
+    res.status(500).json({ error: e.message || 'debug failed', build: '20260605-asian-vendors-v4' });
   }
 });
 
@@ -4380,7 +4518,7 @@ app.get('/api/health', (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-asian-vendors-v3',
+    server_build: '20260605-asian-vendors-v4',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -4490,7 +4628,7 @@ app.get('/api/health', (req, res) => {
     bloomberg_enterprise_configured: Boolean(bloombergEnterpriseBase()),
     /** Documents that Desktop API bridge data is not overwritten by vendors for the same field — for ops review. */
     bloomberg_desktop_bridge_merge_policy:
-      'fetchFundamentals awaits bridge /snapshot first; FMP/Yahoo/Finnhub only set keys that are still null. mergeFundSnapshots keeps _source=bloomberg_bridge over fmp. Enterprise HTTP API is optional and skipped when BLOOMBERG_ENTERPRISE_API_BASE is unset.',
+      'fetchFundamentals loads FMP + Finnhub + Alpha Vantage + Yahoo in parallel first; Bloomberg Desktop bridge and Enterprise only gap-fill null keys (backup). Piotroski/Altman from FMP only.',
     ts: Date.now(),
     historyVersion: HISTORY_VERSION,
     historyCount: tradeHistory.length
