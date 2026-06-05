@@ -1697,6 +1697,104 @@ const NSE_BB_OVERRIDES = /** @type {Record<string,string>} */ ({
 /** Must match bloomberg-bridge `BRIDGE_BUILD` — bridge echoes this on /snapshot, /earnings, /health. */
 const BLOOMBERG_BRIDGE_BUILD_EXPECTED = '20260519-bridge-scores-from-fmp-only';
 
+/** Non-US exchange suffixes — used for intl-first FMP variant ordering and diagnostics. */
+function isIntlEquitySymbol(symbol) {
+  return /\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW|TO|V|MX)$/i.test(
+    String(symbol || '')
+  );
+}
+
+/** Set FMP_PLAN=starter on Render only if still on US-only tier; default ultimate (global coverage). */
+function fmpPlanTier() {
+  const p = String(process.env.FMP_PLAN || 'ultimate').trim().toLowerCase();
+  return p === 'starter' ? 'starter' : 'ultimate';
+}
+
+function fmpGlobalCoverageEnabled() {
+  return fmpPlanTier() === 'ultimate';
+}
+
+const FMP_INTL_DATA_MISS_HINT =
+  'FMP returned no fundamentals/scores for this symbol — check ticker spelling or FMP exchange listing (e.g. ASIANPAINT.NS).';
+
+/** Lazy probe — confirms Ultimate global endpoints return data (surfaced in /api/health). */
+let fmpGlobalCoverageProbe = {
+  ts: 0,
+  symbol: 'ASIANPAINT.NS',
+  ok: false,
+  fundamentals: false,
+  scores: false,
+  piotroski: null,
+  altmanZ: null,
+  trailingPE: null,
+  error: null
+};
+
+async function probeFmpGlobalCoverage(force = false) {
+  const key = fmpEnvKeyFund();
+  if (!key || !fmpGlobalCoverageEnabled()) return fmpGlobalCoverageProbe;
+  const now = Date.now();
+  if (!force && fmpGlobalCoverageProbe.ts && now - fmpGlobalCoverageProbe.ts < 6 * 60 * 60 * 1000) {
+    return fmpGlobalCoverageProbe;
+  }
+  const sym = fmpGlobalCoverageProbe.symbol;
+  fmpGlobalCoverageProbe = {
+    ...fmpGlobalCoverageProbe,
+    ts: now,
+    ok: false,
+    fundamentals: false,
+    scores: false,
+    piotroski: null,
+    altmanZ: null,
+    trailingPE: null,
+    error: null
+  };
+  try {
+    const variants = await fmpAllSymbolVariants(sym, key).catch(() => intlVendorSymbolVariants(sym));
+    for (const v of variants.slice(0, 8)) {
+      const fund = await fetchFmpStableFundamentalsBundle(v, key).catch(() => null);
+      if (fund?.trailingPE || fund?.pegRatio || fund?.revenueGrowth) {
+        fmpGlobalCoverageProbe.fundamentals = true;
+        fmpGlobalCoverageProbe.trailingPE = fund.trailingPE ?? null;
+        break;
+      }
+    }
+    const scores = await fetchFmpStableFinancialScores(sym, key, 14000).catch(() => null);
+    if (scores?.piotroski != null || scores?.altmanZ != null) {
+      fmpGlobalCoverageProbe.scores = true;
+      fmpGlobalCoverageProbe.piotroski = scores.piotroski ?? null;
+      fmpGlobalCoverageProbe.altmanZ = scores.altmanZ ?? null;
+    }
+    fmpGlobalCoverageProbe.ok =
+      fmpGlobalCoverageProbe.fundamentals || fmpGlobalCoverageProbe.scores;
+  } catch (e) {
+    fmpGlobalCoverageProbe.error = e.message || String(e);
+  }
+  return fmpGlobalCoverageProbe;
+}
+
+function sanitizePe(v) {
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/,/g, ''));
+  if (!Number.isFinite(n) || n <= 0 || n >= 9000) return null;
+  return n;
+}
+
+function sanitizePeg(v) {
+  const n = sanitizePe(v);
+  if (n == null || n > 99) return null;
+  return n;
+}
+
+/** Drop bogus zeros from Yahoo/FMP (e.g. trailingPE: 0 for .NS when field is missing). */
+function sanitizeFundSnapshot(snap) {
+  if (!snap || typeof snap !== 'object') return snap;
+  const out = { ...snap };
+  if ('trailingPE' in out) out.trailingPE = sanitizePe(out.trailingPE);
+  if ('forwardPE' in out) out.forwardPE = sanitizePe(out.forwardPE);
+  if ('pegRatio' in out) out.pegRatio = sanitizePeg(out.pegRatio);
+  return out;
+}
+
 /** Map app ticker to Bloomberg equity string for Desktop API ref() (e.g. `AAPL US Equity`, `9988 HK Equity`). */
 function toBloombergEquity(sym) {
   const s = String(sym || '')
@@ -1928,7 +2026,10 @@ function alphaVantageSymbolVariantsForApi(symbol) {
 
 async function fetchFundamentalsAlphaVantage(symbol) {
   if (!alphaVantageApiKey()) return null;
-  const variants = alphaVantageSymbolVariantsForApi(symbol);
+  const searchSyms = await alphaVantageSearchSymbolVariants(symbol).catch(() => []);
+  const variants = [
+    ...new Set([...searchSyms, ...alphaVantageSymbolVariantsForApi(symbol)])
+  ].filter(Boolean);
   const num = v => {
     const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/,/g, ''));
     return Number.isFinite(n) ? n : null;
@@ -1939,12 +2040,12 @@ async function fetchFundamentalsAlphaVantage(symbol) {
     if (Math.abs(n) < 5 && Math.abs(n) > 1e-8) return +((n * 100).toFixed(2));
     return +n.toFixed(2);
   };
-  for (const sym of variants.slice(0, 6)) {
+  for (const sym of variants.slice(0, 10)) {
     const j = await alphaVantageQuery({ function: 'OVERVIEW', symbol: sym }, { fast: true });
     if (!j || !j.Symbol || j.Symbol === 'None') continue;
-    const trailingPE = num(j.PERatio ?? j.TrailingPE);
-    const forwardPE = num(j.ForwardPE);
-    const pegRatio = num(j.PEGRatio);
+    const trailingPE = sanitizePe(j.PERatio ?? j.TrailingPE);
+    const forwardPE = sanitizePe(j.ForwardPE);
+    const pegRatio = sanitizePeg(j.PEGRatio);
     const revenueGrowth = pctGrowth(j.QuarterlyRevenueGrowthYOY ?? j.RevenueGrowth);
     const earningsGrowth = pctGrowth(j.QuarterlyEarningsGrowthYOY ?? j.EarningsGrowth);
     const marketCap = num(j.MarketCapitalization);
@@ -1972,6 +2073,26 @@ async function fetchFundamentalsAlphaVantage(symbol) {
     };
   }
   return (await fetchFundamentalsAlphaVantageQuote(symbol)) || null;
+}
+
+/** Alpha Vantage symbol search — resolves NSE/HK spellings AV accepts for OVERVIEW. */
+async function alphaVantageSearchSymbolVariants(symbol) {
+  const bare = String(symbol || '')
+    .trim()
+    .replace(/\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW|TO|V|MX)$/i, '');
+  if (!bare) return [];
+  const j = await alphaVantageQuery({ function: 'SYMBOL_SEARCH', keywords: bare }, { fast: true });
+  const out = [];
+  const seen = new Set();
+  for (const m of j?.bestMatches || []) {
+    const sym = String(m['1. symbol'] || '').trim();
+    if (!sym) continue;
+    const k = sym.toUpperCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(sym);
+  }
+  return out;
 }
 
 /** Quarterly EPS history — same row shape as FMP/Yahoo earnings helpers. */
@@ -2090,7 +2211,7 @@ async function fmpExchangeSymbolVariants(symbol, key) {
     seen.add(k);
     found.push(t);
   };
-  for (const seed of intlVendorSymbolVariants(symbol).slice(0, 5)) {
+  for (const seed of intlVendorSymbolVariants(symbol).slice(0, 8)) {
     try {
       const url = `https://financialmodelingprep.com/stable/search-exchange-variants?symbol=${encodeURIComponent(seed)}&apikey=${encodeURIComponent(key)}`;
       const r = await fetch(url, { signal: AbortSignal.timeout(12000), headers: { Accept: 'application/json' } });
@@ -2127,6 +2248,20 @@ const YAHOO_QUOTE_FUND_FIELDS = [
   'industry',
   'marketCap'
 ].join(',');
+
+/** FMP wins over Yahoo/AV/Finnhub for numeric fundamentals (Ultimate global path). */
+function mergeFmpPrimary(base, fmp) {
+  if (!fmp || typeof fmp !== 'object') return base || {};
+  const out = { ...(base || {}) };
+  const snap = sanitizeFundSnapshot(fmp);
+  for (const [k, v] of Object.entries(snap)) {
+    if (v == null || v === '') continue;
+    if (String(k).startsWith('_') && !FUNDAMENTAL_MERGE_META.has(k)) continue;
+    out[k] = v;
+  }
+  out._source = 'fmp';
+  return out;
+}
 
 /** Merge overlay into base only where base keys are still empty (Bloomberg backup mode). */
 function mergeGapFillOnly(base, overlay) {
@@ -2168,12 +2303,12 @@ async function fetchFundamentalsFromYahooV7Quote(symbol) {
     const eps = num(
       q.epsTrailingTwelveMonths ?? q.trailingEps ?? q.epsCurrentYear ?? q.epsForward
     );
-    let trailingPE = num(q.trailingPE);
+    let trailingPE = sanitizePe(num(q.trailingPE));
     if (trailingPE == null && price != null && eps != null && Math.abs(eps) > 1e-6) {
-      trailingPE = +Math.abs(price / eps).toFixed(2);
+      trailingPE = sanitizePe(+Math.abs(price / eps).toFixed(2));
     }
-    const forwardPE = num(q.forwardPE);
-    const pegRatio = num(q.trailingPegRatio ?? q.pegRatio);
+    const forwardPE = sanitizePe(num(q.forwardPE));
+    const pegRatio = sanitizePeg(num(q.trailingPegRatio ?? q.pegRatio));
     const revenueGrowth = pct(q.revenueGrowth);
     const earningsGrowth = pct(q.earningsGrowth);
     const sector = String(q.sector || q.industry || '').trim() || null;
@@ -2234,10 +2369,10 @@ async function fetchFundamentalsFromYahooV7Quote(symbol) {
         const meta = d?.chart?.result?.[0]?.meta;
         if (meta) {
           const price = num(meta.regularMarketPrice);
-          let trailingPE = num(meta.trailingPE);
+          let trailingPE = sanitizePe(num(meta.trailingPE));
           const eps = num(meta.epsTrailingTwelveMonths);
           if (trailingPE == null && price != null && eps != null && Math.abs(eps) > 1e-6) {
-            trailingPE = +Math.abs(price / eps).toFixed(2);
+            trailingPE = sanitizePe(+Math.abs(price / eps).toFixed(2));
           }
           const hit = parseQ(
             {
@@ -2287,9 +2422,9 @@ async function fetchFundamentalsFromFmpQuote(symbol) {
         if (!row) continue;
         const price = num(row.price ?? row.close);
         const eps = num(row.eps);
-        let trailingPE = num(row.pe ?? row.peRatio);
+        let trailingPE = sanitizePe(num(row.pe ?? row.peRatio));
         if (trailingPE == null && price != null && eps != null && Math.abs(eps) > 1e-6) {
-          trailingPE = +Math.abs(price / eps).toFixed(2);
+          trailingPE = sanitizePe(+Math.abs(price / eps).toFixed(2));
         }
         if (trailingPE == null && eps == null) continue;
         console.log(`fetchFundamentalsFromFmpQuote ${symbol} ← ${raw}`);
@@ -2597,7 +2732,7 @@ async function fetchFmpStableFundamentalsBundle(raw, key) {
       num(km?.marketCap ?? pf?.mktCap) != null;
     if (!hasNumeric) return null;
     console.log(`fetchFmpStableFundamentals ${normalizeTickerMatch(raw)}`);
-    return {
+    return sanitizeFundSnapshot({
       targetMeanPrice: num(pf?.priceTarget ?? pf?.targetConsensus) ?? null,
       revenueGrowth,
       earningsGrowth,
@@ -2607,14 +2742,14 @@ async function fetchFmpStableFundamentalsBundle(raw, key) {
         num(km?.debtToEquityTTM ?? rat?.debtToEquityRatioTTM) != null
           ? Number(num(km?.debtToEquityTTM ?? rat?.debtToEquityRatioTTM).toFixed(1))
           : null,
-      forwardPE: fwdPE,
-      pegRatio,
-      trailingPE: peRatio,
+      forwardPE: sanitizePe(fwdPE),
+      pegRatio: sanitizePeg(pegRatio),
+      trailingPE: sanitizePe(peRatio),
       dividendYield: pctGrowth(km?.dividendYieldTTM ?? rat?.dividendYieldTTM),
       marketCap: num(km?.marketCap ?? pf?.mktCap),
       _fmpSector: pf?.sector || pf?.industry || null,
       _source: 'fmp'
-    };
+    });
   } catch (e) {
     console.warn('fetchFmpStableFundamentals', raw, e.message);
     return null;
@@ -2634,12 +2769,9 @@ async function fetchFundamentalsFMP(symbol) {
       symbol.replace(/\./g, '-')
     ])
   ];
-  const isIntl = /\.(NS|BO|HK|T|L|DE|PA|AS|AMS|KS|KQ|TW|AX|SI|BK|ST|CO|OL|MI|MC|VI|SW)$/i.test(symbol);
   for (const raw of variants) {
-    if (isIntl) {
-      const stableHit = await fetchFmpStableFundamentalsBundle(raw, k).catch(() => null);
-      if (stableHit) return stableHit;
-    }
+    const stableHit = await fetchFmpStableFundamentalsBundle(raw, k).catch(() => null);
+    if (stableHit) return stableHit;
     try {
       const enc = encodeURIComponent(raw);
       const kmUrl = `https://financialmodelingprep.com/api/v3/key-metrics-ttm/${enc}?apikey=${encodeURIComponent(k)}`;
@@ -2721,7 +2853,7 @@ async function fetchFundamentalsFMP(symbol) {
       )
         continue;
       console.log('fetchFundamentalsFMP', normalizeTickerMatch(raw));
-      return {
+      return sanitizeFundSnapshot({
         targetMeanPrice: derivedTarget!=null?parseFloat(derivedTarget):null,
         analystCount: anTotal||null,
         recommendationKey: derivedRecKey,
@@ -2738,15 +2870,14 @@ async function fetchFundamentalsFMP(symbol) {
           (km?.debtToEquityTTM ?? km?.debtToEquity) != null
             ? Number(num(km?.debtToEquityTTM ?? km?.debtToEquity).toFixed(1))
             : null,
-        // Forward P/E from priceToEarningsRatioFwd (may be null); trailing is TTM below
-        forwardPE: fwdPE,
-        pegRatio,
-        trailingPE: peRatio,
+        forwardPE: sanitizePe(fwdPE),
+        pegRatio: sanitizePeg(pegRatio),
+        trailingPE: sanitizePe(peRatio),
         dividendYield: pctGrowth(km?.dividendYield),
         marketCap: num(km?.marketCap ?? pf?.mktCap),
         _fmpSector: pf?.sector || pf?.industry || null,
         _source: 'fmp'
-      };
+      });
     } catch (e) {
       console.warn('fetchFundamentalsFMP', raw, e.message);
     }
@@ -2758,6 +2889,8 @@ async function fetchFundamentalsFMP(symbol) {
 const FUNDAMENTAL_MERGE_META = new Set(['_source', '_bbSecurity', '_fmpSector']);
 
 function mergeFundSnapshots(y, f) {
+  y = y ? sanitizeFundSnapshot(y) : y;
+  f = f ? sanitizeFundSnapshot(f) : f;
   if (!y) return f;
   if (!f) return y;
   const out = { ...y };
@@ -3465,12 +3598,28 @@ function applyDerivedFundamentals(merged) {
 }
 
 async function fetchFundamentals(symbol) {
-  // PRIMARY: FMP + Finnhub + Alpha Vantage + Yahoo (parallel). Bloomberg is backup only.
+  // PRIMARY: FMP Ultimate (global) + Finnhub + Alpha Vantage + Yahoo (parallel). Bloomberg is backup only.
   let merged = {};
   const livePx = await fetchSinglePrice(symbol).catch(() => null);
+  const fk = fmpEnvKeyFund();
   const vendorTasks = [];
-  if (fmpEnvKeyFund()) {
+
+  /** FMP first — stable bundle on exchange-resolved variants (Ultimate global coverage). */
+  if (fk && fmpGlobalCoverageEnabled()) {
+    vendorTasks.push(
+      (async () => {
+        const variants = await fmpAllSymbolVariants(symbol, fk).catch(() => intlVendorSymbolVariants(symbol));
+        for (const v of variants.slice(0, isIntlEquitySymbol(symbol) ? 14 : 8)) {
+          const hit = await fetchFmpStableFundamentalsBundle(v, fk).catch(() => null);
+          if (hit) return hit;
+        }
+        return fetchFundamentalsFMP(symbol).catch(() => null);
+      })()
+    );
+  } else if (fk) {
     vendorTasks.push(fetchFundamentalsFMP(symbol).catch(() => null));
+  }
+  if (fk) {
     vendorTasks.push(fetchFundamentalsFromFmpQuote(symbol).catch(() => null));
     if (livePx?.price) {
       vendorTasks.push(fetchFmpIncomeDerivedFundamentals(symbol, livePx.price).catch(() => null));
@@ -3493,6 +3642,15 @@ async function fetchFundamentals(symbol) {
   const vendorHits = await Promise.all(vendorTasks);
   for (const hit of vendorHits) {
     if (hit) merged = mergeFundSnapshots(merged, hit);
+  }
+
+  /** Re-apply best FMP row on top so Ultimate global data beats Yahoo/AV gap-fill. */
+  if (fk && fmpGlobalCoverageEnabled()) {
+    const fmpHits = vendorHits.filter(
+      h => h && (h._source === 'fmp' || String(h._source || '').startsWith('fmp'))
+    );
+    const bestFmp = fmpHits.find(h => h.trailingPE || h.pegRatio || h.revenueGrowth) || fmpHits[0];
+    if (bestFmp) merged = mergeFmpPrimary(merged, bestFmp);
   }
 
   if (
@@ -3529,6 +3687,15 @@ async function fetchFundamentals(symbol) {
   }
 
   applyDerivedFundamentals(merged);
+  if (isIntlEquitySymbol(symbol) && fmpGlobalCoverageEnabled()) {
+    const hasFmpFund =
+      merged._source === 'fmp' &&
+      (merged.trailingPE != null || merged.pegRatio != null || merged.revenueGrowth != null);
+    if (!hasFmpFund) merged._intlCoverageNote = FMP_INTL_DATA_MISS_HINT;
+  } else if (isIntlEquitySymbol(symbol) && fmpPlanTier() === 'starter') {
+    merged._intlCoverageNote =
+      'FMP Starter is US-only for fundamentals/scores. Set FMP_PLAN=ultimate on Render (or upgrade plan) for NSE/HK/JP.';
+  }
   const hasAny = Object.keys(merged).some(
     k => !k.startsWith('_') && merged[k] != null && merged[k] !== ''
   );
@@ -3575,7 +3742,7 @@ function mergeFundamentalsForUi(row, fund) {
   };
   const fmtPe = x => {
     const n = Number(x);
-    if (!Number.isFinite(n)) return null;
+    if (!Number.isFinite(n) || n <= 0 || n >= 9000) return null;
     if (n >= 99) return String(Math.round(n));
     if (n > 35) return n.toFixed(1).replace(/\.0$/, '');
     return n.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
@@ -4197,7 +4364,7 @@ async function fetchFmpScore(symbol, opts = {}) {
   const key = fmpEnvKeyFund();
   if (!key) return null;
 
-  const cacheKey = batchMode ? `${String(symbol)}::fmp-lite-v4` : String(symbol);
+  const cacheKey = batchMode ? `${String(symbol)}::fmp-lite-v5-ultimate` : `${String(symbol)}::fmp-v5-ultimate`;
   const now = Date.now();
   const prev = _fmpCache.get(cacheKey);
   if (prev && typeof prev.ts === 'number') {
@@ -4211,7 +4378,8 @@ async function fetchFmpScore(symbol, opts = {}) {
       ...intlVendorSymbolVariants(symbol)
     ])
   ];
-  if (batchMode) candidates = candidates.slice(0, 14);
+  if (batchMode) candidates = candidates.slice(0, 16);
+  else if (isIntlEquitySymbol(symbol)) candidates = candidates.slice(0, 22);
   if (!batchMode) {
     console.log(`FMP fetchFmpScore variants for ${symbol}:`, candidates.slice(0, 12).join(' | '));
   }
@@ -4426,6 +4594,22 @@ async function fetchFmpScore(symbol, opts = {}) {
         analystCounts: grades,
         buy_track_record: qs != null && qs >= 7
       };
+      if (
+        isIntlEquitySymbol(symbol) &&
+        fmpPlanTier() === 'starter' &&
+        result.piotroski == null &&
+        result.altmanZ == null
+      ) {
+        result.intlCoverageNote =
+          'FMP Starter is US-only for Piotroski/Altman. Set FMP_PLAN=ultimate on Render.';
+      } else if (
+        isIntlEquitySymbol(symbol) &&
+        fmpGlobalCoverageEnabled() &&
+        result.piotroski == null &&
+        result.altmanZ == null
+      ) {
+        result.intlCoverageNote = FMP_INTL_DATA_MISS_HINT;
+      }
       _fmpCache.set(cacheKey, { ts: Date.now(), data: result });
       if (batchMode) {
         console.log(`FMP lite ${symbol} ← ${sym} qs=${qs ?? 'n/a'}`);
@@ -4611,7 +4795,7 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
   const fk = fmpAnyApiKey();
   try {
     const livePxDbg = await fetchSinglePrice(sym).catch(() => null);
-    const [fmpFund, fmpQuote, fmpScores, finnhub, fhFin, fhProf, av, yahoo, yahooV7, yahooV8, fmpIncome, merged, fmpScore, fmpExch] =
+    const [fmpFund, fmpQuote, fmpScores, finnhub, fhFin, fhProf, av, avSearch, yahoo, yahooV7, yahooV8, fmpIncome, merged, fmpScore, fmpExch] =
       await Promise.all([
         fk ? fetchFundamentalsFMP(sym).catch(() => null) : null,
         fk ? fetchFundamentalsFromFmpQuote(sym).catch(() => null) : null,
@@ -4620,6 +4804,7 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
         fetchFinnhubFinancialsFundamentals(sym).catch(() => null),
         fetchFinnhubProfileFundamentals(sym).catch(() => null),
         fetchFundamentalsAlphaVantage(sym).catch(() => null),
+        alphaVantageApiKey() ? alphaVantageSearchSymbolVariants(sym).catch(() => []) : [],
         fetchFundamentalsYahoo(sym).catch(() => null),
         fetchFundamentalsFromYahooV7Quote(sym).catch(() => null),
         fetchFundamentalsFromYahooV8Chart(sym).catch(() => null),
@@ -4631,10 +4816,14 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
         fk ? fmpExchangeSymbolVariants(sym, fk).catch(() => []) : []
       ]);
     res.json({
-      build: '20260605-asian-vendors-v5',
+      build: '20260605-fmp-ultimate-v7',
       symbol: sym,
+      is_intl_symbol: isIntlEquitySymbol(sym),
+      fmp_plan: fmpPlanTier(),
+      fmp_global_coverage: fmpGlobalCoverageEnabled(),
       live_price: livePxDbg?.price ?? null,
       fmp_exchange_variants: fmpExch,
+      alpha_vantage_search: avSearch,
       fmp_fundamentals: fmpFund,
       fmp_quote: fmpQuote,
       fmp_income_derived: fmpIncome,
@@ -4651,17 +4840,20 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
       merge_policy: 'FMP+Finnhub+AV+Yahoo primary; Bloomberg gap-fill only'
     });
   } catch (e) {
-    res.status(500).json({ error: e.message || 'debug failed', build: '20260605-asian-vendors-v5' });
+    res.status(500).json({ error: e.message || 'debug failed', build: '20260605-fmp-ultimate-v7' });
   }
 });
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
+  if (fmpGlobalCoverageEnabled() && fmpEnvKeyFund()) {
+    probeFmpGlobalCoverage().catch(() => null);
+  }
   try {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-asian-vendors-v5',
+    server_build: '20260605-fmp-ultimate-v7',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -4674,7 +4866,11 @@ app.get('/api/health', (req, res) => {
       return {
         key_resolved: Boolean(fk),
         key_chars: fk ? fk.length : 0,
-        key_suffix_masked: fk && fk.length >= 4 ? `****${fk.slice(-4)}` : fk ? '(short)' : null
+        key_suffix_masked: fk && fk.length >= 4 ? `****${fk.slice(-4)}` : fk ? '(short)' : null,
+        plan: fmpPlanTier(),
+        global_coverage: fmpGlobalCoverageEnabled(),
+        env_plan_var: 'FMP_PLAN (ultimate|starter, default ultimate)',
+        global_probe: fmpGlobalCoverageProbe
       };
     })(),
     alpha_vantage: (() => {
@@ -4771,7 +4967,7 @@ app.get('/api/health', (req, res) => {
     bloomberg_enterprise_configured: Boolean(bloombergEnterpriseBase()),
     /** Documents that Desktop API bridge data is not overwritten by vendors for the same field — for ops review. */
     bloomberg_desktop_bridge_merge_policy:
-      'fetchFundamentals loads FMP + Finnhub + Alpha Vantage + Yahoo in parallel first; Bloomberg Desktop bridge and Enterprise only gap-fill null keys (backup). Piotroski/Altman from FMP only.',
+      'fetchFundamentals loads FMP Ultimate stable endpoints first for global .NS/.HK/.T; then Finnhub + Alpha Vantage + Yahoo; Bloomberg Desktop bridge gap-fill only. Piotroski/Altman from FMP /stable/financial-scores only.',
     ts: Date.now(),
     historyVersion: HISTORY_VERSION,
     historyCount: tradeHistory.length

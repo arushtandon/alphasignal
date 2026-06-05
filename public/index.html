@@ -3633,6 +3633,7 @@ function renderCard(s){
               +['strongBuy','buy','hold','sell','strongSell'].map(function(k){var v=s.fmpScore.analystCounts[k]||0;if(!v)return '';var col=k.includes('Buy')?'#00c864':k==='hold'?'rgba(200,200,200,0.25)':'#ff4444';return '<div style="flex:'+(v/s.fmpScore.analystCounts.total)+';background:'+col+';height:5px" title="'+k+': '+v+'"></div>';}).join('')
             +'</div>'
           +'</div>':'')
+        +(s.fmpScore.intlCoverageNote?'<div style="font-size:8px;color:#f5c842;margin-top:6px;line-height:1.35">'+escMinimalHtml(s.fmpScore.intlCoverageNote)+'</div>':'')
       +'</div>':'')
     +(s.newsImpact?'<div style="background:var(--s2);border:1px solid var(--b1);border-radius:7px;padding:8px 10px;margin-bottom:8px"><div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">News Impact</div><div style="font-size:12px;color:'+(s.newsTone==='positive'?'var(--buy)':s.newsTone==='negative'?'var(--sell)':'var(--tx)')+'">'+escMinimalHtml(s.newsImpact)+'</div></div>':'')
     +buildEarningsRow(s)
