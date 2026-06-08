@@ -5093,20 +5093,36 @@ function saveDashboardPicksFile(payload) {
   }
 }
 
+function dashboardPicksSummary(dashData) {
+  if (!dashData || typeof dashData !== 'object') return '';
+  const keys = ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell'];
+  return keys
+    .map((k) => {
+      const arr = dashData[k] || [];
+      if (!arr.length) return '';
+      return k + ':' + arr.map((s) => s.ticker).filter(Boolean).join(',');
+    })
+    .filter(Boolean)
+    .join(' | ');
+}
+
 let dashboardPicksCache = loadDashboardPicksFile();
 if (dashboardPicksCache) {
   console.log('Dashboard picks loaded:', DASHBOARD_PICKS_FILE, 'ts=', dashboardPicksCache.dashTs);
 }
 
 app.get('/api/dashboard/picks', (req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const fromDisk = loadDashboardPicksFile();
+  if (fromDisk) dashboardPicksCache = fromDisk;
   if (!dashboardPicksCache || !dashboardPicksCache.dashData) {
-    return res.json({ version: DASHBOARD_PICKS_VERSION, dashData: null, dashTs: null });
+    return res.json({ version: DASHBOARD_PICKS_VERSION, dashData: null, dashTs: null, summary: '' });
   }
   res.json({
     version: dashboardPicksCache.version,
     schemaVersion: dashboardPicksCache.schemaVersion || 1,
     dashTs: dashboardPicksCache.dashTs,
+    summary: dashboardPicksSummary(dashboardPicksCache.dashData),
     dashData: dashboardPicksCache.dashData
   });
 });
@@ -5216,7 +5232,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.3.3',
+    server_build: '20260605-fmp-ultimate-v7.3.4',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -5333,7 +5349,15 @@ app.get('/api/health', async (req, res) => {
       'fetchFundamentals loads FMP Ultimate stable endpoints first for global .NS/.HK/.T; then Finnhub + Alpha Vantage + Yahoo; Bloomberg Desktop bridge gap-fill only. Piotroski/Altman from FMP /stable/financial-scores only.',
     ts: Date.now(),
     historyVersion: HISTORY_VERSION,
-    historyCount: tradeHistory.length
+    historyCount: tradeHistory.length,
+    dashboard_picks: (() => {
+      const d = loadDashboardPicksFile() || dashboardPicksCache;
+      return {
+        file: DASHBOARD_PICKS_FILE,
+        dashTs: d?.dashTs || null,
+        summary: d?.dashData ? dashboardPicksSummary(d.dashData) : ''
+      };
+    })()
   });
   } catch (healthErr) {
     console.error('/api/health failed:', healthErr.message);

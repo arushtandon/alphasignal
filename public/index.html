@@ -523,7 +523,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
         <div class="ht" id="ht-medium" onclick="switchHz('medium')">Medium · 1–3mo</div>
         <div class="ht" id="ht-long" onclick="switchHz('long')">Long · 4–12mo</div>
         <div style="flex:1"></div>
-        <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px" onclick="ST.dashData=null;ST.dashTs=null;ss();loadDashboard(true)">↻ Refresh picks</button>
+        <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px" onclick="ST.dashData=null;ST.dashTs=null;loadDashboard(true)">↻ Refresh picks</button>
       </div>
       <div id="dashStatus"></div>
       <div id="hzShort" class="hz-pane">
@@ -1170,7 +1170,7 @@ const SAMPLE=["NVDA","MSFT","AAPL","AMZN","META","TSLA","GOOGL","AMD","AZN.L","S
 // STATE
 // ══════════════════════════════════════════════
 const SK='as_v6';
-const DASH_SCHEMA_VERSION = 1;
+const DASH_SCHEMA_VERSION = 2;
 /** Max history rows kept in localStorage (must stay in sync with appetite for multi-day multi-horizon scans). */
 const HISTORY_MAX_LOCAL = 3000;
 let ST={history:[],watchlist:[],dashData:null,dashTs:null,dashSchemaVersion:DASH_SCHEMA_VERSION};
@@ -1198,8 +1198,8 @@ function ls(){
     ST={
       history:(d.history||[]).filter(h=>h&&h.ticker),
       watchlist:d.watchlist||[],
-      dashData:normalizeDashData(d.dashData)||null,
-      dashTs:d.dashTs||null,
+      dashData:null,
+      dashTs:null,
       dashSchemaVersion:DASH_SCHEMA_VERSION
     };
     if(!ST.history.length){
@@ -1207,7 +1207,16 @@ function ls(){
     }
   }catch(e){}
 }
-function ss(){try{ST.dashSchemaVersion=DASH_SCHEMA_VERSION;localStorage.setItem(SK,JSON.stringify(ST))}catch(e){}}
+function ss(){
+  try{
+    ST.dashSchemaVersion=DASH_SCHEMA_VERSION;
+    localStorage.setItem(SK,JSON.stringify({
+      history:ST.history,
+      watchlist:ST.watchlist,
+      dashSchemaVersion:DASH_SCHEMA_VERSION
+    }));
+  }catch(e){}
+}
 ls();
 
 // ══════════════════════════════════════════════
@@ -1697,27 +1706,53 @@ function dashHasPicks(data){
 
 async function fetchServerDashPicks(){
   try{
-    const r=await fetch('/api/dashboard/picks',{cache:'no-store'});
+    const r=await fetch('/api/dashboard/picks?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
     if(!r.ok)return null;
     const d=await r.json();
     if(!d||!d.dashData)return null;
-    return{dashData:normalizeDashData(d.dashData),dashTs:d.dashTs||null};
+    return{dashData:normalizeDashData(d.dashData),dashTs:d.dashTs||null,summary:d.summary||null};
   }catch(e){
     console.warn('fetchServerDashPicks',e.message||e);
     return null;
   }
 }
 
+async function fetchServerDashPicksWithRetry(attempts){
+  attempts=attempts||5;
+  for(var i=0;i<attempts;i++){
+    const got=await fetchServerDashPicks();
+    if(got&&got.dashData&&dashHasPicks(got.dashData))return got;
+    if(i<attempts-1)await new Promise(function(res){setTimeout(res,1500*(i+1));});
+  }
+  return null;
+}
+
+async function applyServerDashPicks(server){
+  ST.dashData=server.dashData;
+  ST.dashTs=server.dashTs;
+  const dashTsEl=document.getElementById('dashTs');
+  if(dashTsEl){
+    const sum=server.summary?(' · '+server.summary):'';
+    dashTsEl.textContent='Synced picks · '+new Date(server.dashTs).toLocaleString()+sum;
+  }
+  await hydrateDashDataWithLiveBatch(ST.dashData,{resyncScores:false});
+  waitForEl('hzShortBuy',function(){
+    renderDashboard(ST.dashData).catch(function(e){console.warn('renderDashboard',e);});
+  });
+}
+
 async function saveServerDashPicks(dashData,dashTs){
-  if(!dashData)return;
+  if(!dashData)return false;
   try{
-    await fetch('/api/dashboard/picks',{
+    const r=await fetch('/api/dashboard/picks',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({dashData,dashTs:dashTs||Date.now(),schemaVersion:DASH_SCHEMA_VERSION})
     });
+    return r.ok;
   }catch(e){
     console.warn('saveServerDashPicks',e.message||e);
+    return false;
   }
 }
 
@@ -1735,49 +1770,29 @@ function updateHorizonTabLabels(data){
 }
 
 async function loadDashboard(force=false){
-  const _prev = ST.dashData;
-  ST.dashData = normalizeDashData(ST.dashData);
-  if (ST.dashData !== _prev) {
-    if (!ST.dashData) ST.dashTs = null;
-    ss();
-  }
+  ST.dashData=null;
+  ST.dashTs=null;
 
   if(!force){
-    const server=await fetchServerDashPicks();
-    if(server&&server.dashData&&server.dashTs&&dashHasPicks(server.dashData)){
-      const age=(Date.now()-server.dashTs)/1000/3600;
-      if(age<4){
-        ST.dashData=server.dashData;
-        ST.dashTs=server.dashTs;
-        ss();
-        const dashTsEl=document.getElementById('dashTs');
-        if(dashTsEl)dashTsEl.textContent='Synced picks · '+new Date(server.dashTs).toLocaleString()+' · all devices';
-        waitForEl('hzShortBuy',async function(){
-          await hydrateDashDataWithLiveBatch(ST.dashData);
-          ss();
-          await saveServerDashPicks(ST.dashData,ST.dashTs);
-          renderDashboard(ST.dashData).catch(function(e){ console.warn('renderDashboard', e); });
-        });
-        return;
-      }
+    const server=await fetchServerDashPicksWithRetry(5);
+    if(server&&server.dashData&&dashHasPicks(server.dashData)){
+      await applyServerDashPicks(server);
+      return;
     }
+    const dashTsEl=document.getElementById('dashTs');
+    if(dashTsEl)dashTsEl.textContent='No server picks yet — starting scan…';
   }
+  await runDashScan(force);
+}
 
-  if(!force&&ST.dashData&&ST.dashTs){
-    const age=(Date.now()-ST.dashTs)/1000/3600;
-    if(age<4&&dashHasPicks(ST.dashData)){
-      const dashTsEl=document.getElementById('dashTs');
-      if(dashTsEl) dashTsEl.textContent='Local cache · '+new Date(ST.dashTs).toLocaleString()+' · tap ↻ Refresh for server sync';
-      waitForEl('hzShortBuy', function(){
-        renderDashboard(ST.dashData).catch(function(e){ console.warn('renderDashboard', e); });
-      });
+async function runDashScan(force){
+  if(!force){
+    const server=await fetchServerDashPicksWithRetry(2);
+    if(server&&server.dashData&&dashHasPicks(server.dashData)){
+      await applyServerDashPicks(server);
       return;
     }
   }
-  await runDashScan();
-}
-
-async function runDashScan(){
   const dashTsEl = document.getElementById('dashTs');
   if (dashTsEl) dashTsEl.textContent = 'Scanning research universe… (typically a few minutes; progress below)';
   const dashStatusEl = document.getElementById('dashStatus');
@@ -2247,7 +2262,7 @@ async function runDashScan(){
           if(resp.status===429) setTimeout(()=>loadDashboard(false), 60000);
           document.getElementById('dashStatus').innerHTML='<div class="eb" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px">'
             +'<span><strong>Error '+resp.status+':</strong> '+friendlyMsg+'</span>'
-            +'<button class="btn ac" style="font-size:10px;padding:3px 10px;flex-shrink:0" onclick="ST.dashData=null;ST.dashTs=null;ss();loadDashboard(true)">↻ Force Retry</button>'
+            +'<button class="btn ac" style="font-size:10px;padding:3px 10px;flex-shrink:0" onclick="ST.dashData=null;ST.dashTs=null;loadDashboard(true)">↻ Force Retry</button>'
             +'</div>';
           if(ST.dashData) { renderDashboard(ST.dashData).catch(function(e){ console.warn(e); }); return; }
           var _tsEr = document.getElementById('dashTs'); if (_tsEr) _tsEr.textContent = 'Dashboard scan error — see message above (HTTP '+resp.status+')';
@@ -2297,10 +2312,10 @@ async function runDashScan(){
   // Never fabricate sell picks — empty sell pane is honest when no shortAction === 'Sell'
 
   const dashData={short:shortTop5,medium:medTop5,long:longTop5,shortSell:shortSell5,medSell:medSell5,longSell:longSell5};
-  ST.dashData=dashData;ST.dashTs=Date.now();ss();
-  await hydrateDashDataWithLiveBatch(dashData);
-  await saveServerDashPicks(dashData, ST.dashTs);
-  await saveDashPicksToHistory(dashData); // priceCache + 2y tech snapshots + channel levels
+  ST.dashData=dashData;ST.dashTs=Date.now();
+  await hydrateDashDataWithLiveBatch(dashData,{resyncScores:true});
+  await saveServerDashPicks(dashData,ST.dashTs);
+  await saveDashPicksToHistory(dashData);
   await renderDashboard(dashData);
 }
 
@@ -2308,7 +2323,9 @@ async function runDashScan(){
  * Live prices + /api/technicals/batch (2y daily on server) + fundamentals, attached to each pick.
  * Used after dashboard scan and after "Clear all" history to re-seed with current engine parameters.
  */
-async function hydrateDashDataWithLiveBatch(dashData) {
+async function hydrateDashDataWithLiveBatch(dashData, opts) {
+  opts = opts || {};
+  const resyncScores = opts.resyncScores === true;
   if (!dashData || typeof dashData !== 'object') return;
   const allPickTickers = [...new Set([
     ...(dashData.short || []), ...(dashData.medium || []), ...(dashData.long || []),
@@ -2377,7 +2394,7 @@ async function hydrateDashDataWithLiveBatch(dashData) {
     s._analystTarget = fund ? fund.targetMeanPrice : null;
     s._targetHighPrice = fund ? fund.targetHighPrice : null;
     mergeFundTilesFromBatchFund(s, fund);
-    resyncPickFromQuantSignal(s, tech);
+    if (resyncScores) resyncPickFromQuantSignal(s, tech);
   }
   ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell'].forEach(function (k) {
     (dashData[k] || []).forEach(attachTechFundSnap);
