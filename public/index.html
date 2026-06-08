@@ -1202,6 +1202,9 @@ function ls(){
       dashTs:d.dashTs||null,
       dashSchemaVersion:DASH_SCHEMA_VERSION
     };
+    if(!ST.history.length){
+      ST.history=recoverLocalHistory();
+    }
   }catch(e){}
 }
 function ss(){try{ST.dashSchemaVersion=DASH_SCHEMA_VERSION;localStorage.setItem(SK,JSON.stringify(ST))}catch(e){}}
@@ -2535,30 +2538,99 @@ async function saveDashPicksToHistory(data) {
   }
 }
 
-async function loadHistoryFromServer(fetchOpts) {
-  try {
-    const r = await fetch('/api/history', fetchOpts || {});
-    if(r.ok) {
-      const serverData = await r.json();
-      if(serverData.length > 0) {
-        serverData.forEach(h => {
-          if(!h.hz) h.hz = 'short';
-          if(!h.revalidatedAt && h.ticker) {
-            h.revalidatedAt = h.entryDate || h.timestamp || new Date().toISOString();
-            h.legacyRecord = true;
+function recoverLocalHistory(){
+  try{
+    const v6=JSON.parse(localStorage.getItem(SK)||'{}');
+    let hist=(v6.history||[]).filter(h=>h&&h.ticker);
+    if(!hist.length){
+      const v5=JSON.parse(localStorage.getItem('as_v5')||'{}');
+      hist=(v5.history||[]).filter(h=>h&&h.ticker);
+    }
+    return hist;
+  }catch(e){return[];}
+}
+
+function historyRecordIsTrade(h){
+  if(!h||!h.hz||!h.ticker)return false;
+  const mainAct=String(h.action||'').toLowerCase();
+  if(mainAct==='buy'||mainAct==='sell')return true;
+  return['short','medium','long'].some(function(hz){
+    const a=String(h[hz+'Action']||'').toLowerCase();
+    return a==='buy'||a==='sell';
+  });
+}
+
+async function bootstrapHistoryToServer(localRecords){
+  const rows=localRecords.filter(historyRecordIsTrade).slice(0,500);
+  if(!rows.length)return false;
+  rows.forEach(function(h){
+    if(!h.revalidatedAt){
+      h.revalidatedAt=h.entryDate||h.timestamp||new Date().toISOString();
+      h.legacyRecord=true;
+    }
+    if(!h.hz)h.hz='short';
+  });
+  try{
+    const r=await fetch('/api/history/add',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(rows)
+    });
+    return r.ok;
+  }catch(e){
+    console.warn('bootstrapHistoryToServer',e.message||e);
+    return false;
+  }
+}
+
+async function loadHistoryFromServer(fetchOpts){
+  try{
+    const r=await fetch('/api/history',fetchOpts||{});
+    if(r.ok){
+      const serverData=await r.json();
+      if(serverData.length>0){
+        serverData.forEach(function(h){
+          if(!h.hz)h.hz='short';
+          if(!h.revalidatedAt&&h.ticker){
+            h.revalidatedAt=h.entryDate||h.timestamp||new Date().toISOString();
+            h.legacyRecord=true;
           }
         });
-        ST.history = serverData;
-        ST.history.sort(function (a, b) {
-          return new Date(b.entryDate || b.timestamp) - new Date(a.entryDate || a.timestamp);
+        ST.history=serverData;
+        ST.history.sort(function(a,b){
+          return new Date(b.entryDate||b.timestamp)-new Date(a.entryDate||a.timestamp);
         });
-      } else {
-        ST.history = [];
+      }else{
+        let local=(ST.history||[]).filter(historyRecordIsTrade);
+        if(!local.length)local=recoverLocalHistory().filter(historyRecordIsTrade);
+        if(local.length){
+          console.log('Server history empty — using',local.length,'local records and bootstrapping server');
+          local.sort(function(a,b){
+            return new Date(b.entryDate||b.timestamp)-new Date(a.entryDate||a.timestamp);
+          });
+          ST.history=local;
+          await bootstrapHistoryToServer(local);
+          try{
+            const r2=await fetch('/api/history',{cache:'no-store'});
+            if(r2.ok){
+              const reloaded=await r2.json();
+              if(reloaded.length){
+                reloaded.forEach(function(h){
+                  if(!h.hz)h.hz='short';
+                });
+                ST.history=reloaded;
+                ST.history.sort(function(a,b){
+                  return new Date(b.entryDate||b.timestamp)-new Date(a.entryDate||a.timestamp);
+                });
+              }
+            }
+          }catch(e2){console.warn('History reload after bootstrap',e2.message||e2);}
+        }
       }
       ss();
       return true;
     }
-  } catch(e) { console.warn('History load failed:', e.message); }
+  }catch(e){console.warn('History load failed:',e.message);}
   return false;
 }
 
@@ -3915,7 +3987,7 @@ function renderHist() {
   if(!ST.history.length) {
     el.innerHTML = '<div class="emp"><div class="emp-a">◷</div>'
       +'<p>No recommendations yet.<br>'
-      +'<span style="font-size:11px;color:var(--m1)">Run a dashboard scan or analyse — Buy/Sell trades are saved automatically. If history was cleared on the server, open Dashboard once — local records will re-sync.</span></p>'
+      +'<span style="font-size:11px;color:var(--m1)">Run a dashboard scan or analyse a ticker — Buy/Sell trades save automatically. If you had history before v7.3.2, reload once after deploy; local records restore to the server.</span></p>'
       +'</div>';
     return;
   }
