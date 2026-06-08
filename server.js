@@ -5142,7 +5142,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.2.8',
+    server_build: '20260605-fmp-ultimate-v7.3.0',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -7473,10 +7473,16 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
   const ma200 = tech?.ma200 || null;
   const analystTarget = fund?.targetMeanPrice || fund?.targetMean || null;
 
-  const ratingKeys = { short: 'shortRating', medium: 'mediumRating', long: 'longRating' };
+
+  const actionKeys = { short: 'shortAction', medium: 'mediumAction', long: 'longAction' };
 
   for (const hz of ['short', 'medium', 'long']) {
-    const isSell = ratingImpliesSell(row[ratingKeys[hz]]);
+    const act = String(row[actionKeys[hz]] || row.action || '').toLowerCase();
+    if (act !== 'buy' && act !== 'sell') {
+      row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = '';
+      continue;
+    }
+    const isSell = act === 'sell';
     let tp1, tp2, sl;
 
     if (!isSell) {
@@ -7631,7 +7637,7 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
   row.target2 = row.shortTarget2;
   row.stopLoss = row.shortStopLoss;
 
-  const mainSell = String(row.action || '').toLowerCase() === 'sell' || ratingImpliesSell(row.shortRating);
+  const mainSell = String(row.shortAction || row.action || '').toLowerCase() === 'sell';
   if (mainSell) {
     row.sellEntry = row.shortEntry;
     row.sellTarget1 = row.shortTarget1;
