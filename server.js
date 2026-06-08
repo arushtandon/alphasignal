@@ -1168,6 +1168,21 @@ function computeQuantSignal(tech, fund, hz) {
     if (rsi>=24&&rsi<=50&&rsiRising) { buyGates++;  condBuy.push(`RSI ${rsi} oversold rising`); }
     else if (rsi>=24&&rsi<=50)        buyGates+=0.5;
 
+    // Gate 3b: Bull regime continuation — trend entries, not only oversold bounces
+    if (regime === 'bull' && aboveMa200 && goldenCross) {
+      if (rsi >= 48 && rsi <= 68) {
+        buyGates++;
+        condBuy.push(`Bull regime continuation: RSI ${rsi} in trend zone`);
+      } else if (rsi >= 45 && rsi <= 70 && macdBull) {
+        buyGates += 0.75;
+        condBuy.push(`Bull continuation: RSI ${rsi} + MACD bullish`);
+      }
+    }
+    if (regime === 'bull' && aboveMa200 && macdBull && rsi >= 45 && rsi <= 70) {
+      buyGates += 0.8;
+      condBuy.push('Bull continuation: MA200 + MACD + RSI trend zone');
+    }
+
     // Gate 4: MACD inflection (catching the turn)
     if (macdTurnUp)                          { buyGates++; condBuy.push('MACD turning up'); }
     else if (macdBull&&rsiRising&&rsi<52)     buyGates+=0.5;
@@ -1434,19 +1449,28 @@ function backtestSignal(data, hz) {
     const nearS1=gSR.support1&&price>=gSR.support1*0.985&&price<=gSR.support1*1.025;
     const nearR1=gSR.resistance1&&price>=gSR.resistance1*0.978&&price<=gSR.resistance1*1.018;
 
+    const _bullPts = (aboveMa200?2:0) + (goldenCross?2:0) + (weeklyUp?1:0);
+    const _bearPts = (!aboveMa200?2:0) + (deathCross?2:0) + (weeklyDn?1:0);
+    const regime = _bearPts >= 4 ? 'bear' : _bullPts >= 4 ? 'bull' : 'neutral';
+
     let isBuy=false,isSell=false,buyGates=0,sellGates=0;
 
     if (hz==='short') {
       if (aboveMa50&&(goldenCross||weeklyUp)) buyGates++; else if(aboveMa50) buyGates+=0.5;
       if (inSDExcellent) buyGates+=2; else if(inSDGood) buyGates++;
       if (rsi>=24&&rsi<=58&&rsiRising) buyGates++; else if(rsi>=24&&rsi<=55) buyGates+=0.5;
+      if (regime === 'bull' && aboveMa200 && goldenCross) {
+        if (rsi >= 48 && rsi <= 68) buyGates++;
+        else if (rsi >= 45 && rsi <= 70 && macdBull) buyGates += 0.75;
+      }
+      if (regime === 'bull' && aboveMa200 && macdBull && rsi >= 45 && rsi <= 70) buyGates += 0.8;
       if (macdTurnUp) buyGates++; else if(macdBull&&rsiRising&&rsi<52) buyGates+=0.5;
       if ((healthyPull||volRatio<0.80)&&bullStruct) buyGates++;
       else if(bullStruct||nearS1) buyGates+=0.8; else if(healthyPull||volRatio<0.80) buyGates+=0.5;
       if (rsi>72) buyGates=Math.min(buyGates,1.5);
       if (atSDTop) buyGates=Math.round(buyGates*0.4);
-      if (!aboveMa50) buyGates=Math.round(buyGates*0.45);
-      isBuy=buyGates>=3&&aboveMa50&&!atSDTop;
+      if (!aboveMa50 && regime !== 'bull') buyGates=Math.round(buyGates*0.45);
+      isBuy=buyGates>=3&&(aboveMa50||(regime==='bull'&&aboveMa200))&&!atSDTop;
       if (!aboveMa50&&(deathCross||weeklyDn)) sellGates++;
       if (atSDTop||nearR1) sellGates++;
       if (rsi>=64&&rsiFalling) sellGates++; else if(rsi>=64) sellGates+=0.5;
@@ -3978,10 +4002,16 @@ app.post('/api/technicals/batch', async (req, res) => {
         summary: `RSI ${rsi}, ADX ${adx ?? '?'}, ${cp > ma20 ? 'above' : 'below'} MA20, ${trend20}, S@${support1}, R@${resistance1}`
       };
 
+      const _cachedFundEntry = fundCache.get(sym);
+      const _cachedFund =
+        _cachedFundEntry && Date.now() - _cachedFundEntry.ts < TECH_TTL * 4
+          ? _cachedFundEntry.data
+          : null;
+
       data.quantSignal = {
-        short:  computeQuantSignal(data, null, 'short'),
-        medium: computeQuantSignal(data, null, 'medium'),
-        long:   computeQuantSignal(data, null, 'long')
+        short:  computeQuantSignal(data, _cachedFund, 'short'),
+        medium: computeQuantSignal(data, _cachedFund, 'medium'),
+        long:   computeQuantSignal(data, _cachedFund, 'long')
       };
 
       await applyMarketTierOverlays(sym, data, { batchMode: true });
@@ -4787,6 +4817,36 @@ async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
     }
   }
 
+  // Piotroski / Altman Z — direct score boosts (independent of tier/SD gates)
+  const _fmpQ = dataShell.fmpScore || opts.fmpPre || null;
+  const _pio = _fmpQ?.piotroski;
+  const _az = _fmpQ?.altmanZ;
+  const _fmpQual = _fmpQ?.qualityScore;
+  if (_pio != null || _az != null || _fmpQual != null) {
+    ['short', 'medium', 'long'].forEach(hz => {
+      const q = dataShell.quantSignal[hz];
+      if (!q) return;
+      if (_pio != null && Number.isFinite(_pio)) {
+        if (_pio >= 7) q.buyScore = Math.min(92, Math.round((q.buyScore || 0) * 1.12));
+        else if (_pio <= 3) q.buyScore = Math.round((q.buyScore || 0) * 0.75);
+      }
+      if (_az != null && Number.isFinite(_az)) {
+        if (_az > 2.99 && (hz === 'medium' || hz === 'long')) {
+          q.buyScore = Math.min(92, Math.round((q.buyScore || 0) * 1.08));
+        } else if (_az < 1.81) {
+          q.buyScore = Math.round((q.buyScore || 0) * 0.70);
+          q.sellScore = Math.min(88, Math.round((q.sellScore || 0) * 1.15));
+        }
+      }
+    });
+    if (_fmpQual != null && _fmpQual >= 8 && _mkt.tier === 'fmp_quality') {
+      ['short', 'medium', 'long'].forEach(hz => {
+        const q = dataShell.quantSignal[hz];
+        if (q) q.buyScore = Math.min(92, Math.round((q.buyScore || 0) * 1.10));
+      });
+    }
+  }
+
   applyTierScoreCaps(dataShell.quantSignal);
   rerateQuantSignals(dataShell.quantSignal);
   return dataShell;
@@ -5062,7 +5122,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.2.5',
+    server_build: '20260605-fmp-ultimate-v7.2.6',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
