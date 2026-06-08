@@ -311,6 +311,8 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
 }
 @media(max-width:600px){
   .picks-grid{grid-template-columns:1fr}
+  .horizon-tabs{flex-wrap:wrap;overflow-x:visible;gap:4px;padding:6px 4px 0}
+  .ht{flex:1 1 calc(33.33% - 4px);min-width:96px;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:10px 6px;font-size:10px;line-height:1.25;white-space:normal}
   .chart-tab{padding:4px 8px;font-size:9px}
   .hz-card-tab{font-size:10px;padding:7px 12px;margin-right:6px}
   .hz-r{font-size:13px}
@@ -1167,10 +1169,11 @@ const SAMPLE=["NVDA","MSFT","AAPL","AMZN","META","TSLA","GOOGL","AMD","AZN.L","S
 // ══════════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════════
-const SK='as_v5';
+const SK='as_v6';
+const DASH_SCHEMA_VERSION = 1;
 /** Max history rows kept in localStorage (must stay in sync with appetite for multi-day multi-horizon scans). */
 const HISTORY_MAX_LOCAL = 3000;
-let ST={history:[],watchlist:[],dashData:null,dashTs:null};
+let ST={history:[],watchlist:[],dashData:null,dashTs:null,dashSchemaVersion:DASH_SCHEMA_VERSION};
 
 /** Reject corrupted localStorage dashboard payloads (would leave UI stuck on "Loading…"). */
 function normalizeDashData(raw){
@@ -1184,16 +1187,24 @@ function normalizeDashData(raw){
 }
 function ls(){
   try{
-    const d=JSON.parse(localStorage.getItem(SK)||'{}');
+    let d=JSON.parse(localStorage.getItem(SK)||'{}');
+    if(!d.dashData&&!(d.history&&d.history.length)){
+      const legacy=JSON.parse(localStorage.getItem('as_v5')||'{}');
+      if(legacy.dashData||(legacy.history&&legacy.history.length))d=legacy;
+    }
+    if(d.dashSchemaVersion!=null&&d.dashSchemaVersion!==DASH_SCHEMA_VERSION){
+      d.dashData=null; d.dashTs=null;
+    }
     ST={
       history:(d.history||[]).filter(h=>h&&h.ticker),
       watchlist:d.watchlist||[],
       dashData:normalizeDashData(d.dashData)||null,
-      dashTs:d.dashTs||null
+      dashTs:d.dashTs||null,
+      dashSchemaVersion:DASH_SCHEMA_VERSION
     };
   }catch(e){}
 }
-function ss(){try{localStorage.setItem(SK,JSON.stringify(ST))}catch(e){}}
+function ss(){try{ST.dashSchemaVersion=DASH_SCHEMA_VERSION;localStorage.setItem(SK,JSON.stringify(ST))}catch(e){}}
 ls();
 
 // ══════════════════════════════════════════════
@@ -1674,6 +1685,52 @@ function claudeFetchHeaders() {
   return headers;
 }
 
+function dashHasPicks(data){
+  if(!data)return false;
+  return ['short','medium','long','shortSell','medSell','longSell'].some(function(k){
+    return Array.isArray(data[k])&&data[k].length>0;
+  });
+}
+
+async function fetchServerDashPicks(){
+  try{
+    const r=await fetch('/api/dashboard/picks',{cache:'no-store'});
+    if(!r.ok)return null;
+    const d=await r.json();
+    if(!d||!d.dashData)return null;
+    return{dashData:normalizeDashData(d.dashData),dashTs:d.dashTs||null};
+  }catch(e){
+    console.warn('fetchServerDashPicks',e.message||e);
+    return null;
+  }
+}
+
+async function saveServerDashPicks(dashData,dashTs){
+  if(!dashData)return;
+  try{
+    await fetch('/api/dashboard/picks',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({dashData,dashTs:dashTs||Date.now(),schemaVersion:DASH_SCHEMA_VERSION})
+    });
+  }catch(e){
+    console.warn('saveServerDashPicks',e.message||e);
+  }
+}
+
+function updateHorizonTabLabels(data){
+  if(!data)return;
+  const labels={short:'Short · 1d–1mo',medium:'Medium · 1–3mo',long:'Long · 4–12mo'};
+  const sellKeys={short:'shortSell',medium:'medSell',long:'longSell'};
+  ['short','medium','long'].forEach(function(hz){
+    const el=document.getElementById('ht-'+hz);
+    if(!el)return;
+    const nBuy=(data[hz]||[]).length;
+    const nSell=(data[sellKeys[hz]]||[]).length;
+    el.textContent=labels[hz]+' · '+nBuy+'↑ '+nSell+'↓';
+  });
+}
+
 async function loadDashboard(force=false){
   const _prev = ST.dashData;
   ST.dashData = normalizeDashData(ST.dashData);
@@ -1682,14 +1739,32 @@ async function loadDashboard(force=false){
     ss();
   }
 
+  if(!force){
+    const server=await fetchServerDashPicks();
+    if(server&&server.dashData&&server.dashTs&&dashHasPicks(server.dashData)){
+      const age=(Date.now()-server.dashTs)/1000/3600;
+      if(age<4){
+        ST.dashData=server.dashData;
+        ST.dashTs=server.dashTs;
+        ss();
+        const dashTsEl=document.getElementById('dashTs');
+        if(dashTsEl)dashTsEl.textContent='Synced picks · '+new Date(server.dashTs).toLocaleString()+' · all devices';
+        waitForEl('hzShortBuy',async function(){
+          await hydrateDashDataWithLiveBatch(ST.dashData);
+          ss();
+          await saveServerDashPicks(ST.dashData,ST.dashTs);
+          renderDashboard(ST.dashData).catch(function(e){ console.warn('renderDashboard', e); });
+        });
+        return;
+      }
+    }
+  }
+
   if(!force&&ST.dashData&&ST.dashTs){
     const age=(Date.now()-ST.dashTs)/1000/3600;
-    const hasPicks=['short','medium','long','shortSell','medSell','longSell'].some(function(k){
-      return Array.isArray(ST.dashData[k])&&ST.dashData[k].length>0;
-    });
-    if(age<4&&hasPicks){
+    if(age<4&&dashHasPicks(ST.dashData)){
       const dashTsEl=document.getElementById('dashTs');
-      if(dashTsEl) dashTsEl.textContent='Showing cached picks · '+new Date(ST.dashTs).toLocaleString();
+      if(dashTsEl) dashTsEl.textContent='Local cache · '+new Date(ST.dashTs).toLocaleString()+' · tap ↻ Refresh for server sync';
       waitForEl('hzShortBuy', function(){
         renderDashboard(ST.dashData).catch(function(e){ console.warn('renderDashboard', e); });
       });
@@ -2221,6 +2296,7 @@ async function runDashScan(){
   const dashData={short:shortTop5,medium:medTop5,long:longTop5,shortSell:shortSell5,medSell:medSell5,longSell:longSell5};
   ST.dashData=dashData;ST.dashTs=Date.now();ss();
   await hydrateDashDataWithLiveBatch(dashData);
+  await saveServerDashPicks(dashData, ST.dashTs);
   await saveDashPicksToHistory(dashData); // priceCache + 2y tech snapshots + channel levels
   await renderDashboard(dashData);
 }
@@ -2279,7 +2355,11 @@ async function hydrateDashDataWithLiveBatch(dashData) {
     if (qs) {
       ['short', 'medium', 'long'].forEach(function (hz) {
         const h = qs[hz];
-        if (h && h.action) s[hz + 'Action'] = h.action;
+        if (!h) return;
+        if (h.buyScore != null) s[hz + 'Score'] = h.buyScore;
+        if (h.sellScore != null) s[hz + 'SellScore'] = h.sellScore;
+        if (h.rating) s[hz + 'Rating'] = h.rating;
+        if (h.action) s[hz + 'Action'] = h.action;
       });
       s.action = s.shortAction;
     } else {
@@ -2299,12 +2379,6 @@ async function hydrateDashDataWithLiveBatch(dashData) {
   ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell'].forEach(function (k) {
     (dashData[k] || []).forEach(attachTechFundSnap);
   });
-  dashData.short = (dashData.short || []).filter(function (s) { return s.shortAction === 'Buy'; });
-  dashData.medium = (dashData.medium || []).filter(function (s) { return s.mediumAction === 'Buy'; });
-  dashData.long = (dashData.long || []).filter(function (s) { return s.longAction === 'Buy'; });
-  dashData.shortSell = (dashData.shortSell || []).filter(function (s) { return s.shortAction === 'Sell'; });
-  dashData.medSell = (dashData.medSell || []).filter(function (s) { return s.mediumAction === 'Sell'; });
-  dashData.longSell = (dashData.longSell || []).filter(function (s) { return s.longAction === 'Sell'; });
   ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell'].forEach(function (k) {
     (dashData[k] || []).forEach(function (s) {
       enrichDashPickLevels(s);
@@ -2474,24 +2548,12 @@ async function loadHistoryFromServer(fetchOpts) {
             h.legacyRecord = true;
           }
         });
-        const serverKeys = new Set(serverData.map(h => h.ticker+'_'+(h.hz||'short')+'_'+new Date(h.entryDate||h.timestamp).toDateString()));
-        const localOnly  = (ST.history||[]).filter(h => h.hz&&!serverKeys.has(h.ticker+'_'+h.hz+'_'+new Date(h.entryDate||h.timestamp).toDateString()));
-        ST.history = [...serverData, ...localOnly];
+        ST.history = serverData;
         ST.history.sort(function (a, b) {
           return new Date(b.entryDate || b.timestamp) - new Date(a.entryDate || a.timestamp);
         });
-      } else if(ST.history&&ST.history.length>0) {
-        console.log('Server empty, re-uploading', ST.history.length, 'local records');
-        const toUpload = ST.history.filter(h => h.hz).map(h => {
-          if(!h.revalidatedAt) {
-            h.revalidatedAt = h.entryDate || h.timestamp || new Date().toISOString();
-            h.legacyRecord = true;
-          }
-          return h;
-        });
-        try { await fetch('/api/history/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(toUpload)}); } catch(e){}
       } else {
-        ST.history = serverData;
+        ST.history = [];
       }
       ss();
       return true;
@@ -2603,6 +2665,8 @@ async function renderDashboard(data){
     (data[k]||[]).forEach(function(s){ enrichDashPickLevels(s); });
   });
   if(u.length){ try{ updatePrices(); }catch(e){} }
+  updateHorizonTabLabels(data);
+  switchHz(curHz||'short');
   renderPicksPane('hzShortBuy',data.short,'short','buy');
   renderPicksPane('hzMediumBuy',data.medium,'medium','buy');
   renderPicksPane('hzLongBuy',data.long,'long','buy');

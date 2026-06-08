@@ -5054,6 +5054,80 @@ function saveHistoryFile(data) {
 
 let tradeHistory = loadHistoryFile();
 
+// ── Shared dashboard picks (same scan on phone + desktop) ───────────────────
+const DASHBOARD_PICKS_VERSION = 1;
+const DASHBOARD_PICKS_FILE = path.join(path.dirname(HISTORY_FILE), 'dashboard_picks.json');
+
+function stripPickForStorage(s) {
+  if (!s || typeof s !== 'object') return s;
+  const out = { ...s };
+  delete out._techSnap;
+  return out;
+}
+
+function sanitizeDashDataForServer(dashData) {
+  const keys = ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell'];
+  const out = {};
+  for (const k of keys) {
+    out[k] = Array.isArray(dashData[k]) ? dashData[k].map(stripPickForStorage) : [];
+  }
+  return out;
+}
+
+function loadDashboardPicksFile() {
+  try {
+    if (!fs.existsSync(DASHBOARD_PICKS_FILE)) return null;
+    const raw = JSON.parse(fs.readFileSync(DASHBOARD_PICKS_FILE, 'utf8'));
+    if (raw && raw.version === DASHBOARD_PICKS_VERSION && raw.dashData) return raw;
+  } catch (e) {
+    console.warn('Dashboard picks load error:', e.message);
+  }
+  return null;
+}
+
+function saveDashboardPicksFile(payload) {
+  try {
+    fs.writeFileSync(DASHBOARD_PICKS_FILE, JSON.stringify(payload));
+  } catch (e) {
+    console.warn('Dashboard picks save error:', e.message);
+  }
+}
+
+let dashboardPicksCache = loadDashboardPicksFile();
+if (dashboardPicksCache) {
+  console.log('Dashboard picks loaded:', DASHBOARD_PICKS_FILE, 'ts=', dashboardPicksCache.dashTs);
+}
+
+app.get('/api/dashboard/picks', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (!dashboardPicksCache || !dashboardPicksCache.dashData) {
+    return res.json({ version: DASHBOARD_PICKS_VERSION, dashData: null, dashTs: null });
+  }
+  res.json({
+    version: dashboardPicksCache.version,
+    schemaVersion: dashboardPicksCache.schemaVersion || 1,
+    dashTs: dashboardPicksCache.dashTs,
+    dashData: dashboardPicksCache.dashData
+  });
+});
+
+app.post('/api/dashboard/picks', express.json({ limit: '3mb' }), (req, res) => {
+  const body = req.body;
+  if (!body || typeof body !== 'object') return res.status(400).json({ error: 'body required' });
+  if (!body.dashData || typeof body.dashData !== 'object') {
+    return res.status(400).json({ error: 'dashData required' });
+  }
+  dashboardPicksCache = {
+    version: DASHBOARD_PICKS_VERSION,
+    schemaVersion: body.schemaVersion || 1,
+    dashTs: body.dashTs || Date.now(),
+    dashData: sanitizeDashDataForServer(body.dashData)
+  };
+  saveDashboardPicksFile(dashboardPicksCache);
+  console.log('Dashboard picks saved:', dashboardPicksCache.dashTs);
+  res.json({ ok: true, dashTs: dashboardPicksCache.dashTs });
+});
+
 // ── Health (after tradeHistory — used in payload) ────────────────────────────
 app.get('/api/history/status', (req, res) => {
   const today = new Date().toDateString();
@@ -5142,7 +5216,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.3.1',
+    server_build: '20260605-fmp-ultimate-v7.3.2',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
