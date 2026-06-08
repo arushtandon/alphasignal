@@ -2669,7 +2669,7 @@ function renderPicksPane(elId,picks,hz,side){
       <div class="pc-divider"></div>
       <div class="pc-pnl">
         <div class="pnl-item"><div class="pnl-label">${action==='Sell'?'Sell Entry':action==='Buy'?'Buy Entry':'Entry'}</div><div class="pnl-val ${action==='Sell'?'r':'b'}">${entryP||'—'}</div></div>
-        <div class="pnl-item"><div class="pnl-label">Stop Loss</div><div class="pnl-val ${isSell?'g':'r'}">${sl||'—'}</div></div>
+        <div class="pnl-item"><div class="pnl-label">Stop Loss</div><div class="pnl-val ${action==='Sell'?'g':'r'}">${sl||'—'}</div></div>
         <div class="pnl-item"><div class="pnl-label">TP ($10k)</div><div class="pnl-val g">${pnl?fmtUsd(pnl.tp_pnl):'—'}</div></div>
         <div class="pnl-item"><div class="pnl-label">Max Loss</div><div class="pnl-val r">${pnl&&pnl.sl_pnl!==null?fmtUsd(pnl.sl_pnl):'—'}</div></div>
       </div>
@@ -2690,6 +2690,7 @@ function renderSummaryTable(elId,picks,hz,isSell){
   if(!el){ console.warn('renderSummaryTable: element not found:',elId); return; }
   const scoreKey=isSell?(hz+'SellScore'):(hz+'Score');
   const actionKey=hz+'Action';
+  const ratingKey=hz+'Rating';
   const rows=picks.map((s,i)=>{
     const action=s[actionKey]||'Hold';
     const ac=aCls(action);
