@@ -3834,11 +3834,11 @@ function mergeFundamentalsForUi(row, fund) {
   return row;
 }
 
-// Cache technicals — 15 min TTL
+// Cache technicals — 8 min TTL (reduced from 15 to minimise dashboard vs full-analysis drift)
 const techCache  = new Map();
 const fundCache  = new Map();
 const newsCache  = new Map();
-const TECH_TTL   = 15 * 60 * 1000;
+const TECH_TTL   = 8 * 60 * 1000;
 const NEWS_TTL   = 30 * 60 * 1000;
 
 function buildFullTechResult(sym, daily, weekly) {
@@ -5142,7 +5142,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.2.7',
+    server_build: '20260605-fmp-ultimate-v7.2.8',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),

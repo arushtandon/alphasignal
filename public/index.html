@@ -1893,8 +1893,8 @@ async function runDashScan(){
                         : _regimes.filter(x=>x==='bull').length>=2 ? 'bull' : 'neutral';
 
               const rate = function(sc){ return sc>=78?'Strong Buy':sc>=62?'Buy':'Hold'; };
-              const rateS = function(sc){ return sc>=74?'Strong Sell':sc>=58?'Sell':'Hold'; };
-              const act = function(b, sv){ return b>sv?(b>=62?'Buy':'Hold'):(sv>=58?'Sell':'Hold'); };
+              const rateS = function(sc){ return sc>=74?'Strong Sell':sc>=62?'Sell':'Hold'; };
+              const act = function(b, sv){ return b>sv?(b>=62?'Buy':'Hold'):(sv>=62?'Sell':'Hold'); }; // Symmetric 62 threshold
               r.shortRating  = sh>=shS ? rate(sh)  : rateS(shS);
               r.mediumRating = me>=meS ? rate(me)  : rateS(meS);
               r.longRating   = lo>=loS ? rate(lo)  : rateS(loS);
@@ -2122,10 +2122,10 @@ async function runDashScan(){
   const shortBuys = new Set(shortTop5.map(s=>s.ticker));
   const medBuys = new Set(medTop5.map(s=>s.ticker));
   const longBuys = new Set(longTop5.map(s=>s.ticker));
-  const SELL_MIN = 58; // rateS() Sell floor — Short/Sell section stays Sell-leaning (not crowded by Hold/low sell scores)
-  let shortSell5=[...deduped].filter(s=>!shortBuys.has(s.ticker)&&(s.shortSellScore||0)>=SELL_MIN).sort((a,b)=>(b.shortSellScore||0)-(a.shortSellScore||0)).slice(0,5);
-  let medSell5=[...deduped].filter(s=>!medBuys.has(s.ticker)&&(s.mediumSellScore||0)>=SELL_MIN).sort((a,b)=>(b.mediumSellScore||0)-(a.mediumSellScore||0)).slice(0,5);
-  let longSell5=[...deduped].filter(s=>!longBuys.has(s.ticker)&&(s.longSellScore||0)>=SELL_MIN).sort((a,b)=>(b.longSellScore||0)-(a.longSellScore||0)).slice(0,5);
+  const SELL_MIN = 62; // Symmetric with act() — only true Sell actions (sellScore >= 62) qualify
+  let shortSell5=[...deduped].filter(s=>!shortBuys.has(s.ticker)&&(s.shortSellScore||0)>=SELL_MIN&&s.shortAction==='Sell').sort((a,b)=>(b.shortSellScore||0)-(a.shortSellScore||0)).slice(0,5);
+  let medSell5=[...deduped].filter(s=>!medBuys.has(s.ticker)&&(s.mediumSellScore||0)>=SELL_MIN&&s.mediumAction==='Sell').sort((a,b)=>(b.mediumSellScore||0)-(a.mediumSellScore||0)).slice(0,5);
+  let longSell5=[...deduped].filter(s=>!longBuys.has(s.ticker)&&(s.longSellScore||0)>=SELL_MIN&&s.longAction==='Sell').sort((a,b)=>(b.longSellScore||0)-(a.longSellScore||0)).slice(0,5);
 
   function fillSellFallback(hz, arr, buySet) {
     if (arr && arr.length) return arr;
