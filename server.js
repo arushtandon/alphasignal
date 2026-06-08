@@ -1164,23 +1164,21 @@ function computeQuantSignal(tech, fund, hz) {
     if (inSDExcellent) { buyGates+=2; condBuy.push('SD channel: price at lower band'); }
     else if (inSDGood) { buyGates++;  condBuy.push('SD channel: near lower band');     }
 
-    // Gate 3: RSI dip + rising (momentum turning from oversold)
-    if (rsi>=24&&rsi<=50&&rsiRising) { buyGates++;  condBuy.push(`RSI ${rsi} oversold rising`); }
-    else if (rsi>=24&&rsi<=50)        buyGates+=0.5;
-
-    // Gate 3b: Bull regime continuation — trend entries, not only oversold bounces
-    if (regime === 'bull' && aboveMa200 && goldenCross) {
-      if (rsi >= 48 && rsi <= 68) {
-        buyGates++;
-        condBuy.push(`Bull regime continuation: RSI ${rsi} in trend zone`);
-      } else if (rsi >= 45 && rsi <= 70 && macdBull) {
-        buyGates += 0.75;
-        condBuy.push(`Bull continuation: RSI ${rsi} + MACD bullish`);
-      }
+    // Gate 3: RSI timing — regime-aware
+    if (regime === 'bull' && aboveMa200 && rsi >= 48 && rsi <= 68) {
+      buyGates += 1.2;
+      condBuy.push(`RSI ${rsi} bull zone`);
+    } else if (rsi >= 24 && rsi <= 50 && rsiRising) {
+      buyGates++;
+      condBuy.push(`RSI ${rsi} oversold rising`);
+    } else if (rsi >= 24 && rsi <= 50) {
+      buyGates += 0.5;
     }
-    if (regime === 'bull' && aboveMa200 && macdBull && rsi >= 45 && rsi <= 70) {
-      buyGates += 0.8;
-      condBuy.push('Bull continuation: MA200 + MACD + RSI trend zone');
+
+    // Gate 3b: Bull regime MACD confirmation (trend continuation, not just reversal)
+    if (regime === 'bull' && aboveMa200 && macdBull && rsi >= 45 && rsi <= 72 && !atSDTop) {
+      buyGates += 0.6;
+      condBuy.push('Bull: MACD+MA200 trending');
     }
 
     // Gate 4: MACD inflection (catching the turn)
@@ -1193,9 +1191,11 @@ function computeQuantSignal(tech, fund, hz) {
     else if (healthyPull===true||volRatio<0.80) buyGates+=0.5;
 
     // Hard disqualifiers
-    if (rsi>72)     buyGates = Math.min(buyGates, 1.5);   // overbought — avoid
-    if (atSDTop)    buyGates = Math.round(buyGates*0.4);  // extended — terrible short entry
-    if (!aboveMa50) buyGates = Math.round(buyGates*0.45); // downtrend — skip
+    if (rsi>72)       buyGates = Math.min(buyGates, 1.5);   // overbought — avoid
+    if (atSDTop)      buyGates = Math.round(buyGates*0.4);  // extended — terrible short entry
+    if (!aboveMa50)   buyGates = Math.round(buyGates*0.45); // below MA50 — skip
+    if (!aboveMa200)  buyGates = Math.round(buyGates * 0.20); // below MA200 — structurally down
+    if (weeklyTrend === 'downtrend' && rsiFalling) buyGates = Math.round(buyGates * 0.30);
 
     // Regime-scaled short buy score — BULL boosts momentum plays, BEAR suppresses longs
     buyGates *= _buyMult; buyGates = Math.max(0, buyGates);
@@ -1459,18 +1459,17 @@ function backtestSignal(data, hz) {
       if (aboveMa50&&(goldenCross||weeklyUp)) buyGates++; else if(aboveMa50) buyGates+=0.5;
       if (inSDExcellent) buyGates+=2; else if(inSDGood) buyGates++;
       if (rsi>=24&&rsi<=58&&rsiRising) buyGates++; else if(rsi>=24&&rsi<=55) buyGates+=0.5;
-      if (regime === 'bull' && aboveMa200 && goldenCross) {
-        if (rsi >= 48 && rsi <= 68) buyGates++;
-        else if (rsi >= 45 && rsi <= 70 && macdBull) buyGates += 0.75;
-      }
-      if (regime === 'bull' && aboveMa200 && macdBull && rsi >= 45 && rsi <= 70) buyGates += 0.8;
       if (macdTurnUp) buyGates++; else if(macdBull&&rsiRising&&rsi<52) buyGates+=0.5;
       if ((healthyPull||volRatio<0.80)&&bullStruct) buyGates++;
       else if(bullStruct||nearS1) buyGates+=0.8; else if(healthyPull||volRatio<0.80) buyGates+=0.5;
       if (rsi>72) buyGates=Math.min(buyGates,1.5);
       if (atSDTop) buyGates=Math.round(buyGates*0.4);
-      if (!aboveMa50 && regime !== 'bull') buyGates=Math.round(buyGates*0.45);
-      isBuy=buyGates>=3&&(aboveMa50||(regime==='bull'&&aboveMa200))&&!atSDTop;
+      if (!aboveMa50) buyGates=Math.round(buyGates*0.45);
+      if (!aboveMa200) buyGates = Math.round(buyGates * 0.20);
+      if (weeklyDn && rsiFalling) buyGates = Math.round(buyGates * 0.30);
+      const _bullCont = aboveMa200 && goldenCross && aboveMa50 && macdBull && rsi >= 45 && rsi <= 70 && !atSDTop;
+      if (_bullCont) buyGates += 0.8;
+      isBuy = (buyGates >= 3 || _bullCont) && aboveMa50 && aboveMa200 && !atSDTop;
       if (!aboveMa50&&(deathCross||weeklyDn)) sellGates++;
       if (atSDTop||nearR1) sellGates++;
       if (rsi>=64&&rsiFalling) sellGates++; else if(rsi>=64) sellGates+=0.5;
@@ -4817,34 +4816,55 @@ async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
     }
   }
 
-  // Piotroski / Altman Z — direct score boosts (independent of tier/SD gates)
-  const _fmpQ = dataShell.fmpScore || opts.fmpPre || null;
-  const _pio = _fmpQ?.piotroski;
-  const _az = _fmpQ?.altmanZ;
-  const _fmpQual = _fmpQ?.qualityScore;
-  if (_pio != null || _az != null || _fmpQual != null) {
+  // Piotroski / Altman Z — direct score boosts after FMP fetch (independent of tier/SD gates)
+  const _fmpQS = dataShell.fmpScore || opts.fmpPre || null;
+  if (_fmpQS) {
     ['short', 'medium', 'long'].forEach(hz => {
-      const q = dataShell.quantSignal[hz];
+      const q = dataShell.quantSignal?.[hz];
       if (!q) return;
+      const _pio = _fmpQS.piotroski;
+      const _az = _fmpQS.altmanZ;
+      const _qs = _fmpQS.qualityScore;
+
       if (_pio != null && Number.isFinite(_pio)) {
-        if (_pio >= 7) q.buyScore = Math.min(92, Math.round((q.buyScore || 0) * 1.12));
-        else if (_pio <= 3) q.buyScore = Math.round((q.buyScore || 0) * 0.75);
-      }
-      if (_az != null && Number.isFinite(_az)) {
-        if (_az > 2.99 && (hz === 'medium' || hz === 'long')) {
-          q.buyScore = Math.min(92, Math.round((q.buyScore || 0) * 1.08));
-        } else if (_az < 1.81) {
-          q.buyScore = Math.round((q.buyScore || 0) * 0.70);
-          q.sellScore = Math.min(88, Math.round((q.sellScore || 0) * 1.15));
+        if (_pio >= 7) {
+          if (q.buyScore > 0) q.buyScore = Math.min(92, Math.round(q.buyScore * 1.12));
+          if (q.sellScore > 0) q.sellScore = Math.round(q.sellScore * 0.88);
+          (q.conditions = q.conditions || []).unshift(`Piotroski ${_pio}/9 ✓`);
+        } else if (_pio >= 5) {
+          if (q.buyScore > 0) q.buyScore = Math.min(92, Math.round(q.buyScore * 1.05));
+        } else if (_pio <= 3) {
+          if (q.buyScore > 0) q.buyScore = Math.round(q.buyScore * 0.72);
+          if (q.sellScore > 0) q.sellScore = Math.min(88, Math.round(q.sellScore * 1.15));
+          (q.conditions = q.conditions || []).push(`Pio ${_pio}/9 weak`);
         }
       }
+
+      if (_az != null && Number.isFinite(_az) && hz !== 'short') {
+        if (_az > 2.99) {
+          if (q.buyScore > 0) q.buyScore = Math.min(92, Math.round(q.buyScore * 1.08));
+        } else if (_az < 1.81) {
+          if (q.buyScore > 0) q.buyScore = Math.round(q.buyScore * 0.65);
+          if (q.sellScore > 0) q.sellScore = Math.min(88, Math.round(q.sellScore * 1.20));
+          (q.conditions = q.conditions || []).push(`AltmanZ ${_az.toFixed(1)} distress`);
+        }
+      }
+
+      if (_qs != null && (_mkt.tier === 'fmp_quality' || _mkt.tier === 'danelfin_eu')) {
+        if (_qs >= 8 && q.buyScore > 0) q.buyScore = Math.min(92, Math.round(q.buyScore * 1.10));
+        if (_qs <= 4 && q.buyScore > 0) q.buyScore = Math.round(q.buyScore * 0.75);
+      }
+
+      const bs = q.buyScore || 0;
+      const ss = q.sellScore || 0;
+      if (bs >= ss) {
+        q.action = bs >= 84 ? 'Buy' : bs >= 62 ? 'Buy' : 'Hold';
+        q.rating = bs >= 84 ? 'Strong Buy' : bs >= 62 ? 'Buy' : 'Hold';
+      } else {
+        q.action = ss >= 80 ? 'Sell' : ss >= 62 ? 'Sell' : 'Hold';
+        q.rating = ss >= 80 ? 'Strong Sell' : ss >= 62 ? 'Sell' : 'Hold';
+      }
     });
-    if (_fmpQual != null && _fmpQual >= 8 && _mkt.tier === 'fmp_quality') {
-      ['short', 'medium', 'long'].forEach(hz => {
-        const q = dataShell.quantSignal[hz];
-        if (q) q.buyScore = Math.min(92, Math.round((q.buyScore || 0) * 1.10));
-      });
-    }
   }
 
   applyTierScoreCaps(dataShell.quantSignal);
@@ -5122,7 +5142,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.2.6',
+    server_build: '20260605-fmp-ultimate-v7.2.7',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
