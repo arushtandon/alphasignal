@@ -4882,6 +4882,15 @@ function isHistoryBuySellRecord(h) {
   });
 }
 
+function historyTradeEntryDay(trade) {
+  if (!trade) return '';
+  return new Date(trade.entryDate || trade.timestamp || 0).toDateString();
+}
+
+function isHistoryTradeFromToday(trade) {
+  return historyTradeEntryDay(trade) === new Date().toDateString();
+}
+
 function compactFundSnapshot(fund) {
   if (!fund || typeof fund !== 'object') return null;
   return {
@@ -4924,6 +4933,7 @@ function applyAnalyticsSnapshotToTrade(trade, shell, fund, hz) {
 }
 
 function shouldRemoveOpenHistoryTrade(trade, shell, hz) {
+  if (!isHistoryTradeFromToday(trade)) return false;
   const sig = shell?.quantSignal?.[hz];
   if (!sig || !trade) return false;
   const isBuy = String(trade.action || '').toLowerCase() !== 'sell';
@@ -4982,6 +4992,7 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
   if (shell.fmpScore) caches.fmpMap[ticker] = shell.fmpScore;
   applyAnalyticsSnapshotToTrade(trade, shell, fund, hz);
   trade.quantRegime = shell.quantSignal[hz]?.regime || trade.quantRegime || null;
+  fixHistoryRecordMinRR(trade);
   return { ok: true, trade, shell };
 }
 
@@ -5232,7 +5243,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.3.5',
+    server_build: '20260605-fmp-ultimate-v7.3.7',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -5384,11 +5395,17 @@ app.post('/api/history/add', express.json(), async (req, res) => {
   const trades = req.body;
   if (!Array.isArray(trades)) return res.status(400).json({ error: 'Expected array' });
 
-  const today = new Date().toDateString();
-  const incomingTickers = new Set(trades.map(t => t.ticker));
+  const incomingKeys = new Set(
+    trades.map(t => {
+      const hz = t.hz || 'short';
+      const day = new Date(t.entryDate || t.timestamp || Date.now()).toDateString();
+      return `${t.ticker}|${hz}|${day}`;
+    })
+  );
   tradeHistory = tradeHistory.filter(h => {
-    const isToday = new Date(h.entryDate || h.timestamp).toDateString() === today;
-    return !(incomingTickers.has(h.ticker) && isToday);
+    const hz = h.hz || 'short';
+    const day = new Date(h.entryDate || h.timestamp).toDateString();
+    return !incomingKeys.has(`${h.ticker}|${hz}|${day}`);
   });
 
   const caches = {};
@@ -7493,6 +7510,61 @@ function roundPrice(x) {
   return +x.toFixed(d);
 }
 
+/** Ensure reward >= risk (default 1:1) — widens TP when channel/S/R levels are too tight. */
+function enforceMinRiskReward(e, tp1, tp2, sl, isSell, minRR = 1.0) {
+  if (!e || !Number.isFinite(+e)) return { tp1, tp2, sl };
+  e = +e;
+  tp1 = tp1 != null ? +tp1 : null;
+  tp2 = tp2 != null ? +tp2 : null;
+  sl = sl != null ? +sl : null;
+  if (!Number.isFinite(tp1) || !Number.isFinite(sl)) return { tp1, tp2, sl };
+
+  if (isSell) {
+    let risk = sl - e;
+    let reward = e - tp1;
+    if (!Number.isFinite(risk) || risk <= 0) risk = e * 0.02;
+    if (!Number.isFinite(reward) || reward < risk * minRR) {
+      tp1 = roundPrice(e - risk * minRR);
+    }
+    if (!Number.isFinite(tp2) || tp2 >= tp1) tp2 = roundPrice(tp1 * 0.96);
+  } else {
+    let risk = e - sl;
+    let reward = tp1 - e;
+    if (!Number.isFinite(risk) || risk <= 0) risk = e * 0.02;
+    if (!Number.isFinite(reward) || reward < risk * minRR) {
+      tp1 = roundPrice(e + risk * minRR);
+    }
+    if (!Number.isFinite(tp2) || tp2 <= tp1) tp2 = roundPrice(tp1 * 1.04);
+  }
+  return { tp1, tp2, sl };
+}
+
+function fixHistoryRecordMinRR(trade) {
+  if (!trade || !trade.ticker) return trade;
+  const hz = trade.hz || 'short';
+  const isSell = String(trade.action || '').toLowerCase() === 'sell';
+  const e = parseFloat(trade[hz + 'Entry'] || trade.entry);
+  let tp1 = parseFloat(trade[hz + 'Target1'] || trade.target1);
+  let tp2 = parseFloat(trade[hz + 'Target2'] || trade.target2);
+  let sl = parseFloat(trade[hz + 'StopLoss'] || trade.stopLoss);
+  if (!e || !Number.isFinite(e)) return trade;
+  const fixed = enforceMinRiskReward(e, tp1, tp2, sl, isSell, 1.0);
+  trade[hz + 'Target1'] = String(roundPrice(fixed.tp1));
+  trade[hz + 'Target2'] = String(roundPrice(fixed.tp2));
+  trade[hz + 'StopLoss'] = String(roundPrice(fixed.sl));
+  if (hz === 'short' || trade.target1 == null || trade.target1 === '') {
+    trade.target1 = trade[hz + 'Target1'];
+    trade.target2 = trade[hz + 'Target2'];
+    trade.stopLoss = trade[hz + 'StopLoss'];
+  }
+  if (isSell) {
+    trade.sellTarget1 = trade[hz + 'Target1'];
+    trade.sellTarget2 = trade[hz + 'Target2'];
+    trade.sellStopLoss = trade[hz + 'StopLoss'];
+  }
+  return trade;
+}
+
 /**
  * Professional entry/exit levels using real S/R levels as TP and SL anchors.
  * ATR used as minimum buffer and fallback. Analyst target used for long-term TP.
@@ -7723,6 +7795,11 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
       if (tp1 >= e) tp1 = atr ? roundPrice(e - 2.5 * atr) : roundPrice(e * 0.965);
       if (tp2 >= tp1) tp2 = roundPrice(tp1 * 0.96);
     }
+
+    const rr = enforceMinRiskReward(e, tp1, tp2, sl, isSell, 1.0);
+    tp1 = rr.tp1;
+    tp2 = rr.tp2;
+    sl = rr.sl;
 
     row[hz + 'Entry'] = String(roundPrice(e));
     row[hz + 'Target1'] = String(tp1);
@@ -8298,7 +8375,7 @@ app.post('/api/history/cleanup-entries', async (req, res) => {
 
 
 // POST /api/history/revalidate — refresh FMP/fundamentals analytics on all history rows;
-// removes open trades that contradict current regime/signal. Runs automatically on page load.
+// removes only today's open trades that contradict current regime/signal. Runs on page load.
 app.post('/api/history/revalidate', express.json(), async (req, res) => {
   const dryRun = req.body?.dryRun === true;
   const caches = {};
@@ -8324,6 +8401,7 @@ app.post('/api/history/revalidate', express.json(), async (req, res) => {
         trade.revalidatedAt || trade.entryDate || trade.timestamp || new Date().toISOString();
       trade.analyticsPartial = true;
       trade.analyticsError = result.reason || 'enrich failed';
+      fixHistoryRecordMinRR(trade);
       errors.push({ ticker: trade.ticker, hz, reason: result.reason || 'enrich failed' });
       enriched++;
       continue;
@@ -8357,9 +8435,10 @@ app.post('/api/history/revalidate', express.json(), async (req, res) => {
   if (!dryRun) {
     const before = tradeHistory.length;
     tradeHistory = tradeHistory.filter(h => {
-      if (!isHistoryBuySellRecord(h)) return false;
+      if (!isHistoryBuySellRecord(h)) return true;
       const hz = h.hz || 'short';
       if ((h[hz + 'Status'] || h.status || 'open') !== 'open') return true;
+      if (!isHistoryTradeFromToday(h)) return true;
       return !toRemoveKeys.has(`${h.ticker}|${hz}|${h.entryDate || h.timestamp || ''}`);
     });
     saveHistoryFile(tradeHistory);

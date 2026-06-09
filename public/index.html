@@ -1399,6 +1399,36 @@ function roundDashPrice(x) {
   const d = a >= 100 ? 2 : a >= 10 ? 2 : a >= 1 ? 3 : 4;
   return +Number(x).toFixed(d);
 }
+
+/** Ensure reward >= risk (default 1:1) — widens TP when channel/S/R levels are too tight. */
+function enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, minRR) {
+  minRR = minRR == null ? 1.0 : minRR;
+  if (!e || !Number.isFinite(+e)) return { tp1: tp1, tp2: tp2, sl: sl };
+  e = +e;
+  tp1 = tp1 != null ? +tp1 : null;
+  tp2 = tp2 != null ? +tp2 : null;
+  sl = sl != null ? +sl : null;
+  if (!Number.isFinite(tp1) || !Number.isFinite(sl)) return { tp1: tp1, tp2: tp2, sl: sl };
+
+  if (isSell) {
+    var risk = sl - e;
+    var reward = e - tp1;
+    if (!Number.isFinite(risk) || risk <= 0) risk = e * 0.02;
+    if (!Number.isFinite(reward) || reward < risk * minRR) {
+      tp1 = roundDashPrice(e - risk * minRR);
+    }
+    if (!Number.isFinite(tp2) || tp2 >= tp1) tp2 = roundDashPrice(tp1 * 0.96);
+  } else {
+    risk = e - sl;
+    reward = tp1 - e;
+    if (!Number.isFinite(risk) || risk <= 0) risk = e * 0.02;
+    if (!Number.isFinite(reward) || reward < risk * minRR) {
+      tp1 = roundDashPrice(e + risk * minRR);
+    }
+    if (!Number.isFinite(tp2) || tp2 <= tp1) tp2 = roundDashPrice(tp1 * 1.04);
+  }
+  return { tp1: tp1, tp2: tp2, sl: sl };
+}
 function ratingImpliesSellDash(rating) {
   return String(rating || '').toLowerCase().includes('sell');
 }
@@ -1562,7 +1592,8 @@ function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
     if (tp1 >= e) tp1 = atr ? roundDashPrice(e - 2.5 * atr) : roundDashPrice(e * 0.965);
     if (tp2 >= tp1) tp2 = roundDashPrice(tp1 * 0.96);
   }
-  return { tp1: tp1, tp2: tp2, sl: sl };
+  var rr = enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, 1.0);
+  return { tp1: rr.tp1, tp2: rr.tp2, sl: rr.sl };
 }
 
 /** renderCard reads s.pe / s.peg / growth strings — fundamentals batch attaches numbers on _*; Claude often leaves tiles blank for non-US symbols. */
@@ -2492,6 +2523,10 @@ async function saveDashPicksToHistory(data) {
       if(isSell  && tp2 >= tp1)   tp2 = parseFloat((tp1*0.95).toFixed(2));
       if(isSell  && sl  <= entry) sl  = parseFloat((entry*1.03).toFixed(2));
     }
+    var rrFix = enforceMinRiskRewardDash(entry, tp1, tp2, sl, isSell, 1.0);
+    tp1 = rrFix.tp1;
+    tp2 = rrFix.tp2;
+    sl = rrFix.sl;
     return {
       _v: 2,
       ticker: s.ticker, name: s.name||s.ticker, sector: s.sector||'',
@@ -2631,10 +2666,27 @@ async function loadHistoryFromServer(fetchOpts){
             h.legacyRecord=true;
           }
         });
-        ST.history=serverData;
+        const serverKeys=new Set(serverData.map(function(h){
+          return h.ticker+'_'+(h.hz||'short')+'_'+new Date(h.entryDate||h.timestamp).toDateString();
+        }));
+        let localOnly=(ST.history||[]).filter(function(h){
+          return historyRecordIsTrade(h)&&!serverKeys.has(h.ticker+'_'+(h.hz||'short')+'_'+new Date(h.entryDate||h.timestamp).toDateString());
+        });
+        if(!localOnly.length){
+          localOnly=recoverLocalHistory().filter(function(h){
+            return historyRecordIsTrade(h)&&!serverKeys.has(h.ticker+'_'+(h.hz||'short')+'_'+new Date(h.entryDate||h.timestamp).toDateString());
+          });
+        }
+        ST.history=serverData.concat(localOnly);
         ST.history.sort(function(a,b){
           return new Date(b.entryDate||b.timestamp)-new Date(a.entryDate||a.timestamp);
         });
+        if(localOnly.length){
+          console.log('Merged',localOnly.length,'local-only history rows missing from server — re-uploading');
+          bootstrapHistoryToServer(localOnly).catch(function(e){
+            console.warn('bootstrap local-only history',e.message||e);
+          });
+        }
       }else{
         let local=(ST.history||[]).filter(historyRecordIsTrade);
         if(!local.length)local=recoverLocalHistory().filter(historyRecordIsTrade);
@@ -2733,6 +2785,8 @@ async function fixHistoryPrices(silent) {
     if(!t1||(isSell?t1>=newEntry:t1<=newEntry)) t1=isSell?parseFloat((newEntry*0.95).toFixed(2)):parseFloat((newEntry*1.05).toFixed(2));
     if(!t2||(isSell?t2>=t1:t2<=t1)) t2=isSell?parseFloat((t1*0.95).toFixed(2)):parseFloat((t1*1.05).toFixed(2));
     if(!s||(isSell?s<=newEntry:s>=newEntry)) s=isSell?parseFloat((newEntry*1.03).toFixed(2)):parseFloat((newEntry*0.97).toFixed(2));
+    var rrFix=enforceMinRiskRewardDash(newEntry,t1,t2,s,isSell,1.0);
+    t1=rrFix.tp1; t2=rrFix.tp2; s=rrFix.sl;
     h.entry=newEntry; h[hz+'Entry']=newEntry;
     h.target1=t1; h[hz+'Target1']=t1;
     h.target2=t2; h[hz+'Target2']=t2;
