@@ -1173,7 +1173,7 @@ const SK='as_v6';
 const DASH_SCHEMA_VERSION = 2;
 /** Max history rows kept in localStorage (must stay in sync with appetite for multi-day multi-horizon scans). */
 const HISTORY_MAX_LOCAL = 3000;
-let ST={history:[],watchlist:[],dashData:null,dashTs:null,dashSchemaVersion:DASH_SCHEMA_VERSION};
+let ST={history:[],watchlist:[],dashData:null,dashTs:null,dashSummary:'',dashSchemaVersion:DASH_SCHEMA_VERSION};
 
 /** Reject corrupted localStorage dashboard payloads (would leave UI stuck on "Loading…"). */
 function normalizeDashData(raw){
@@ -1730,14 +1730,29 @@ async function fetchServerDashPicksWithRetry(attempts){
 async function applyServerDashPicks(server){
   ST.dashData=server.dashData;
   ST.dashTs=server.dashTs;
+  ST.dashSummary=server.summary||'';
   const dashTsEl=document.getElementById('dashTs');
   if(dashTsEl){
     const sum=server.summary?(' · '+server.summary):'';
     dashTsEl.textContent='Synced picks · '+new Date(server.dashTs).toLocaleString()+sum;
   }
-  await hydrateDashDataWithLiveBatch(ST.dashData,{resyncScores:false});
-  waitForEl('hzShortBuy',function(){
-    renderDashboard(ST.dashData).catch(function(e){console.warn('renderDashboard',e);});
+  await renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true});
+  hydrateDashDataWithLiveBatch(ST.dashData,{resyncScores:false})
+    .then(function(){ return renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true}); })
+    .catch(function(e){ console.warn('hydrateDashDataWithLiveBatch', e.message||e); });
+}
+
+function renderDashboardWhenReady(data, opts){
+  opts=opts||{};
+  return new Promise(function(resolve){
+    waitForEl('hzShortBuy',async function(){
+      try{
+        await renderDashboard(data,opts);
+      }catch(e){
+        console.error('renderDashboard failed',e);
+      }
+      resolve();
+    });
   });
 }
 
@@ -2313,6 +2328,7 @@ async function runDashScan(force){
 
   const dashData={short:shortTop5,medium:medTop5,long:longTop5,shortSell:shortSell5,medSell:medSell5,longSell:longSell5};
   ST.dashData=dashData;ST.dashTs=Date.now();
+  await renderDashboardWhenReady(dashData);
   await hydrateDashDataWithLiveBatch(dashData,{resyncScores:true});
   await saveServerDashPicks(dashData,ST.dashTs);
   await saveDashPicksToHistory(dashData);
@@ -2345,12 +2361,14 @@ async function hydrateDashDataWithLiveBatch(dashData, opts) {
       fetch('/api/technicals/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols: allPickTickers })
+        body: JSON.stringify({ symbols: allPickTickers }),
+        signal: AbortSignal.timeout ? AbortSignal.timeout(45000) : undefined
       }),
       fetch('/api/fundamentals/batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols: eqSyms })
+        body: JSON.stringify({ symbols: eqSyms }),
+        signal: AbortSignal.timeout ? AbortSignal.timeout(45000) : undefined
       })
     ]);
     if (tr.ok) batchTech = await tr.json();
@@ -2738,14 +2756,20 @@ async function fixHistoryPrices(silent) {
 }
 
 
-async function renderDashboard(data){
+async function renderDashboard(data, opts){
+  opts=opts||{};
   if(!data||typeof data!=='object'||Array.isArray(data)){
     console.warn('renderDashboard: invalid dashData — forcing rescan');
-    ST.dashData=null; ST.dashTs=null; ss();
-    await runDashScan(); return;
+    ST.dashData=null; ST.dashTs=null;
+    await runDashScan(true); return;
   }
   const ts=ST.dashTs?new Date(ST.dashTs).toLocaleString():'—';
-  document.getElementById('dashTs').textContent='Updated: '+ts+' · '+SAMPLE.length+' instruments · Prices: Yahoo Finance (real-time)';
+  const dashTsEl=document.getElementById('dashTs');
+  if(dashTsEl&&!opts.keepSyncHeader){
+    dashTsEl.textContent='Updated: '+ts+' · '+SAMPLE.length+' instruments · Prices: Yahoo Finance (real-time)';
+  }else if(dashTsEl&&opts.keepSyncHeader&&ST.dashSummary){
+    dashTsEl.textContent='Synced picks · '+ts+' · '+ST.dashSummary+' · live prices';
+  }
   console.log('renderDashboard called, short picks:', data.short&&data.short.length, 'medium:', data.medium&&data.medium.length);
   const syms=[...(data.short||[]),...(data.medium||[]),...(data.long||[]),...(data.shortSell||[]),...(data.medSell||[]),...(data.longSell||[])].map(s=>s.ticker).filter(Boolean);
   const u=[...new Set(syms)];
@@ -4721,38 +4745,41 @@ function openQuickStartModal() {
   modal.setAttribute('aria-hidden', 'false');
 }
 
-async function syncHistoryInBackground() {
-  try {
-    await fetch('/api/history/cleanup-entries', { method: 'POST' });
-  } catch (_) { /* optional */ }
-  try {
+async function syncHistoryInBackground(){
+  try{
     await loadHistoryFromServer();
-  } catch (e) {
-    console.warn('History load failed:', e.message || e);
+    if(ST.history.length) renderHist();
+  }catch(e){
+    console.warn('History initial load failed:',e.message||e);
   }
-  try {
-    await fetch('/api/history/revalidate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
+  try{
+    await fetch('/api/history/cleanup-entries',{method:'POST'});
+  }catch(_){}
+  try{
+    await fetch('/api/history/revalidate',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({})
     });
-  } catch (e) {
-    console.warn('History revalidate failed:', e.message || e);
+  }catch(e){
+    console.warn('History revalidate failed:',e.message||e);
   }
-  try {
+  try{
     await loadHistoryFromServer();
-    if (ST.history.length) await refreshHistoryPnl();
+    if(ST.history.length){
+      try{ await refreshHistoryPnl(); }catch(e){ console.warn(e); }
+    }
     renderHist();
-  } catch (e) {
-    console.warn('History reload after revalidate failed:', e.message || e);
+  }catch(e){
+    console.warn('History reload after revalidate failed:',e.message||e);
   }
-  if (!ST.history.length && ST.dashData) {
-    try {
+  if(!ST.history.length&&ST.dashData){
+    try{
       await saveDashPicksToHistory(ST.dashData);
       await loadHistoryFromServer();
       renderHist();
-    } catch (e) {
-      console.warn('History seed from dashData failed:', e.message || e);
+    }catch(e){
+      console.warn('History seed from dashData failed:',e.message||e);
     }
   }
 }

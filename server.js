@@ -5232,7 +5232,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.3.4',
+    server_build: '20260605-fmp-ultimate-v7.3.5',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
