@@ -2630,6 +2630,55 @@ function historyRecordIsTrade(h){
   });
 }
 
+function historyDedupKey(h) {
+  return h.ticker + '_' + (h.hz || 'short') + '_' + new Date(h.entryDate || h.timestamp).toDateString();
+}
+
+/** Buy/Sell rows for History UI — deduped ticker+horizon+day (must match table). */
+function getDisplayHistory() {
+  const seen = new Set();
+  const out = [];
+  for (const h of ST.history) {
+    if (!historyRecordIsTrade(h)) continue;
+    const k = historyDedupKey(h);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(h);
+  }
+  out.sort(function (a, b) {
+    return new Date(b.entryDate || b.timestamp) - new Date(a.entryDate || a.timestamp);
+  });
+  return out;
+}
+
+function getDisplayHistoryForHz(hzKey) {
+  return getDisplayHistory().filter(function (h) {
+    if (!h.hz) return true;
+    return h.hz === hzKey;
+  });
+}
+
+/** PnL + open/closed snapshot for one horizon row (aligned with History table). */
+function histRowPnlSnapshot(h, hzKey) {
+  const closedKinds = ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit'];
+  const status = h[hzKey + 'Status'] && h[hzKey + 'Status'] !== 'n/a' ? h[hzKey + 'Status'] : (h.status || 'open');
+  const isToday = new Date(h.entryDate || h.timestamp).toDateString() === new Date().toDateString();
+  const mktNowOpen = isMarketTrading(h.ticker);
+  const wasClosed = closedKinds.includes(status);
+  const wouldBePending = isToday && !mktNowOpen && !wasClosed;
+
+  let pnlD = h[hzKey + 'PnlDollar'] !== undefined ? h[hzKey + 'PnlDollar'] : h.pnlDollar;
+  if (pnlD == null && wasClosed) {
+    const resolved = resolveHistoricalHzPnl(h, hzKey);
+    if (resolved != null) pnlD = resolved;
+  }
+
+  const effectiveStatus = wouldBePending && pnlD == null ? 'pending' : status;
+  const isClosed = closedKinds.includes(effectiveStatus);
+  const isOpen = effectiveStatus === 'open' || effectiveStatus === 'pending';
+  return { pnl: pnlD, isOpen, isClosed };
+}
+
 async function bootstrapHistoryToServer(localRecords){
   const rows=localRecords.filter(historyRecordIsTrade).slice(0,500);
   if(!rows.length)return false;
@@ -4087,21 +4136,8 @@ function renderHist() {
     return;
   }
 
-  // Only show Buy/Sell trades (no Hold), deduplicated by ticker+day
-  const seen = new Set();
-  const hist = ST.history.filter(h => {
-    if(!h.hz) return false;
-    const mainAct = (h.action||'').toLowerCase();
-    const hasMainAction = mainAct === 'buy' || mainAct === 'sell';
-    const hasHzAction = ['short','medium','long'].some(hz => {
-      const a = (h[hz+'Action']||'').toLowerCase();
-      return a === 'buy' || a === 'sell';
-    });
-    if(!hasMainAction && !hasHzAction) return false;
-    // Deduplicate by ticker+hz+day (each horizon is separate)
-    const k = h.ticker+'_'+(h.hz||'short')+'_'+new Date(h.entryDate||h.timestamp).toDateString();
-    if(seen.has(k)) return false; seen.add(k); return true;
-  });
+  // Only show Buy/Sell trades (no Hold), deduplicated by ticker+horizon+day
+  const hist = getDisplayHistory();
 
   if(!hist.length) {
     el.innerHTML = '<div class="emp"><div class="emp-a">◷</div>'
@@ -4288,7 +4324,12 @@ function renderHist() {
       +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
   }
 
-  const pendingCount = hist.filter(h => h.shortPnlDollar == null).length;
+  const pendingCount = getDisplayHistoryForHz(window._histActiveHz || 'short')
+    .filter(function (h) {
+      const hz = window._histActiveHz || 'short';
+      const st = h[hz + 'Status'];
+      return h[hz + 'PnlDollar'] == null && !['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit'].includes(st);
+    }).length;
   const pendingBanner = pendingCount > 0
     ? '<div style="background:rgba(245,200,66,0.08);border:1px solid rgba(245,200,66,0.25);border-radius:8px;padding:8px 12px">'
       +'<span style="font-size:11px;color:#F5C842;font-family:DM Mono,monospace">'+pendingCount+' trade'+(pendingCount>1?'s':'')+' — fetching live quotes for PnL (automatic)</span></div>'
@@ -4300,33 +4341,20 @@ function renderHist() {
     +'<div></div>'
     +'</div>'
     +horizonTabs+mkTable('short')+mkTable('medium')+mkTable('long')+'</div>';
-  renderSummaryCards('short');
+  switchHistHz(window._histActiveHz || 'short');
 }
 
 function calcSummaryForHz(hzKey) {
-  const hist = ST.history.filter(h=>h&&h.ticker);
-  const hzHist = hist.filter(h => !h.hz || h.hz === hzKey);
-  const closedKinds = ['tp1_hit','tp2_hit','sl_hit','time_limit'];
-  function getP(h) {
-    const st = h[hzKey+'Status'];
-    const closed = closedKinds.includes(st);
-    const stored = h[hzKey+'PnlDollar'];
-    const nOpen = stored != null && stored !== '' ? Number(stored) : null;
-    const openPnl = Number.isFinite(nOpen) ? nOpen : null;
-    if (closed) {
-      const r = resolveHistoricalHzPnl(h, hzKey);
-      const pnl = r != null ? r : openPnl;
-      return { pnl, isOpen: false };
-    }
-    return { pnl: openPnl, isOpen: true };
-  }
-  const pnlArr = hzHist.map(h => getP(h));
-  const withPnl = pnlArr.filter(x => x.pnl != null && Number.isFinite(x.pnl));
-  const realised   = withPnl.filter(x=>!x.isOpen).reduce((s,x)=>s+Number(x.pnl), 0);
-  const unrealised = withPnl.filter(x=>x.isOpen).reduce((s,x)=>s+Number(x.pnl), 0);
-  const closedForWr = hzHist.filter(h => closedKinds.includes(h[hzKey+'Status']));
+  const hzHist = getDisplayHistoryForHz(hzKey);
+  const snapshots = hzHist.map(function (h) { return histRowPnlSnapshot(h, hzKey); });
+  const withPnl = snapshots.filter(function (x) { return x.pnl != null && Number.isFinite(Number(x.pnl)); });
+  const realised = withPnl.filter(function (x) { return x.isClosed; }).reduce(function (s, x) { return s + Number(x.pnl); }, 0);
+  const unrealised = withPnl.filter(function (x) { return x.isOpen; }).reduce(function (s, x) { return s + Number(x.pnl); }, 0);
+  const closedForWr = hzHist.filter(function (h) {
+    return ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit'].includes(h[hzKey + 'Status']);
+  });
   function hzWin(h) {
-    const s = h[hzKey+'Status'];
+    const s = h[hzKey + 'Status'];
     const p = resolveHistoricalHzPnl(h, hzKey);
     if (s === 'sl_hit') return false;
     if (s === 'tp1_hit' || s === 'tp2_hit') return p == null ? true : p > 0;
@@ -4336,7 +4364,7 @@ function calcSummaryForHz(hzKey) {
   const winsClosed = closedForWr.filter(hzWin).length;
   const wr = closedForWr.length ? Math.round(winsClosed / closedForWr.length * 100) : null;
   const closedLen = closedForWr.length;
-  const openCnt = hzHist.filter(h => !closedKinds.includes(h[hzKey+'Status'])).length;
+  const openCnt = snapshots.filter(function (x) { return x.isOpen; }).length;
   return { openCnt, unrealised, realised, wr, closedLen };
 }
 
@@ -4361,6 +4389,7 @@ function renderSummaryCards(hzKey) {
 }
 
 function switchHistHz(hzKey) {
+  window._histActiveHz = hzKey;
   ['short','medium','long'].forEach(k => {
     const tab = document.getElementById('hist-ht-'+k);
     const tbl = document.getElementById('hist-table-'+k);
