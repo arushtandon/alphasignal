@@ -1256,7 +1256,8 @@ function computeQuantSignal(tech, fund, hz) {
     buy = buyGates>=5.5?90:buyGates>=4.5?78:buyGates>=3.5?62:buyGates>=2.5?46:Math.min(22,Math.round(buyGates*14));
 
     // SELL: structural regime breakdown
-    if (!aboveMa200&&deathCross)         { sellGates+=3; condSell.push('Bear regime: below MA200 + Death Cross'); }
+    if (!aboveMa200&&deathCross&&weeklyTrend==='downtrend') { sellGates+=4; condSell.push('BEAR BREAKDOWN: MA200+DC+weekly down'); }
+    else if (!aboveMa200&&deathCross)         { sellGates+=3; condSell.push('Bear regime: below MA200 + Death Cross'); }
     else if (!aboveMa200)                { sellGates+=2; condSell.push('Below MA200 — bear regime'); }
     else if (deathCross)                 { sellGates+=2; condSell.push('Death Cross — trend reversal'); }
     if (weeklyTrend==='downtrend')       { sellGates++;  condSell.push('Weekly downtrend'); }
@@ -4020,6 +4021,15 @@ app.post('/api/technicals/batch', async (req, res) => {
         data.compositeAlphaLong = computeCompositeAlpha(data.danelfin, data, 0, 'long');
         data.compositeAlpha = data.compositeAlphaMedium;
       }
+      // Institutional flow — fire-and-forget, cached 6h
+      fetchInstitutionalFlow(sym).then(iFlow => {
+        if (iFlow && data) {
+          data.instNetShares = iFlow.netShares || 0;
+          data.instFlowLabel = iFlow.netFlowLabel || '';
+          data.instTopBuyers = (iFlow.topBuyers || []).slice(0, 3);
+          data.instTopSellers = (iFlow.topSellers || []).slice(0, 3);
+        }
+      }).catch(() => {});
 
       techCache.set(sym, { ts: Date.now(), data });
       results[sym] = data;
@@ -5243,7 +5253,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.3.8',
+    server_build: '20260605-fmp-ultimate-v7.3.9',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -7510,8 +7520,8 @@ function roundPrice(x) {
   return +x.toFixed(d);
 }
 
-/** Ensure reward >= risk (default 1:1) — widens TP when channel/S/R levels are too tight. */
-function enforceMinRiskReward(e, tp1, tp2, sl, isSell, minRR = 1.0) {
+/** Ensure reward >= risk — widens TP when channel/S/R levels are too tight. */
+function enforceMinRiskReward(e, tp1, tp2, sl, isSell, minRR = 1.5) {
   if (!e || !Number.isFinite(+e)) return { tp1, tp2, sl };
   e = +e;
   tp1 = tp1 != null ? +tp1 : null;
@@ -7548,7 +7558,7 @@ function fixHistoryRecordMinRR(trade) {
   let tp2 = parseFloat(trade[hz + 'Target2'] || trade.target2);
   let sl = parseFloat(trade[hz + 'StopLoss'] || trade.stopLoss);
   if (!e || !Number.isFinite(e)) return trade;
-  const fixed = enforceMinRiskReward(e, tp1, tp2, sl, isSell, 1.0);
+  const fixed = enforceMinRiskReward(e, tp1, tp2, sl, isSell, 1.5);
   trade[hz + 'Target1'] = String(roundPrice(fixed.tp1));
   trade[hz + 'Target2'] = String(roundPrice(fixed.tp2));
   trade[hz + 'StopLoss'] = String(roundPrice(fixed.sl));
@@ -7786,17 +7796,24 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
       }
     }
 
+    const _MIN_RR = 1.5;
     if (!isSell) {
       if (sl >= e) sl = atr ? roundPrice(e - 2.0 * atr) : roundPrice(e * 0.975);
+      if (sl < e * 0.92) sl = atr ? roundPrice(e - 2.0 * atr) : roundPrice(e * 0.975);
       if (tp1 <= e) tp1 = atr ? roundPrice(e + 2.5 * atr) : roundPrice(e * 1.035);
+      const _riskB = Math.abs(e - sl);
+      if (_riskB > 0 && (tp1 - e) < _riskB * _MIN_RR) tp1 = roundPrice(e + _riskB * _MIN_RR);
       if (tp2 <= tp1) tp2 = roundPrice(tp1 * 1.04);
     } else {
       if (sl <= e) sl = atr ? roundPrice(e + 2.0 * atr) : roundPrice(e * 1.028);
+      if (sl > e * 1.08) sl = atr ? roundPrice(e + 2.0 * atr) : roundPrice(e * 1.025);
       if (tp1 >= e) tp1 = atr ? roundPrice(e - 2.5 * atr) : roundPrice(e * 0.965);
+      const _riskS = Math.abs(sl - e);
+      if (_riskS > 0 && (e - tp1) < _riskS * _MIN_RR) tp1 = roundPrice(e - _riskS * _MIN_RR);
       if (tp2 >= tp1) tp2 = roundPrice(tp1 * 0.96);
     }
 
-    const rr = enforceMinRiskReward(e, tp1, tp2, sl, isSell, 1.0);
+    const rr = enforceMinRiskReward(e, tp1, tp2, sl, isSell, 1.5);
     tp1 = rr.tp1;
     tp2 = rr.tp2;
     sl = rr.sl;
@@ -8457,6 +8474,59 @@ app.post('/api/history/revalidate', express.json(), async (req, res) => {
     errors,
     totalRemoved: removed.length
   });
+});
+
+
+// ── Institutional holder flow (FMP /api/v3/institutional-holder) ──────────────
+const _instCache = new Map();
+const INST_TTL = 6 * 60 * 60 * 1000;
+
+async function fetchInstitutionalFlow(symbol) {
+  const now = Date.now();
+  const cached = _instCache.get(symbol);
+  if (cached && now - cached.ts < INST_TTL) return cached.data;
+  const key = fmpEnvKeyFund ? fmpEnvKeyFund() : null;
+  if (!key) return null;
+  try {
+    const enc = encodeURIComponent(symbol.toUpperCase().trim());
+    const url = `https://financialmodelingprep.com/api/v3/institutional-holder/${enc}?apikey=${encodeURIComponent(key)}`;
+    const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
+    if (!r.ok) { _instCache.set(symbol, { ts: now, data: null }); return null; }
+    const raw = await r.json().catch(() => null);
+    if (!Array.isArray(raw) || !raw.length) { _instCache.set(symbol, { ts: now, data: null }); return null; }
+    let netShares = 0;
+    const buyers = [], sellers = [];
+    for (const h of raw.slice(0, 25)) {
+      const chg = Number(h.change || h.sharesChange || 0);
+      netShares += chg;
+      const holder = { name: h.holder || h.shareholder || 'Unknown', shares: Number(h.shares || 0), change: chg };
+      if (chg > 0) buyers.push(holder);
+      else if (chg < 0) sellers.push(holder);
+    }
+    buyers.sort((a, b) => b.change - a.change);
+    sellers.sort((a, b) => a.change - b.change);
+    const data = {
+      symbol,
+      netShares,
+      netFlowLabel: netShares > 0 ? 'Net buying' : netShares < 0 ? 'Net selling' : 'Neutral',
+      topBuyers: buyers.slice(0, 5).map(h => h.name + ' (+' + (h.change / 1e6).toFixed(1) + 'M)'),
+      topSellers: sellers.slice(0, 5).map(h => h.name + ' (' + (h.change / 1e6).toFixed(1) + 'M)'),
+      buyerCount: buyers.length,
+      sellerCount: sellers.length
+    };
+    _instCache.set(symbol, { ts: now, data });
+    return data;
+  } catch (e) {
+    _instCache.set(symbol, { ts: now, data: null });
+    return null;
+  }
+}
+
+app.get('/api/institutional-flow/:symbol', async (req, res) => {
+  const sym = (req.params.symbol || '').toUpperCase().trim();
+  if (!sym) return res.status(400).json({ error: 'symbol required' });
+  const data = await fetchInstitutionalFlow(sym);
+  res.json(data || { symbol: sym, netShares: 0, netFlowLabel: 'No data', topBuyers: [], topSellers: [] });
 });
 
 // Static files AFTER /api routes so `/api/*` never gets swallowed by filesystem lookup

@@ -1400,9 +1400,9 @@ function roundDashPrice(x) {
   return +Number(x).toFixed(d);
 }
 
-/** Ensure reward >= risk (default 1:1) — widens TP when channel/S/R levels are too tight. */
+/** Ensure reward >= risk — widens TP when channel/S/R levels are too tight. */
 function enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, minRR) {
-  minRR = minRR == null ? 1.0 : minRR;
+  minRR = minRR == null ? 1.5 : minRR;
   if (!e || !Number.isFinite(+e)) return { tp1: tp1, tp2: tp2, sl: sl };
   e = +e;
   tp1 = tp1 != null ? +tp1 : null;
@@ -1583,16 +1583,23 @@ function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
     }
   }
 
+  var _MIN_RR = 1.5;
   if (!isSell) {
     if (sl >= e) sl = atr ? roundDashPrice(e - 2.0 * atr) : roundDashPrice(e * 0.975);
+    if (sl < e * 0.92) sl = atr ? roundDashPrice(e - 2.0 * atr) : roundDashPrice(e * 0.975);
     if (tp1 <= e) tp1 = atr ? roundDashPrice(e + 2.5 * atr) : roundDashPrice(e * 1.035);
+    var _riskB = Math.abs(e - sl);
+    if (_riskB > 0 && (tp1 - e) < _riskB * _MIN_RR) tp1 = roundDashPrice(e + _riskB * _MIN_RR);
     if (tp2 <= tp1) tp2 = roundDashPrice(tp1 * 1.04);
   } else {
     if (sl <= e) sl = atr ? roundDashPrice(e + 2.0 * atr) : roundDashPrice(e * 1.028);
+    if (sl > e * 1.08) sl = atr ? roundDashPrice(e + 2.0 * atr) : roundDashPrice(e * 1.025);
     if (tp1 >= e) tp1 = atr ? roundDashPrice(e - 2.5 * atr) : roundDashPrice(e * 0.965);
+    var _riskS = Math.abs(sl - e);
+    if (_riskS > 0 && (e - tp1) < _riskS * _MIN_RR) tp1 = roundDashPrice(e - _riskS * _MIN_RR);
     if (tp2 >= tp1) tp2 = roundDashPrice(tp1 * 0.96);
   }
-  var rr = enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, 1.0);
+  var rr = enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, 1.5);
   return { tp1: rr.tp1, tp2: rr.tp2, sl: rr.sl };
 }
 
@@ -2109,6 +2116,7 @@ async function runDashScan(force){
               if(lo>55&&loS>55){ if(lo>=loS) loS=20; else lo=20; }
 
               r.shortScore = sh; r.shortSellScore = shS;
+              if (tech) { r.instNetShares = tech.instNetShares || 0; r.instFlowLabel = tech.instFlowLabel || ''; }
               r.mediumScore = me; r.mediumSellScore = meS;
               r.longScore = lo; r.longSellScore = loS;
               // Store regime for each horizon (from quantSignal)
@@ -2249,6 +2257,7 @@ async function runDashScan(force){
                 r.danelfinSentiment = _dn(_dan.sentiment);
                 r.danelfinLowRisk = _dn(_dan.low_risk);
                 r.danelfinBuyTrack = !!(_dan.buy_track_record === true || _dan.buy_track_record === 1 || _dan.buy_track_record === '1');
+                r.danelfinSellTrack = !!(_dan.sell_track_record === true || _dan.sell_track_record === 1 || _dan.sell_track_record === '1');
                 // Composite alpha scores per horizon (mirrors server formula)
                 var _da=r.danelfinAiScore||0,_dt2=r.danelfinTechnical||0,_df2=r.danelfinFundamental||0;
                 var _ds2=r.danelfinSentiment||0,_dr2=r.danelfinLowRisk||0,_trk2=r.danelfinBuyTrack?5:-5;
@@ -2344,16 +2353,35 @@ async function runDashScan(force){
 
   // Buy panes: horizon action must be 'Buy' AND score ≥ rate() Buy floor (merged: clarity from Claude + repo score gate).
   const BUY_MIN_SCORE = 62; // rate(): sc>=62 → 'Buy'
-  const shortTop5 = [...deduped].filter(s => (s.shortScore || 0) >= BUY_MIN_SCORE && s.shortAction === 'Buy').sort((a, b) => (b.shortScore || 0) - (a.shortScore || 0)).slice(0, 5);
-  const medTop5 = [...deduped].filter(s => (s.mediumScore || 0) >= BUY_MIN_SCORE && s.mediumAction === 'Buy').sort((a, b) => (b.mediumScore || 0) - (a.mediumScore || 0)).slice(0, 5);
-  const longTop5 = [...deduped].filter(s => (s.longScore || 0) >= BUY_MIN_SCORE && s.longAction === 'Buy').sort((a, b) => (b.longScore || 0) - (a.longScore || 0)).slice(0, 5);
+  function danComposite(row, scoreKey) {
+    var tech = row[scoreKey] || 0;
+    var dan = row.danelfinAiScore != null ? row.danelfinAiScore : 5;
+    var danBonus = dan >= 7 ? (dan - 6) * 15 : dan <= 3 ? -20 : 0;
+    if (row.danelfinBuyTrack) danBonus += 10;
+    var instBonus = row.instNetShares > 0 ? 10 : row.instNetShares < 0 ? -10 : 0;
+    return tech + danBonus + instBonus;
+  }
+  function sellComposite(row, scoreKey) {
+    var tech = row[scoreKey] || 0;
+    var bonus = 0;
+    var pio = row.fmpScore && row.fmpScore.piotroski != null ? Number(row.fmpScore.piotroski) : null;
+    var az = row.fmpScore && row.fmpScore.altmanZ != null ? Number(row.fmpScore.altmanZ) : null;
+    if (pio != null && pio <= 2) bonus += 20;
+    if (az != null && az < 1.81) bonus += 18;
+    if (row.danelfinSellTrack) bonus += 12;
+    if (row.instNetShares < 0) bonus += 8;
+    return tech + bonus;
+  }
+  const shortTop5 = [...deduped].filter(s => (s.shortScore || 0) >= BUY_MIN_SCORE && s.shortAction === 'Buy').sort((a, b) => danComposite(b, 'shortScore') - danComposite(a, 'shortScore')).slice(0, 5);
+  const medTop5 = [...deduped].filter(s => (s.mediumScore || 0) >= BUY_MIN_SCORE && s.mediumAction === 'Buy').sort((a, b) => danComposite(b, 'mediumScore') - danComposite(a, 'mediumScore')).slice(0, 5);
+  const longTop5 = [...deduped].filter(s => (s.longScore || 0) >= BUY_MIN_SCORE && s.longAction === 'Buy').sort((a, b) => danComposite(b, 'longScore') - danComposite(a, 'longScore')).slice(0, 5);
   const shortBuys = new Set(shortTop5.map(s=>s.ticker));
   const medBuys = new Set(medTop5.map(s=>s.ticker));
   const longBuys = new Set(longTop5.map(s=>s.ticker));
   const SELL_MIN = 62; // Symmetric with act() — only true Sell actions (sellScore >= 62) qualify
-  let shortSell5=[...deduped].filter(s=>!shortBuys.has(s.ticker)&&(s.shortSellScore||0)>=SELL_MIN&&s.shortAction==='Sell').sort((a,b)=>(b.shortSellScore||0)-(a.shortSellScore||0)).slice(0,5);
-  let medSell5=[...deduped].filter(s=>!medBuys.has(s.ticker)&&(s.mediumSellScore||0)>=SELL_MIN&&s.mediumAction==='Sell').sort((a,b)=>(b.mediumSellScore||0)-(a.mediumSellScore||0)).slice(0,5);
-  let longSell5=[...deduped].filter(s=>!longBuys.has(s.ticker)&&(s.longSellScore||0)>=SELL_MIN&&s.longAction==='Sell').sort((a,b)=>(b.longSellScore||0)-(a.longSellScore||0)).slice(0,5);
+  let shortSell5=[...deduped].filter(s=>!shortBuys.has(s.ticker)&&(s.shortSellScore||0)>=SELL_MIN&&s.shortAction==='Sell').sort((a,b)=>sellComposite(b,'shortSellScore')-sellComposite(a,'shortSellScore')).slice(0,5);
+  let medSell5=[...deduped].filter(s=>!medBuys.has(s.ticker)&&(s.mediumSellScore||0)>=SELL_MIN&&s.mediumAction==='Sell').sort((a,b)=>sellComposite(b,'mediumSellScore')-sellComposite(a,'mediumSellScore')).slice(0,5);
+  let longSell5=[...deduped].filter(s=>!longBuys.has(s.ticker)&&(s.longSellScore||0)>=SELL_MIN&&s.longAction==='Sell').sort((a,b)=>sellComposite(b,'longSellScore')-sellComposite(a,'longSellScore')).slice(0,5);
 
   // Never fabricate sell picks — empty sell pane is honest when no shortAction === 'Sell'
 
@@ -2523,7 +2551,7 @@ async function saveDashPicksToHistory(data) {
       if(isSell  && tp2 >= tp1)   tp2 = parseFloat((tp1*0.95).toFixed(2));
       if(isSell  && sl  <= entry) sl  = parseFloat((entry*1.03).toFixed(2));
     }
-    var rrFix = enforceMinRiskRewardDash(entry, tp1, tp2, sl, isSell, 1.0);
+    var rrFix = enforceMinRiskRewardDash(entry, tp1, tp2, sl, isSell, 1.5);
     tp1 = rrFix.tp1;
     tp2 = rrFix.tp2;
     sl = rrFix.sl;
@@ -2834,7 +2862,7 @@ async function fixHistoryPrices(silent) {
     if(!t1||(isSell?t1>=newEntry:t1<=newEntry)) t1=isSell?parseFloat((newEntry*0.95).toFixed(2)):parseFloat((newEntry*1.05).toFixed(2));
     if(!t2||(isSell?t2>=t1:t2<=t1)) t2=isSell?parseFloat((t1*0.95).toFixed(2)):parseFloat((t1*1.05).toFixed(2));
     if(!s||(isSell?s<=newEntry:s>=newEntry)) s=isSell?parseFloat((newEntry*1.03).toFixed(2)):parseFloat((newEntry*0.97).toFixed(2));
-    var rrFix=enforceMinRiskRewardDash(newEntry,t1,t2,s,isSell,1.0);
+    var rrFix=enforceMinRiskRewardDash(newEntry,t1,t2,s,isSell,1.5);
     t1=rrFix.tp1; t2=rrFix.tp2; s=rrFix.sl;
     h.entry=newEntry; h[hz+'Entry']=newEntry;
     h.target1=t1; h[hz+'Target1']=t1;
