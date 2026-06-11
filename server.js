@@ -4525,6 +4525,30 @@ async function fetchDanelfinRow(apiKey, symbol) {
   if (!sym) return null;
   const fld =
     'aiscore,technical,fundamental,sentiment,low_risk,buy_track_record,sell_track_record';
+
+  async function stockTargets() {
+    try {
+      const u = `${DANELFIN_BASE_URL}/stock?ticker=${encodeURIComponent(sym)}&fields=recommendation,target_price,stop_loss,entry_price,upside`;
+      const r = await fetch(u, {
+        headers: { Accept: 'application/json', 'x-api-key': apiKey },
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!r.ok) return null;
+      const j = await r.json().catch(() => null);
+      const row = Array.isArray(j) ? j[0] : (j?.data?.[0] ?? j?.stock ?? j);
+      if (!row) return null;
+      return {
+        danTP: row.target_price ?? row.targetPrice ?? null,
+        danSL: row.stop_loss ?? row.stopLoss ?? null,
+        danEntry: row.entry_price ?? row.entryPrice ?? null,
+        danRec: row.recommendation ?? null,
+        danUpside: row.upside ?? null
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function ranking(marketEu) {
     const q = `ticker=${encodeURIComponent(sym)}&fields=${encodeURIComponent(fld)}`;
     const u = `${DANELFIN_BASE_URL}/ranking?${q}${marketEu ? '&market=europe' : ''}`;
@@ -4558,7 +4582,20 @@ async function fetchDanelfinRow(apiKey, symbol) {
     };
   }
   try {
-    const us = await ranking(false);
+    const [us, targets] = await Promise.all([
+      ranking(false),
+      stockTargets()
+    ]);
+    if (targets) {
+      return {
+        ...(us || {}),
+        danTP: targets.danTP,
+        danSL: targets.danSL,
+        danEntry: targets.danEntry,
+        danRec: targets.danRec,
+        danUpside: targets.danUpside
+      };
+    }
     if (us && us.aiscore != null) return us;
     return await ranking(true);
   } catch (e) {
@@ -5253,7 +5290,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260605-fmp-ultimate-v7.3.9',
+    server_build: '20260605-fmp-ultimate-v7.4.0',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
