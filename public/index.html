@@ -373,7 +373,8 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
 .chart-wrap{position:relative;height:420px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--r);overflow:hidden;height:420px}
 .chart-loading{display:flex;align-items:center;justify-content:center;height:100%;color:var(--m1);font-family:'DM Mono',monospace;font-size:11px;gap:8px}
 .chart-error{display:flex;align-items:center;justify-content:center;height:100%;color:var(--m1);font-size:11px;font-family:'DM Mono',monospace}
-.chart-canvas{width:100%!important;height:280px!important}
+.chart-canvas{width:100%!important;height:100%!important;min-height:360px;display:block;touch-action:none}
+.chart-wrap canvas{cursor:crosshair}
 .chart-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
 .cstat{background:var(--s2);border:1px solid var(--b1);border-radius:6px;padding:6px 8px}
 .cstat-label{font-size:9px;color:var(--m1);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
@@ -721,22 +722,133 @@ setInterval(updatePrices, 60000);
 // ══════════════════════════════════════════════
 const chartCache = {};
 const CHART_TTL = 300000; // 5 min cache
+let _chartLibsPromise = null;
 
+/** Wider Yahoo fetch per tab; viewBars = initial visible candles (scroll out for the rest). */
 const CHART_RANGES = {
-  '5m':  {range:'1d',   interval:'5m'},
-  '15m': {range:'5d',   interval:'15m'},
-  '1H':  {range:'1mo',  interval:'60m'},
-  '4H':  {range:'3mo',  interval:'4h'},
-  '1D':  {range:'1d',   interval:'2m'},
-  '5D':  {range:'5d',   interval:'30m'},
-  '1M':  {range:'1mo',  interval:'1d'},
-  '3M':  {range:'3mo',  interval:'1d'},
-  '6M':  {range:'6mo',  interval:'1d'},
-  '1Y':  {range:'1y',   interval:'1d'},
-  '2Y':  {range:'2y',   interval:'1d'},
-  '5Y':  {range:'5y',   interval:'1d'},
-  'MAX': {range:'max',  interval:'1wk'}
+  '5m':  {range:'5d',   interval:'5m',   viewBars:72},
+  '15m': {range:'1mo',  interval:'15m',  viewBars:96},
+  '1H':  {range:'3mo',  interval:'60m',  viewBars:120},
+  '4H':  {range:'6mo',  interval:'4h',   viewBars:120},
+  '1D':  {range:'1mo',  interval:'5m',   viewBars:78},
+  '5D':  {range:'3mo',  interval:'30m',  viewBars:130},
+  '1M':  {range:'6mo',  interval:'1d',   viewBars:22},
+  '3M':  {range:'1y',   interval:'1d',   viewBars:66},
+  '6M':  {range:'2y',   interval:'1d',   viewBars:132},
+  '1Y':  {range:'5y',   interval:'1d',   viewBars:252},
+  '2Y':  {range:'10y',  interval:'1d',   viewBars:504},
+  '5Y':  {range:'max',  interval:'1wk',  viewBars:260},
+  'MAX': {range:'max',  interval:'1wk',  viewBars:9999}
 };
+const CHART_RANGE_EXPAND = {
+  '5d':'1mo', '1mo':'3mo', '3mo':'6mo', '6mo':'1y', '1y':'2y', '2y':'5y', '5y':'max', '10y':'max'
+};
+
+function loadScriptOnce(src, testFn) {
+  return new Promise(function (resolve, reject) {
+    if (testFn && testFn()) return resolve();
+    var existing = document.querySelector('script[data-src="' + src + '"]');
+    if (existing) {
+      existing.addEventListener('load', function () { resolve(); });
+      existing.addEventListener('error', reject);
+      return;
+    }
+    var s = document.createElement('script');
+    s.src = src;
+    s.dataset.src = src;
+    s.onload = function () { resolve(); };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function ensureChartLibs() {
+  if (_chartLibsPromise) return _chartLibsPromise;
+  _chartLibsPromise = loadScriptOnce(
+    'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js',
+    function () { return !!window.Chart; }
+  ).then(function () {
+    return loadScriptOnce(
+      'https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js',
+      function () { return !!window.Hammer; }
+    );
+  }).then(function () {
+    return loadScriptOnce(
+      'https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js',
+      function () { return !!(window.ChartZoom || window['chartjs-plugin-zoom']); }
+    );
+  }).then(function () {
+    if (!window._chartZoomRegistered && window.Chart) {
+      var Z = window.ChartZoom || window['chartjs-plugin-zoom'];
+      if (Z) {
+        window.Chart.register(Z);
+        window._chartZoomRegistered = true;
+      }
+    }
+  });
+  return _chartLibsPromise;
+}
+
+function chartCurrencySym(data) {
+  return data.currency === 'USD' ? '$'
+    : data.currency === 'GBp' ? 'p'
+    : data.currency === 'GBP' ? '£'
+    : data.currency === 'EUR' ? '€'
+    : data.currency === 'JPY' ? '¥' : '';
+}
+
+function parseChartRaw(data) {
+  return (data.timestamps || []).map(function (t, i) {
+    return {
+      t: t,
+      o: data.opens?.[i],
+      h: data.highs?.[i],
+      l: data.lows?.[i],
+      c: data.closes?.[i],
+      v: data.volumes?.[i]
+    };
+  }).filter(function (x) {
+    return x.o != null && x.h != null && x.l != null && x.c != null;
+  });
+}
+
+function computeChartYRange(raw, i0, i1, levelVals) {
+  var slice = raw.slice(Math.max(0, i0), Math.min(raw.length, i1 + 1));
+  if (!slice.length) slice = raw;
+  var prices = slice.flatMap(function (x) { return [x.h, x.l]; });
+  var dataMin = Math.min.apply(null, prices);
+  var dataMax = Math.max.apply(null, prices);
+  var span = dataMax - dataMin || dataMax * 0.02 || 1;
+  var pad = span * 0.10;
+  var yMin = dataMin - pad;
+  var yMax = dataMax + pad;
+  (levelVals || []).filter(function (v) { return v > 0; }).forEach(function (v) {
+    if (v >= dataMin - span * 0.35 && v <= dataMax + span * 0.35) {
+      yMin = Math.min(yMin, v - pad * 0.6);
+      yMax = Math.max(yMax, v + pad * 0.6);
+    }
+  });
+  return { yMin: yMin, yMax: yMax };
+}
+
+function visibleBarRange(chart, rawLen) {
+  var x = chart.scales.x;
+  if (!x) return { i0: 0, i1: rawLen - 1 };
+  return {
+    i0: Math.max(0, Math.floor(x.min)),
+    i1: Math.min(rawLen - 1, Math.ceil(x.max))
+  };
+}
+
+function candleBarWidthPx(chart, index, rawLen) {
+  var x = chart.scales.x;
+  if (!x) return 8;
+  var x0 = x.getPixelForValue(index);
+  var x1 = index < rawLen - 1 ? x.getPixelForValue(index + 1) : x0;
+  var xPrev = index > 0 ? x.getPixelForValue(index - 1) : x0;
+  var spacing = Math.abs((x1 !== x0 ? x1 - x0 : x0 - xPrev));
+  return Math.max(4, Math.min(28, spacing * 0.72));
+}
 
 async function fetchChartData(ticker, range='1mo', interval='1d') {
   const key = `${ticker}_${range}_${interval}`;
@@ -755,43 +867,85 @@ async function fetchChartData(ticker, range='1mo', interval='1d') {
   return null;
 }
 
-function drawChart(canvasId, data, ticker, entryPrice, tp1, tp2, slPrice, action) {
+function applyInitialChartViewport(chart, rawLen, viewBars) {
+  if (!chart || rawLen <= 1) return;
+  var show = Math.min(viewBars || rawLen, rawLen);
+  try { chart.zoomScale('x', { min: Math.max(0, rawLen - show), max: rawLen - 1 }); } catch (e) {}
+}
+
+function updateChartYAxisForViewport(chart, raw, levelVals) {
+  if (!chart || !raw || !raw.length) return;
+  var vis = visibleBarRange(chart, raw.length);
+  var yr = computeChartYRange(raw, vis.i0, vis.i1, levelVals);
+  chart.options.scales.y.min = yr.yMin;
+  chart.options.scales.y.max = yr.yMax;
+  chart.update('none');
+}
+
+function showChartResetBtn(wrap, chart) {
+  if (!wrap || wrap.querySelector('.czreset')) return;
+  var btn = document.createElement('button');
+  btn.className = 'czreset';
+  btn.textContent = '⟲ Reset';
+  btn.style.cssText = 'position:absolute;top:6px;right:6px;font-size:9px;padding:2px 7px;background:rgba(201,241,79,0.15);color:#C9F14F;border:1px solid rgba(201,241,79,0.3);border-radius:4px;cursor:pointer;font-family:DM Mono,monospace;z-index:10';
+  btn.onclick = function () {
+    chart.resetZoom();
+    applyInitialChartViewport(chart, chart._rawBars.length, chart._viewBars || 9999);
+    updateChartYAxisForViewport(chart, chart._rawBars, chart._levelVals);
+    btn.remove();
+  };
+  wrap.style.position = 'relative';
+  wrap.appendChild(btn);
+}
+
+async function maybeExtendChartData(chart, canvas) {
+  var meta = canvas._chartMeta;
+  if (!meta || meta._loadingMore || !chart) return;
+  var xScale = chart.scales.x;
+  if (!xScale || xScale.min > 3) return;
+  var nextRange = CHART_RANGE_EXPAND[meta.fetchRange];
+  if (!nextRange || nextRange === meta.fetchRange) return;
+  meta._loadingMore = true;
+  var wider = await fetchChartData(meta.ticker, nextRange, meta.fetchInterval);
+  meta._loadingMore = false;
+  if (!wider || !wider.timestamps || wider.timestamps.length <= (meta.rawLength || 0)) return;
+  var oldLen = meta.rawLength || chart._rawBars.length;
+  var ratioMin = oldLen > 1 ? xScale.min / (oldLen - 1) : 0;
+  var ratioMax = oldLen > 1 ? xScale.max / (oldLen - 1) : 1;
+  meta.fetchRange = nextRange;
+  meta.rawLength = wider.timestamps.length;
+  drawChart(canvas.id, wider, meta.ticker, meta.entry, meta.tp1, meta.tp2, meta.sl, meta.action, {
+    fetchRange: meta.fetchRange,
+    fetchInterval: meta.fetchInterval,
+    viewBars: meta.viewBars,
+    preserveZoom: { ratioMin: ratioMin, ratioMax: ratioMax }
+  });
+}
+
+function drawChart(canvasId, data, ticker, entryPrice, tp1, tp2, slPrice, action, opts) {
+  opts = opts || {};
   const canvas = document.getElementById(canvasId);
   if (!canvas || !data) return;
   if (canvas._chartInstance) { canvas._chartInstance.destroy(); canvas._chartInstance = null; }
 
   // Filter nulls and pair OHLCV
-  const raw = (data.timestamps||[]).map((t,i) => ({
-    t, o: data.opens?.[i], h: data.highs?.[i], l: data.lows?.[i],
-    c: data.closes?.[i], v: data.volumes?.[i]
-  })).filter(x => x.o!=null && x.h!=null && x.l!=null && x.c!=null);
+  const raw = parseChartRaw(data);
+  if (!raw.length) return;
 
-  if(!raw.length) return;
-
-  const curr = data.currency==='USD'?'$':data.currency==='GBp'?'p':data.currency==='GBP'?'£':data.currency==='EUR'?'€':data.currency==='JPY'?'¥':'';
-
-  // Parse trade levels
+  const curr = chartCurrencySym(data);
   const entryVal = parsePrice(entryPrice);
   const tp1Val   = parsePrice(tp1);
   const tp2Val   = parsePrice(tp2);
   const slVal    = parsePrice(slPrice);
+  const levelVals = [entryVal, tp1Val, tp2Val, slVal].filter(function (v) { return v && v > 0; });
+  const viewBars = opts.viewBars || raw.length;
+  const initVis = computeChartYRange(raw, Math.max(0, raw.length - viewBars), raw.length - 1, levelVals);
 
-  // Compute y-axis range including all levels
-  const allPrices = raw.flatMap(x=>[x.h,x.l]);
-  const extraVals = [entryVal,tp1Val,tp2Val,slVal].filter(v=>v&&v>0);
-  const allVals = [...allPrices, ...extraVals];
-  const dataMin = Math.min(...allVals);
-  const dataMax = Math.max(...allVals);
-  const pad = (dataMax - dataMin) * 0.08;
-  const yMin = dataMin - pad;
-  const yMax = dataMax + pad;
-
-  // Trade level lines plugin
   const levels = [];
-  if(entryVal) levels.push({val:entryVal,color:'#5BA4F5',dash:[5,3],label:'Entry',bg:'rgba(91,164,245,0.15)'});
-  if(tp1Val)   levels.push({val:tp1Val,  color:'#3DDB7B',dash:[5,3],label:'TP1',  bg:'rgba(61,219,123,0.15)'});
-  if(tp2Val)   levels.push({val:tp2Val,  color:'#2ab562',dash:[4,4],label:'TP2',  bg:'rgba(61,219,123,0.10)'});
-  if(slVal)    levels.push({val:slVal,   color:'#F46C6C',dash:[5,3],label:'Stop', bg:'rgba(244,108,108,0.15)'});
+  if (entryVal) levels.push({ val: entryVal, color: '#5BA4F5', dash: [5, 3], label: 'Entry', bg: 'rgba(91,164,245,0.15)' });
+  if (tp1Val)   levels.push({ val: tp1Val, color: '#3DDB7B', dash: [5, 3], label: 'TP1', bg: 'rgba(61,219,123,0.15)' });
+  if (tp2Val)   levels.push({ val: tp2Val, color: '#2ab562', dash: [4, 4], label: 'TP2', bg: 'rgba(61,219,123,0.10)' });
+  if (slVal)    levels.push({ val: slVal, color: '#F46C6C', dash: [5, 3], label: 'Stop', bg: 'rgba(244,108,108,0.15)' });
 
   const tradeLevels = {
     id:'tradeLevels',
@@ -820,89 +974,84 @@ function drawChart(canvasId, data, ticker, entryPrice, tp1, tp2, slPrice, action
     }
   };
 
-  // Custom candlestick renderer plugin
   const candlestickPlugin = {
     id:'candlestick',
     afterDatasetsDraw(chart){
       const {ctx,chartArea:{left,right,top,bottom},scales:{x,y}} = chart;
-      if(!x||!y) return;
-      const n = raw.length;
-      const barW = Math.max(3, Math.min(20, (right-left)/n*0.8));
-      const wickW = Math.max(1, barW * 0.15);
+      const bars = chart._rawBars || raw;
+      if(!x||!y||!bars.length) return;
+      const vis = visibleBarRange(chart, bars.length);
       ctx.save();
-      raw.forEach((candle,i)=>{
+      ctx.beginPath();
+      ctx.rect(left, top, right - left, bottom - top);
+      ctx.clip();
+      for (let i = vis.i0; i <= vis.i1; i++) {
+        const candle = bars[i];
         const xPx = x.getPixelForValue(i);
+        if (xPx < left - 30 || xPx > right + 30) continue;
         const oY = y.getPixelForValue(candle.o);
         const cY = y.getPixelForValue(candle.c);
         const hY = y.getPixelForValue(candle.h);
         const lY = y.getPixelForValue(candle.l);
         const isBull = candle.c >= candle.o;
         const color = isBull ? '#3DDB7B' : '#F46C6C';
-        const bodyTop = Math.min(oY,cY);
-        const bodyH = Math.max(1, Math.abs(cY-oY));
-        ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=wickW;
-        ctx.moveTo(xPx,hY); ctx.lineTo(xPx,bodyTop); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(xPx,bodyTop+bodyH); ctx.lineTo(xPx,lY); ctx.stroke();
-        // Body
-        ctx.fillStyle=isBull?'rgba(61,219,123,0.85)':'rgba(244,108,108,0.85)';
-        ctx.strokeStyle=color; ctx.lineWidth=0.8;
-        ctx.fillRect(xPx-barW/2,bodyTop,barW,bodyH);
-        ctx.strokeRect(xPx-barW/2,bodyTop,barW,bodyH);
-      });
+        const barW = candleBarWidthPx(chart, i, bars.length);
+        const wickW = Math.max(1.2, Math.min(2.5, barW * 0.18));
+        const bodyTop = Math.min(oY, cY);
+        const bodyH = Math.max(2, Math.abs(cY - oY));
+        ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = wickW;
+        ctx.moveTo(xPx, hY); ctx.lineTo(xPx, bodyTop); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(xPx, bodyTop + bodyH); ctx.lineTo(xPx, lY); ctx.stroke();
+        ctx.fillStyle = isBull ? 'rgba(61,219,123,0.92)' : 'rgba(244,108,108,0.92)';
+        ctx.strokeStyle = color; ctx.lineWidth = 1;
+        ctx.fillRect(xPx - barW / 2, bodyTop, barW, bodyH);
+        ctx.strokeRect(xPx - barW / 2, bodyTop, barW, bodyH);
+      }
       ctx.restore();
     }
   };
 
   function buildAndMount(){
-    const labels = raw.map((x,i)=>{
-      const d=new Date(x.t*1000);
-      return d.toLocaleDateString('en-GB',{month:'short',day:'numeric'});
-    });
-    const closeData = raw.map(x=>x.c);
-
-    // Volume bars dataset (secondary y-axis)
-    const volMax = Math.max(...raw.map(x=>x.v||0));
+    const closeData = raw.map(function (x, i) { return { x: i, y: x.c }; });
 
     const cfg = {
       type:'line',
       data:{
-        labels,
         datasets:[
-          // Invisible line dataset just to set up x/y scales
           {data:closeData,borderColor:'transparent',backgroundColor:'transparent',
-           borderWidth:0,pointRadius:0,fill:false},
+           borderWidth:0,pointRadius:0,fill:false, parsing:false},
         ]
       },
       options:{
         responsive:true, maintainAspectRatio:false,
-        animation:{duration:200},
+        animation:{duration:180},
         layout:{padding:{right:60,top:10,bottom:5}},
         interaction:{intersect:false,mode:'index'},
         plugins:{
           legend:{display:false},
           zoom:{
-            pan:{enabled:true,mode:'x',threshold:5},
-            zoom:{
-              wheel:{enabled:true},
-              pinch:{enabled:true},
-              mode:'x',
-              onZoomComplete:function({chart}){
-                const wrap=chart.canvas.closest('.chart-wrap');
-                if(wrap){
-                  if(!wrap.querySelector('.czreset')){
-                    const btn=document.createElement('button');
-                    btn.className='czreset';
-                    btn.textContent='⟲ Reset';
-                    btn.style.cssText='position:absolute;top:6px;right:6px;font-size:9px;padding:2px 7px;background:rgba(201,241,79,0.15);color:#C9F14F;border:1px solid rgba(201,241,79,0.3);border-radius:4px;cursor:pointer;font-family:DM Mono,monospace;z-index:10';
-                    btn.onclick=function(){chart.resetZoom();btn.remove();};
-                    wrap.style.position='relative';
-                    wrap.appendChild(btn);
-                  }
-                }
+            pan:{
+              enabled:true, mode:'x', threshold:4,
+              onPanComplete:function(ctx){
+                updateChartYAxisForViewport(ctx.chart, ctx.chart._rawBars, ctx.chart._levelVals);
+                maybeExtendChartData(ctx.chart, ctx.chart.canvas);
               }
             },
-            limits:{x:{minRange:5}},
-            // Auto-reset zoom when switching range tabs (handled in switchChartRange)
+            zoom:{
+              wheel:{enabled:true, speed:0.08, modifierKey:null},
+              pinch:{enabled:true},
+              drag:{enabled:false},
+              mode:'x',
+              onZoomComplete:function(ctx){
+                updateChartYAxisForViewport(ctx.chart, ctx.chart._rawBars, ctx.chart._levelVals);
+                showChartResetBtn(ctx.chart.canvas.closest('.chart-wrap'), ctx.chart);
+                maybeExtendChartData(ctx.chart, ctx.chart.canvas);
+              }
+            },
+            limits:{
+              x:{min:0, max:raw.length-1, minRange:8},
+              y:{min:'original', max:'original'}
+            }
           },
           tooltip:{
             backgroundColor:'rgba(13,15,21,0.96)',
@@ -914,7 +1063,7 @@ function drawChart(canvasId, data, ticker, entryPrice, tp1, tp2, slPrice, action
               title: items => {
                 const i=items[0].dataIndex;
                 const d=new Date(raw[i].t*1000);
-                return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+                return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
               },
               label: items => {
                 const i=items.dataIndex;
@@ -926,11 +1075,22 @@ function drawChart(canvasId, data, ticker, entryPrice, tp1, tp2, slPrice, action
           }
         },
         scales:{
-          x:{grid:{color:'rgba(255,255,255,0.03)'},
-             ticks:{color:'#565C6A',font:{family:'DM Mono,monospace',size:9},
-                    maxTicksLimit:7,maxRotation:0},
-             border:{display:false}},
-          y:{position:'right',min:yMin,max:yMax,
+          x:{
+            type:'linear',
+            min:0,
+            max:raw.length-1,
+            grid:{color:'rgba(255,255,255,0.03)'},
+            ticks:{color:'#565C6A',font:{family:'DM Mono,monospace',size:9},
+                   maxTicksLimit:8,maxRotation:0,
+                   callback:function(val){
+                     const idx=Math.round(val);
+                     if(idx<0||idx>=raw.length) return '';
+                     const d=new Date(raw[idx].t*1000);
+                     return d.toLocaleDateString('en-GB',{month:'short',day:'numeric'});
+                   }},
+            border:{display:false}
+          },
+          y:{position:'right',min:initVis.yMin,max:initVis.yMax,
              grid:{color:'rgba(255,255,255,0.03)'},
              ticks:{color:'#565C6A',font:{family:'DM Mono,monospace',size:9},
                     maxTicksLimit:6,
@@ -940,52 +1100,71 @@ function drawChart(canvasId, data, ticker, entryPrice, tp1, tp2, slPrice, action
       },
       plugins:[candlestickPlugin,tradeLevels]
     };
-    canvas._chartInstance = new window.Chart(canvas,cfg);
+    const chart = new window.Chart(canvas,cfg);
+    chart._rawBars = raw;
+    chart._levelVals = levelVals;
+    chart._viewBars = viewBars;
+    canvas._chartInstance = chart;
+    canvas._chartMeta = {
+      ticker: ticker,
+      fetchRange: opts.fetchRange || '1mo',
+      fetchInterval: opts.fetchInterval || '1d',
+      viewBars: viewBars,
+      rawLength: raw.length,
+      entry: entryPrice, tp1: tp1, tp2: tp2, sl: slPrice,
+      action: action, canvasId: canvasId
+    };
+    if (opts.preserveZoom) {
+      const newLen = raw.length;
+      try {
+        chart.zoomScale('x', {
+          min: opts.preserveZoom.ratioMin * (newLen - 1),
+          max: opts.preserveZoom.ratioMax * (newLen - 1)
+        });
+      } catch (e) {}
+    } else {
+      applyInitialChartViewport(chart, raw.length, viewBars);
+    }
+    updateChartYAxisForViewport(chart, raw, levelVals);
+    canvas.addEventListener('wheel', function(e){ e.preventDefault(); }, { passive: false });
   }
 
-  if(!window.Chart){
-    const s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
-    s.onload=()=>{
-      if(!window.ChartZoom){
-        const z=document.createElement('script');
-        z.src='https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js';
-        z.onload=buildAndMount; document.head.appendChild(z);
-      } else { buildAndMount(); }
-    };
-    document.head.appendChild(s);
-  } else if(!window.ChartZoom){
-    const z=document.createElement('script');
-    z.src='https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js';
-    z.onload=buildAndMount; document.head.appendChild(z);
-  } else { buildAndMount(); }
+  ensureChartLibs().then(buildAndMount).catch(function(e){
+    console.warn('Chart libs failed:', e.message);
+  });
 }
 
-async function loadChart(ticker, canvasId, range, interval, entry, tp1, tp2, sl, action) {
+async function loadChart(ticker, canvasId, range, interval, entry, tp1, tp2, sl, action, rangeLabel) {
   const wrap = document.getElementById('wrap_' + canvasId);
   if (wrap) wrap.innerHTML = '<div class="chart-loading"><div class="sp"></div><span>Loading chart...</span></div>';
-  // Mark the correct tab as active — use data-range which stores the label (5m/15m/1M etc)
-  // We need to find which tab triggered this call — use interval+range to reverse-map
   const tid = canvasId.replace('chart_','');
-  // Find matching range label
-  let activeLabel = '1M'; // default
-  Object.entries(CHART_RANGES).forEach(([lbl, cfg]) => {
-    if(cfg.range === range && cfg.interval === interval) activeLabel = lbl;
-  });
+  let activeLabel = rangeLabel || '15m';
+  if (!rangeLabel) {
+    Object.entries(CHART_RANGES).forEach(([lbl, cfg]) => {
+      if (cfg.range === range && cfg.interval === interval) activeLabel = lbl;
+    });
+  }
   document.querySelectorAll('#ctabs_'+tid+' .chart-tab').forEach(t => {
     t.classList.toggle('act', t.getAttribute('data-range') === activeLabel);
   });
 
-  const data = await fetchChartData(ticker, range, interval);
+  const tabCfg = CHART_RANGES[activeLabel] || CHART_RANGES['15m'];
+  const data = await fetchChartData(ticker, range || tabCfg.range, interval || tabCfg.interval);
   if (!data || !data.closes || !data.closes.length) {
     if (wrap) wrap.innerHTML = '<div class="chart-error">Chart data unavailable for ' + ticker + '</div>';
     return;
   }
 
-  // Rebuild canvas (needed to avoid Chart.js resize issues)
   if (wrap) {
     wrap.innerHTML = '<canvas id="' + canvasId + '" class="chart-canvas"></canvas>';
-    setTimeout(() => drawChart(canvasId, data, ticker, entry, tp1, tp2, sl, action), 50);
+    const drawOpts = {
+      fetchRange: range || tabCfg.range,
+      fetchInterval: interval || tabCfg.interval,
+      viewBars: tabCfg.viewBars || data.closes.length
+    };
+    setTimeout(function () {
+      drawChart(canvasId, data, ticker, entry, tp1, tp2, sl, action, drawOpts);
+    }, 50);
   }
 
   // Update stats
@@ -1012,22 +1191,20 @@ async function loadChart(ticker, canvasId, range, interval, entry, tp1, tp2, sl,
 }
 
 function switchChartRange(ticker, canvasId, range, entry, tp1, tp2, sl, action) {
-  const cfg = CHART_RANGES[range] || CHART_RANGES['1M'];
-  // Reset zoom when switching ranges so user sees the full range
-  const canvas = document.getElementById(canvasId);
-  if (canvas && canvas._chartInstance) {
-    try { canvas._chartInstance.resetZoom(); } catch(e) {}
+  const cfg = CHART_RANGES[range] || CHART_RANGES['15m'];
+  const wrap = document.getElementById('wrap_' + canvasId);
+  if (wrap) {
+    const oldBtn = wrap.querySelector('.czreset');
+    if (oldBtn) oldBtn.remove();
   }
-  // Update active tab — charts use data-cticker attribute
   document.querySelectorAll('.chart-tab[data-cticker="'+ticker+'"], .chart-tab[data-ticker="'+ticker+'"]').forEach(t => {
     t.classList.toggle('act', t.getAttribute('data-range') === range);
   });
-  // Also try by canvasId prefix
   const tid = canvasId.replace('chart_','');
   document.querySelectorAll('#ctabs_'+tid+' .chart-tab').forEach(t => {
     t.classList.toggle('act', t.getAttribute('data-range') === range);
   });
-  loadChart(ticker, canvasId, cfg.range, cfg.interval, entry, tp1, tp2, sl, action);
+  loadChart(ticker, canvasId, cfg.range, cfg.interval, entry, tp1, tp2, sl, action, range);
 }
 
 // ══════════════════════════════════════════════
@@ -3077,7 +3254,7 @@ async function loadPickDetail(ticker,hz){
         const tp2=isSC?(s.sellTarget2||s.target2):s.target2;
         const sl=isSC?(s.sellStopLoss||s.stopLoss):s.stopLoss;
         const cid='chart_'+s.ticker.replace(/[^a-z0-9]/gi,'_');
-        loadChart(s.ticker,cid,'5d','15m',entry,tp1,tp2,sl,s.action||'Buy');
+        loadChart(s.ticker, cid, CHART_RANGES['15m'].range, CHART_RANGES['15m'].interval, entry, tp1, tp2, sl, s.action||'Buy', '15m');
       });
       fetchLivePrices(res.map(s=>s.ticker)).then(updatePrices);
     },200);
@@ -3194,7 +3371,7 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
           const tp2   = isSC ? (s.sellTarget2||s.shortTarget2||s.target2) : (s.shortTarget2||s.target2);
           const sl    = isSC ? (s.sellStopLoss||s.shortStopLoss||s.stopLoss) : (s.shortStopLoss||s.stopLoss);
           const cid   = 'chart_'+s.ticker.replace(/[^a-z0-9]/gi,'_');
-          loadChart(s.ticker, cid, '5d', '15m', entry, tp1, tp2, sl, s.action||'Buy');
+          loadChart(s.ticker, cid, CHART_RANGES['15m'].range, CHART_RANGES['15m'].interval, entry, tp1, tp2, sl, s.action||'Buy', '15m');
         });
         fetchLivePrices(stocks.map(s=>s.ticker)).then(updatePrices);
       }, 300);
@@ -3295,7 +3472,7 @@ function buildChartHtml(ticker, entry, tp1, tp2, sl, action) {
     + '<button onclick="zoomChart(document.getElementById(\'wrap_chart_'+tid+'\'),0.67)" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:rgba(200,200,200,0.7);border-radius:3px;padding:2px 8px;font-size:11px;cursor:pointer;font-family:DM Mono,monospace" title="Zoom out">−</button>'
     + '<button onclick="resetChartZoom(document.getElementById(\'wrap_chart_'+tid+'\'))" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:rgba(200,200,200,0.7);border-radius:3px;padding:2px 6px;font-size:10px;cursor:pointer;font-family:DM Mono,monospace" title="Reset view">⟲</button>'
     + '</div>'
-    + '<div style="font-size:8px;color:rgba(86,92,106,0.6);font-family:DM Mono,monospace">🔍 Scroll/pinch to zoom · Drag to pan · Click +/− to adjust</div>'
+    + '<div style="font-size:8px;color:rgba(86,92,106,0.6);font-family:DM Mono,monospace">Scroll wheel to zoom · Drag to pan · Zoom out loads more history</div>'
     + '</div>';
 }
 
@@ -3304,17 +3481,32 @@ function zoomChart(wrap, factor) {
   const canvas = wrap.tagName === 'CANVAS' ? wrap : wrap.querySelector('canvas');
   if (!canvas || !canvas._chartInstance) return;
   const chart = canvas._chartInstance;
-  if (typeof chart.zoom === 'function') {
-    chart.zoom(factor);
-  } else if (chart.zoomScale) {
-    try { chart.zoomScale('x', factor); } catch (e) {}
-  }
+  const x = chart.scales.x;
+  if (!x) return;
+  const span = (x.max - x.min) || 1;
+  const mid = (x.max + x.min) / 2;
+  const newSpan = Math.max(8, span / factor);
+  const newMin = Math.max(0, mid - newSpan / 2);
+  const newMax = Math.min((chart._rawBars?.length || 1) - 1, mid + newSpan / 2);
+  try {
+    chart.zoomScale('x', { min: newMin, max: newMax });
+    updateChartYAxisForViewport(chart, chart._rawBars, chart._levelVals);
+    showChartResetBtn(wrap, chart);
+    maybeExtendChartData(chart, canvas);
+  } catch (e) {}
 }
 function resetChartZoom(wrap) {
   if (!wrap) return;
   const canvas = wrap.tagName === 'CANVAS' ? wrap : wrap.querySelector('canvas');
   if (!canvas || !canvas._chartInstance) return;
-  try { canvas._chartInstance.resetZoom(); } catch (e) {}
+  const chart = canvas._chartInstance;
+  try {
+    chart.resetZoom();
+    applyInitialChartViewport(chart, chart._rawBars?.length || 0, chart._viewBars || 9999);
+    updateChartYAxisForViewport(chart, chart._rawBars, chart._levelVals);
+  } catch (e) {}
+  const btn = wrap.querySelector('.czreset');
+  if (btn) btn.remove();
 }
 
 function handleChartTab(el) {
