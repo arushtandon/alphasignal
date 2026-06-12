@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260612-fmp-ultimate-v7.5.3">
+<meta name="alphasignal-build" content="20260612-fmp-ultimate-v7.5.4">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -2029,44 +2029,63 @@ async function fetchServerDashPicksWithRetry(attempts){
   return null;
 }
 
-async function applyServerDashPicks(server){
-  ST.dashData=server.dashData;
-  ST.dashTs=server.dashTs;
-  ST.dashSummary=server.summary||'';
-  const dashTsEl=document.getElementById('dashTs');
-  if(dashTsEl){
-    const sum=server.summary?(' · '+server.summary):'';
-    dashTsEl.textContent='Synced picks · '+new Date(server.dashTs).toLocaleString()+sum;
-  }
-  await renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true});
+async function liveFilterDashPicksInPlace(dashData) {
+  if (!dashData || typeof dashData !== 'object') return dashData;
+  const tickers = [...new Set([
+    ...(dashData.short || []), ...(dashData.medium || []), ...(dashData.long || []),
+    ...(dashData.shortSell || []), ...(dashData.medSell || []), ...(dashData.longSell || [])
+  ].map(function (s) { return s.ticker; }).filter(Boolean))];
+  if (!tickers.length) return pruneDashDataByLiveActions(dashData);
+  var batchTech = {};
   try {
-    const rv = await fetch('/api/dashboard/picks/revalidate', {
+    var sig = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(55000) : undefined;
+    var tr = await fetch('/api/technicals/batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
+      body: JSON.stringify({ symbols: tickers }),
+      signal: sig
     });
-    if (rv.ok) {
-      const rd = await rv.json();
-      if (rd.dashData) {
-        ST.dashData = normalizeDashData(rd.dashData);
-        ST.dashTs = rd.dashTs || Date.now();
-        ST.dashSummary = rd.summary || '';
-        if (dashTsEl) {
-          const sum2 = ST.dashSummary ? (' · ' + ST.dashSummary) : '';
-          const rm = rd.removed ? (' · ' + rd.removed + ' stale pick(s) removed') : '';
-          dashTsEl.textContent = 'Live-validated · ' + new Date(ST.dashTs).toLocaleString() + sum2 + rm;
-        }
-      }
-    }
+    if (tr.ok) batchTech = await tr.json();
   } catch (e) {
-    console.warn('Picks revalidate failed, falling back to client hydrate:', e.message || e);
-    await hydrateDashDataWithLiveBatch(ST.dashData, { resyncScores: true });
-    ST.dashData = pruneDashDataByLiveActions(ST.dashData);
-    await saveServerDashPicks(ST.dashData, Date.now());
+    console.warn('liveFilterDashPicksInPlace', e.message || e);
   }
-  await hydrateDashDataWithLiveBatch(ST.dashData,{resyncScores:true});
-  ST.dashData = pruneDashDataByLiveActions(ST.dashData);
-  await saveServerDashPicks(ST.dashData, ST.dashTs || Date.now());
+  ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell'].forEach(function (k) {
+    (dashData[k] || []).forEach(function (s) {
+      var tech = batchTech[s.ticker];
+      var qs = tech && tech.quantSignal;
+      if (!qs) return;
+      ['short', 'medium', 'long'].forEach(function (hz) {
+        var h = qs[hz];
+        if (!h) return;
+        if (h.buyScore != null) s[hz + 'Score'] = h.buyScore;
+        if (h.sellScore != null) s[hz + 'SellScore'] = h.sellScore;
+        if (h.rating) s[hz + 'Rating'] = h.rating;
+        if (h.action) s[hz + 'Action'] = h.action;
+      });
+      s._techSnap = tech;
+    });
+  });
+  var pruned = pruneDashDataByLiveActions(dashData);
+  Object.keys(pruned).forEach(function (k) { dashData[k] = pruned[k]; });
+  return dashData;
+}
+
+async function applyServerDashPicks(server){
+  ST.dashData=normalizeDashData(server.dashData);
+  ST.dashTs=server.dashTs;
+  ST.dashSummary=server.summary||'';
+  try {
+    await liveFilterDashPicksInPlace(ST.dashData);
+    ST.dashTs = Date.now();
+  } catch (e) {
+    console.warn('Live pick filter failed:', e.message || e);
+  }
+  const dashTsEl=document.getElementById('dashTs');
+  if(dashTsEl){
+    const sum=ST.dashSummary?(' · '+ST.dashSummary):'';
+    dashTsEl.textContent='Live-validated · '+new Date(ST.dashTs).toLocaleString()+sum;
+  }
+  await saveServerDashPicks(ST.dashData, ST.dashTs);
   await renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true});
 }
 
@@ -2822,6 +2841,7 @@ async function saveDashPicksToHistory(data) {
     const actualAction = s[actionKey] || 'Hold';
     if (side === 'sell' && actualAction !== 'Sell') return null;
     if (side === 'buy' && actualAction !== 'Buy') return null;
+    if (side === 'buy' && /SL cooldown/i.test(String(s[hz + 'Rating'] || ''))) return null;
     const isSell = actualAction === 'Sell';
     const rating = s[hz+'Rating'] || actualAction;
 
@@ -5307,6 +5327,15 @@ function openQuickStartModal() {
 
 async function syncHistoryInBackground(){
   const HISTORY_SINCE = '2026-06-09';
+  const histJsonHeaders = { 'Content-Type': 'application/json' };
+  function histSignal(ms) {
+    try {
+      if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+        return AbortSignal.timeout(ms);
+      }
+    } catch (_) {}
+    return undefined;
+  }
   try{
     await loadHistoryFromServer();
     if(ST.history.length) renderHist();
@@ -5319,8 +5348,9 @@ async function syncHistoryInBackground(){
   try{
     const rv = await fetch('/api/history/revalidate',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ since: HISTORY_SINCE })
+      headers:histJsonHeaders,
+      body:JSON.stringify({ since: HISTORY_SINCE }),
+      signal: histSignal(120000)
     });
     if (rv.ok) {
       const rd = await rv.json();
@@ -5332,8 +5362,9 @@ async function syncHistoryInBackground(){
   try{
     await fetch('/api/history/recalibrate-levels',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ since: HISTORY_SINCE })
+      headers:histJsonHeaders,
+      body:JSON.stringify({ since: HISTORY_SINCE }),
+      signal: histSignal(90000)
     });
   }catch(e){
     console.warn('History TP/SL recalibrate failed:',e.message||e);
@@ -5341,8 +5372,9 @@ async function syncHistoryInBackground(){
   try{
     const rp = await fetch('/api/history/refresh-pnl',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ since: HISTORY_SINCE })
+      headers:histJsonHeaders,
+      body:JSON.stringify({ since: HISTORY_SINCE }),
+      signal: histSignal(90000)
     });
     if (rp.ok) {
       const pd = await rp.json();

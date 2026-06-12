@@ -5213,12 +5213,13 @@ app.get('/api/dashboard/picks', (req, res) => {
   if (!dashboardPicksCache || !dashboardPicksCache.dashData) {
     return res.json({ version: DASHBOARD_PICKS_VERSION, dashData: null, dashTs: null, summary: '' });
   }
+  const dashData = filterDashDataBySLCooldown(dashboardPicksCache.dashData);
   res.json({
     version: dashboardPicksCache.version,
     schemaVersion: dashboardPicksCache.schemaVersion || 1,
     dashTs: dashboardPicksCache.dashTs,
-    summary: dashboardPicksSummary(dashboardPicksCache.dashData),
-    dashData: dashboardPicksCache.dashData
+    summary: dashboardPicksSummary(dashData),
+    dashData
   });
 });
 
@@ -5244,77 +5245,28 @@ app.post('/api/dashboard/picks/revalidate', express.json(), async (req, res) => 
   if (!cached?.dashData) {
     return res.json({ ok: false, reason: 'no picks', removed: 0, dashData: null });
   }
-  const dashData = cached.dashData;
-  const paneMap = {
-    short: { hz: 'short', side: 'buy' },
-    medium: { hz: 'medium', side: 'buy' },
-    long: { hz: 'long', side: 'buy' },
-    shortSell: { hz: 'short', side: 'sell' },
-    medSell: { hz: 'medium', side: 'sell' },
-    longSell: { hz: 'long', side: 'sell' }
-  };
+  let dashData = filterDashDataBySLCooldown(cached.dashData);
+  const paneMap = DASH_PANE_MAP;
   const tickers = [...new Set(
     Object.keys(paneMap).flatMap(k => (dashData[k] || []).map(s => s.ticker).filter(Boolean))
   )];
-  const techMap = {};
-  await Promise.all(tickers.map(async sym => {
-    try {
-      let daily = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
-      if (!daily || daily.length < 30) daily = await fetchOHLCV(sym, '1y', '1d').catch(() => null);
-      const weekly = await fetchOHLCV(sym, '2y', '1wk').catch(() => null);
-      if (daily && daily.length >= 30) {
-        const data = buildFullTechResult(sym, daily, weekly);
-        const fund = (await fetchFundamentals(sym).catch(() => null)) || null;
-        data.quantSignal = {
-          short: computeQuantSignal(data, fund, 'short'),
-          medium: computeQuantSignal(data, fund, 'medium'),
-          long: computeQuantSignal(data, fund, 'long')
-        };
-        await applyMarketTierOverlays(sym, data, { batchMode: true, fundPre: fund });
-        applySLCooldownGate(sym, data);
-        techMap[sym] = data;
-      }
-    } catch (e) {
-      console.warn('Picks revalidate tech', sym, e.message);
-    }
-  }));
-
-  const removed = [];
-  const out = {};
-  for (const [pane, { hz, side }] of Object.entries(paneMap)) {
-    out[pane] = (dashData[pane] || []).filter(pick => {
-      const tech = techMap[pick.ticker];
-      const sig = tech?.quantSignal?.[hz];
-      if (!sig) return true;
-      pick[hz + 'Score'] = sig.buyScore ?? pick[hz + 'Score'];
-      pick[hz + 'SellScore'] = sig.sellScore ?? pick[hz + 'SellScore'];
-      pick[hz + 'Rating'] = sig.rating ?? pick[hz + 'Rating'];
-      pick[hz + 'Action'] = sig.action ?? pick[hz + 'Action'];
-      if (side === 'buy') {
-        const ok = sig.action === 'Buy' && (sig.buyScore || 0) >= 62 && !/SL cooldown/i.test(sig.tierLabel || '');
-        if (!ok) removed.push({ pane, ticker: pick.ticker, action: sig.action, buyScore: sig.buyScore, reason: sig.tierLabel || sig.action });
-        return ok;
-      }
-      const okSell = sig.action === 'Sell' && (sig.sellScore || 0) >= 62;
-      if (!okSell) removed.push({ pane, ticker: pick.ticker, action: sig.action, sellScore: sig.sellScore });
-      return okSell;
-    });
-  }
+  const techMap = await getTechnicalsMapForSymbols(tickers, { maxMs: 25000 });
+  const filtered = filterDashDataByQuantTechMap(dashData, techMap, paneMap);
+  const removed = countDashPickRemovals(dashData, filtered, paneMap);
 
   dashboardPicksCache = {
     version: DASHBOARD_PICKS_VERSION,
     schemaVersion: cached.schemaVersion || 1,
     dashTs: Date.now(),
-    dashData: sanitizeDashDataForServer(out)
+    dashData: sanitizeDashDataForServer(filtered)
   };
   saveDashboardPicksFile(dashboardPicksCache);
   res.json({
     ok: true,
-    removed: removed.length,
-    removedDetail: removed,
+    removed,
     dashTs: dashboardPicksCache.dashTs,
-    summary: dashboardPicksSummary(out),
-    dashData: out
+    summary: dashboardPicksSummary(filtered),
+    dashData: filtered
   });
 });
 
@@ -5406,7 +5358,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260612-fmp-ultimate-v7.5.3',
+    server_build: '20260612-fmp-ultimate-v7.5.4',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -5572,24 +5524,32 @@ app.post('/api/history/add', express.json(), async (req, res) => {
   });
 
   const caches = {};
+  const accepted = [];
   for (const trade of trades) {
+    const hz = trade.hz || 'short';
+    const isSell = String(trade.action || '').toLowerCase() === 'sell';
+    if (!isSell && isSLCooldownActive(trade.ticker, hz)) {
+      console.log('History add skipped (SL cooldown):', trade.ticker, hz);
+      continue;
+    }
     if (!trade.revalidatedAt || !trade.fmpScore || !trade.fundSnapshot) {
       await enrichHistoryTradeRecord(trade, caches).catch(() => null);
     } else if (!trade.revalidatedAt) {
       trade.revalidatedAt = new Date().toISOString();
       trade.analyticsVersion = 2;
     }
+    accepted.push(trade);
   }
 
-  tradeHistory.unshift(...trades);
+  tradeHistory.unshift(...accepted);
   
   // Cap total rows (multi-horizon scans add many per day; avoid unbounded growth)
   const HISTORY_MAX_SERVER = 3000;
   if (tradeHistory.length > HISTORY_MAX_SERVER) tradeHistory = tradeHistory.slice(0, HISTORY_MAX_SERVER);
   
   saveHistoryFile(tradeHistory);
-  console.log('History: added', trades.length, 'trades, total:', tradeHistory.length);
-  res.json({ ok: true, total: tradeHistory.length });
+  console.log('History: added', accepted.length, 'trades, total:', tradeHistory.length);
+  res.json({ ok: true, total: tradeHistory.length, added: accepted.length, skipped: trades.length - accepted.length });
 });
 
 // POST update PnL for existing trades
@@ -7748,6 +7708,117 @@ function applySLCooldownGate(sym, data) {
   });
 }
 
+const DASH_PANE_MAP = {
+  short: { hz: 'short', side: 'buy' },
+  medium: { hz: 'medium', side: 'buy' },
+  long: { hz: 'long', side: 'buy' },
+  shortSell: { hz: 'short', side: 'sell' },
+  medSell: { hz: 'medium', side: 'sell' },
+  longSell: { hz: 'long', side: 'sell' }
+};
+
+function filterDashDataBySLCooldown(dashData) {
+  if (!dashData || typeof dashData !== 'object') return dashData;
+  const out = {};
+  for (const [pane, { hz, side }] of Object.entries(DASH_PANE_MAP)) {
+    out[pane] = (dashData[pane] || []).filter(pick => {
+      if (side === 'buy' && isSLCooldownActive(pick.ticker, hz)) return false;
+      return true;
+    });
+  }
+  return out;
+}
+
+function filterDashDataByQuantTechMap(dashData, techMap, paneMap = DASH_PANE_MAP) {
+  const out = {};
+  for (const [pane, { hz, side }] of Object.entries(paneMap)) {
+    out[pane] = (dashData[pane] || []).filter(pick => {
+      const tech = techMap[pick.ticker];
+      const sig = tech?.quantSignal?.[hz];
+      if (!sig) return false;
+      pick[hz + 'Score'] = sig.buyScore ?? pick[hz + 'Score'];
+      pick[hz + 'SellScore'] = sig.sellScore ?? pick[hz + 'SellScore'];
+      pick[hz + 'Rating'] = sig.rating ?? pick[hz + 'Rating'];
+      pick[hz + 'Action'] = sig.action ?? pick[hz + 'Action'];
+      if (side === 'buy') {
+        return sig.action === 'Buy' && (sig.buyScore || 0) >= 62 && !/SL cooldown/i.test(sig.tierLabel || '');
+      }
+      return sig.action === 'Sell' && (sig.sellScore || 0) >= 62;
+    });
+  }
+  return out;
+}
+
+function countDashPickRemovals(before, after, paneMap = DASH_PANE_MAP) {
+  let n = 0;
+  for (const pane of Object.keys(paneMap)) {
+    n += (before[pane] || []).length - (after[pane] || []).length;
+  }
+  return n;
+}
+
+/** Fast technicals map for pick filtering — uses techCache, no fundamentals fetch. */
+async function getTechnicalsMapForSymbols(symbols, opts = {}) {
+  const maxMs = opts.maxMs || 25000;
+  const started = Date.now();
+  const results = {};
+  const uniq = [...new Set((symbols || []).filter(Boolean))];
+  const chunkSize = 4;
+  for (let off = 0; off < uniq.length; off += chunkSize) {
+    if (Date.now() - started > maxMs) break;
+    const slice = uniq.slice(off, off + chunkSize);
+    await Promise.allSettled(slice.map(async sym => {
+      try {
+        const cached = techCache.get(sym);
+        if (cached && Date.now() - cached.ts < TECH_TTL && cached.data?.quantSignal) {
+          results[sym] = cached.data;
+          return;
+        }
+        let daily = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
+        if (!daily || daily.length < 100) daily = await fetchOHLCV(sym, '1y', '1d').catch(() => null);
+        if (!daily || daily.length < 20) return;
+        const weekly = await fetchOHLCV(sym, '2y', '1wk').catch(() => null);
+        const data = buildFullTechResult(sym, daily, weekly);
+        const fundEntry = fundCache.get(sym);
+        const fund = fundEntry && Date.now() - fundEntry.ts < TECH_TTL * 4 ? fundEntry.data : null;
+        data.quantSignal = {
+          short: computeQuantSignal(data, fund, 'short'),
+          medium: computeQuantSignal(data, fund, 'medium'),
+          long: computeQuantSignal(data, fund, 'long')
+        };
+        await applyMarketTierOverlays(sym, data, { batchMode: true, fundPre: fund });
+        applySLCooldownGate(sym, data);
+        techCache.set(sym, { ts: Date.now(), data });
+        results[sym] = data;
+      } catch (e) {
+        console.warn('getTechnicalsMapForSymbols', sym, e.message);
+      }
+    }));
+  }
+  return results;
+}
+
+function purgeOpenCooldownBuysFromHistory() {
+  const today = new Date().toDateString();
+  const before = tradeHistory.length;
+  tradeHistory = tradeHistory.filter(h => {
+    if (!isHistoryBuySellRecord(h)) return true;
+    const hz = h.hz || 'short';
+    const isToday = new Date(h.entryDate || h.timestamp).toDateString() === today;
+    const st = h[hz + 'Status'] || h.status || 'open';
+    const isOpen = st === 'open';
+    const isBuy = String(h.action || '').toLowerCase() !== 'sell';
+    if (isToday && isOpen && isBuy && isSLCooldownActive(h.ticker, hz)) return false;
+    return true;
+  });
+  const removed = before - tradeHistory.length;
+  if (removed > 0) {
+    saveHistoryFile(tradeHistory);
+    console.log('Purged', removed, 'open SL-cooldown buy(s) from today history');
+  }
+  return removed;
+}
+
 function scanHistoryForSLCooldowns() {
   for (const h of tradeHistory) {
     if (!h?.ticker) continue;
@@ -7759,6 +7830,32 @@ function scanHistoryForSLCooldowns() {
 
 loadSLCooldowns();
 scanHistoryForSLCooldowns();
+purgeOpenCooldownBuysFromHistory();
+
+setTimeout(async function bootDashHistorySync() {
+  try {
+    const cached = loadDashboardPicksFile() || dashboardPicksCache;
+    if (cached?.dashData) {
+      let dd = filterDashDataBySLCooldown(cached.dashData);
+      const tickers = [...new Set(Object.keys(DASH_PANE_MAP).flatMap(k => (dd[k] || []).map(s => s.ticker).filter(Boolean)))];
+      if (tickers.length) {
+        const techMap = await getTechnicalsMapForSymbols(tickers, { maxMs: 45000 });
+        dd = filterDashDataByQuantTechMap(dd, techMap);
+      }
+      dashboardPicksCache = {
+        version: DASHBOARD_PICKS_VERSION,
+        schemaVersion: cached.schemaVersion || 1,
+        dashTs: Date.now(),
+        dashData: sanitizeDashDataForServer(dd)
+      };
+      saveDashboardPicksFile(dashboardPicksCache);
+      console.log('Boot: dashboard picks filtered →', dashboardPicksSummary(dd));
+    }
+    purgeOpenCooldownBuysFromHistory();
+  } catch (e) {
+    console.warn('Boot dash/history sync:', e.message);
+  }
+}, 4000);
 
 function countConsecutiveLowerCloses(daily) {
   if (!daily || daily.length < 2) return 0;
