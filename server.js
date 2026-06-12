@@ -5158,8 +5158,6 @@ function saveHistoryFile(data) {
 }
 
 let tradeHistory = loadHistoryFile();
-loadSLCooldowns();
-scanHistoryForSLCooldowns();
 
 // ── Shared dashboard picks (same scan on phone + desktop) ───────────────────
 const DASHBOARD_PICKS_VERSION = 1;
@@ -5339,7 +5337,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260611-fmp-ultimate-v7.5.0',
+    server_build: '20260612-fmp-ultimate-v7.5.1',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -7689,6 +7687,9 @@ function scanHistoryForSLCooldowns() {
     });
   }
 }
+
+loadSLCooldowns();
+scanHistoryForSLCooldowns();
 
 function countConsecutiveLowerCloses(daily) {
   if (!daily || daily.length < 2) return 0;
