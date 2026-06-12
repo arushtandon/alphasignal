@@ -1190,6 +1190,22 @@ function computeQuantSignal(tech, fund, hz) {
     else if (bullStruct||nearS1)              { buyGates+=0.8; condBuy.push(bullStruct?'HH+HL structure':`Near S1 $${s1?.toFixed(2)}`); }
     else if (healthyPull===true||volRatio<0.80) buyGates+=0.5;
 
+    // Falling-knife filters — block mean-reversion buys in active downtrends
+    const aboveMa20 = tech.aboveMa20 ?? null;
+    const lowerCloses = tech.consecutiveLowerCloses ?? 0;
+    if (aboveMa20 === false) {
+      buyGates = Math.round(buyGates * 0.25);
+      condBuy.push('Below MA20 — falling knife filter');
+    }
+    if (lowerCloses >= 3) {
+      buyGates = Math.round(buyGates * 0.20);
+      condBuy.push(`${lowerCloses} consecutive lower closes`);
+    }
+    if (aboveMa20 === false && trend20 === 'downtrend') {
+      buyGates = Math.round(buyGates * 0.20);
+      condBuy.push('Below MA20 + downtrend');
+    }
+
     // Hard disqualifiers
     if (rsi>72)       buyGates = Math.min(buyGates, 1.5);   // overbought — avoid
     if (atSDTop)      buyGates = Math.round(buyGates*0.4);  // extended — terrible short entry
@@ -3893,6 +3909,7 @@ function buildFullTechResult(sym, daily, weekly) {
     high52w: daily.length>=52?Math.max(...daily.slice(-252).map(d=>d.h??0)):null,
     low52w:  daily.length>=52?Math.min(...daily.slice(-252).filter(d=>d.l>0).map(d=>d.l)):null,
     volume, candlePattern: pattern,
+    consecutiveLowerCloses: countConsecutiveLowerCloses(daily),
     weeklyRSI, weeklyTrend, weeklyMA50,
     summary: `RSI ${rsi} (${rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : 'neutral'}), ADX ${adx ?? 'N/A'}, ${bullishMAs}/${totalMAs} MAs bullish, ${trend20}, S1@${support1}, R1@${resistance1}`
   };
@@ -3998,6 +4015,7 @@ app.post('/api/technicals/batch', async (req, res) => {
         channels,
         channelPos,
         candlePattern: detectCandlePattern(daily),
+        consecutiveLowerCloses: countConsecutiveLowerCloses(daily),
         rsiSignal: rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : rsi > 55 ? 'bullish' : rsi < 45 ? 'bearish' : 'neutral',
         summary: `RSI ${rsi}, ADX ${adx ?? '?'}, ${cp > ma20 ? 'above' : 'below'} MA20, ${trend20}, S@${support1}, R@${resistance1}`
       };
@@ -4015,6 +4033,7 @@ app.post('/api/technicals/batch', async (req, res) => {
       };
 
       await applyMarketTierOverlays(sym, data, { batchMode: true });
+      applySLCooldownGate(sym, data);
       if (data.danelfin) {
         data.compositeAlphaShort = computeCompositeAlpha(data.danelfin, data, 0, 'short');
         data.compositeAlphaMedium = computeCompositeAlpha(data.danelfin, data, 0, 'medium');
@@ -5039,6 +5058,34 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
   if (shell.fmpScore) caches.fmpMap[ticker] = shell.fmpScore;
   applyAnalyticsSnapshotToTrade(trade, shell, fund, hz);
   trade.quantRegime = shell.quantSignal[hz]?.regime || trade.quantRegime || null;
+
+  const livePx = tech.currentPrice || parseFloat(trade[hz + 'Entry'] || trade.entry);
+  if (livePx && Number.isFinite(livePx)) {
+    const tempRow = {
+      ...trade,
+      shortAction: trade.shortAction || (String(trade.action || '').toLowerCase() === 'sell' ? 'Sell' : 'Buy'),
+      mediumAction: trade.mediumAction || trade.shortAction || 'Hold',
+      longAction: trade.longAction || trade.shortAction || 'Hold'
+    };
+    applyServerPriceLevels(tempRow, livePx, tech, fund);
+    ['short', 'medium', 'long'].forEach(hzKey => {
+      trade[hzKey + 'Entry'] = tempRow[hzKey + 'Entry'];
+      trade[hzKey + 'Target1'] = tempRow[hzKey + 'Target1'];
+      trade[hzKey + 'Target2'] = tempRow[hzKey + 'Target2'];
+      trade[hzKey + 'StopLoss'] = tempRow[hzKey + 'StopLoss'];
+    });
+    trade.entry = tempRow.shortEntry;
+    trade.target1 = tempRow.shortTarget1;
+    trade.target2 = tempRow.shortTarget2;
+    trade.stopLoss = tempRow.shortStopLoss;
+    if (String(trade.action || '').toLowerCase() === 'sell') {
+      trade.sellEntry = tempRow.shortEntry;
+      trade.sellTarget1 = tempRow.shortTarget1;
+      trade.sellTarget2 = tempRow.shortTarget2;
+      trade.sellStopLoss = tempRow.shortStopLoss;
+    }
+  }
+
   fixHistoryRecordMinRR(trade);
   return { ok: true, trade, shell };
 }
@@ -5111,6 +5158,8 @@ function saveHistoryFile(data) {
 }
 
 let tradeHistory = loadHistoryFile();
+loadSLCooldowns();
+scanHistoryForSLCooldowns();
 
 // ── Shared dashboard picks (same scan on phone + desktop) ───────────────────
 const DASHBOARD_PICKS_VERSION = 1;
@@ -5290,7 +5339,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260611-fmp-ultimate-v7.4.1',
+    server_build: '20260611-fmp-ultimate-v7.5.0',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -5493,6 +5542,7 @@ app.post('/api/history/update-pnl', express.json(), (req, res) => {
         if(u[hz+'PnlDollar'] !== undefined) h[hz+'PnlDollar'] = u[hz+'PnlDollar'];
         if(u[hz+'PnlPct']    !== undefined) h[hz+'PnlPct']    = u[hz+'PnlPct'];
         if(u[hz+'Status']    !== undefined) h[hz+'Status']     = u[hz+'Status'];
+        if (u[hz + 'Status'] === 'sl_hit') setSLCooldown(h.ticker, hz);
       });
       if(u.currentPrice !== undefined) h.currentPrice = u.currentPrice;
     }
@@ -7550,6 +7600,135 @@ const HORIZON_PCT = {
   long:   { buy: { tp1: 0.22,  tp2: 0.38,  sl: -0.12  }, sell: { tp1: -0.22,  tp2: -0.38,  sl: 0.12  } }
 };
 
+/** Minimum distance floors — medium always wider than short, long wider than medium. */
+const HORIZON_MIN_PCT = {
+  short:  { sl: 0.025, tp1: 0.045, tp2: 0.075, minRR: 1.8 },
+  medium: { sl: 0.050, tp1: 0.090, tp2: 0.140, minRR: 1.75 },
+  long:   { sl: 0.080, tp1: 0.150, tp2: 0.250, minRR: 1.9 }
+};
+
+const SL_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
+const SL_COOLDOWN_FILE = path.join(__dirname, 'data', 'sl_cooldowns.json');
+let slCooldowns = {};
+
+function loadSLCooldowns() {
+  try {
+    if (fs.existsSync(SL_COOLDOWN_FILE)) {
+      slCooldowns = JSON.parse(fs.readFileSync(SL_COOLDOWN_FILE, 'utf8')) || {};
+    }
+  } catch (_) {
+    slCooldowns = {};
+  }
+}
+
+function saveSLCooldowns() {
+  try {
+    fs.mkdirSync(path.dirname(SL_COOLDOWN_FILE), { recursive: true });
+    fs.writeFileSync(SL_COOLDOWN_FILE, JSON.stringify(slCooldowns));
+  } catch (e) {
+    console.warn('SL cooldown save failed:', e.message);
+  }
+}
+
+function setSLCooldown(ticker, hz) {
+  if (!ticker || !hz) return;
+  slCooldowns[`${ticker}|${hz}`] = { hitAt: Date.now(), until: Date.now() + SL_COOLDOWN_MS };
+  saveSLCooldowns();
+}
+
+function isSLCooldownActive(ticker, hz) {
+  const k = `${ticker}|${hz}`;
+  const c = slCooldowns[k];
+  if (!c) return false;
+  if (Date.now() > (c.until || 0)) {
+    delete slCooldowns[k];
+    saveSLCooldowns();
+    return false;
+  }
+  return true;
+}
+
+function maybeClearSLCooldown(ticker, hz, tech) {
+  if (!isSLCooldownActive(ticker, hz)) return false;
+  const aboveMa20 = tech?.aboveMa20 === true;
+  const rsi = tech?.rsi ?? 50;
+  const macdBull = tech?.macd?.trend === 'bullish';
+  if (aboveMa20 && rsi > 42 && macdBull) {
+    delete slCooldowns[`${ticker}|${hz}`];
+    saveSLCooldowns();
+    return true;
+  }
+  return false;
+}
+
+function applySLCooldownGate(sym, data) {
+  if (!data?.quantSignal) return;
+  ['short', 'medium', 'long'].forEach(hz => {
+    maybeClearSLCooldown(sym, hz, data);
+    if (!isSLCooldownActive(sym, hz)) return;
+    const q = data.quantSignal[hz];
+    if (!q) return;
+    if (q.action === 'Buy' || (q.buyScore || 0) >= 62) {
+      q.action = 'Hold';
+      q.rating = 'Hold';
+      q.buyScore = Math.min(q.buyScore || 0, 38);
+      q.tierLabel = '⚠ SL cooldown — reversal not confirmed';
+      q.conditions = q.conditions || [];
+      if (!q.conditions.some(c => /SL cooldown/i.test(c))) {
+        q.conditions.push('SL cooldown active (3d after stop hit)');
+      }
+    }
+  });
+}
+
+function scanHistoryForSLCooldowns() {
+  for (const h of tradeHistory) {
+    if (!h?.ticker) continue;
+    ['short', 'medium', 'long'].forEach(hz => {
+      if ((h[hz + 'Status'] || '') === 'sl_hit') setSLCooldown(h.ticker, hz);
+    });
+  }
+}
+
+function countConsecutiveLowerCloses(daily) {
+  if (!daily || daily.length < 2) return 0;
+  let count = 0;
+  for (let i = daily.length - 1; i >= 1; i--) {
+    const c = daily[i].c ?? daily[i].close;
+    const p = daily[i - 1].c ?? daily[i - 1].close;
+    if (c == null || p == null) break;
+    if (c < p) count++;
+    else break;
+  }
+  return count;
+}
+
+function applyHorizonMinPctFloors(e, tp1, tp2, sl, isSell, hz) {
+  const f = HORIZON_MIN_PCT[hz] || HORIZON_MIN_PCT.short;
+  if (!e || !Number.isFinite(+e)) return { tp1, tp2, sl };
+  e = +e;
+  tp1 = tp1 != null ? +tp1 : null;
+  tp2 = tp2 != null ? +tp2 : null;
+  sl = sl != null ? +sl : null;
+
+  if (isSell) {
+    const minSl = e * (1 + f.sl);
+    if (!Number.isFinite(sl) || sl < minSl) sl = roundPrice(minSl);
+    const maxTp1 = e * (1 - f.tp1);
+    if (!Number.isFinite(tp1) || tp1 > maxTp1) tp1 = roundPrice(maxTp1);
+    const maxTp2 = e * (1 - f.tp2);
+    if (!Number.isFinite(tp2) || tp2 > maxTp2) tp2 = roundPrice(maxTp2);
+  } else {
+    const maxSl = e * (1 - f.sl);
+    if (!Number.isFinite(sl) || sl > maxSl) sl = roundPrice(maxSl);
+    const minTp1 = e * (1 + f.tp1);
+    if (!Number.isFinite(tp1) || tp1 < minTp1) tp1 = roundPrice(minTp1);
+    const minTp2 = e * (1 + f.tp2);
+    if (!Number.isFinite(tp2) || tp2 < minTp2) tp2 = roundPrice(minTp2);
+  }
+  return enforceMinRiskReward(e, tp1, tp2, sl, isSell, f.minRR);
+}
+
 function roundPrice(x) {
   if (x == null || Number.isNaN(x)) return x;
   const a = Math.abs(x);
@@ -7595,7 +7774,7 @@ function fixHistoryRecordMinRR(trade) {
   let tp2 = parseFloat(trade[hz + 'Target2'] || trade.target2);
   let sl = parseFloat(trade[hz + 'StopLoss'] || trade.stopLoss);
   if (!e || !Number.isFinite(e)) return trade;
-  const fixed = enforceMinRiskReward(e, tp1, tp2, sl, isSell, 1.5);
+  const fixed = applyHorizonMinPctFloors(e, tp1, tp2, sl, isSell, hz);
   trade[hz + 'Target1'] = String(roundPrice(fixed.tp1));
   trade[hz + 'Target2'] = String(roundPrice(fixed.tp2));
   trade[hz + 'StopLoss'] = String(roundPrice(fixed.sl));
@@ -7850,7 +8029,7 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
       if (tp2 >= tp1) tp2 = roundPrice(tp1 * 0.96);
     }
 
-    const rr = enforceMinRiskReward(e, tp1, tp2, sl, isSell, 1.5);
+    const rr = applyHorizonMinPctFloors(e, tp1, tp2, sl, isSell, hz);
     tp1 = rr.tp1;
     tp2 = rr.tp2;
     sl = rr.sl;
@@ -8320,12 +8499,15 @@ app.post('/api/claude', async (req, res) => {
 app.post('/api/history/recalibrate-levels', async (req, res) => {
   const updated = [];
   const failed = [];
+  const sinceMs = req.body?.since ? new Date(req.body.since).getTime() : 0;
 
   const openTickers = [...new Set(
     tradeHistory
       .filter(h => {
         const hz = h.hz || 'short';
-        return (h[hz + 'Status'] || h.status || 'open') === 'open';
+        if ((h[hz + 'Status'] || h.status || 'open') !== 'open') return false;
+        if (sinceMs && new Date(h.entryDate || h.timestamp || 0).getTime() < sinceMs) return false;
+        return true;
       })
       .map(h => h.ticker)
       .filter(Boolean)
@@ -8358,6 +8540,7 @@ app.post('/api/history/recalibrate-levels', async (req, res) => {
     const hz = h.hz || 'short';
     const status = h[hz + 'Status'] || h.status || 'open';
     if (status !== 'open') return h;
+    if (sinceMs && new Date(h.entryDate || h.timestamp || 0).getTime() < sinceMs) return h;
 
     const ticker = h.ticker;
     const tech = techMap[ticker];

@@ -941,11 +941,20 @@ function drawChart(canvasId, data, ticker, entryPrice, tp1, tp2, slPrice, action
   const viewBars = opts.viewBars || raw.length;
   const initVis = computeChartYRange(raw, Math.max(0, raw.length - viewBars), raw.length - 1, levelVals);
 
+  const isSellAct = String(action || '').toLowerCase() === 'sell';
+  const pctLbl = function (v, kind) {
+    if (!entryVal || !v) return kind;
+    const p = ((v - entryVal) / entryVal * 100).toFixed(1);
+    if (kind === 'Entry') return 'Entry';
+    if (kind === 'Stop') return isSellAct ? 'SL +' + Math.abs(p) + '%' : 'SL ' + p + '%';
+    return (isSellAct ? '' : '+') + p + '%';
+  };
+
   const levels = [];
   if (entryVal) levels.push({ val: entryVal, color: '#5BA4F5', dash: [5, 3], label: 'Entry', bg: 'rgba(91,164,245,0.15)' });
-  if (tp1Val)   levels.push({ val: tp1Val, color: '#3DDB7B', dash: [5, 3], label: 'TP1', bg: 'rgba(61,219,123,0.15)' });
-  if (tp2Val)   levels.push({ val: tp2Val, color: '#2ab562', dash: [4, 4], label: 'TP2', bg: 'rgba(61,219,123,0.10)' });
-  if (slVal)    levels.push({ val: slVal, color: '#F46C6C', dash: [5, 3], label: 'Stop', bg: 'rgba(244,108,108,0.15)' });
+  if (tp1Val)   levels.push({ val: tp1Val, color: '#3DDB7B', dash: [5, 3], label: 'TP1 ' + pctLbl(tp1Val, 'TP1'), bg: 'rgba(61,219,123,0.15)' });
+  if (tp2Val)   levels.push({ val: tp2Val, color: '#2ab562', dash: [4, 4], label: 'TP2 ' + pctLbl(tp2Val, 'TP2'), bg: 'rgba(61,219,123,0.10)' });
+  if (slVal)    levels.push({ val: slVal, color: '#F46C6C', dash: [5, 3], label: pctLbl(slVal, 'Stop'), bg: 'rgba(244,108,108,0.15)' });
 
   const tradeLevels = {
     id:'tradeLevels',
@@ -970,6 +979,49 @@ function drawChart(canvasId, data, ticker, entryPrice, tp1, tp2, slPrice, action
         const priceStr=curr+(lv.val>=1000?lv.val.toLocaleString('en-US',{maximumFractionDigits:0}):lv.val.toFixed(2));
         ctx.font='8px DM Mono,monospace'; ctx.fillText(priceStr,lx,yPx+11);
       });
+      ctx.restore();
+    }
+  };
+
+  const maLinesPlugin = {
+    id: 'maLines',
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea: { left, right, top, bottom }, scales: { x, y } } = chart;
+      const bars = chart._rawBars || raw;
+      if (!x || !y || !bars.length) return;
+      const closes = bars.map(function (c) { return c.c; });
+      function sma(period) {
+        return closes.map(function (_, i) {
+          if (i < period - 1) return null;
+          var slice = closes.slice(i - period + 1, i + 1);
+          return slice.reduce(function (a, b) { return a + b; }, 0) / period;
+        });
+      }
+      function drawMA(maVals, color, label) {
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([3, 3]);
+        var started = false;
+        maVals.forEach(function (v, i) {
+          if (v == null) return;
+          var xPx = x.getPixelForValue(i);
+          var yPx = y.getPixelForValue(v);
+          if (!started) { ctx.moveTo(xPx, yPx); started = true; }
+          else ctx.lineTo(xPx, yPx);
+        });
+        ctx.stroke();
+        ctx.setLineDash([]);
+        var lastIdx = maVals.reduceRight(function (acc, v, i) { return acc === -1 && v != null ? i : acc; }, -1);
+        if (lastIdx >= 0) {
+          ctx.fillStyle = color;
+          ctx.font = 'bold 8px DM Mono,monospace';
+          ctx.fillText(label, Math.min(x.getPixelForValue(lastIdx) + 3, right - 28), y.getPixelForValue(maVals[lastIdx]) - 3);
+        }
+      }
+      ctx.save();
+      if (closes.length >= 20) drawMA(sma(20), 'rgba(255,200,40,0.85)', 'MA20');
+      if (closes.length >= 50) drawMA(sma(50), 'rgba(40,210,255,0.85)', 'MA50');
       ctx.restore();
     }
   };
@@ -1098,7 +1150,7 @@ function drawChart(canvasId, data, ticker, entryPrice, tp1, tp2, slPrice, action
              border:{display:false}}
         }
       },
-      plugins:[candlestickPlugin,tradeLevels]
+      plugins:[candlestickPlugin, tradeLevels, maLinesPlugin]
     };
     const chart = new window.Chart(canvas,cfg);
     chart._rawBars = raw;
@@ -1558,7 +1610,13 @@ function fmtPct(n){
   return (n>=0?'+':'')+n.toFixed(1)+'%';
 }
 
-/** Same mid-range % as server.js HORIZON_PCT / applyServerPriceLevels */
+/** Same minimum % floors as server.js HORIZON_MIN_PCT */
+const DASH_HORIZON_MIN_PCT = {
+  short:  { sl: 0.025, tp1: 0.045, tp2: 0.075, minRR: 1.8 },
+  medium: { sl: 0.050, tp1: 0.090, tp2: 0.140, minRR: 1.75 },
+  long:   { sl: 0.080, tp1: 0.150, tp2: 0.250, minRR: 1.9 }
+};
+/** Legacy mid-range fallback (unused when channel math runs) */
 const DASH_HORIZON_PCT = {
   short: {
     buy: { tp1: 0.025, tp2: 0.045, sl: -0.015 },
@@ -1608,6 +1666,31 @@ function enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, minRR) {
     if (!Number.isFinite(tp2) || tp2 <= tp1) tp2 = roundDashPrice(tp1 * 1.04);
   }
   return { tp1: tp1, tp2: tp2, sl: sl };
+}
+
+function applyHorizonMinPctFloorsDash(e, tp1, tp2, sl, isSell, hz) {
+  var f = DASH_HORIZON_MIN_PCT[hz] || DASH_HORIZON_MIN_PCT.short;
+  if (!e || !Number.isFinite(+e)) return { tp1: tp1, tp2: tp2, sl: sl };
+  e = +e;
+  tp1 = tp1 != null ? +tp1 : null;
+  tp2 = tp2 != null ? +tp2 : null;
+  sl = sl != null ? +sl : null;
+  if (isSell) {
+    var minSl = e * (1 + f.sl);
+    if (!Number.isFinite(sl) || sl < minSl) sl = roundDashPrice(minSl);
+    var maxTp1 = e * (1 - f.tp1);
+    if (!Number.isFinite(tp1) || tp1 > maxTp1) tp1 = roundDashPrice(maxTp1);
+    var maxTp2 = e * (1 - f.tp2);
+    if (!Number.isFinite(tp2) || tp2 > maxTp2) tp2 = roundDashPrice(maxTp2);
+  } else {
+    var maxSlB = e * (1 - f.sl);
+    if (!Number.isFinite(sl) || sl > maxSlB) sl = roundDashPrice(maxSlB);
+    var minTp1B = e * (1 + f.tp1);
+    if (!Number.isFinite(tp1) || tp1 < minTp1B) tp1 = roundDashPrice(minTp1B);
+    var minTp2B = e * (1 + f.tp2);
+    if (!Number.isFinite(tp2) || tp2 < minTp2B) tp2 = roundDashPrice(minTp2B);
+  }
+  return enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, f.minRR);
 }
 function ratingImpliesSellDash(rating) {
   return String(rating || '').toLowerCase().includes('sell');
@@ -1779,7 +1862,7 @@ function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
     if (_riskS > 0 && (e - tp1) < _riskS * _MIN_RR) tp1 = roundDashPrice(e - _riskS * _MIN_RR);
     if (tp2 >= tp1) tp2 = roundDashPrice(tp1 * 0.96);
   }
-  var rr = enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, 1.5);
+  var rr = applyHorizonMinPctFloorsDash(e, tp1, tp2, sl, isSell, hz);
   return { tp1: rr.tp1, tp2: rr.tp2, sl: rr.sl };
 }
 
@@ -2325,6 +2408,9 @@ async function runDashScan(force){
               r.backtestShortTrades=null; r.backtestMediumTrades=null; r.backtestLongTrades=null;
               var dom = domS;
               r.quantConditions = (qs.short && qs.short.conditions ? qs.short.conditions.slice() : []).concat(news && news.catalysts ? news.catalysts : []);
+              r._shortConditions = (qs.short && qs.short.conditions) ? qs.short.conditions.slice() : [];
+              r._mediumConditions = (qs.medium && qs.medium.conditions) ? qs.medium.conditions.slice() : [];
+              r._longConditions = (qs.long && qs.long.conditions) ? qs.long.conditions.slice() : [];
               r.newsSentiment = news && news.sentiment ? news.sentiment : 'neutral';
               r.newsScore = newsScore;
               r.newsSummary = news && news.summary ? news.summary : '';
@@ -2734,7 +2820,7 @@ async function saveDashPicksToHistory(data) {
       if(isSell  && tp2 >= tp1)   tp2 = parseFloat((tp1*0.95).toFixed(2));
       if(isSell  && sl  <= entry) sl  = parseFloat((entry*1.03).toFixed(2));
     }
-    var rrFix = enforceMinRiskRewardDash(entry, tp1, tp2, sl, isSell, 1.5);
+    var rrFix = applyHorizonMinPctFloorsDash(entry, tp1, tp2, sl, isSell, hz);
     tp1 = rrFix.tp1;
     tp2 = rrFix.tp2;
     sl = rrFix.sl;
@@ -3045,7 +3131,7 @@ async function fixHistoryPrices(silent) {
     if(!t1||(isSell?t1>=newEntry:t1<=newEntry)) t1=isSell?parseFloat((newEntry*0.95).toFixed(2)):parseFloat((newEntry*1.05).toFixed(2));
     if(!t2||(isSell?t2>=t1:t2<=t1)) t2=isSell?parseFloat((t1*0.95).toFixed(2)):parseFloat((t1*1.05).toFixed(2));
     if(!s||(isSell?s<=newEntry:s>=newEntry)) s=isSell?parseFloat((newEntry*1.03).toFixed(2)):parseFloat((newEntry*0.97).toFixed(2));
-    var rrFix=enforceMinRiskRewardDash(newEntry,t1,t2,s,isSell,1.5);
+    var rrFix=applyHorizonMinPctFloorsDash(newEntry,t1,t2,s,isSell,hz);
     t1=rrFix.tp1; t2=rrFix.tp2; s=rrFix.sl;
     h.entry=newEntry; h[hz+'Entry']=newEntry;
     h.target1=t1; h[hz+'Target1']=t1;
@@ -3254,7 +3340,7 @@ async function loadPickDetail(ticker,hz){
         const tp2=isSC?(s.sellTarget2||s.target2):s.target2;
         const sl=isSC?(s.sellStopLoss||s.stopLoss):s.stopLoss;
         const cid='chart_'+s.ticker.replace(/[^a-z0-9]/gi,'_');
-        loadChart(s.ticker, cid, CHART_RANGES['15m'].range, CHART_RANGES['15m'].interval, entry, tp1, tp2, sl, s.action||'Buy', '15m');
+        loadChart(s.ticker, cid, CHART_RANGES['1H'].range, CHART_RANGES['1H'].interval, entry, tp1, tp2, sl, s.action||'Buy', '1H');
       });
       fetchLivePrices(res.map(s=>s.ticker)).then(updatePrices);
     },200);
@@ -3371,7 +3457,7 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
           const tp2   = isSC ? (s.sellTarget2||s.shortTarget2||s.target2) : (s.shortTarget2||s.target2);
           const sl    = isSC ? (s.sellStopLoss||s.shortStopLoss||s.stopLoss) : (s.shortStopLoss||s.stopLoss);
           const cid   = 'chart_'+s.ticker.replace(/[^a-z0-9]/gi,'_');
-          loadChart(s.ticker, cid, CHART_RANGES['15m'].range, CHART_RANGES['15m'].interval, entry, tp1, tp2, sl, s.action||'Buy', '15m');
+          loadChart(s.ticker, cid, CHART_RANGES['1H'].range, CHART_RANGES['1H'].interval, entry, tp1, tp2, sl, s.action||'Buy', '1H');
         });
         fetchLivePrices(stocks.map(s=>s.ticker)).then(updatePrices);
       }, 300);
@@ -3441,17 +3527,22 @@ function cC(c){return c>=75?'#C9F14F':c>=55?'#F5C842':'#F46C6C'}
 function maTag(p){const v=(p||'').toLowerCase();return v==='above'?'<span class="mv g">Above ↑</span>':v==='below'?'<span class="mv r">Below ↓</span>':'<span class="mv y">At</span>';}
 function mTag(m){const v=(m||'').toLowerCase();const c=v==='bullish'?'buy':v==='bearish'?'sell':'hold';return m?`<span class="tag ${c}">${m}</span>`:'<span class="mv">—</span>';}
 
-function buildChartHtml(ticker, entry, tp1, tp2, sl, action) {
+const CHART_DEFAULT_BY_HZ = { short: '1H', medium: '3M', long: '1Y' };
+
+function buildChartHtml(ticker, entry, tp1, tp2, sl, action, hz, conditions) {
+  hz = hz || 'short';
+  conditions = conditions || [];
   const tid = ticker.replace(/[^a-z0-9]/gi,'_');
   const e2 = (entry||'').replace(/"/g,'');
   const t1 = (tp1||'').replace(/"/g,'');
   const t2 = (tp2||'').replace(/"/g,'');
   const s2 = (sl||'').replace(/"/g,'');
   const a2 = (action||'Buy').replace(/"/g,'');
+  const defaultRange = CHART_DEFAULT_BY_HZ[hz] || '1H';
   const ranges = ['5m','15m','1H','4H','1D','5D','1M','3M','6M','1Y','2Y','5Y','MAX'];
   let tabs = '';
   ranges.forEach(r => {
-    const act = r === '15m' ? ' act' : '';
+    const act = r === defaultRange ? ' act' : '';
     tabs += '<div class="chart-tab'+act+'"'
       + ' data-cticker="'+ticker+'"'
       + ' data-cid="chart_'+tid+'"'
@@ -3463,6 +3554,18 @@ function buildChartHtml(ticker, entry, tp1, tp2, sl, action) {
       + ' data-caction="'+a2+'"'
       + ' onclick="handleChartTab(this)">'+r+'</div>';
   });
+  var whyPanel = conditions.length ? (
+    '<div id="chartwhy_'+tid+'" style="margin-top:8px;padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:6px;font-family:DM Mono,monospace">'
+    + '<div style="font-size:9px;color:rgba(140,150,170,0.8);letter-spacing:0.06em;margin-bottom:5px;text-transform:uppercase">'
+    + (String(action||'').toLowerCase()==='sell' ? 'Why Short / Sell' : 'Why Long / Buy')
+    + '</div>'
+    + conditions.slice(0, 6).map(function (c) {
+        return '<div style="display:flex;align-items:flex-start;gap:5px;font-size:9px;color:rgba(200,210,220,0.85);margin-bottom:2px">'
+          + '<span style="color:var(--buy);flex-shrink:0">▸</span><span>'+c+'</span></div>';
+      }).join('')
+    + '<div style="font-size:7px;color:rgba(120,130,150,0.55);margin-top:6px">Patterns: internal OHLCV engine (Yahoo data) · not third-party</div>'
+    + '</div>'
+  ) : '<div id="chartwhy_'+tid+'"></div>';
   return '<div class="chart-tabs" id="ctabs_'+tid+'">'+tabs+'</div>'
     + '<div class="chart-wrap" id="wrap_chart_'+tid+'"><div class="chart-loading"><div class="sp"></div><span>Loading chart...</span></div></div>'
     + '<div class="chart-stats" id="stats_chart_'+tid+'"></div>'
@@ -3472,8 +3575,9 @@ function buildChartHtml(ticker, entry, tp1, tp2, sl, action) {
     + '<button onclick="zoomChart(document.getElementById(\'wrap_chart_'+tid+'\'),0.67)" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:rgba(200,200,200,0.7);border-radius:3px;padding:2px 8px;font-size:11px;cursor:pointer;font-family:DM Mono,monospace" title="Zoom out">−</button>'
     + '<button onclick="resetChartZoom(document.getElementById(\'wrap_chart_'+tid+'\'))" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:rgba(200,200,200,0.7);border-radius:3px;padding:2px 6px;font-size:10px;cursor:pointer;font-family:DM Mono,monospace" title="Reset view">⟲</button>'
     + '</div>'
-    + '<div style="font-size:8px;color:rgba(86,92,106,0.6);font-family:DM Mono,monospace">Scroll wheel to zoom · Drag to pan · Zoom out loads more history</div>'
-    + '</div>';
+    + '<div style="font-size:8px;color:rgba(86,92,106,0.6);font-family:DM Mono,monospace">Scroll wheel to zoom · Drag to pan · Tab matches horizon</div>'
+    + '</div>'
+    + whyPanel;
 }
 
 function zoomChart(wrap, factor) {
@@ -3970,7 +4074,8 @@ function renderCard(s){
       sellTp1: hzIsSell(s.shortRating)?(s.shortTarget1||s.target1):(s.sellTarget1||''),
       sellTp2: hzIsSell(s.shortRating)?(s.shortTarget2||s.target2):(s.sellTarget2||''),
       sellSl: hzIsSell(s.shortRating)?(s.shortStopLoss||s.stopLoss):(s.sellStopLoss||''),
-      analysis: s.shortAnalysis || s.techSummary || ''
+      analysis: s.shortAnalysis || s.techSummary || '',
+      conditions: s._shortConditions || s.quantConditions || []
     },
     {
       key:'medium', label:'Medium', period:'1–3 months',
@@ -3987,7 +4092,8 @@ function renderCard(s){
       sellTp1: hzIsSell(s.mediumRating)?(s.mediumTarget1||s.target1):(s.sellTarget1||''),
       sellTp2: hzIsSell(s.mediumRating)?(s.mediumTarget2||s.target2):(s.sellTarget2||''),
       sellSl: hzIsSell(s.mediumRating)?(s.mediumStopLoss||s.stopLoss):(s.sellStopLoss||''),
-      analysis: s.mediumAnalysis || (s.newsImpact?'News: '+s.newsImpact+' | ':'')+( s.techSummary||'')
+      analysis: s.mediumAnalysis || (s.newsImpact?'News: '+s.newsImpact+' | ':'')+( s.techSummary||''),
+      conditions: s._mediumConditions || []
     },
     {
       key:'long', label:'Long', period:'4–12 months',
@@ -4004,7 +4110,8 @@ function renderCard(s){
       sellTp1: hzIsSell(s.longRating)?(s.longTarget1||s.target1):(s.sellTarget1||''),
       sellTp2: hzIsSell(s.longRating)?(s.longTarget2||s.target2):(s.sellTarget2||''),
       sellSl: hzIsSell(s.longRating)?(s.longStopLoss||s.stopLoss):(s.sellStopLoss||''),
-      analysis: s.longAnalysis || (s.fundSummary||'')+(s.newsImpact?' | News: '+s.newsImpact:'')
+      analysis: s.longAnalysis || (s.fundSummary||'')+(s.newsImpact?' | News: '+s.newsImpact:''),
+      conditions: s._longConditions || []
     }
   ];
 
@@ -4155,6 +4262,26 @@ function renderCard(s){
   ).join('');
 
   const panelsHtml = horizons.map(hz => hzTabContent(hz)).join('');
+  const cardTid = s.ticker.replace(/[^a-z0-9]/gi,'_');
+  window._cardChartMeta = window._cardChartMeta || {};
+  window._cardChartMeta[cardTid] = { ticker: s.ticker };
+  horizons.forEach(function (hz) {
+    var sellHz = hz.action === 'Sell';
+    window._cardChartMeta[cardTid][hz.key] = {
+      action: hz.action,
+      entry: sellHz ? (hz.sellEntry || hz.entry) : hz.entry,
+      tp1: sellHz ? (hz.sellTp1 || hz.tp1) : hz.tp1,
+      tp2: sellHz ? (hz.sellTp2 || hz.tp2) : hz.tp2,
+      sl: sellHz ? (hz.sellSl || hz.sl) : hz.sl,
+      sellEntry: hz.sellEntry, sellTp1: hz.sellTp1, sellTp2: hz.sellTp2, sellSl: hz.sellSl,
+      conditions: hz.conditions || []
+    };
+  });
+  var shortHz = window._cardChartMeta[cardTid].short;
+  var chartEntry = shortHz.action === 'Sell' ? (shortHz.sellEntry || shortHz.entry) : shortHz.entry;
+  var chartTp1 = shortHz.action === 'Sell' ? (shortHz.sellTp1 || shortHz.tp1) : shortHz.tp1;
+  var chartTp2 = shortHz.action === 'Sell' ? (shortHz.sellTp2 || shortHz.tp2) : shortHz.tp2;
+  var chartSl = shortHz.action === 'Sell' ? (shortHz.sellSl || shortHz.sl) : shortHz.sl;
 
   return '<div class="stock-card">'
     // Card header
@@ -4175,7 +4302,7 @@ function renderCard(s){
     // Chart (shared across tabs)
     +'<div class="section" style="margin-top:10px">'
     +'<div class="sec-head"><span class="sec-label">Price Chart</span><div class="sec-line"></div></div>'
-    +buildChartHtml(s.ticker, cardEntry, cardTp1, cardTp2, cardSl, s.action||'Buy')
+    +buildChartHtml(s.ticker, chartEntry, chartTp1, chartTp2, chartSl, shortHz.action || s.action||'Buy', 'short', shortHz.conditions || [])
     +'</div>'
 
     // Technical Analysis details
@@ -4333,13 +4460,59 @@ function renderCard(s){
 }
 
 function switchHzTab(tickerId, hzKey) {
-  // Update tab buttons
   ['short','medium','long'].forEach(k => {
     const btn = document.getElementById('hztabbtn_'+tickerId+'_'+k);
     const panel = document.getElementById('hztab_'+tickerId+'_'+k);
     if(btn) btn.classList.toggle('act', k===hzKey);
     if(panel) panel.style.display = k===hzKey ? 'block' : 'none';
   });
+  const cardMeta = (window._cardChartMeta || {})[tickerId];
+  const hz = cardMeta && cardMeta[hzKey];
+  if (!hz) return;
+  const ticker = cardMeta.ticker || tickerId;
+  const cid = 'chart_' + tickerId;
+  const isSell = hz.action === 'Sell';
+  const entry = isSell ? (hz.sellEntry || hz.entry) : hz.entry;
+  const tp1 = isSell ? (hz.sellTp1 || hz.tp1) : hz.tp1;
+  const tp2 = isSell ? (hz.sellTp2 || hz.tp2) : hz.tp2;
+  const sl = isSell ? (hz.sellSl || hz.sl) : hz.sl;
+  const defRange = CHART_DEFAULT_BY_HZ[hzKey] || '1H';
+  const cfg = CHART_RANGES[defRange] || CHART_RANGES['1H'];
+  document.querySelectorAll('#ctabs_'+tickerId+' .chart-tab').forEach(function (tab) {
+    tab.setAttribute('data-centry', entry || '');
+    tab.setAttribute('data-ctp1', tp1 || '');
+    tab.setAttribute('data-ctp2', tp2 || '');
+    tab.setAttribute('data-csl', sl || '');
+    tab.setAttribute('data-caction', hz.action || 'Buy');
+  });
+  const whyEl = document.getElementById('chartwhy_' + tickerId);
+  if (whyEl) {
+    const conds = hz.conditions || [];
+    if (conds.length) {
+      whyEl.innerHTML = '<div style="font-size:9px;color:rgba(140,150,170,0.8);letter-spacing:0.06em;margin-bottom:5px;text-transform:uppercase">'
+        + (isSell ? 'Why Short / Sell' : 'Why Long / Buy') + '</div>'
+        + conds.slice(0, 6).map(function (c) {
+            return '<div style="display:flex;align-items:flex-start;gap:5px;font-size:9px;color:rgba(200,210,220,0.85);margin-bottom:2px">'
+              + '<span style="color:var(--buy);flex-shrink:0">▸</span><span>'+c+'</span></div>';
+          }).join('')
+        + '<div style="font-size:7px;color:rgba(120,130,150,0.55);margin-top:6px">Patterns: internal OHLCV engine (Yahoo data) · not third-party</div>';
+      whyEl.style.display = 'block';
+    } else {
+      whyEl.innerHTML = '';
+    }
+  }
+  loadChart(
+    ticker,
+    cid,
+    cfg.range,
+    cfg.interval,
+    entry,
+    tp1,
+    tp2,
+    sl,
+    hz.action || 'Buy',
+    defRange
+  );
 }
 
 function initCardTabs(ticker) {
@@ -5097,6 +5270,15 @@ async function syncHistoryInBackground(){
     });
   }catch(e){
     console.warn('History revalidate failed:',e.message||e);
+  }
+  try{
+    await fetch('/api/history/recalibrate-levels',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ since:'2026-06-09' })
+    });
+  }catch(e){
+    console.warn('History TP/SL recalibrate failed:',e.message||e);
   }
   try{
     await loadHistoryFromServer();
