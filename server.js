@@ -1164,16 +1164,33 @@ function computeQuantSignal(tech, fund, hz) {
     if (inSDExcellent) { buyGates+=2; condBuy.push('SD channel: price at lower band'); }
     else if (inSDGood) { buyGates++;  condBuy.push('SD channel: near lower band');     }
 
-    // Gate 3: RSI timing — regime-aware
-    if (regime === 'bull' && aboveMa200 && rsi >= 48 && rsi <= 68) {
-      buyGates += 1.2;
-      condBuy.push(`RSI ${rsi} bull zone`);
-    } else if (rsi >= 24 && rsi <= 50 && rsiRising) {
-      buyGates++;
-      condBuy.push(`RSI ${rsi} oversold rising`);
-    } else if (rsi >= 24 && rsi <= 50) {
-      buyGates += 0.5;
+    // Gate 3: RSI timing — tiered oversold thresholds (RSI<20 strongest)
+    if (rsi < 20) {
+      buyGates += 2.0; condBuy.push(`RSI ${rsi} EXTREME oversold`);
+    } else if (rsi < 30 && rsiRising) {
+      buyGates += 1.5; condBuy.push(`RSI ${rsi} oversold rising`);
+    } else if (rsi < 30) {
+      buyGates += 1.0; condBuy.push(`RSI ${rsi} oversold`);
+    } else if (rsi < 40 && rsiRising) {
+      buyGates += 0.6; condBuy.push(`RSI ${rsi} recovering`);
+    } else if (rsi < 40) {
+      buyGates += 0.3;
+    } else if (regime === 'bull' && aboveMa200 && rsi >= 40 && rsi <= 65) {
+      buyGates += 0.8; condBuy.push(`RSI ${rsi} bull zone`);
+    } else if (rsi > 70) {
+      buyGates = Math.round(buyGates * 0.3);
     }
+
+    // Gate 3c: MA touch entries — price bouncing off a key moving average = support
+    const _ma100 = tech.ma100 ?? null;
+    const _nearMa200 = ma200 && Math.abs(price - ma200) / price < 0.030;
+    const _nearMa100 = _ma100 && Math.abs(price - _ma100) / price < 0.025;
+    const _nearMa50  = ma50  && Math.abs(price - ma50)  / price < 0.020;
+    const _nearMa20t = tech.ma20 && Math.abs(price - tech.ma20) / price < 0.015;
+    if (_nearMa200 && aboveMa200)      { buyGates += 1.5; condBuy.push('Price at MA200 support'); }
+    else if (_nearMa100 && _ma100 && price > _ma100*0.98) { buyGates += 1.2; condBuy.push('Price at MA100 support'); }
+    else if (_nearMa50 && aboveMa50)   { buyGates += 1.0; condBuy.push('Price at MA50 support'); }
+    else if (_nearMa20t && aboveMa20)  { buyGates += 0.7; condBuy.push('Price at MA20 support'); }
 
     // Gate 3b: Bull regime MACD confirmation (trend continuation, not just reversal)
     if (regime === 'bull' && aboveMa200 && macdBull && rsi >= 45 && rsi <= 72 && !atSDTop) {
@@ -3863,6 +3880,7 @@ function buildFullTechResult(sym, daily, weekly) {
   const cp = closes[closes.length - 1];
   const ma20  = calcSMA(closes, 20);
   const ma50  = calcSMA(closes, 50);
+  const ma100 = closes.length >= 100 ? calcSMA(closes, 100) : null;
   const ma200 = closes.length >= 200 ? calcSMA(closes, 200) : null;
   const rsi   = calcRSI(closes, 14);
   const macd  = calcMACDFull(closes);
@@ -3910,6 +3928,13 @@ function buildFullTechResult(sym, daily, weekly) {
     low52w:  daily.length>=52?Math.min(...daily.slice(-252).filter(d=>d.l>0).map(d=>d.l)):null,
     volume, candlePattern: pattern,
     consecutiveLowerCloses: countConsecutiveLowerCloses(daily),
+    ma100, aboveMa100: ma100 ? cp > ma100 : null,
+    recentTrend: (function(){
+      const cl = closes; const c = cp;
+      if (!cl || cl.length < 6 || !c) return 'sideways';
+      const c5 = cl[cl.length-6];
+      return c < c5*0.98 ? 'downtrend' : c > c5*1.02 ? 'uptrend' : 'sideways';
+    })(),
     weeklyRSI, weeklyTrend, weeklyMA50,
     summary: `RSI ${rsi} (${rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : 'neutral'}), ADX ${adx ?? 'N/A'}, ${bullishMAs}/${totalMAs} MAs bullish, ${trend20}, S1@${support1}, R1@${resistance1}`
   };
@@ -4545,29 +4570,6 @@ async function fetchDanelfinRow(apiKey, symbol) {
   const fld =
     'aiscore,technical,fundamental,sentiment,low_risk,buy_track_record,sell_track_record';
 
-  async function stockTargets() {
-    try {
-      const u = `${DANELFIN_BASE_URL}/stock?ticker=${encodeURIComponent(sym)}&fields=recommendation,target_price,stop_loss,entry_price,upside`;
-      const r = await fetch(u, {
-        headers: { Accept: 'application/json', 'x-api-key': apiKey },
-        signal: AbortSignal.timeout(8000)
-      });
-      if (!r.ok) return null;
-      const j = await r.json().catch(() => null);
-      const row = Array.isArray(j) ? j[0] : (j?.data?.[0] ?? j?.stock ?? j);
-      if (!row) return null;
-      return {
-        danTP: row.target_price ?? row.targetPrice ?? null,
-        danSL: row.stop_loss ?? row.stopLoss ?? null,
-        danEntry: row.entry_price ?? row.entryPrice ?? null,
-        danRec: row.recommendation ?? null,
-        danUpside: row.upside ?? null
-      };
-    } catch (e) {
-      return null;
-    }
-  }
-
   async function ranking(marketEu) {
     const q = `ticker=${encodeURIComponent(sym)}&fields=${encodeURIComponent(fld)}`;
     const u = `${DANELFIN_BASE_URL}/ranking?${q}${marketEu ? '&market=europe' : ''}`;
@@ -4601,20 +4603,7 @@ async function fetchDanelfinRow(apiKey, symbol) {
     };
   }
   try {
-    const [us, targets] = await Promise.all([
-      ranking(false),
-      stockTargets()
-    ]);
-    if (targets) {
-      return {
-        ...(us || {}),
-        danTP: targets.danTP,
-        danSL: targets.danSL,
-        danEntry: targets.danEntry,
-        danRec: targets.danRec,
-        danUpside: targets.danUpside
-      };
-    }
+    const us = await ranking(false);
     if (us && us.aiscore != null) return us;
     return await ranking(true);
   } catch (e) {
@@ -5337,7 +5326,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260612-fmp-ultimate-v7.5.1',
+    server_build: '20260612-fmp-ultimate-v7.5.2',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
