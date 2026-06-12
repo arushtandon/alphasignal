@@ -5045,6 +5045,7 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
     fmpPre: caches.fmpMap[ticker]
   });
   if (shell.fmpScore) caches.fmpMap[ticker] = shell.fmpScore;
+  applySLCooldownGate(ticker, shell);
   applyAnalyticsSnapshotToTrade(trade, shell, fund, hz);
   trade.quantRegime = shell.quantSignal[hz]?.regime || trade.quantRegime || null;
 
@@ -5238,6 +5239,85 @@ app.post('/api/dashboard/picks', express.json({ limit: '3mb' }), (req, res) => {
   res.json({ ok: true, dashTs: dashboardPicksCache.dashTs });
 });
 
+app.post('/api/dashboard/picks/revalidate', express.json(), async (req, res) => {
+  const cached = loadDashboardPicksFile() || dashboardPicksCache;
+  if (!cached?.dashData) {
+    return res.json({ ok: false, reason: 'no picks', removed: 0, dashData: null });
+  }
+  const dashData = cached.dashData;
+  const paneMap = {
+    short: { hz: 'short', side: 'buy' },
+    medium: { hz: 'medium', side: 'buy' },
+    long: { hz: 'long', side: 'buy' },
+    shortSell: { hz: 'short', side: 'sell' },
+    medSell: { hz: 'medium', side: 'sell' },
+    longSell: { hz: 'long', side: 'sell' }
+  };
+  const tickers = [...new Set(
+    Object.keys(paneMap).flatMap(k => (dashData[k] || []).map(s => s.ticker).filter(Boolean))
+  )];
+  const techMap = {};
+  await Promise.all(tickers.map(async sym => {
+    try {
+      let daily = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
+      if (!daily || daily.length < 30) daily = await fetchOHLCV(sym, '1y', '1d').catch(() => null);
+      const weekly = await fetchOHLCV(sym, '2y', '1wk').catch(() => null);
+      if (daily && daily.length >= 30) {
+        const data = buildFullTechResult(sym, daily, weekly);
+        const fund = (await fetchFundamentals(sym).catch(() => null)) || null;
+        data.quantSignal = {
+          short: computeQuantSignal(data, fund, 'short'),
+          medium: computeQuantSignal(data, fund, 'medium'),
+          long: computeQuantSignal(data, fund, 'long')
+        };
+        await applyMarketTierOverlays(sym, data, { batchMode: true, fundPre: fund });
+        applySLCooldownGate(sym, data);
+        techMap[sym] = data;
+      }
+    } catch (e) {
+      console.warn('Picks revalidate tech', sym, e.message);
+    }
+  }));
+
+  const removed = [];
+  const out = {};
+  for (const [pane, { hz, side }] of Object.entries(paneMap)) {
+    out[pane] = (dashData[pane] || []).filter(pick => {
+      const tech = techMap[pick.ticker];
+      const sig = tech?.quantSignal?.[hz];
+      if (!sig) return true;
+      pick[hz + 'Score'] = sig.buyScore ?? pick[hz + 'Score'];
+      pick[hz + 'SellScore'] = sig.sellScore ?? pick[hz + 'SellScore'];
+      pick[hz + 'Rating'] = sig.rating ?? pick[hz + 'Rating'];
+      pick[hz + 'Action'] = sig.action ?? pick[hz + 'Action'];
+      if (side === 'buy') {
+        const ok = sig.action === 'Buy' && (sig.buyScore || 0) >= 62 && !/SL cooldown/i.test(sig.tierLabel || '');
+        if (!ok) removed.push({ pane, ticker: pick.ticker, action: sig.action, buyScore: sig.buyScore, reason: sig.tierLabel || sig.action });
+        return ok;
+      }
+      const okSell = sig.action === 'Sell' && (sig.sellScore || 0) >= 62;
+      if (!okSell) removed.push({ pane, ticker: pick.ticker, action: sig.action, sellScore: sig.sellScore });
+      return okSell;
+    });
+  }
+
+  dashboardPicksCache = {
+    version: DASHBOARD_PICKS_VERSION,
+    schemaVersion: cached.schemaVersion || 1,
+    dashTs: Date.now(),
+    dashData: sanitizeDashDataForServer(out)
+  };
+  saveDashboardPicksFile(dashboardPicksCache);
+  res.json({
+    ok: true,
+    removed: removed.length,
+    removedDetail: removed,
+    dashTs: dashboardPicksCache.dashTs,
+    summary: dashboardPicksSummary(out),
+    dashData: out
+  });
+});
+
 // ── Health (after tradeHistory — used in payload) ────────────────────────────
 app.get('/api/history/status', (req, res) => {
   const today = new Date().toDateString();
@@ -5326,7 +5406,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260612-fmp-ultimate-v7.5.2',
+    server_build: '20260612-fmp-ultimate-v7.5.3',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -8601,20 +8681,26 @@ app.post('/api/history/cleanup-entries', async (req, res) => {
 });
 
 
-// POST /api/history/revalidate — refresh FMP/fundamentals analytics on all history rows;
+// POST /api/history/revalidate — refresh FMP/fundamentals analytics on history rows;
 // removes only today's open trades that contradict current regime/signal. Runs on page load.
 app.post('/api/history/revalidate', express.json(), async (req, res) => {
   const dryRun = req.body?.dryRun === true;
+  const sinceMs = req.body?.since ? new Date(req.body.since).getTime() : 0;
   const caches = {};
   const removed = [];
   const errors = [];
   const toRemoveKeys = new Set();
   let enriched = 0;
+  let skipped = 0;
 
   for (const trade of tradeHistory) {
     if (!isHistoryBuySellRecord(trade)) continue;
     const hz = trade.hz || 'short';
     const key = `${trade.ticker}|${hz}|${trade.entryDate || trade.timestamp || ''}`;
+    if (sinceMs && new Date(trade.entryDate || trade.timestamp || 0).getTime() < sinceMs) {
+      skipped++;
+      continue;
+    }
 
     const result = await enrichHistoryTradeRecord(trade, caches).catch(e => ({
       ok: false,
@@ -8677,13 +8763,131 @@ app.post('/api/history/revalidate', express.json(), async (req, res) => {
   res.json({
     dryRun,
     enriched,
+    skipped,
+    since: req.body?.since || null,
     removed,
     kept: dryRun
       ? tradeHistory.filter(h => isHistoryBuySellRecord(h)).length
       : tradeHistory.length,
-    errors,
+    errors: errors.slice(0, 50),
+    errorsTruncated: errors.length > 50,
     totalRemoved: removed.length
   });
+});
+
+
+function tradingDaysElapsedSinceEntryServer(entryDateOrIso) {
+  const d0 = new Date(entryDateOrIso);
+  if (Number.isNaN(d0.getTime())) return 0;
+  const start = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate());
+  const end = new Date();
+  const endD = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  let n = 0;
+  for (let d = new Date(start); d <= endD; d.setDate(d.getDate() + 1)) {
+    const wd = d.getDay();
+    if (wd !== 0 && wd !== 6) n++;
+  }
+  return n;
+}
+
+function horizonTimeLimitExceededServer(hz, entryDateOrIso) {
+  if (hz === 'long') {
+    const daysOld = (Date.now() - new Date(entryDateOrIso).getTime()) / 86400000;
+    return daysOld >= 180;
+  }
+  const td = tradingDaysElapsedSinceEntryServer(entryDateOrIso);
+  if (hz === 'short') return td >= 20;
+  if (hz === 'medium') return td >= 63;
+  return false;
+}
+
+// POST /api/history/refresh-pnl — server-side TP/SL hit detection + PnL for all history rows
+app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
+  const sinceMs = req.body?.since ? new Date(req.body.since).getTime() : 0;
+  const tickers = [...new Set(
+    tradeHistory
+      .filter(h => !sinceMs || new Date(h.entryDate || h.timestamp || 0).getTime() >= sinceMs)
+      .map(h => h.ticker)
+      .filter(Boolean)
+  )];
+  const priceMap = {};
+  await Promise.all(tickers.map(async sym => {
+    try {
+      const q = await fetchSinglePrice(sym);
+      if (q?.price) priceMap[sym] = parseFloat(q.price);
+    } catch (_) {}
+  }));
+
+  let updated = 0;
+  for (const h of tradeHistory) {
+    if (sinceMs && new Date(h.entryDate || h.timestamp || 0).getTime() < sinceMs) continue;
+    const curr = priceMap[h.ticker];
+    if (!curr || !Number.isFinite(curr)) continue;
+    const isSell = String(h.action || '').toLowerCase() === 'sell';
+    const dir = isSell ? -1 : 1;
+    const hzList = h.hz ? [h.hz] : ['short', 'medium', 'long'];
+    let rowChanged = false;
+
+    for (const hz of hzList) {
+      const st = h[hz + 'Status'];
+      if (st && st !== 'open' && st !== 'n/a') continue;
+      const entry = parseFloat(h[hz + 'Entry'] || h.entry || 0);
+      if (!entry) continue;
+      const tp1 = parseFloat(h[hz + 'Target1'] || h.target1 || 0);
+      const tp2 = parseFloat(h[hz + 'Target2'] || h.target2 || 0);
+      const sl = parseFloat(h[hz + 'StopLoss'] || h.stopLoss || 0);
+      const shares = Math.floor(10000 / entry);
+      const validTp1 = tp1 && (isSell ? tp1 < entry : tp1 > entry);
+      const validTp2 = tp2 && (isSell ? tp2 < entry : tp2 > entry);
+      const validSl = sl && (isSell ? sl > entry : sl < entry);
+      const tp1Hit = validTp1 && (isSell ? curr <= tp1 : curr >= tp1);
+      const tp2Hit = validTp2 && (isSell ? curr <= tp2 : curr >= tp2);
+      const slHit = validSl && (isSell ? curr >= sl : curr <= sl);
+
+      if (slHit && st !== 'tp1_hit' && st !== 'tp2_hit') {
+        h[hz + 'PnlDollar'] = (sl - entry) * dir * shares;
+        h[hz + 'PnlPct'] = ((sl - entry) / entry) * dir * 100;
+        h[hz + 'Status'] = 'sl_hit';
+        h[hz + 'ExitPrice'] = sl;
+        setSLCooldown(h.ticker, hz);
+        rowChanged = true;
+      } else if (tp2Hit) {
+        h[hz + 'PnlDollar'] = (tp2 - entry) * dir * shares;
+        h[hz + 'PnlPct'] = ((tp2 - entry) / entry) * dir * 100;
+        h[hz + 'Status'] = 'tp2_hit';
+        h[hz + 'ExitPrice'] = tp2;
+        rowChanged = true;
+      } else if (tp1Hit) {
+        h[hz + 'PnlDollar'] = (tp1 - entry) * dir * shares;
+        h[hz + 'PnlPct'] = ((tp1 - entry) / entry) * dir * 100;
+        h[hz + 'Status'] = 'tp1_hit';
+        h[hz + 'ExitPrice'] = tp1;
+        rowChanged = true;
+      } else if (horizonTimeLimitExceededServer(hz, h.entryDate || h.timestamp)) {
+        h[hz + 'PnlDollar'] = (curr - entry) * dir * shares;
+        h[hz + 'PnlPct'] = ((curr - entry) / entry) * dir * 100;
+        h[hz + 'Status'] = 'time_limit';
+        h[hz + 'ExitPrice'] = curr;
+        rowChanged = true;
+      } else if (st !== 'time_limit') {
+        h[hz + 'PnlDollar'] = (curr - entry) * dir * shares;
+        h[hz + 'PnlPct'] = ((curr - entry) / entry) * dir * 100;
+        h[hz + 'Status'] = 'open';
+        rowChanged = true;
+      }
+      h[hz + 'CurrentPrice'] = curr;
+      if (h.hz === hz || !h.hz) {
+        h.pnlDollar = h[hz + 'PnlDollar'];
+        h.pnlPct = h[hz + 'PnlPct'];
+        h.status = h[hz + 'Status'];
+      }
+    }
+    h.currentPrice = curr;
+    if (rowChanged) updated++;
+  }
+
+  saveHistoryFile(tradeHistory);
+  res.json({ ok: true, updated, pricesFetched: Object.keys(priceMap).length, since: req.body?.since || null });
 });
 
 

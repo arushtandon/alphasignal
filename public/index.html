@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260612-fmp-ultimate-v7.5.2">
+<meta name="alphasignal-build" content="20260612-fmp-ultimate-v7.5.3">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -2039,9 +2039,60 @@ async function applyServerDashPicks(server){
     dashTsEl.textContent='Synced picks · '+new Date(server.dashTs).toLocaleString()+sum;
   }
   await renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true});
-  hydrateDashDataWithLiveBatch(ST.dashData,{resyncScores:false})
-    .then(function(){ return renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true}); })
-    .catch(function(e){ console.warn('hydrateDashDataWithLiveBatch', e.message||e); });
+  try {
+    const rv = await fetch('/api/dashboard/picks/revalidate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    if (rv.ok) {
+      const rd = await rv.json();
+      if (rd.dashData) {
+        ST.dashData = normalizeDashData(rd.dashData);
+        ST.dashTs = rd.dashTs || Date.now();
+        ST.dashSummary = rd.summary || '';
+        if (dashTsEl) {
+          const sum2 = ST.dashSummary ? (' · ' + ST.dashSummary) : '';
+          const rm = rd.removed ? (' · ' + rd.removed + ' stale pick(s) removed') : '';
+          dashTsEl.textContent = 'Live-validated · ' + new Date(ST.dashTs).toLocaleString() + sum2 + rm;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Picks revalidate failed, falling back to client hydrate:', e.message || e);
+    await hydrateDashDataWithLiveBatch(ST.dashData, { resyncScores: true });
+    ST.dashData = pruneDashDataByLiveActions(ST.dashData);
+    await saveServerDashPicks(ST.dashData, Date.now());
+  }
+  await hydrateDashDataWithLiveBatch(ST.dashData,{resyncScores:true});
+  ST.dashData = pruneDashDataByLiveActions(ST.dashData);
+  await saveServerDashPicks(ST.dashData, ST.dashTs || Date.now());
+  await renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true});
+}
+
+/** Drop cached buy/sell picks that no longer qualify (SL cooldown, Hold, score floor). */
+function pruneDashDataByLiveActions(dashData) {
+  if (!dashData || typeof dashData !== 'object') return dashData;
+  const paneMap = {
+    short: { hz: 'short', side: 'buy' },
+    medium: { hz: 'medium', side: 'buy' },
+    long: { hz: 'long', side: 'buy' },
+    shortSell: { hz: 'short', side: 'sell' },
+    medSell: { hz: 'medium', side: 'sell' },
+    longSell: { hz: 'long', side: 'sell' }
+  };
+  const out = Object.assign({}, dashData);
+  Object.keys(paneMap).forEach(function (pane) {
+    const spec = paneMap[pane];
+    out[pane] = (dashData[pane] || []).filter(function (s) {
+      const action = s[spec.hz + 'Action'] || s.action || 'Hold';
+      if (spec.side === 'buy') {
+        return action === 'Buy' && (s[spec.hz + 'Score'] || 0) >= 62 && !/SL cooldown/i.test(s[spec.hz + 'Rating'] || '');
+      }
+      return action === 'Sell' && (s[spec.hz + 'SellScore'] || 0) >= 62;
+    });
+  });
+  return out;
 }
 
 function renderDashboardWhenReady(data, opts){
@@ -2656,9 +2707,10 @@ async function runDashScan(force){
   // Never fabricate sell picks — empty sell pane is honest when no shortAction === 'Sell'
 
   const dashData={short:shortTop5,medium:medTop5,long:longTop5,shortSell:shortSell5,medSell:medSell5,longSell:longSell5};
-  ST.dashData=dashData;ST.dashTs=Date.now();
+  ST.dashData=pruneDashDataByLiveActions(dashData);ST.dashTs=Date.now();
   await renderDashboardWhenReady(dashData);
-  await hydrateDashDataWithLiveBatch(dashData,{resyncScores:true});
+  await hydrateDashDataWithLiveBatch(ST.dashData,{resyncScores:true});
+  ST.dashData = pruneDashDataByLiveActions(ST.dashData);
   await saveServerDashPicks(dashData,ST.dashTs);
   await saveDashPicksToHistory(dashData);
   await renderDashboard(dashData);
@@ -5254,6 +5306,7 @@ function openQuickStartModal() {
 }
 
 async function syncHistoryInBackground(){
+  const HISTORY_SINCE = '2026-06-09';
   try{
     await loadHistoryFromServer();
     if(ST.history.length) renderHist();
@@ -5264,11 +5317,15 @@ async function syncHistoryInBackground(){
     await fetch('/api/history/cleanup-entries',{method:'POST'});
   }catch(_){}
   try{
-    await fetch('/api/history/revalidate',{
+    const rv = await fetch('/api/history/revalidate',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({})
+      body:JSON.stringify({ since: HISTORY_SINCE })
     });
+    if (rv.ok) {
+      const rd = await rv.json();
+      console.log('History revalidate:', rd.enriched, 'enriched,', rd.skipped, 'skipped (older than', HISTORY_SINCE + ')');
+    }
   }catch(e){
     console.warn('History revalidate failed:',e.message||e);
   }
@@ -5276,10 +5333,23 @@ async function syncHistoryInBackground(){
     await fetch('/api/history/recalibrate-levels',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ since:'2026-06-09' })
+      body:JSON.stringify({ since: HISTORY_SINCE })
     });
   }catch(e){
     console.warn('History TP/SL recalibrate failed:',e.message||e);
+  }
+  try{
+    const rp = await fetch('/api/history/refresh-pnl',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ since: HISTORY_SINCE })
+    });
+    if (rp.ok) {
+      const pd = await rp.json();
+      console.log('History refresh-pnl:', pd.updated, 'rows updated');
+    }
+  }catch(e){
+    console.warn('History server PnL refresh failed:',e.message||e);
   }
   try{
     await loadHistoryFromServer();
