@@ -139,25 +139,37 @@ function fmpToYahooUS(sym) {
  */
 async function fetchUSConstituents(fetchFn, fmpKey) {
   if (!fmpKey || typeof fetchFn !== 'function') return [...US_CORE];
-  const endpoints = [
-    `https://financialmodelingprep.com/api/v3/sp500_constituent?apikey=${encodeURIComponent(fmpKey)}`,
-    `https://financialmodelingprep.com/api/v3/nasdaq_constituent?apikey=${encodeURIComponent(fmpKey)}`
+  const k = encodeURIComponent(fmpKey);
+  // FMP migrated constituents to the hyphenated /stable path; legacy /api/v3
+  // underscored endpoints still work on some plans. Try both per index and use
+  // whichever returns a usable array.
+  const indexEndpoints = [
+    [ // S&P 500
+      `https://financialmodelingprep.com/stable/sp500-constituent?apikey=${k}`,
+      `https://financialmodelingprep.com/api/v3/sp500_constituent?apikey=${k}`
+    ],
+    [ // NASDAQ 100
+      `https://financialmodelingprep.com/stable/nasdaq-constituent?apikey=${k}`,
+      `https://financialmodelingprep.com/api/v3/nasdaq_constituent?apikey=${k}`
+    ]
   ];
   const out = new Set();
-  for (const url of endpoints) {
-    try {
-      const r = await fetchFn(url);
-      if (!r || !r.ok) continue;
-      const j = await r.json();
-      if (Array.isArray(j)) {
+  for (const candidates of indexEndpoints) {
+    for (const url of candidates) {
+      try {
+        const r = await fetchFn(url);
+        if (!r || !r.ok) continue;
+        const j = await r.json();
+        if (!Array.isArray(j) || !j.length) continue; // error object → try next
         for (const row of j) {
           const s = fmpToYahooUS(row && row.symbol);
           if (s) out.add(s);
         }
-      }
-    } catch (_) { /* skip endpoint on error */ }
+        break; // this index resolved — move to the next index
+      } catch (_) { /* try next candidate */ }
+    }
   }
-  if (out.size < 50) return [...US_CORE]; // fetch clearly failed → fallback
+  if (out.size < 50) return [...US_CORE]; // both failed → fallback
   return [...out];
 }
 
