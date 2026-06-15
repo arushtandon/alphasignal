@@ -1401,6 +1401,12 @@ function computeQuantSignal(tech, fund, hz) {
     ? (gates>=5?62:gates>=4?56:gates>=3?50:42)   // regime + weekly + ADX
     : (gates>=7?65:gates>=6?60:gates>=5?55:gates>=4?49:42); // fundamental quality layer
 
+  // Structural context (strict — null MA means "unknown", not "below"). Used by applyTierScoreCaps
+  // so fundamental/Danelfin overlays can't resurrect a structurally broken chart into a Buy.
+  const _belowMa200 = tech.aboveMa200 === false;
+  const _belowMa20  = tech.aboveMa20 === false;
+  const _fallingKnife = _belowMa200 && _belowMa20 && (tech.rsi ?? 50) < 45;
+
   return {
     buyScore:buy, sellScore:sell, action, rating,
     conditions:(buy>=sell?condBuy:condSell).slice(0,5),
@@ -1409,6 +1415,9 @@ function computeQuantSignal(tech, fund, hz) {
     regime,        // 'bull' | 'bear' | 'neutral' — for UI display and history filtering
     tier: 0,       // upgraded to 1 or 2 in batch endpoint based on Danelfin/FMP
     tierLabel: '', // set by batch endpoint
+    belowMa200: _belowMa200,
+    belowMa20: _belowMa20,
+    fallingKnife: _fallingKnife,
   };
 }
 
@@ -4653,6 +4662,22 @@ function applyTierScoreCaps(quantSignal) {
     if (q.tier === 0 && q.buyScore > 72) q.buyScore = 72;
     if (q.tier === 1 && q.buyScore > 88) q.buyScore = 88;
     if (q.tier >= 1) q.winRateHint = Math.max(q.winRateHint || 60, 70);
+
+    // STRUCTURAL OVERRIDE (runs after all fundamental/Danelfin overlays).
+    // No fundamental quality can make a falling knife a Buy. This is the final word on score.
+    if (q.fallingKnife) {
+      if ((q.buyScore || 0) > 45) {
+        q.buyScore = 45;
+        q.conditions = q.conditions || [];
+        if (!q.conditions.some(c => /falling knife/i.test(c))) {
+          q.conditions.push('Falling knife: below MA20 & MA200, RSI<45 — buy blocked');
+        }
+        q.tierLabel = '⚠ Falling knife — buy blocked';
+      }
+    } else if (q.belowMa200 && hz === 'short') {
+      // Counter-trend short-term buys below the 200DMA are low-probability regardless of fundamentals.
+      if ((q.buyScore || 0) > 61) q.buyScore = 61;
+    }
   });
 }
 
@@ -5358,7 +5383,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260615-fmp-ultimate-v7.5.6',
+    server_build: '20260615-fmp-ultimate-v7.5.7',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
