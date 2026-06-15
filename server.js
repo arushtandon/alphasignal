@@ -5346,28 +5346,53 @@ async function scanSymbolQuant(sym) {
   return { sym, cp: data.currentPrice, qs };
 }
 
-/** Pick top-N buy + top-N sell per horizon, union → shortlist (ranked by best score). */
+/** Pick top-N buy + top-N sell per horizon, union → shortlist (ranked by best score).
+ *  To keep the candidate set geographically diverse (the user wants names from each
+ *  index, and the ~550 US names would otherwise crowd out internationals), we take
+ *  BOTH a global top-N and a per-market top-M for every horizon/side. */
 function buildShortlistFromRows(rows, perSide = UNIVERSE_PER_HZ_SIDE) {
   const byS = new Map(rows.map(r => [r.sym, r]));
   const picked = new Set();
+  const perMarketSide = Math.max(2, Number.parseInt(String(process.env.UNIVERSE_PER_MARKET_SIDE || '3'), 10) || 3);
+  const markets = [...new Set(rows.map(r => r.market))];
+  const topBy = (pool, key, n) => pool
+    .filter(r => r.qs[key.hz] && Number.isFinite(r.qs[key.hz][key.field]))
+    .sort((a, b) => (b.qs[key.hz][key.field] || 0) - (a.qs[key.hz][key.field] || 0))
+    .slice(0, n);
   for (const hz of ['short', 'medium', 'long']) {
-    const buys = rows
-      .filter(r => r.qs[hz] && Number.isFinite(r.qs[hz].buyScore))
-      .sort((a, b) => (b.qs[hz].buyScore || 0) - (a.qs[hz].buyScore || 0))
-      .slice(0, perSide);
-    const sells = rows
-      .filter(r => r.qs[hz] && Number.isFinite(r.qs[hz].sellScore))
-      .sort((a, b) => (b.qs[hz].sellScore || 0) - (a.qs[hz].sellScore || 0))
-      .slice(0, perSide);
-    buys.forEach(r => picked.add(r.sym));
-    sells.forEach(r => picked.add(r.sym));
+    for (const field of ['buyScore', 'sellScore']) {
+      const key = { hz, field };
+      // Global leaders (pure merit).
+      topBy(rows, key, perSide).forEach(r => picked.add(r.sym));
+      // Per-market leaders (geographic depth so each index can contribute).
+      for (const mkt of markets) {
+        topBy(rows.filter(r => r.market === mkt), key, perMarketSide).forEach(r => picked.add(r.sym));
+      }
+    }
   }
-  return [...picked].map(s => {
+  const entries = [...picked].map(s => {
     const r = byS.get(s);
     const maxBuy = Math.max(r.qs.short.buyScore || 0, r.qs.medium.buyScore || 0, r.qs.long.buyScore || 0);
     const maxSell = Math.max(r.qs.short.sellScore || 0, r.qs.medium.sellScore || 0, r.qs.long.sellScore || 0);
     return { ticker: s, market: r.market, maxBuy, maxSell, score: Math.max(maxBuy, maxSell) };
-  }).sort((a, b) => b.score - a.score);
+  });
+  // Round-robin interleave by market (each market's names sorted by score) so the
+  // client's top-N cap keeps geographic diversity rather than just the US leaders.
+  const buckets = new Map();
+  for (const e of entries) {
+    if (!buckets.has(e.market)) buckets.set(e.market, []);
+    buckets.get(e.market).push(e);
+  }
+  for (const arr of buckets.values()) arr.sort((a, b) => b.score - a.score);
+  const ordered = [];
+  let added = true;
+  while (added) {
+    added = false;
+    for (const arr of buckets.values()) {
+      if (arr.length) { ordered.push(arr.shift()); added = true; }
+    }
+  }
+  return ordered;
 }
 
 /** Run the full-universe scan as a background job. Guards against concurrent runs. */
@@ -5569,7 +5594,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260615-fmp-ultimate-v7.6.0',
+    server_build: '20260615-fmp-ultimate-v7.6.1',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
