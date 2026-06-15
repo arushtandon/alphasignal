@@ -3,6 +3,7 @@ const path = require('path');
 const https = require('https');
 const http = require('http');
 const fs = require('fs');
+const { buildFullUniverse, MARKET_LABEL: UNIVERSE_MARKET_LABEL } = require('./universe');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -5295,6 +5296,191 @@ app.post('/api/dashboard/picks/revalidate', express.json(), async (req, res) => 
   });
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+// FULL-UNIVERSE SCAN — server-side quant ranking over ALL index members.
+// Runs the same engine (buildFullTechResult + computeQuantSignal + structural
+// caps) over the entire S&P 500 / NASDAQ 100 / Nikkei 225 / Nifty 50 / HSI /
+// CAC 40 / FTSE 100 / DAX universe (no Claude), ranks every name, and emits a
+// shortlist of the strongest candidates. The client deep-scan then runs its
+// full pipeline (Danelfin/news boosts, Claude narrative, TP/SL, top-5) on that
+// shortlist — so the *names* are chosen from the whole universe, not a sample.
+// ════════════════════════════════════════════════════════════════════════════
+const UNIVERSE_SHORTLIST_FILE = path.join(path.dirname(HISTORY_FILE), 'universe_shortlist.json');
+const UNIVERSE_SHORTLIST_VERSION = 1;
+const UNIVERSE_SHORTLIST_TTL_MS = 20 * 60 * 60 * 1000; // 20h — refreshed daily
+const UNIVERSE_PER_HZ_SIDE = Number.parseInt(String(process.env.UNIVERSE_PER_HZ_SIDE || '12'), 10) || 12;
+
+let universeShortlist = null;
+let universeScanState = { running: false, startedAt: 0, total: 0, done: 0, ok: 0, lastError: null, lastFinishedAt: 0 };
+
+function loadUniverseShortlistFile() {
+  try {
+    if (!fs.existsSync(UNIVERSE_SHORTLIST_FILE)) return null;
+    const raw = JSON.parse(fs.readFileSync(UNIVERSE_SHORTLIST_FILE, 'utf8'));
+    if (raw && raw.version === UNIVERSE_SHORTLIST_VERSION && Array.isArray(raw.shortlist)) return raw;
+  } catch (e) { console.warn('Universe shortlist load error:', e.message); }
+  return null;
+}
+function saveUniverseShortlistFile(payload) {
+  try { fs.writeFileSync(UNIVERSE_SHORTLIST_FILE, JSON.stringify(payload)); }
+  catch (e) { console.warn('Universe shortlist save error:', e.message); }
+}
+universeShortlist = loadUniverseShortlistFile();
+if (universeShortlist) console.log('Universe shortlist loaded:', universeShortlist.shortlist.length, 'names, ts=', universeShortlist.ts);
+
+/** Fast per-symbol quant: OHLCV → quantSignal ×3 → structural caps. No network overlays. */
+async function scanSymbolQuant(sym) {
+  let daily = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
+  if (!daily || daily.length < 100) daily = await fetchOHLCV(sym, '1y', '1d').catch(() => null);
+  if (!daily || daily.length < 60) return null;
+  const weekly = await fetchOHLCV(sym, '2y', '1wk').catch(() => null);
+  const data = buildFullTechResult(sym, daily, weekly);
+  const fundEntry = fundCache.get(sym);
+  const fund = fundEntry && Date.now() - fundEntry.ts < TECH_TTL * 4 ? fundEntry.data : null;
+  const qs = {
+    short: computeQuantSignal(data, fund, 'short'),
+    medium: computeQuantSignal(data, fund, 'medium'),
+    long: computeQuantSignal(data, fund, 'long')
+  };
+  applyTierScoreCaps(qs);
+  return { sym, cp: data.currentPrice, qs };
+}
+
+/** Pick top-N buy + top-N sell per horizon, union → shortlist (ranked by best score). */
+function buildShortlistFromRows(rows, perSide = UNIVERSE_PER_HZ_SIDE) {
+  const byS = new Map(rows.map(r => [r.sym, r]));
+  const picked = new Set();
+  for (const hz of ['short', 'medium', 'long']) {
+    const buys = rows
+      .filter(r => r.qs[hz] && Number.isFinite(r.qs[hz].buyScore))
+      .sort((a, b) => (b.qs[hz].buyScore || 0) - (a.qs[hz].buyScore || 0))
+      .slice(0, perSide);
+    const sells = rows
+      .filter(r => r.qs[hz] && Number.isFinite(r.qs[hz].sellScore))
+      .sort((a, b) => (b.qs[hz].sellScore || 0) - (a.qs[hz].sellScore || 0))
+      .slice(0, perSide);
+    buys.forEach(r => picked.add(r.sym));
+    sells.forEach(r => picked.add(r.sym));
+  }
+  return [...picked].map(s => {
+    const r = byS.get(s);
+    const maxBuy = Math.max(r.qs.short.buyScore || 0, r.qs.medium.buyScore || 0, r.qs.long.buyScore || 0);
+    const maxSell = Math.max(r.qs.short.sellScore || 0, r.qs.medium.sellScore || 0, r.qs.long.sellScore || 0);
+    return { ticker: s, market: r.market, maxBuy, maxSell, score: Math.max(maxBuy, maxSell) };
+  }).sort((a, b) => b.score - a.score);
+}
+
+/** Run the full-universe scan as a background job. Guards against concurrent runs. */
+async function runUniverseScan(opts = {}) {
+  if (universeScanState.running) return { alreadyRunning: true };
+  const reason = opts.reason || 'manual';
+  let universe;
+  try {
+    universe = await buildFullUniverse(fetch, fmpAnyApiKey());
+  } catch (e) {
+    console.warn('Universe build failed:', e.message);
+    return { error: e.message };
+  }
+  if (!universe || !universe.length) return { error: 'empty universe' };
+
+  universeScanState = { running: true, startedAt: Date.now(), total: universe.length, done: 0, ok: 0, lastError: null, lastFinishedAt: 0 };
+  console.log(`Universe scan START (${reason}): ${universe.length} names`);
+
+  const conc = Math.max(2, Math.min(8, Number.parseInt(String(process.env.UNIVERSE_SCAN_CONCURRENCY || '6'), 10) || 6));
+  const marketOf = {};
+  universe.forEach(u => { marketOf[u.t] = u.market; });
+  const rows = [];
+
+  (async () => {
+    try {
+      for (let off = 0; off < universe.length; off += conc) {
+        const slice = universe.slice(off, off + conc);
+        const settled = await Promise.allSettled(slice.map(u => scanSymbolQuant(u.t)));
+        settled.forEach((s, ix) => {
+          universeScanState.done++;
+          if (s.status === 'fulfilled' && s.value) {
+            s.value.market = marketOf[slice[ix].t] || 'US';
+            rows.push(s.value);
+            universeScanState.ok++;
+          }
+        });
+        await new Promise(r => setTimeout(r, 120)); // gentle on data vendors
+      }
+      const shortlist = buildShortlistFromRows(rows);
+      const byMarket = {};
+      shortlist.forEach(s => { byMarket[s.market] = (byMarket[s.market] || 0) + 1; });
+      universeShortlist = {
+        version: UNIVERSE_SHORTLIST_VERSION,
+        ts: Date.now(),
+        reason,
+        scannedTotal: universe.length,
+        scannedOk: rows.length,
+        count: shortlist.length,
+        byMarket,
+        shortlist
+      };
+      saveUniverseShortlistFile(universeShortlist);
+      console.log(`Universe scan DONE: scored ${rows.length}/${universe.length}, shortlist ${shortlist.length} →`, JSON.stringify(byMarket));
+    } catch (e) {
+      universeScanState.lastError = e.message;
+      console.warn('Universe scan error:', e.message);
+    } finally {
+      universeScanState.running = false;
+      universeScanState.lastFinishedAt = Date.now();
+    }
+  })();
+
+  return { started: true, total: universe.length };
+}
+
+function universeShortlistTickers() {
+  return universeShortlist && Array.isArray(universeShortlist.shortlist)
+    ? universeShortlist.shortlist.map(s => s.ticker).filter(Boolean)
+    : [];
+}
+
+app.get('/api/dashboard/universe', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const tickers = universeShortlistTickers();
+  const fresh = universeShortlist && (Date.now() - universeShortlist.ts) < UNIVERSE_SHORTLIST_TTL_MS;
+  // Kick off a refresh if missing/stale and not already running (non-blocking).
+  if ((!universeShortlist || !fresh) && !universeScanState.running) {
+    runUniverseScan({ reason: 'auto-stale' });
+  }
+  res.json({
+    ok: true,
+    ts: universeShortlist ? universeShortlist.ts : null,
+    fresh: !!fresh,
+    count: tickers.length,
+    scannedOk: universeShortlist ? universeShortlist.scannedOk : 0,
+    scannedTotal: universeShortlist ? universeShortlist.scannedTotal : 0,
+    byMarket: universeShortlist ? universeShortlist.byMarket : {},
+    tickers,
+    shortlist: universeShortlist ? universeShortlist.shortlist : [],
+    scan: { running: universeScanState.running, done: universeScanState.done, total: universeScanState.total }
+  });
+});
+
+app.post('/api/dashboard/universe/scan', (req, res) => {
+  const r = runUniverseScan({ reason: 'manual' });
+  Promise.resolve(r).then(out => res.json({ ok: true, ...out, scan: universeScanState }))
+    .catch(e => res.status(500).json({ ok: false, error: e.message }));
+});
+
+app.get('/api/dashboard/universe/status', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    running: universeScanState.running,
+    done: universeScanState.done,
+    total: universeScanState.total,
+    ok: universeScanState.ok,
+    lastError: universeScanState.lastError,
+    lastFinishedAt: universeScanState.lastFinishedAt,
+    shortlistTs: universeShortlist ? universeShortlist.ts : null,
+    shortlistCount: universeShortlistTickers().length
+  });
+});
+
 // ── Health (after tradeHistory — used in payload) ────────────────────────────
 app.get('/api/history/status', (req, res) => {
   const today = new Date().toDateString();
@@ -5383,7 +5569,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260615-fmp-ultimate-v7.5.7',
+    server_build: '20260615-fmp-ultimate-v7.6.0',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -7941,6 +8127,22 @@ setTimeout(async function bootDashHistorySync() {
     console.warn('Boot dash/history sync:', e.message);
   }
 }, 4000);
+
+// ── Full-universe scan scheduler ─────────────────────────────────────────────
+// Boot: if the shortlist is missing or stale, run an initial scan (after the
+// heavier boot sync settles). Then refresh once per day.
+setTimeout(() => {
+  try {
+    const stale = !universeShortlist || (Date.now() - universeShortlist.ts) > UNIVERSE_SHORTLIST_TTL_MS;
+    if (stale && !universeScanState.running) runUniverseScan({ reason: 'boot' });
+  } catch (e) { console.warn('Boot universe scan:', e.message); }
+}, 30000);
+
+setInterval(() => {
+  try {
+    if (!universeScanState.running) runUniverseScan({ reason: 'daily' });
+  } catch (e) { console.warn('Scheduled universe scan:', e.message); }
+}, 24 * 60 * 60 * 1000);
 
 function countConsecutiveLowerCloses(daily) {
   if (!daily || daily.length < 2) return 0;

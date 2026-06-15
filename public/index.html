@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260615-fmp-ultimate-v7.5.7">
+<meta name="alphasignal-build" content="20260615-fmp-ultimate-v7.6.0">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -526,6 +526,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
         <div class="ht" id="ht-long" onclick="switchHz('long')">Long · 4–12mo</div>
         <div style="flex:1"></div>
         <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px" onclick="ST.dashData=null;ST.dashTs=null;loadDashboard(true)">↻ Refresh picks</button>
+        <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px;margin-left:6px" onclick="rescanUniverse()" title="Re-rank the entire index-member universe (runs in the background, ~5-15 min)">⟳ Rescan universe</button>
       </div>
       <div id="dashStatus"></div>
       <div id="hzShort" class="hz-pane">
@@ -602,7 +603,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
 
 <footer>
   AlphaSignal · Live quotes: Yahoo Finance · AI scans: Claude (optional) · Not financial advice
-  Universe: S&P 500 · NASDAQ 100 · FTSE 100 · Hang Seng · Nikkei 225 · DAX · CAC 40 · EuroStoxx 50 · Gold · Silver · Brent Oil · WTI Oil · Bitcoin · Ethereum
+  Universe (full index members, re-ranked daily): S&P 500 · NASDAQ 100 · FTSE 100 · Hang Seng · Nikkei 225 · DAX · CAC 40 · Nifty 50 · Gold · Silver · Brent Oil · WTI Oil · Copper · Bitcoin · Ethereum
 </footer>
 
 <script>
@@ -2185,6 +2186,34 @@ async function loadDashboard(force=false){
   await runDashScan(force);
 }
 
+async function rescanUniverse(){
+  try{
+    const r = await fetch('/api/dashboard/universe/scan', { method:'POST' }).then(x=>x.json()).catch(()=>null);
+    const ts = document.getElementById('dashTs');
+    if (r && (r.started || r.alreadyRunning)){
+      if (ts) ts.textContent = r.alreadyRunning
+        ? 'Universe scan already running — re-ranking all index members in the background…'
+        : 'Universe re-scan started — re-ranking all index members (~5-15 min). Click "Refresh picks" once it finishes.';
+      pollUniverseScan();
+    } else if (ts) {
+      ts.textContent = 'Could not start universe scan' + (r && r.error ? (': ' + r.error) : '.');
+    }
+  }catch(e){ console.warn('rescanUniverse', e.message); }
+}
+async function pollUniverseScan(){
+  const ts = document.getElementById('dashTs');
+  for(let i=0;i<120;i++){
+    await new Promise(r=>setTimeout(r,7000));
+    const s = await fetch('/api/dashboard/universe/status').then(x=>x.json()).catch(()=>null);
+    if(!s) continue;
+    if(s.running && ts) ts.textContent = `Universe scan: ${s.done}/${s.total} names scored…`;
+    if(!s.running){
+      if(ts) ts.textContent = `Universe scan complete — ${s.shortlistCount} candidates surfaced. Refreshing picks…`;
+      ST.dashData=null; ST.dashTs=null; loadDashboard(true);
+      return;
+    }
+  }
+}
 async function runDashScan(force){
   if(!force){
     const server=await fetchServerDashPicksWithRetry(2);
@@ -2211,9 +2240,28 @@ async function runDashScan(force){
   const pickDetailEl = document.getElementById('pickDetail');
   if (pickDetailEl) pickDetailEl.innerHTML = '';
 
+  // Scan list = server-side full-universe shortlist (the strongest candidates the
+  // daily quant scan surfaced across ALL index members). Falls back to SAMPLE if
+  // the shortlist isn't ready yet (first ever boot / scan still running).
+  let scanList = SAMPLE.slice();
+  let scanSource = 'fallback sample';
+  try {
+    const uniRes = await fetch('/api/dashboard/universe').then(r => r.ok ? r.json() : null).catch(() => null);
+    if (uniRes && Array.isArray(uniRes.tickers) && uniRes.tickers.length >= 10) {
+      scanList = uniRes.tickers.slice(0, 90);
+      const scanned = uniRes.scannedOk || 0;
+      scanSource = 'top ' + scanList.length + ' of ' + (scanned || '?') + ' names scanned'
+        + (uniRes.scan && uniRes.scan.running ? ' (universe scan refreshing…)' : '');
+    } else if (uniRes && uniRes.scan && uniRes.scan.running) {
+      scanSource = 'universe scan in progress (' + (uniRes.scan.done || 0) + '/' + (uniRes.scan.total || '?') + ') — using sample this run';
+    }
+  } catch (_) {}
+  const pSubInit = document.getElementById('pSub');
+  if (pSubInit) pSubInit.textContent = 'Candidate set: ' + scanSource;
+
   const BATCH=4;
   const batches=[];
-  for(let i=0;i<SAMPLE.length;i+=BATCH) batches.push(SAMPLE.slice(i,i+BATCH));
+  for(let i=0;i<scanList.length;i+=BATCH) batches.push(scanList.slice(i,i+BATCH));
   let all=[];
 
   for(let i=0;i<batches.length;i++){
