@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260615-fmp-ultimate-v7.6.1">
+<meta name="alphasignal-build" content="20260615-fmp-ultimate-v7.6.2">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -525,8 +525,8 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
         <div class="ht" id="ht-medium" onclick="switchHz('medium')">Medium · 1–3mo</div>
         <div class="ht" id="ht-long" onclick="switchHz('long')">Long · 4–12mo</div>
         <div style="flex:1"></div>
-        <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px" onclick="ST.dashData=null;ST.dashTs=null;loadDashboard(true)">↻ Refresh picks</button>
-        <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px;margin-left:6px" onclick="rescanUniverse()" title="Re-rank the entire index-member universe (runs in the background, ~5-15 min)">⟳ Rescan universe</button>
+        <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px" onclick="ST.dashData=null;ST.dashTs=null;loadDashboard(false)" title="Pull the latest server-generated picks (instant — scan runs on the server)">↻ Refresh picks</button>
+        <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px;margin-left:6px" onclick="rescanUniverse()" title="Re-rank the entire index-member universe + regenerate picks on the server (runs in the background, ~5-15 min — you can close the page)">⟳ Rescan universe</button>
       </div>
       <div id="dashStatus"></div>
       <div id="hzShort" class="hz-pane">
@@ -2208,8 +2208,8 @@ async function pollUniverseScan(){
     if(!s) continue;
     if(s.running && ts) ts.textContent = `Universe scan: ${s.done}/${s.total} names scored…`;
     if(!s.running){
-      if(ts) ts.textContent = `Universe scan complete — ${s.shortlistCount} candidates surfaced. Refreshing picks…`;
-      ST.dashData=null; ST.dashTs=null; loadDashboard(true);
+      if(ts) ts.textContent = `Universe scan complete — ${s.shortlistCount} candidates surfaced. Loading picks…`;
+      ST.dashData=null; ST.dashTs=null; loadDashboard(false);
       return;
     }
   }

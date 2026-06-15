@@ -5446,6 +5446,9 @@ async function runUniverseScan(opts = {}) {
       };
       saveUniverseShortlistFile(universeShortlist);
       console.log(`Universe scan DONE: scored ${rows.length}/${universe.length}, shortlist ${shortlist.length} →`, JSON.stringify(byMarket));
+      // Immediately regenerate the final picks server-side so clients read finished
+      // picks without needing the page open.
+      await generateServerPicksFromShortlist().catch(e => console.warn('post-scan picks:', e.message));
     } catch (e) {
       universeScanState.lastError = e.message;
       console.warn('Universe scan error:', e.message);
@@ -5462,6 +5465,106 @@ function universeShortlistTickers() {
   return universeShortlist && Array.isArray(universeShortlist.shortlist)
     ? universeShortlist.shortlist.map(s => s.ticker).filter(Boolean)
     : [];
+}
+
+// Same rating/action thresholds the client uses (reconcileActionsRatings) so the
+// server-generated picks are labelled identically to the in-browser scan.
+function dashRateBuy(sc) { return sc >= 78 ? 'Strong Buy' : sc >= 62 ? 'Buy' : 'Hold'; }
+function dashRateSell(sc) { return sc >= 74 ? 'Strong Sell' : sc >= 62 ? 'Sell' : 'Hold'; }
+function dashActionRating(buy, sell) {
+  const action = buy > sell ? (buy >= 62 ? 'Buy' : 'Hold') : (sell >= 62 ? 'Sell' : 'Hold');
+  const rating = buy >= sell ? dashRateBuy(buy) : dashRateSell(sell);
+  return { action, rating };
+}
+
+/**
+ * Generate the final top-5-per-pane picks ENTIRELY on the server (no browser, no
+ * Claude) from the universe shortlist: full technicals + tier overlays + structural
+ * caps + SL-cooldown, then server-side TP/SL pricing. Writes the picks cache so any
+ * device just reads finished picks — the page never needs to stay open.
+ */
+let serverPicksGenerating = false;
+async function generateServerPicksFromShortlist(opts = {}) {
+  if (serverPicksGenerating) return { ok: false, reason: 'already generating' };
+  const list = universeShortlist && Array.isArray(universeShortlist.shortlist) ? universeShortlist.shortlist : [];
+  if (!list.length) return { ok: false, reason: 'no shortlist' };
+  serverPicksGenerating = true;
+  try {
+    const marketOf = {};
+    list.forEach(x => { marketOf[x.ticker] = x.market; });
+    const tickers = list.map(x => x.ticker).slice(0, 120);
+    const techMap = await getTechnicalsMapForSymbols(tickers, { maxMs: opts.maxMs || 240000 });
+
+    const rows = [];
+    for (const t of tickers) {
+      const tech = techMap[t];
+      if (!tech || !tech.quantSignal) continue;
+      const qs = tech.quantSignal;
+      const fundEntry = fundCache.get(t);
+      const fund = fundEntry && Date.now() - fundEntry.ts < TECH_TTL * 4 ? fundEntry.data : null;
+      const row = {
+        ticker: t,
+        name: (fund && (fund.companyName || fund.name)) || t,
+        market: UNIVERSE_MARKET_LABEL[marketOf[t]] || marketOf[t] || ''
+      };
+      let worstSellConds = [];
+      for (const hz of ['short', 'medium', 'long']) {
+        const sig = qs[hz] || {};
+        const buy = sig.buyScore || 0;
+        const sell = sig.sellScore || 0;
+        const ar = dashActionRating(buy, sell);
+        const cooled = isSLCooldownActive(t, hz) || /SL cooldown/i.test(sig.tierLabel || '');
+        row[hz + 'Score'] = buy;
+        row[hz + 'SellScore'] = sell;
+        row[hz + 'Action'] = cooled ? 'Hold' : ar.action;
+        row[hz + 'Rating'] = cooled ? 'SL cooldown' : ar.rating;
+        row[hz + 'Conf'] = sig.winRateHint || Math.max(buy, sell);
+        if (hz === 'short') row.reason = (sig.conditions || []).slice(0, 3).join('; ');
+        if (sell >= 62 && (sig.conditions || []).length) worstSellConds = sig.conditions;
+      }
+      row.action = row.shortAction;
+      row.sellReason = worstSellConds.slice(0, 3).join('; ');
+      applyServerPriceLevels(row, tech.currentPrice, tech, fund);
+      rows.push(row);
+    }
+
+    const pickPane = (hz, side) => {
+      const scoreKey = side === 'buy' ? hz + 'Score' : hz + 'SellScore';
+      const hasPx = r => r[hz + 'Entry'] && r[hz + 'StopLoss'] && r[hz + 'Target1'];
+      const arr = rows.filter(r => {
+        if (side === 'buy') {
+          return r[hz + 'Action'] === 'Buy' && (r[hz + 'Score'] || 0) >= 62
+            && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r);
+        }
+        return r[hz + 'Action'] === 'Sell' && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r);
+      });
+      arr.sort((a, b) => (b[scoreKey] || 0) - (a[scoreKey] || 0));
+      return arr.slice(0, 5).map(r => ({ ...r }));
+    };
+
+    const dashData = {
+      short: pickPane('short', 'buy'),
+      medium: pickPane('medium', 'buy'),
+      long: pickPane('long', 'buy'),
+      shortSell: pickPane('short', 'sell'),
+      medSell: pickPane('medium', 'sell'),
+      longSell: pickPane('long', 'sell')
+    };
+    dashboardPicksCache = {
+      version: DASHBOARD_PICKS_VERSION,
+      schemaVersion: 1,
+      dashTs: Date.now(),
+      dashData: sanitizeDashDataForServer(dashData)
+    };
+    saveDashboardPicksFile(dashboardPicksCache);
+    console.log('Server picks generated →', dashboardPicksSummary(dashData));
+    return { ok: true, summary: dashboardPicksSummary(dashData) };
+  } catch (e) {
+    console.warn('generateServerPicksFromShortlist error:', e.message);
+    return { ok: false, error: e.message };
+  } finally {
+    serverPicksGenerating = false;
+  }
 }
 
 app.get('/api/dashboard/universe', (req, res) => {
@@ -5594,7 +5697,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260615-fmp-ultimate-v7.6.1',
+    server_build: '20260615-fmp-ultimate-v7.6.2',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
