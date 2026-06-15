@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260612-fmp-ultimate-v7.5.4">
+<meta name="alphasignal-build" content="20260615-fmp-ultimate-v7.5.5">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1396,7 +1396,20 @@ const U={
 const IC={"S&P 500":"#3DDB7B","NASDAQ 100":"#5BA4F5","FTSE 100":"#F5C842","Hang Seng":"#F46C6C","Nikkei 225":"#A78BFA","DAX":"#34D399","CAC 40":"#FB923C","EuroStoxx 50":"#38BDF8","Nifty 500":"#FF9933","Commodities & Crypto":"#C9F14F"};
 /** Shown first in sidebar (clearer than scrolling 160+ names). Keep liquid US mega-caps. */
 const SIDEBAR_PINNED = ['NVDA','MSFT','AAPL','AMZN','GOOGL','META','TSLA','AMD','AVGO','JPM','V','BRK.B','LLY'];
-const SAMPLE=["NVDA","MSFT","AAPL","AMZN","META","TSLA","GOOGL","AMD","AZN.L","SHEL.L","0700.HK","9988.HK","7203.T","6758.T","SAP.DE","ASML.AS","MC.PA","AIR.PA","GC=F","BZ=F","BTC-USD","RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","BAJFINANCE.NS"];
+const SAMPLE=[
+  // US large-cap (broad sector coverage)
+  "NVDA","MSFT","AAPL","AMZN","META","TSLA","GOOGL","AMD","AVGO","JPM",
+  "V","MA","UNH","JNJ","WMT","PG","HD","LLY","XOM","CVX",
+  "KO","PEP","COST","NFLX","ADBE","CRM","ORCL","ABBV","BAC","QCOM",
+  // Europe
+  "AZN.L","SHEL.L","ULVR.L","HSBA.L","BP.L","SAP.DE","SIE.DE","ALV.DE","ASML.AS","MC.PA","AIR.PA","OR.PA","NESN.SW",
+  // Asia (HK / Japan)
+  "0700.HK","9988.HK","0941.HK","1299.HK","7203.T","6758.T","9984.T","6861.T",
+  // India
+  "RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","BAJFINANCE.NS","BHARTIARTL.NS","LT.NS",
+  // Commodities / crypto
+  "GC=F","BZ=F","BTC-USD"
+];
 
 
 // ══════════════════════════════════════════════
@@ -2691,6 +2704,24 @@ async function runDashScan(force){
   });
   const deduped=Object.values(map);
 
+  // Re-derive rating/action from FINAL scores (Danelfin/news/catalyst boosts mutate scores
+  // AFTER the first rate()/act() pass; without this a 58→64 boost keeps a stale 'Hold' label,
+  // which both hides real buys and leaks Hold cards into buy panes).
+  (function reconcileActionsRatings(){
+    const _rate  = function(sc){ return sc>=78?'Strong Buy':sc>=62?'Buy':'Hold'; };
+    const _rateS = function(sc){ return sc>=74?'Strong Sell':sc>=62?'Sell':'Hold'; };
+    const _act   = function(b, sv){ return b>sv?(b>=62?'Buy':'Hold'):(sv>=62?'Sell':'Hold'); };
+    deduped.forEach(function(s){
+      ['short','medium','long'].forEach(function(hz){
+        const b  = s[hz+'Score']     || 0;
+        const sv = s[hz+'SellScore'] || 0;
+        s[hz+'Rating'] = b>=sv ? _rate(b) : _rateS(sv);
+        s[hz+'Action'] = _act(b, sv);
+      });
+      s.action = s.shortAction;
+    });
+  })();
+
   // Buy panes: horizon action must be 'Buy' AND score ≥ rate() Buy floor (merged: clarity from Claude + repo score gate).
   const BUY_MIN_SCORE = 62; // rate(): sc>=62 → 'Buy'
   function danComposite(row, scoreKey) {
@@ -3287,6 +3318,19 @@ function renderPicksPane(elId,picks,hz,side){
   const el=document.getElementById(elId);
   if(!el){ console.warn('renderPicksPane: element not found:',elId); return; }
   const isSell=(side==='sell');
+  // Final hard guard: a Buy pane may ONLY contain genuine Buy setups with valid pricing,
+  // a Sell pane only genuine Sell setups. Never pad with Hold/empty-price cards.
+  picks = (picks||[]).filter(function(s){
+    if(!s||!s.ticker) return false;
+    const action = s[hz+'Action'] || s.action || 'Hold';
+    const lv = pickLevelsForDashboardPane(s, hz, action==='Sell');
+    const hasPricing = lv.entry!=null && lv.sl!=null && lv.tp1!=null;
+    if(isSell){
+      return action==='Sell' && (s[hz+'SellScore']||0)>=62 && hasPricing;
+    }
+    if(/SL cooldown/i.test(String(s[hz+'Rating']||''))) return false;
+    return action==='Buy' && (s[hz+'Score']||0)>=62 && hasPricing;
+  });
   if(!picks||!picks.length){
     el.innerHTML = '<div style="padding:.75rem 1rem;font-size:11px;color:var(--m1);font-family:DM Mono,monospace;border:1px dashed var(--b1);border-radius:8px;margin:.5rem 0">'
       +(isSell?'No sell setups identified for this horizon. Conditions do not support a short trade.':'No buy setups identified for this horizon. Conditions do not support a long trade.')

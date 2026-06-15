@@ -5358,7 +5358,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260612-fmp-ultimate-v7.5.4',
+    server_build: '20260615-fmp-ultimate-v7.5.5',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -7634,7 +7634,7 @@ const HORIZON_MIN_PCT = {
   long:   { sl: 0.080, tp1: 0.150, tp2: 0.250, minRR: 1.9 }
 };
 
-const SL_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
+const SL_COOLDOWN_MS = 6 * 24 * 60 * 60 * 1000;
 const SL_COOLDOWN_FILE = path.join(__dirname, 'data', 'sl_cooldowns.json');
 let slCooldowns = {};
 
@@ -7722,8 +7722,15 @@ function filterDashDataBySLCooldown(dashData) {
   const out = {};
   for (const [pane, { hz, side }] of Object.entries(DASH_PANE_MAP)) {
     out[pane] = (dashData[pane] || []).filter(pick => {
-      if (side === 'buy' && isSLCooldownActive(pick.ticker, hz)) return false;
-      return true;
+      const action = pick[hz + 'Action'] || pick.action || 'Hold';
+      const rating = String(pick[hz + 'Rating'] || '');
+      if (side === 'buy') {
+        if (isSLCooldownActive(pick.ticker, hz)) return false;
+        if (/SL cooldown/i.test(rating)) return false;
+        // Only genuine Buy setups with a passing score belong in a buy pane.
+        return action === 'Buy' && (pick[hz + 'Score'] || 0) >= 62;
+      }
+      return action === 'Sell' && (pick[hz + 'SellScore'] || 0) >= 62;
     });
   }
   return out;
@@ -7798,6 +7805,58 @@ async function getTechnicalsMapForSymbols(symbols, opts = {}) {
   return results;
 }
 
+/**
+ * One-time legacy fix: trades created before horizon SL floors existed have stops only
+ * ~0.5–1% from entry, so they "hit SL" on noise. Re-floor levels for every record and,
+ * for closed sl_hit rows whose stop was clearly too tight, reopen them for honest re-evaluation.
+ */
+function migrateLegacyTightStops() {
+  let refloored = 0;
+  let reopened = 0;
+  for (const h of tradeHistory) {
+    if (!isHistoryBuySellRecord(h)) continue;
+    const hz = h.hz || 'short';
+    const floor = HORIZON_MIN_PCT[hz] || HORIZON_MIN_PCT.short;
+    const isSell = String(h.action || '').toLowerCase() === 'sell';
+    const entry = parseFloat(h[hz + 'Entry'] || h.entry || 0);
+    if (!entry || !Number.isFinite(entry)) continue;
+    const sl = parseFloat(h[hz + 'StopLoss'] || h.stopLoss || 0);
+    if (!sl || !Number.isFinite(sl)) continue;
+    const slDistPct = Math.abs(sl - entry) / entry;
+    // "Too tight" = stop sits well inside the horizon minimum (allow 10% tolerance).
+    if (slDistPct >= floor.sl * 0.9) continue;
+
+    const tp1 = parseFloat(h[hz + 'Target1'] || h.target1 || 0) || null;
+    const tp2 = parseFloat(h[hz + 'Target2'] || h.target2 || 0) || null;
+    const fixed = applyHorizonMinPctFloors(entry, tp1, tp2, sl, isSell, hz);
+    h[hz + 'Target1'] = fixed.tp1;
+    h[hz + 'Target2'] = fixed.tp2;
+    h[hz + 'StopLoss'] = fixed.sl;
+    if (h.hz === hz || !h.hz) {
+      h.target1 = fixed.tp1;
+      h.target2 = fixed.tp2;
+      h.stopLoss = fixed.sl;
+    }
+    if (isSell) { h.sellTarget1 = fixed.tp1; h.sellTarget2 = fixed.tp2; h.sellStopLoss = fixed.sl; }
+    refloored++;
+
+    // Reopen trades that were stopped out on the bogus tight stop so refresh-pnl re-evaluates them.
+    if ((h[hz + 'Status'] || '') === 'sl_hit') {
+      h[hz + 'Status'] = 'open';
+      h[hz + 'ExitPrice'] = '';
+      h[hz + 'PnlDollar'] = null;
+      h[hz + 'PnlPct'] = null;
+      if (h.hz === hz || !h.hz) { h.status = 'open'; h.pnlDollar = null; h.pnlPct = null; }
+      reopened++;
+    }
+  }
+  if (refloored > 0) {
+    saveHistoryFile(tradeHistory);
+    console.log('Legacy tight-stop migration: re-floored', refloored, 'rows, reopened', reopened, 'mis-stopped trades');
+  }
+  return { refloored, reopened };
+}
+
 function purgeOpenCooldownBuysFromHistory() {
   const today = new Date().toDateString();
   const before = tradeHistory.length;
@@ -7834,6 +7893,7 @@ purgeOpenCooldownBuysFromHistory();
 
 setTimeout(async function bootDashHistorySync() {
   try {
+    migrateLegacyTightStops();
     const cached = loadDashboardPicksFile() || dashboardPicksCache;
     if (cached?.dashData) {
       let dd = filterDashDataBySLCooldown(cached.dashData);
