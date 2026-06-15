@@ -5358,7 +5358,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260615-fmp-ultimate-v7.5.5',
+    server_build: '20260615-fmp-ultimate-v7.5.6',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -8960,6 +8960,10 @@ function horizonTimeLimitExceededServer(hz, entryDateOrIso) {
 
 // POST /api/history/refresh-pnl — server-side TP/SL hit detection + PnL for all history rows
 app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
+  // Render's disk is ephemeral; on each deploy the client re-uploads its localStorage history
+  // (which can still contain pre-floor tight stops). Re-run the migration here so the fix
+  // applies to whatever was just uploaded, not only to boot-time data.
+  const legacyFix = migrateLegacyTightStops();
   const sinceMs = req.body?.since ? new Date(req.body.since).getTime() : 0;
   const tickers = [...new Set(
     tradeHistory
@@ -9044,7 +9048,14 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
   }
 
   saveHistoryFile(tradeHistory);
-  res.json({ ok: true, updated, pricesFetched: Object.keys(priceMap).length, since: req.body?.since || null });
+  res.json({
+    ok: true,
+    updated,
+    legacyReflored: legacyFix.refloored,
+    legacyReopened: legacyFix.reopened,
+    pricesFetched: Object.keys(priceMap).length,
+    since: req.body?.since || null
+  });
 });
 
 
