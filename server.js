@@ -1405,7 +1405,9 @@ function computeQuantSignal(tech, fund, hz) {
   // Structural context (strict — null MA means "unknown", not "below"). Used by applyTierScoreCaps
   // so fundamental/Danelfin overlays can't resurrect a structurally broken chart into a Buy.
   const _belowMa200 = tech.aboveMa200 === false;
+  const _belowMa50  = tech.aboveMa50  === false;
   const _belowMa20  = tech.aboveMa20 === false;
+  const _trendDown  = trend20 === 'downtrend' || weeklyTrend === 'downtrend';
   const _fallingKnife = _belowMa200 && _belowMa20 && (tech.rsi ?? 50) < 45;
 
   return {
@@ -1417,9 +1419,26 @@ function computeQuantSignal(tech, fund, hz) {
     tier: 0,       // upgraded to 1 or 2 in batch endpoint based on Danelfin/FMP
     tierLabel: '', // set by batch endpoint
     belowMa200: _belowMa200,
+    belowMa50: _belowMa50,
     belowMa20: _belowMa20,
+    trendDown: _trendDown,
     fallingKnife: _fallingKnife,
   };
+}
+
+// Canonical action/rating from final scores — used everywhere so the dashboard card,
+// the server picks, and the full-analysis view never disagree. Thresholds match the
+// client (renderPicksPane gate at 62; Strong at 78/74).
+function deriveActionRating(buy, sell) {
+  buy = buy || 0; sell = sell || 0;
+  if (buy >= sell) {
+    if (buy >= 78) return { action: 'Buy', rating: 'Strong Buy' };
+    if (buy >= 62) return { action: 'Buy', rating: 'Buy' };
+    return { action: 'Hold', rating: 'Hold' };
+  }
+  if (sell >= 74) return { action: 'Sell', rating: 'Strong Sell' };
+  if (sell >= 62) return { action: 'Sell', rating: 'Sell' };
+  return { action: 'Hold', rating: 'Hold' };
 }
 
 
@@ -4665,7 +4684,7 @@ function applyTierScoreCaps(quantSignal) {
     if (q.tier >= 1) q.winRateHint = Math.max(q.winRateHint || 60, 70);
 
     // STRUCTURAL OVERRIDE (runs after all fundamental/Danelfin overlays).
-    // No fundamental quality can make a falling knife a Buy. This is the final word on score.
+    // No fundamental quality can make a structurally broken chart a Buy. Final word on score.
     if (q.fallingKnife) {
       if ((q.buyScore || 0) > 45) {
         q.buyScore = 45;
@@ -4678,7 +4697,30 @@ function applyTierScoreCaps(quantSignal) {
     } else if (q.belowMa200 && hz === 'short') {
       // Counter-trend short-term buys below the 200DMA are low-probability regardless of fundamentals.
       if ((q.buyScore || 0) > 61) q.buyScore = 61;
+    } else if (hz === 'short' && q.belowMa20 && q.belowMa50) {
+      // Short-term timing is broken when price is below BOTH short MAs (e.g. oversold in a
+      // downtrend). Strong fundamentals justify a longer-horizon dip-buy, NOT a short Buy.
+      if ((q.buyScore || 0) > 61) {
+        q.buyScore = 61;
+        q.conditions = q.conditions || [];
+        if (!q.conditions.some(c => /MA20 & MA50/i.test(c))) {
+          q.conditions.push('Below MA20 & MA50 in pullback — short-term buy blocked');
+        }
+        q.tierLabel = q.tierLabel || 'Below MA20 & MA50 — short buy blocked';
+      }
     }
+    // Medium-term: a confirmed downtrend below the 50DMA caps the conviction at Buy (not Strong Buy),
+    // even with top-tier fundamentals — you don't get max conviction fighting the trend.
+    if (hz === 'medium' && q.belowMa50 && q.trendDown && (q.buyScore || 0) > 73) {
+      q.buyScore = 73;
+    }
+
+    // FINAL: re-derive action/rating from the post-overlay, post-cap score so the dashboard
+    // card, server picks, and full-analysis view are always consistent. (SL-cooldown gate,
+    // which runs after this, may still override.)
+    const ar = deriveActionRating(q.buyScore, q.sellScore);
+    q.action = ar.action;
+    q.rating = ar.rating;
   });
 }
 
@@ -5512,12 +5554,13 @@ async function generateServerPicksFromShortlist(opts = {}) {
         const sig = qs[hz] || {};
         const buy = sig.buyScore || 0;
         const sell = sig.sellScore || 0;
-        const ar = dashActionRating(buy, sell);
-        const cooled = isSLCooldownActive(t, hz) || /SL cooldown/i.test(sig.tierLabel || '');
+        const cooled = isSLCooldownActive(t, hz)
+          || /SL cooldown/i.test(sig.tierLabel || '') || /SL cooldown/i.test(sig.rating || '');
         row[hz + 'Score'] = buy;
         row[hz + 'SellScore'] = sell;
-        row[hz + 'Action'] = cooled ? 'Hold' : ar.action;
-        row[hz + 'Rating'] = cooled ? 'SL cooldown' : ar.rating;
+        // sig.action / sig.rating are now canonical (set by applyTierScoreCaps from final score).
+        row[hz + 'Action'] = cooled ? 'Hold' : (sig.action || 'Hold');
+        row[hz + 'Rating'] = cooled ? 'SL cooldown' : (sig.rating || 'Hold');
         row[hz + 'Conf'] = sig.winRateHint || Math.max(buy, sell);
         if (hz === 'short') row.reason = (sig.conditions || []).slice(0, 3).join('; ');
         if (sell >= 62 && (sig.conditions || []).length) worstSellConds = sig.conditions;
@@ -5697,7 +5740,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260615-fmp-ultimate-v7.6.2',
+    server_build: '20260615-fmp-ultimate-v7.6.3',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -9313,6 +9356,51 @@ function horizonTimeLimitExceededServer(hz, entryDateOrIso) {
   return false;
 }
 
+/**
+ * Path-aware exit detection: walk daily bars chronologically from entry and return the
+ * FIRST level touched (TP or SL), the way a real trade would have exited — instead of
+ * only checking the latest price (which silently turns past TP wins into SL losses and
+ * crushes the medium/long win rate). Same-bar TP+SL ambiguity is broken by proximity to
+ * the bar open (closest level reached first); falls back to SL-first if open is unknown.
+ */
+function detectPathExitServer(bars, entryMs, entry, tp1, tp2, sl, isSell) {
+  if (!Array.isArray(bars) || !bars.length || !entry) return null;
+  const validTp1 = tp1 && (isSell ? tp1 < entry : tp1 > entry);
+  const validTp2 = tp2 && (isSell ? tp2 < entry : tp2 > entry);
+  const validSl = sl && (isSell ? sl > entry : sl < entry);
+  for (const b of bars) {
+    const bms = (b.t || 0) * 1000;
+    if (bms < entryMs) continue;
+    const hi = b.h, lo = b.l, op = b.o;
+    if (hi == null || lo == null) continue;
+    let slHit, tp1Hit, tp2Hit;
+    if (!isSell) {
+      slHit = validSl && lo <= sl;
+      tp2Hit = validTp2 && hi >= tp2;
+      tp1Hit = validTp1 && hi >= tp1;
+    } else {
+      slHit = validSl && hi >= sl;
+      tp2Hit = validTp2 && lo <= tp2;
+      tp1Hit = validTp1 && lo <= tp1;
+    }
+    const tpHit = tp1Hit || tp2Hit;
+    if (slHit && tpHit) {
+      // Ambiguous within one bar — decide by which level is nearer the open.
+      const tpLvl = tp2Hit ? tp2 : tp1;
+      const distSl = op != null ? Math.abs(op - sl) : 0;
+      const distTp = op != null ? Math.abs(op - tpLvl) : 1;
+      if (op != null && distTp < distSl) {
+        return { status: tp2Hit ? 'tp2_hit' : 'tp1_hit', exit: tpLvl };
+      }
+      return { status: 'sl_hit', exit: sl };
+    }
+    if (slHit) return { status: 'sl_hit', exit: sl };
+    if (tp2Hit) return { status: 'tp2_hit', exit: tp2 };
+    if (tp1Hit) return { status: 'tp1_hit', exit: tp1 };
+  }
+  return null;
+}
+
 // POST /api/history/refresh-pnl — server-side TP/SL hit detection + PnL for all history rows
 app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
   // Render's disk is ephemeral; on each deploy the client re-uploads its localStorage history
@@ -9334,6 +9422,19 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
     } catch (_) {}
   }));
 
+  // Daily OHLCV per ticker for path-aware (chronological) TP/SL exit detection. Throttled
+  // in small chunks to stay friendly to the data vendor.
+  const ohlcvMap = {};
+  for (let off = 0; off < tickers.length; off += 6) {
+    const slice = tickers.slice(off, off + 6);
+    await Promise.all(slice.map(async sym => {
+      try {
+        const bars = await fetchOHLCV(sym, '1y', '1d').catch(() => null);
+        if (bars && bars.length) ohlcvMap[sym] = bars;
+      } catch (_) {}
+    }));
+  }
+
   let updated = 0;
   for (const h of tradeHistory) {
     if (sinceMs && new Date(h.entryDate || h.timestamp || 0).getTime() < sinceMs) continue;
@@ -9346,38 +9447,27 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
 
     for (const hz of hzList) {
       const st = h[hz + 'Status'];
-      if (st && st !== 'open' && st !== 'n/a') continue;
+      // Re-evaluate open AND previously sl_hit/time_limit rows with the accurate path-aware
+      // detector (fixes losses that were really TP wins under the old current-price-only logic).
+      // Confirmed TP wins are left alone.
+      if (st === 'tp1_hit' || st === 'tp2_hit') continue;
       const entry = parseFloat(h[hz + 'Entry'] || h.entry || 0);
       if (!entry) continue;
       const tp1 = parseFloat(h[hz + 'Target1'] || h.target1 || 0);
       const tp2 = parseFloat(h[hz + 'Target2'] || h.target2 || 0);
       const sl = parseFloat(h[hz + 'StopLoss'] || h.stopLoss || 0);
       const shares = Math.floor(10000 / entry);
-      const validTp1 = tp1 && (isSell ? tp1 < entry : tp1 > entry);
-      const validTp2 = tp2 && (isSell ? tp2 < entry : tp2 > entry);
-      const validSl = sl && (isSell ? sl > entry : sl < entry);
-      const tp1Hit = validTp1 && (isSell ? curr <= tp1 : curr >= tp1);
-      const tp2Hit = validTp2 && (isSell ? curr <= tp2 : curr >= tp2);
-      const slHit = validSl && (isSell ? curr >= sl : curr <= sl);
+      const entryMs = new Date(h.entryDate || h.timestamp || 0).getTime();
+      const bars = ohlcvMap[h.ticker];
+      const pathExit = (bars && entry) ? detectPathExitServer(bars, entryMs, entry, tp1, tp2, sl, isSell) : null;
 
-      if (slHit && st !== 'tp1_hit' && st !== 'tp2_hit') {
-        h[hz + 'PnlDollar'] = (sl - entry) * dir * shares;
-        h[hz + 'PnlPct'] = ((sl - entry) / entry) * dir * 100;
-        h[hz + 'Status'] = 'sl_hit';
-        h[hz + 'ExitPrice'] = sl;
-        setSLCooldown(h.ticker, hz);
-        rowChanged = true;
-      } else if (tp2Hit) {
-        h[hz + 'PnlDollar'] = (tp2 - entry) * dir * shares;
-        h[hz + 'PnlPct'] = ((tp2 - entry) / entry) * dir * 100;
-        h[hz + 'Status'] = 'tp2_hit';
-        h[hz + 'ExitPrice'] = tp2;
-        rowChanged = true;
-      } else if (tp1Hit) {
-        h[hz + 'PnlDollar'] = (tp1 - entry) * dir * shares;
-        h[hz + 'PnlPct'] = ((tp1 - entry) / entry) * dir * 100;
-        h[hz + 'Status'] = 'tp1_hit';
-        h[hz + 'ExitPrice'] = tp1;
+      if (pathExit) {
+        const px = pathExit.exit;
+        h[hz + 'PnlDollar'] = (px - entry) * dir * shares;
+        h[hz + 'PnlPct'] = ((px - entry) / entry) * dir * 100;
+        h[hz + 'Status'] = pathExit.status;
+        h[hz + 'ExitPrice'] = px;
+        if (pathExit.status === 'sl_hit') setSLCooldown(h.ticker, hz);
         rowChanged = true;
       } else if (horizonTimeLimitExceededServer(hz, h.entryDate || h.timestamp)) {
         h[hz + 'PnlDollar'] = (curr - entry) * dir * shares;
