@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260615-fmp-ultimate-v7.6.3">
+<meta name="alphasignal-build" content="20260616-fmp-ultimate-v7.6.4">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -3129,7 +3129,7 @@ function histRowPnlSnapshot(h, hzKey) {
 }
 
 async function bootstrapHistoryToServer(localRecords){
-  const rows=localRecords.filter(historyRecordIsTrade).slice(0,500);
+  const rows=localRecords.filter(historyRecordIsTrade).slice(0,3000);
   if(!rows.length)return false;
   rows.forEach(function(h){
     if(!h.revalidatedAt){

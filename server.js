@@ -5175,22 +5175,36 @@ app.post('/api/danelfin/batch', async (req, res) => {
 // In-memory store (persists while server is running, resets on redeploy)
 // Use a simple JSON file for persistence on Render disk
 // Persist history: VPS / Render disk / local ./data / tmp (self-hosted: ./data wins)
-const HISTORY_FILE = (() => {
-  const dataDir = path.join(__dirname, 'data');
-  try {
-    fs.mkdirSync(dataDir, { recursive: true });
-  } catch (_) {}
-  const paths = [
-    path.join(dataDir, 'history_data.json'),
-    '/opt/render/project/src/history_data.json',
-    path.join(__dirname, 'history_data.json'),
-    '/tmp/alphasignal_history.json'
-  ];
-  for(const p of paths) {
-    try { fs.writeFileSync(p, fs.existsSync(p) ? fs.readFileSync(p) : '[]'); return p; }
-    catch(e) {}
+// Persistent data directory. Render's default filesystem is EPHEMERAL — it is
+// wiped on every deploy/restart. To keep history durable, mount a Render
+// Persistent Disk and point DATA_DIR (or RENDER_DISK_MOUNT_PATH) at its mount
+// path (e.g. /var/data). Locally this falls back to ./data. The first writable
+// candidate wins; we verify writability with a probe file.
+const DATA_DIR = (() => {
+  const candidates = [
+    process.env.DATA_DIR,
+    process.env.RENDER_DISK_MOUNT_PATH,
+    path.join(__dirname, 'data'),
+    '/tmp'
+  ].filter(Boolean);
+  for (const dir of candidates) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      const probe = path.join(dir, '.writetest');
+      fs.writeFileSync(probe, '1');
+      fs.unlinkSync(probe);
+      return dir;
+    } catch (_) {}
   }
-  return '/tmp/alphasignal_history.json';
+  return '/tmp';
+})();
+const DATA_DIR_PERSISTENT = Boolean(process.env.DATA_DIR || process.env.RENDER_DISK_MOUNT_PATH);
+console.log('Data dir:', DATA_DIR, DATA_DIR_PERSISTENT ? '(persistent disk)' : '(EPHEMERAL — set DATA_DIR to a mounted disk)');
+
+const HISTORY_FILE = (() => {
+  const p = path.join(DATA_DIR, 'history_data.json');
+  try { if (!fs.existsSync(p)) fs.writeFileSync(p, '[]'); } catch (_) {}
+  return p;
 })();
 console.log('History file:', HISTORY_FILE);
 
@@ -5525,6 +5539,48 @@ function dashActionRating(buy, sell) {
  * caps + SL-cooldown, then server-side TP/SL pricing. Writes the picks cache so any
  * device just reads finished picks — the page never needs to stay open.
  */
+// Convert the final server-generated picks into history trade records (one per
+// ticker/horizon/side) so the autonomous scan records history WITHOUT needing any
+// browser open. Mirrors the client's mkRecord shape closely enough for renderHist
+// and the path-aware PnL refresh to work.
+function serverPicksToHistoryRecords(dashData) {
+  const ts = new Date().toISOString();
+  const mk = (s, side, hz) => {
+    const isSell = side === 'sell';
+    const entry = parseFloat(s[hz + 'Entry'] || 0);
+    const tp1 = parseFloat(s[hz + 'Target1'] || 0);
+    const tp2 = parseFloat(s[hz + 'Target2'] || 0);
+    const sl = parseFloat(s[hz + 'StopLoss'] || 0);
+    if (!entry || !tp1 || !sl) return null;
+    const rating = s[hz + 'Rating'] || (isSell ? 'Sell' : 'Buy');
+    return {
+      _v: 2,
+      ticker: s.ticker, name: s.name || s.ticker, sector: s.sector || '', market: s.market || '',
+      hz,
+      action: isSell ? 'Sell' : 'Buy',
+      rating, conf: s[hz + 'Conf'] || 0,
+      entryDate: ts, timestamp: ts,
+      entry, target1: tp1, target2: tp2, stopLoss: sl,
+      [hz + 'Entry']: entry, [hz + 'Target1']: tp1, [hz + 'Target2']: tp2, [hz + 'StopLoss']: sl,
+      sellEntry: entry, sellTarget1: isSell ? tp1 : null, sellTarget2: isSell ? tp2 : null, sellStopLoss: isSell ? sl : null,
+      reason: isSell ? (s.sellReason || s.reason || '') : (s.reason || ''),
+      shortScore: s.shortScore, mediumScore: s.mediumScore, longScore: s.longScore,
+      shortSellScore: s.shortSellScore, mediumSellScore: s.mediumSellScore, longSellScore: s.longSellScore,
+      [hz + 'Status']: 'open', [hz + 'PnlDollar']: null, [hz + 'PnlPct']: null,
+      revalidatedAt: ts, analyticsVersion: 2,
+      _fromServerScan: true
+    };
+  };
+  const out = [];
+  (dashData.short || []).forEach(s => out.push(mk(s, 'buy', 'short')));
+  (dashData.medium || []).forEach(s => out.push(mk(s, 'buy', 'medium')));
+  (dashData.long || []).forEach(s => out.push(mk(s, 'buy', 'long')));
+  (dashData.shortSell || []).forEach(s => out.push(mk(s, 'sell', 'short')));
+  (dashData.medSell || []).forEach(s => out.push(mk(s, 'sell', 'medium')));
+  (dashData.longSell || []).forEach(s => out.push(mk(s, 'sell', 'long')));
+  return out.filter(Boolean);
+}
+
 let serverPicksGenerating = false;
 async function generateServerPicksFromShortlist(opts = {}) {
   if (serverPicksGenerating) return { ok: false, reason: 'already generating' };
@@ -5601,6 +5657,19 @@ async function generateServerPicksFromShortlist(opts = {}) {
     };
     saveDashboardPicksFile(dashboardPicksCache);
     console.log('Server picks generated →', dashboardPicksSummary(dashData));
+
+    // Record the picks into history autonomously (no browser needed). The shared
+    // writer dedups per ticker/hz/day, so re-running the daily scan just refreshes
+    // today's rows rather than duplicating them.
+    try {
+      const recs = serverPicksToHistoryRecords(dashData);
+      if (recs.length) {
+        const h = await addTradesToHistory(recs);
+        console.log('Server scan recorded history:', h.accepted, 'added,', h.skipped, 'skipped, total', h.total);
+      }
+    } catch (e) {
+      console.warn('Server history record failed:', e.message);
+    }
     return { ok: true, summary: dashboardPicksSummary(dashData) };
   } catch (e) {
     console.warn('generateServerPicksFromShortlist error:', e.message);
@@ -5740,7 +5809,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260615-fmp-ultimate-v7.6.3',
+    server_build: '20260616-fmp-ultimate-v7.6.4',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -5887,11 +5956,13 @@ app.get('/api/history', (req, res) => {
   res.json(tradeHistory);
 });
 
-// POST add trades (called when dashboard scan completes)
-app.post('/api/history/add', express.json(), async (req, res) => {
-  const trades = req.body;
-  if (!Array.isArray(trades)) return res.status(400).json({ error: 'Expected array' });
-
+// Shared writer for both the client (/api/history/add) and the autonomous
+// server scan. Dedups by ticker|hz|day, enriches, caps, and persists.
+async function addTradesToHistory(trades) {
+  if (!Array.isArray(trades) || !trades.length) {
+    return { accepted: 0, skipped: 0, total: tradeHistory.length };
+  }
+  const todayStr = new Date().toDateString();
   const incomingKeys = new Set(
     trades.map(t => {
       const hz = t.hz || 'short';
@@ -5910,7 +5981,11 @@ app.post('/api/history/add', express.json(), async (req, res) => {
   for (const trade of trades) {
     const hz = trade.hz || 'short';
     const isSell = String(trade.action || '').toLowerCase() === 'sell';
-    if (!isSell && isSLCooldownActive(trade.ticker, hz)) {
+    // Only gate FRESH (today's) buy picks on SL cooldown. Historical re-uploads
+    // (older entryDate, e.g. localStorage recovery after a deploy) must always be
+    // preserved so durable history is never silently dropped.
+    const isToday = new Date(trade.entryDate || trade.timestamp || Date.now()).toDateString() === todayStr;
+    if (!isSell && isToday && isSLCooldownActive(trade.ticker, hz)) {
       console.log('History add skipped (SL cooldown):', trade.ticker, hz);
       continue;
     }
@@ -5924,14 +5999,22 @@ app.post('/api/history/add', express.json(), async (req, res) => {
   }
 
   tradeHistory.unshift(...accepted);
-  
+
   // Cap total rows (multi-horizon scans add many per day; avoid unbounded growth)
   const HISTORY_MAX_SERVER = 3000;
   if (tradeHistory.length > HISTORY_MAX_SERVER) tradeHistory = tradeHistory.slice(0, HISTORY_MAX_SERVER);
-  
+
   saveHistoryFile(tradeHistory);
-  console.log('History: added', accepted.length, 'trades, total:', tradeHistory.length);
-  res.json({ ok: true, total: tradeHistory.length, added: accepted.length, skipped: trades.length - accepted.length });
+  return { accepted: accepted.length, skipped: trades.length - accepted.length, total: tradeHistory.length };
+}
+
+// POST add trades (called when dashboard scan completes)
+app.post('/api/history/add', express.json(), async (req, res) => {
+  const trades = req.body;
+  if (!Array.isArray(trades)) return res.status(400).json({ error: 'Expected array' });
+  const r = await addTradesToHistory(trades);
+  console.log('History: added', r.accepted, 'trades, total:', r.total);
+  res.json({ ok: true, total: r.total, added: r.accepted, skipped: r.skipped });
 });
 
 // POST update PnL for existing trades
@@ -8017,7 +8100,7 @@ const HORIZON_MIN_PCT = {
 };
 
 const SL_COOLDOWN_MS = 6 * 24 * 60 * 60 * 1000;
-const SL_COOLDOWN_FILE = path.join(__dirname, 'data', 'sl_cooldowns.json');
+const SL_COOLDOWN_FILE = path.join(DATA_DIR, 'sl_cooldowns.json');
 let slCooldowns = {};
 
 function loadSLCooldowns() {
