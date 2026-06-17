@@ -767,6 +767,23 @@ function calcBollingerFull(closes, period = 20) {
   return { upper, middle: parseFloat(sma.toFixed(2)), lower, pct, width: parseFloat((2 * std / sma * 100).toFixed(2)) };
 }
 
+/** Fast Stochastic %K/%D — a noise-tolerant oscillator for short-term reversal
+ *  timing in choppy/ranging markets (where trend tools whipsaw). */
+function calcStochastic(daily, kPeriod = 14, dPeriod = 3) {
+  if (!daily || daily.length < kPeriod + dPeriod) return null;
+  const kArr = [];
+  for (let i = daily.length - dPeriod; i < daily.length; i++) {
+    const win = daily.slice(i - kPeriod + 1, i + 1);
+    const hh = Math.max(...win.map(d => d.h));
+    const ll = Math.min(...win.map(d => d.l));
+    const c = daily[i].c;
+    kArr.push(hh > ll ? 100 * (c - ll) / (hh - ll) : 50);
+  }
+  const k = kArr[kArr.length - 1];
+  const d = kArr.reduce((a, b) => a + b, 0) / kArr.length;
+  return { k: parseFloat(k.toFixed(1)), d: parseFloat(d.toFixed(1)) };
+}
+
 function calcATRFull(data, period = 14) {
   if (!data || data.length < period + 1) return null;
   const recent = data.slice(-(period + 1));
@@ -997,13 +1014,71 @@ function signalFlipped(sig, isSell) {
     : (sig.sellScore >= 62 || sig.buyScore < 45);  // long exits when shorts take over or conviction collapses
 }
 
+/** Short-horizon MEAN-REVERSION levels — target = reversion to the SD-channel mean
+ *  (or nearest resistance/support); stop = beyond the opposite band by ATR. Used by
+ *  BOTH the exit sim and the displayed price levels so they always agree. */
+function computeMeanReversionLevels(tech, entry, isSell) {
+  if (!tech || !entry || entry <= 0) return null;
+  const atr = tech.atr || entry * 0.02;
+  const mean = tech.channels?.daily20?.mean ?? tech.ma20 ?? entry;
+  if (!isSell) {
+    const cands = [mean, tech.resistance1].filter(v => v && v > entry * 1.005);
+    let target = cands.length ? Math.min(...cands) : entry + 1.5 * atr;
+    target = Math.max(Math.min(target, entry * 1.10), entry * 1.02);
+    const lower2 = tech.channels?.daily20?.lower2;
+    let stop = Math.min(entry - 1.5 * atr, lower2 || entry * 0.97);
+    stop = Math.max(Math.min(stop, entry * 0.985), entry * 0.93);
+    return { target: roundPrice(target), stop: roundPrice(stop) };
+  } else {
+    const cands = [mean, tech.support1].filter(v => v && v < entry * 0.995);
+    let target = cands.length ? Math.max(...cands) : entry - 1.5 * atr;
+    target = Math.min(Math.max(target, entry * 0.90), entry * 0.98);
+    const upper2 = tech.channels?.daily20?.upper2;
+    let stop = Math.max(entry + 1.5 * atr, upper2 || entry * 1.03);
+    stop = Math.min(Math.max(stop, entry * 1.015), entry * 1.07);
+    return { target: roundPrice(target), stop: roundPrice(stop) };
+  }
+}
+
+/** Short-horizon MEAN-REVERSION exit: bank the bounce at the channel mean/resistance
+ *  (or when the fast oscillator normalises), with a fixed stop beyond the band. No
+ *  trend trailing — this is a range/swing exit suited to choppy markets. */
+async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund = null) {
+  const holdDays = Math.min(15, horizonHoldDaysServer('short')); // banks quickly
+  const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
+  const eTech = techAtBoundedIndex(data, weeklyAll, entryIdx);
+  const lv = computeMeanReversionLevels(eTech, entry, isSell) || {};
+  const target = lv.target, stop = lv.stop;
+  const ret = px => (isSell ? (entry - px) : (px - entry)) / entry;
+  const finish = (status, exitIdx, px) => ({ ret: ret(px), status, exitIdx, tp1Hit: status === 'tp1_hit', stopLoss: stop, exitPrice: px });
+  let _yc = 0;
+  for (let j = entryIdx + 1; j <= maxJ; j++) {
+    if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r));
+    const bar = data[j];
+    if (!isSell) {
+      if (stop && bar.l <= stop) return finish('sl_hit', j, stop);
+      if (target && bar.h >= target) return finish('tp1_hit', j, target); // reverted to mean — banked
+    } else {
+      if (stop && bar.h >= stop) return finish('sl_hit', j, stop);
+      if (target && bar.l <= target) return finish('tp1_hit', j, target);
+    }
+    // Oscillator-normalised exit: reversion complete, bank at close if in profit
+    const bt = techAtBoundedIndex(data, weeklyAll, j);
+    const r2 = bt.rsi2, rr = bt.rsi;
+    if (!isSell && bar.c > entry && ((r2 != null && r2 > 70) || rr >= 58)) return finish('signal_exit', j, bar.c);
+    if (isSell && bar.c < entry && ((r2 != null && r2 < 30) || rr <= 42)) return finish('signal_exit', j, bar.c);
+    if (j === maxJ) return finish('time_limit', j, bar.c);
+  }
+  return finish('open', maxJ, data[maxJ].c);
+}
+
 /** Unified HYBRID exit simulator used by BOTH the backtest and the history P&L
  *  refresh, so reported win rates match what the live rules would have done.
- *  Books a partial profit at TP1 (locks a win) and trails the remainder; exits the
- *  remainder on trailing-SL touch, a true signal reversal, or the horizon time cap.
- *  Returns blended return, status, exit index, and whether TP1 was hit. */
+ *  SHORT horizon delegates to the mean-reversion exit; medium/long book a partial
+ *  at TP1 (locks a win) and ride the remainder with a wide chandelier trail. */
 async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, fund = null) {
   if (!data || entryIdx == null || !(entry > 0)) return null;
+  if (hz === 'short') return simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund);
   const holdDays = horizonHoldDaysServer(hz);
   const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
   const entryTech = techAtBoundedIndex(data, weeklyAll, entryIdx);
@@ -1439,6 +1514,10 @@ function computeQuantSignal(tech, fund, hz) {
   const s1 = tech.support1??null, r1 = tech.resistance1??null;
   const nearS1 = s1&&price>=s1*0.985&&price<=s1*1.025;
   const nearR1 = r1&&price>=r1*0.978&&price<=r1*1.018;
+  // Fast mean-reversion oscillators (short-term, noise-tolerant)
+  const rsi2  = tech.rsi2 ?? null;
+  const stochK = tech.stoch?.k ?? null;
+  const bbPct = tech.bb?.pct ?? null;
 
   // ── SD Channel position (the core timing mechanism) ────────────────────────
   // excellent = price at/below lower 1σ band (statistically discounted entry)
@@ -1492,100 +1571,76 @@ function computeQuantSignal(tech, fund, hz) {
   let tier = 0;  // 0=standard, 1=Danelfin≥8+SD, 2=+catalyst
 
   // ════════════════════════════════════════════════════════════════════════════
-  // SHORT (1–3 days): Entry timing dominates. SD channel is the gating signal.
-  // Danelfin Technical subscore (short-term ML signal) confirms direction.
+  // SHORT (1d–1mo): MEAN-REVERSION, noise-filtered. This horizon does NOT chase
+  // trend — it buys statistical discounts (lower SD band + support + washed-out
+  // fast oscillators) and fades extensions, with filters to avoid catching knives.
+  // The SD channel + S/R levels + fast oscillators are the base, exactly as a
+  // range-trading desk would run a choppy market. (Exit is mean-reversion too —
+  // target the channel mean / resistance, not a trend trail; see simulateHybridExit.)
   // ════════════════════════════════════════════════════════════════════════════
   if (hz === 'short') {
 
-    // Gate 1: Trend regime (permission to trade long)
-    if (aboveMa50&&(goldenCross||weeklyTrend==='uptrend')) { buyGates++; condBuy.push('MA50 uptrend regime'); }
-    else if (aboveMa50) buyGates += 0.5;
-
-    // Gate 2: SD CHANNEL (the primary entry timing gate)
-    // This is the single most important signal for short-term entries
-    if (inSDExcellent) { buyGates+=2; condBuy.push('SD channel: price at lower band'); }
-    else if (inSDGood) { buyGates++;  condBuy.push('SD channel: near lower band');     }
-
-    // Gate 3: RSI timing — tiered oversold thresholds (RSI<20 strongest)
-    if (rsi < 20) {
-      buyGates += 2.0; condBuy.push(`RSI ${rsi} EXTREME oversold`);
-    } else if (rsi < 30 && rsiRising) {
-      buyGates += 1.5; condBuy.push(`RSI ${rsi} oversold rising`);
-    } else if (rsi < 30) {
-      buyGates += 1.0; condBuy.push(`RSI ${rsi} oversold`);
-    } else if (rsi < 40 && rsiRising) {
-      buyGates += 0.6; condBuy.push(`RSI ${rsi} recovering`);
-    } else if (rsi < 40) {
-      buyGates += 0.3;
-    } else if (regime === 'bull' && aboveMa200 && rsi >= 40 && rsi <= 65) {
-      buyGates += 0.8; condBuy.push(`RSI ${rsi} bull zone`);
-    } else if (rsi > 70) {
-      buyGates = Math.round(buyGates * 0.3);
-    }
-
-    // Gate 3c: MA touch entries — price bouncing off a key moving average = support
-    const _ma100 = tech.ma100 ?? null;
-    const _nearMa200 = ma200 && Math.abs(price - ma200) / price < 0.030;
-    const _nearMa100 = _ma100 && Math.abs(price - _ma100) / price < 0.025;
-    const _nearMa50  = ma50  && Math.abs(price - ma50)  / price < 0.020;
-    const _nearMa20t = tech.ma20 && Math.abs(price - tech.ma20) / price < 0.015;
-    if (_nearMa200 && aboveMa200)      { buyGates += 1.5; condBuy.push('Price at MA200 support'); }
-    else if (_nearMa100 && _ma100 && price > _ma100*0.98) { buyGates += 1.2; condBuy.push('Price at MA100 support'); }
-    else if (_nearMa50 && aboveMa50)   { buyGates += 1.0; condBuy.push('Price at MA50 support'); }
-    else if (_nearMa20t && aboveMa20)  { buyGates += 0.7; condBuy.push('Price at MA20 support'); }
-
-    // Gate 3b: Bull regime MACD confirmation (trend continuation, not just reversal)
-    if (regime === 'bull' && aboveMa200 && macdBull && rsi >= 45 && rsi <= 72 && !atSDTop) {
-      buyGates += 0.6;
-      condBuy.push('Bull: MACD+MA200 trending');
-    }
-
-    // Gate 4: MACD inflection (catching the turn)
-    if (macdTurnUp)                          { buyGates++; condBuy.push('MACD turning up'); }
-    else if (macdBull&&rsiRising&&rsi<52)     buyGates+=0.5;
-
-    // Gate 5: Volume + structure confirmation
-    if ((healthyPull===true||volRatio<0.80)&&bullStruct) { buyGates++; condBuy.push('Low-vol pullback + HH/HL'); }
-    else if (bullStruct||nearS1)              { buyGates+=0.8; condBuy.push(bullStruct?'HH+HL structure':`Near S1 $${s1?.toFixed(2)}`); }
-    else if (healthyPull===true||volRatio<0.80) buyGates+=0.5;
-
-    // Falling-knife filters — block mean-reversion buys in active downtrends
+    // Regime/noise context — mean-reversion edge is strongest in ranges & pullbacks,
+    // weakest in strong directional trends (where you fight momentum).
+    const ranging = adx < 24;
+    const strongDown = adx >= 28 && (trend20 === 'downtrend' || weeklyTrend === 'downtrend');
     const lowerCloses = tech.consecutiveLowerCloses ?? 0;
-    if (aboveMa20 === false) {
-      buyGates = Math.round(buyGates * 0.25);
-      condBuy.push('Below MA20 — falling knife filter');
-    }
-    if (lowerCloses >= 3) {
-      buyGates = Math.round(buyGates * 0.20);
-      condBuy.push(`${lowerCloses} consecutive lower closes`);
-    }
-    if (aboveMa20 === false && trend20 === 'downtrend') {
-      buyGates = Math.round(buyGates * 0.20);
-      condBuy.push('Below MA20 + downtrend');
-    }
 
-    // Hard disqualifiers
-    if (rsi>72)       buyGates = Math.min(buyGates, 1.5);   // overbought — avoid
-    if (atSDTop)      buyGates = Math.round(buyGates*0.4);  // extended — terrible short entry
-    if (!aboveMa50)   buyGates = Math.round(buyGates*0.45); // below MA50 — skip
-    if (!aboveMa200)  buyGates = Math.round(buyGates * 0.20); // below MA200 — structurally down
-    if (weeklyTrend === 'downtrend' && rsiFalling) buyGates = Math.round(buyGates * 0.30);
+    // ── BUY: buy the statistical discount ──────────────────────────────────────
+    // Base 1: SD channel — price stretched below the regression mean = discount
+    if (inSDExcellent) { buyGates += 2.5; condBuy.push('SD channel: below lower band (statistical discount)'); }
+    else if (inSDGood) { buyGates += 1.5; condBuy.push('SD channel: near lower band'); }
 
-    // Regime-scaled short buy score — BULL boosts momentum plays, BEAR suppresses longs
-    buyGates *= _buyMult; buyGates = Math.max(0, buyGates);
-    buy = buyGates>=5.5?88:buyGates>=4.5?78:buyGates>=3.5?65:buyGates>=2.5?50:buyGates>=1.5?36:Math.min(22,Math.round(buyGates*14));
+    // Base 2: Support / MA confluence — buy into a level, not into thin air
+    const _ma20 = tech.ma20 ?? null;
+    const _nearMa50  = ma50 && Math.abs(price - ma50) / price < 0.02;
+    const _nearMa20t = _ma20 && Math.abs(price - _ma20) / price < 0.015;
+    if (nearS1)            { buyGates += 1.3; condBuy.push(`At support $${s1?.toFixed(2)}`); }
+    else if (_nearMa50 && aboveMa50)  { buyGates += 0.9; condBuy.push('At MA50 support'); }
+    else if (_nearMa20t)              { buyGates += 0.6; condBuy.push('At MA20 support'); }
 
-    // SELL gates (short-term reversal)
-    if (!aboveMa50&&(deathCross||trend20==='downtrend')) { sellGates++; condSell.push('Below MA50 downtrend'); }
-    if (inSDSellZone) { sellGates++; condSell.push('SD channel: price at upper band'); }
-    if (rsi>=64&&rsiFalling) { sellGates++; condSell.push(`RSI ${rsi} overbought falling`); }
-    else if (rsi>=64) sellGates+=0.5;
-    if (macdTurnDn||(!macdBull&&rsiFalling))  { sellGates++; condSell.push('MACD turning down'); }
-    if (bearStruct||nearR1)                   { sellGates++; condSell.push(bearStruct?'LH+LL distribution':`Near R1 $${r1?.toFixed(2)}`); }
-    if (rsi<26) sellGates=Math.round(sellGates*0.4);
-    // Regime-scaled short sell score — BEAR boosts breakdown trades
-    sellGates *= _sellMult; sellGates = Math.max(0, sellGates);
-    sell = sellGates>=5.5?86:sellGates>=4.5?73:sellGates>=3.5?60:sellGates>=2.5?48:Math.min(22,Math.round(sellGates*11));
+    // Base 3: Fast oscillators — noise-tolerant reversal timing (RSI(2), Stochastic)
+    if (rsi2 != null && rsi2 < 10) { buyGates += 1.6; condBuy.push(`RSI(2) ${rsi2} washed out`); }
+    else if (rsi2 != null && rsi2 < 20) { buyGates += 1.0; condBuy.push(`RSI(2) ${rsi2} oversold`); }
+    else if (stochK != null && stochK < 20) { buyGates += 0.9; condBuy.push(`Stochastic ${stochK} oversold`); }
+    else if (rsi < 30) { buyGates += 0.9; condBuy.push(`RSI ${rsi} oversold`); }
+    else if (rsi < 40 && rsiRising) buyGates += 0.4;
+
+    // Base 4: Bollinger band confirmation
+    if (bbPct != null && bbPct < 10) { buyGates += 0.8; condBuy.push('At lower Bollinger band'); }
+    else if (bbPct != null && bbPct < 20) buyGates += 0.4;
+
+    // Confirmation: a turn beginning + accumulation
+    if (macdTurnUp) { buyGates += 0.5; condBuy.push('MACD turning up'); }
+    if (obvBullish === true) buyGates += 0.3;
+
+    // Noise/regime weighting
+    if (ranging || (aboveMa50 && trend20 !== 'downtrend')) buyGates += 0.5; // range or pullback-in-uptrend
+    if (volRatio < 0.80) buyGates += 0.3; // dip on light volume = healthier
+
+    // Falling-knife filters — do NOT buy a crash (mean-reversion ≠ catching knives)
+    if (strongDown)                              buyGates *= 0.45;
+    if (lowerCloses >= 4)                        { buyGates *= 0.45; condBuy.push(`${lowerCloses} consecutive lower closes`); }
+    if (aboveMa20 === false && trend20 === 'downtrend') buyGates *= 0.40;
+    if (rsi > 66)  buyGates = Math.min(buyGates, 1.5); // not a discount anymore
+    if (atSDTop)   buyGates *= 0.40;                   // extended — bad MR buy
+
+    buyGates = Math.max(0, buyGates);
+    buy = buyGates>=5.5?90:buyGates>=4.5?80:buyGates>=3.5?68:buyGates>=2.8?58:buyGates>=2?44:Math.min(24,Math.round(buyGates*16));
+
+    // ── SELL: fade the statistical premium (conservative; global strict-short gate
+    //    still applies afterward, so trend-up names won't be shorted) ────────────
+    if (inSDSellZone) { sellGates += 2.0; condSell.push('SD channel: above upper band (extended)'); }
+    if (nearR1)       { sellGates += 1.0; condSell.push(`At resistance $${r1?.toFixed(2)}`); }
+    if (rsi2 != null && rsi2 > 90) { sellGates += 1.4; condSell.push(`RSI(2) ${rsi2} overbought`); }
+    else if (stochK != null && stochK > 80) { sellGates += 0.8; condSell.push(`Stochastic ${stochK} overbought`); }
+    else if (rsi > 70) { sellGates += 0.8; condSell.push(`RSI ${rsi} overbought`); }
+    if (bbPct != null && bbPct > 90) { sellGates += 0.6; condSell.push('At upper Bollinger band'); }
+    if (macdTurnDn) sellGates += 0.4;
+    if (ranging) sellGates += 0.4;
+    if (rsi < 35) sellGates *= 0.4; // washed out — bad place to short
+    sellGates = Math.max(0, sellGates);
+    sell = sellGates>=5?86:sellGates>=4?72:sellGates>=3?60:sellGates>=2?46:Math.min(22,Math.round(sellGates*11));
 
   // ════════════════════════════════════════════════════════════════════════════
   // MEDIUM (90 days = Danelfin 3M): Trend regime + Danelfin AI Score.
@@ -1728,8 +1783,10 @@ function computeQuantSignal(tech, fund, hz) {
     if (stHz.direction === 'bull') {
       if (stHz.flippedBull && buy >= 50) { buy = Math.min(94, buy + 12); condBuy.unshift(`Supertrend ${hz} Strong Buy (fresh bull flip)`); }
       else if (buy >= 55)               { buy = Math.min(92, buy + 6);  condBuy.push(`Supertrend ${hz} bullish`); }
-    } else if (stHz.direction === 'bear') {
-      // Buying against the timeframe trend — only allowed as an oversold bounce, and capped.
+    } else if (stHz.direction === 'bear' && hz !== 'short') {
+      // Buying against the TIMEFRAME trend is capped for trend horizons (medium/long).
+      // Short is mean-reversion: it intentionally buys dips below the fast Supertrend,
+      // so we do NOT cap it here (the falling-knife filters handle genuine breakdowns).
       if (!stHz.flippedBull) { buy = Math.min(buy, 58); condBuy.push(`Below ${hz} Supertrend — buy capped`); }
     }
     if (stHz.direction === 'bear') {
@@ -4233,6 +4290,8 @@ function buildFullTechResult(sym, daily, weekly) {
   const ma100 = closes.length >= 100 ? calcSMA(closes, 100) : null;
   const ma200 = closes.length >= 200 ? calcSMA(closes, 200) : null;
   const rsi   = calcRSI(closes, 14);
+  const rsi2  = closes.length >= 6 ? calcRSI(closes, 2) : null; // fast MR oscillator
+  const stoch = calcStochastic(daily, 14, 3);
   const macd  = calcMACDFull(closes);
   const bb    = calcBollingerFull(closes, 20);
   const atr   = calcATRFull(daily, 14);
@@ -4275,7 +4334,8 @@ function buildFullTechResult(sym, daily, weekly) {
     symbol: sym, currentPrice: cp, ma20, ma50, ma200,
     aboveMa20, aboveMa50, aboveMa200, bullishMAs, totalMAs,
     maAlignmentStr: `${bullishMAs}/${totalMAs} MAs bullish`,
-    rsi, rsiSignal: rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : rsi > 55 ? 'bullish' : rsi < 45 ? 'bearish' : 'neutral',
+    rsi, rsi2, stoch,
+    rsiSignal: rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : rsi > 55 ? 'bullish' : rsi < 45 ? 'bearish' : 'neutral',
     macd, trend20, trend: trend20,
     atr, atrPct, bb, adx,
     adxSignal: adx ? (adx > 40 ? 'strong_trend' : adx > 25 ? 'trending' : 'weak/ranging') : null,
@@ -6167,7 +6227,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260617-fmp-ultimate-v7.8.0',
+    server_build: '20260617-fmp-ultimate-v7.8.1',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -8947,6 +9007,18 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
       continue;
     }
     const isSell = act === 'sell';
+    if (hz === 'short') {
+      // Short = mean-reversion: defined target at the channel mean/resistance, fixed
+      // stop beyond the band. (No trailing — bank the bounce in choppy markets.)
+      const lv = computeMeanReversionLevels(tech, e, isSell);
+      if (!lv) { row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = ''; continue; }
+      row[hz + 'Entry'] = String(roundPrice(e));
+      row[hz + 'Target1'] = String(lv.target);
+      row[hz + 'Target2'] = '';
+      row[hz + 'StopLoss'] = String(lv.stop);
+      row[hz + 'TrailingSL'] = false;
+      continue;
+    }
     const sl = computeTrailingStopFromTech(tech, e, hz, isSell, fund);
     if (!sl) {
       row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = '';
