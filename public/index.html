@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260617-fmp-ultimate-v7.7.2">
+<meta name="alphasignal-build" content="20260617-fmp-ultimate-v7.8.0">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -4985,27 +4985,57 @@ function calcSummaryForHz(hzKey) {
   const wr = closedForWr.length ? Math.round(winsClosed / closedForWr.length * 100) : null;
   const closedLen = closedForWr.length;
   const openCnt = snapshots.filter(function (x) { return x.isOpen; }).length;
-  return { openCnt, unrealised, realised, wr, closedLen };
+
+  // Buy-side vs Sell-side quality breakdown (win rate + realised PnL per side).
+  function sideStats(isSell) {
+    const rows = hzHist.filter(function (h) { return (String(h.action || '').toLowerCase() === 'sell') === isSell; });
+    const closed = rows.filter(function (h) {
+      return ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit', 'signal_exit'].includes(h[hzKey + 'Status']);
+    });
+    const wins = closed.filter(hzWin).length;
+    const realisedSide = closed.reduce(function (s, h) {
+      const p = resolveHistoricalHzPnl(h, hzKey);
+      return s + (Number.isFinite(Number(p)) ? Number(p) : 0);
+    }, 0);
+    return { wr: closed.length ? Math.round(wins / closed.length * 100) : null, closed: closed.length, realised: realisedSide };
+  }
+  const buySide = sideStats(false);
+  const sellSide = sideStats(true);
+  return { openCnt, unrealised, realised, wr, closedLen, buySide, sellSide };
 }
 
 function renderSummaryCards(hzKey) {
   const el = document.getElementById('histSummaryCards');
   if(!el) return;
-  const { openCnt, unrealised, realised, wr, closedLen } = calcSummaryForHz(hzKey);
+  const { openCnt, unrealised, realised, wr, closedLen, buySide, sellSide } = calcSummaryForHz(hzKey);
   function fp(v){ if(v==null||v===undefined)return '—'; return (v>=0?'+':'-')+'$'+Math.abs(v).toFixed(0); }
   const hzLabel = hzKey==='short'?'Short 1d–1mo':hzKey==='medium'?'Medium 1–3mo':'Long 4–12mo';
+  const wrColor = w => (w==null?'var(--m1)':w>=55?'var(--buy)':w>=40?'#F5C842':'var(--sell)');
   const card = (l, v, sub, c) =>
     '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-height:92px;display:flex;flex-direction:column;justify-content:center;gap:6px">'
     + '<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace;font-weight:500">'+l+'</div>'
     + '<div style="font-size:23px;font-weight:600;font-family:DM Mono,monospace;line-height:1.15;color:'+c+'">'+v+'</div>'
     + '<div style="font-size:11px;color:var(--m2);line-height:1.35">'+sub+'</div>'
     + '</div>';
+  // Combined side card: win rate + realised PnL for one direction, so you can see
+  // which side (long vs short) is actually producing quality recommendations.
+  const sideCard = (l, side, accent) =>
+    '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-height:92px;display:flex;flex-direction:column;justify-content:center;gap:6px">'
+    + '<div style="font-size:10px;color:'+accent+';text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace;font-weight:600">'+l+'</div>'
+    + '<div style="display:flex;align-items:baseline;gap:12px">'
+    +   '<div style="font-size:23px;font-weight:600;font-family:DM Mono,monospace;line-height:1.15;color:'+wrColor(side.wr)+'">'+(side.closed?side.wr+'%':'—')+'</div>'
+    +   '<div style="font-size:15px;font-weight:600;font-family:DM Mono,monospace;color:'+(side.realised>=0?'var(--buy)':'var(--sell)')+'">'+fp(side.realised)+'</div>'
+    + '</div>'
+    + '<div style="font-size:11px;color:var(--m2);line-height:1.35">'+(side.closed?('win rate · realised from '+side.closed+' closed'):'No closed '+l.toLowerCase()+' trades')+'</div>'
+    + '</div>';
   el.innerHTML = [
-    ['Active Trades', openCnt+' open', hzLabel + ' horizon', 'var(--ac)'],
-    ['Unrealised PnL', fp(unrealised), 'Open & pending', unrealised>=0?'var(--buy)':'var(--sell)'],
-    ['Realised PnL', fp(realised), 'All closed (TP, SL, time exit)', realised>=0?'var(--buy)':'var(--sell)'],
-    ['Win Rate', closedLen ? wr+'%' : '—', closedLen ? ('from '+closedLen+' closed · wins = TP hits + profitable time exits') : 'Need closed trades', !closedLen?'var(--m1)':wr>=55?'var(--buy)':wr>=40?'#F5C842':'var(--sell)'],
-  ].map(([l,v,sub,c]) => card(l,v,sub,c)).join('');
+    card('Active Trades', openCnt+' open', hzLabel + ' horizon', 'var(--ac)'),
+    card('Unrealised PnL', fp(unrealised), 'Open & pending', unrealised>=0?'var(--buy)':'var(--sell)'),
+    card('Realised PnL', fp(realised), 'All closed (TP, SL, time exit)', realised>=0?'var(--buy)':'var(--sell)'),
+    card('Win Rate', closedLen ? wr+'%' : '—', closedLen ? ('from '+closedLen+' closed · wins = TP hits + profitable time exits') : 'Need closed trades', wrColor(wr)),
+    sideCard('Buy-side (Long)', buySide, 'var(--buy)'),
+    sideCard('Sell-side (Short)', sellSide, 'var(--sell)'),
+  ].join('');
 }
 
 function switchHistHz(hzKey) {

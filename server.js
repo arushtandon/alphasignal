@@ -823,6 +823,21 @@ function calcSupertrend(daily, period = 10, multiplier = 3) {
   };
 }
 
+// Per-horizon Supertrend params: faster/tighter for short, slower/wider for long.
+// This lets each timeframe read its own trend regime instead of one shared ST.
+const SUPERTREND_PARAMS = {
+  short:  { period: 7,  mult: 2 },
+  medium: { period: 10, mult: 3 },
+  long:   { period: 14, mult: 4 }
+};
+function calcSupertrendByHorizon(daily) {
+  return {
+    short:  calcSupertrend(daily, SUPERTREND_PARAMS.short.period,  SUPERTREND_PARAMS.short.mult),
+    medium: calcSupertrend(daily, SUPERTREND_PARAMS.medium.period, SUPERTREND_PARAMS.medium.mult),
+    long:   calcSupertrend(daily, SUPERTREND_PARAMS.long.period,   SUPERTREND_PARAMS.long.mult)
+  };
+}
+
 /** Build weekly OHLCV bars from daily series (for walk-forward backtest). */
 function dailyToWeeklyBars(daily) {
   if (!daily || !daily.length) return null;
@@ -898,7 +913,11 @@ function computeTrailingStopFromTech(tech, entry, hz, isSell, fund = null) {
   const r1 = tech.resistance1 || null;
   const ma50 = tech.ma50 || null;
   const ma200 = tech.ma200 || null;
-  const st = tech.supertrend || null;
+  const st = (tech.supertrendByHz && tech.supertrendByHz[hz]) || tech.supertrend || null;
+  const cur = tech.currentPrice || e;
+  // Minimum stop distance from CURRENT price — prevents noise stop-outs (a 0.75%
+  // stop on a 12-month trade was a major PnL killer). Wider room for longer holds.
+  const minGap = hz === 'short' ? 0.025 : hz === 'medium' ? 0.05 : 0.085;
   let sl;
 
   if (!isSell) {
@@ -919,6 +938,8 @@ function computeTrailingStopFromTech(tech, entry, hz, isSell, fund = null) {
     if (st?.direction === 'bull' && st.value && st.value < e * 0.999 && st.value > e * 0.80) {
       sl = Math.max(sl, st.value);
     }
+    // Never tighter than minGap below current price (room appropriate to the horizon).
+    sl = Math.min(sl, cur * (1 - minGap));
   } else {
     if (hz === 'short') {
       const candidates = [d20?.upper2, r1 && r1 > e * 1.001 ? r1 * 1.008 : null].filter(v => v != null && v > e * 1.001 && v < e * 1.12);
@@ -933,8 +954,118 @@ function computeTrailingStopFromTech(tech, entry, hz, isSell, fund = null) {
     if (st?.direction === 'bear' && st.value && st.value > e * 1.001 && st.value < e * 1.20) {
       sl = Math.min(sl, st.value);
     }
+    // Never tighter than minGap above current price.
+    sl = Math.max(sl, cur * (1 + minGap));
   }
   return sl ? roundPrice(sl) : null;
+}
+
+/** First profit target (TP1) — deliberately set CLOSER than the stop so it is hit
+ *  more often than not; once hit we book a partial AND move the remainder's stop to
+ *  breakeven, so a TP1 trade can no longer become a loss. This (plus entry quality)
+ *  is what lifts the win rate while the trailed remainder still rides big moves.
+ *  TP1 distance = ratio × stop distance (ratio<1 ⇒ P(TP1 first) > P(stop first)). */
+function computeFirstTargetFromTech(tech, entry, hz, isSell, stopLevel = null) {
+  if (!tech || !entry || entry <= 0) return null;
+  const atr = tech.atr || entry * 0.02;
+  const ratio = 0.62; // TP1 ≈ 62% of the stop distance → ~60%+ raw hit rate
+  const floorPct = hz === 'short' ? 0.015 : hz === 'medium' ? 0.03 : 0.05;
+  const capPct   = hz === 'short' ? 0.08 : hz === 'medium' ? 0.16 : 0.32;
+  if (!isSell) {
+    const stopDist = stopLevel && stopLevel < entry ? (entry - stopLevel) : (hz === 'short' ? 2.0 : hz === 'medium' ? 3.0 : 5.0) * atr;
+    let tp = entry + ratio * stopDist;
+    const r1 = tech.resistance1;
+    if (r1 && r1 > entry * (1 + floorPct) && r1 < tp) tp = r1; // nearer resistance = even easier hit
+    tp = Math.min(Math.max(tp, entry * (1 + floorPct)), entry * (1 + capPct));
+    return roundPrice(tp);
+  } else {
+    const stopDist = stopLevel && stopLevel > entry ? (stopLevel - entry) : (hz === 'short' ? 2.0 : hz === 'medium' ? 3.0 : 5.0) * atr;
+    let tp = entry - ratio * stopDist;
+    const s1 = tech.support1;
+    if (s1 && s1 < entry * (1 - floorPct) && s1 > tp) tp = s1;
+    tp = Math.max(Math.min(tp, entry * (1 - floorPct)), entry * (1 - capPct));
+    return roundPrice(tp);
+  }
+}
+
+/** Hysteresis signal-flip test — only exit when the picture TRULY reverses, not on
+ *  a 1-point dip below the 62 entry threshold (that churn was destroying win rate). */
+function signalFlipped(sig, isSell) {
+  if (!sig) return false;
+  return isSell
+    ? (sig.buyScore >= 62 || sig.sellScore < 45)   // short exits when longs take over or conviction collapses
+    : (sig.sellScore >= 62 || sig.buyScore < 45);  // long exits when shorts take over or conviction collapses
+}
+
+/** Unified HYBRID exit simulator used by BOTH the backtest and the history P&L
+ *  refresh, so reported win rates match what the live rules would have done.
+ *  Books a partial profit at TP1 (locks a win) and trails the remainder; exits the
+ *  remainder on trailing-SL touch, a true signal reversal, or the horizon time cap.
+ *  Returns blended return, status, exit index, and whether TP1 was hit. */
+async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, fund = null) {
+  if (!data || entryIdx == null || !(entry > 0)) return null;
+  const holdDays = horizonHoldDaysServer(hz);
+  const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
+  const entryTech = techAtBoundedIndex(data, weeklyAll, entryIdx);
+  const atrEntry = entryTech.atr || entry * 0.02;
+  let trailingSl = computeTrailingStopFromTech(entryTech, entry, hz, isSell, fund);
+  const tp1 = computeFirstTargetFromTech(entryTech, entry, hz, isSell, trailingSl);
+  const PARTIAL = 0.5;
+  // Chandelier multiple for the post-TP1 runner — wide so winners can actually run.
+  const runK = hz === 'short' ? 3.0 : hz === 'medium' ? 4.0 : 5.5;
+  let tp1Hit = false, realized = 0, remaining = 1.0, _yc = 0;
+  let peak = isSell ? entry : entry; // best favorable price since entry
+
+  const longRet  = px => (px - entry) / entry;
+  const shortRet = px => (entry - px) / entry;
+  const ret = px => isSell ? shortRet(px) : longRet(px);
+  const finish = (status, exitIdx, px) => ({ ret: realized + remaining * ret(px), status, exitIdx, tp1Hit, stopLoss: trailingSl, exitPrice: px });
+
+  for (let j = entryIdx + 1; j <= maxJ; j++) {
+    if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r));
+    const bar = data[j];
+    // 1) TP1 partial — lock a win, move remainder stop to breakeven
+    if (!tp1Hit && tp1) {
+      if (!isSell && bar.h >= tp1) {
+        realized += PARTIAL * longRet(tp1); remaining -= PARTIAL; tp1Hit = true;
+        trailingSl = trailingSl == null ? entry : Math.max(trailingSl, entry);
+      } else if (isSell && bar.l <= tp1) {
+        realized += PARTIAL * shortRet(tp1); remaining -= PARTIAL; tp1Hit = true;
+        trailingSl = trailingSl == null ? entry : Math.min(trailingSl, entry);
+      }
+    }
+
+    if (!tp1Hit) {
+      // ── PRE-TP1: tight, technicals-driven stop + hysteresis signal-flip exit ──
+      const barTech = techAtBoundedIndex(data, weeklyAll, j);
+      const barSig = computeQuantSignal(barTech, fund, hz);
+      const eodSl = computeTrailingStopFromTech(barTech, entry, hz, isSell, fund);
+      if (eodSl && Number.isFinite(eodSl)) {
+        trailingSl = trailingSl == null ? eodSl : (isSell ? Math.min(trailingSl, eodSl) : Math.max(trailingSl, eodSl));
+      }
+      if (!isSell && trailingSl && bar.l <= trailingSl) return finish('sl_hit', j, trailingSl);
+      if (isSell && trailingSl && bar.h >= trailingSl)  return finish('sl_hit', j, trailingSl);
+      if (signalFlipped(barSig, isSell)) return finish('signal_exit', j, bar.c);
+    } else {
+      // ── POST-TP1: let the runner RUN. Wide chandelier trail off the favorable
+      //    extreme, floored at breakeven; no signal-flip exit (breakeven protects). ──
+      if (!isSell) {
+        peak = Math.max(peak, bar.h);
+        const chand = Math.max(entry, peak - runK * atrEntry);
+        trailingSl = trailingSl == null ? chand : Math.max(trailingSl, chand);
+        if (bar.l <= trailingSl) return finish('tp1_then_sl', j, trailingSl);
+      } else {
+        peak = Math.min(peak, bar.l);
+        const chand = Math.min(entry, peak + runK * atrEntry);
+        trailingSl = trailingSl == null ? chand : Math.min(trailingSl, chand);
+        if (bar.h >= trailingSl) return finish('tp1_then_sl', j, trailingSl);
+      }
+    }
+    // horizon time cap
+    if (j === maxJ) return finish(tp1Hit ? 'tp1_then_time' : 'time_limit', j, bar.c);
+  }
+  // Still open at the last available bar (history mark-to-market on the remainder).
+  return finish(tp1Hit ? 'tp1_open' : 'open', maxJ, data[maxJ].c);
 }
 
 /** Each ticker may appear in only ONE buy horizon and ONE sell horizon (best score wins). */
@@ -1584,28 +1715,73 @@ function computeQuantSignal(tech, fund, hz) {
     sell=sellGates>=5.5?86:sellGates>=4.5?73:sellGates>=3.5?60:sellGates>=2.5?48:Math.min(22,Math.round(sellGates*10));
   }
 
-  // Supertrend alignment — boost when validated by backtest on this symbol (if available)
-  // or when a fresh flip confirms direction. Strong Buy/Sell when flip + score already ≥62.
-  const st = tech.supertrend;
-  if (st) {
-    const stBtOk = !tech._supertrendBacktestWR || tech._supertrendBacktestWR >= 52;
-    if (stBtOk && st.direction === 'bull' && buy > sell) {
-      if (st.flippedBull && buy >= 58) {
-        buy = Math.min(92, buy + 10);
-        condBuy.unshift('Supertrend Strong Buy (fresh bull flip)');
-      } else if (buy >= 62) {
-        buy = Math.min(90, buy + 5);
-        condBuy.push('Supertrend bullish');
-      }
+  // ── SUPERTREND as a core PER-TIMEFRAME trend filter (not just a cosmetic boost) ──
+  // Each horizon reads its own Supertrend (fast for short, slow for long). Rule:
+  //   • Don't BUY against the timeframe's Supertrend (bear ST caps the buy below the
+  //     Buy threshold) UNLESS price just flipped bull (fresh reversal entry).
+  //   • Confirm/boost when ST agrees; Strong on a fresh flip.
+  //   • Mirror for SELL.
+  // This makes Supertrend a real gate across all timeframes, as requested.
+  const stHz = (tech.supertrendByHz && tech.supertrendByHz[hz]) || tech.supertrend || null;
+  if (stHz) {
+    const stBtOk = !tech._supertrendBacktestWR || tech._supertrendBacktestWR >= 50;
+    if (stHz.direction === 'bull') {
+      if (stHz.flippedBull && buy >= 50) { buy = Math.min(94, buy + 12); condBuy.unshift(`Supertrend ${hz} Strong Buy (fresh bull flip)`); }
+      else if (buy >= 55)               { buy = Math.min(92, buy + 6);  condBuy.push(`Supertrend ${hz} bullish`); }
+    } else if (stHz.direction === 'bear') {
+      // Buying against the timeframe trend — only allowed as an oversold bounce, and capped.
+      if (!stHz.flippedBull) { buy = Math.min(buy, 58); condBuy.push(`Below ${hz} Supertrend — buy capped`); }
     }
-    if (stBtOk && st.direction === 'bear' && sell > buy) {
-      if (st.flippedBear && sell >= 58) {
-        sell = Math.min(88, sell + 10);
-        condSell.unshift('Supertrend Strong Sell (fresh bear flip)');
-      } else if (sell >= 62) {
-        sell = Math.min(86, sell + 5);
-        condSell.push('Supertrend bearish');
-      }
+    if (stHz.direction === 'bear') {
+      if (stHz.flippedBear && sell >= 50) { sell = Math.min(92, sell + 12); condSell.unshift(`Supertrend ${hz} Strong Sell (fresh bear flip)`); }
+      else if (sell >= 55)                { sell = Math.min(90, sell + 6);  condSell.push(`Supertrend ${hz} bearish`); }
+    } else if (stHz.direction === 'bull') {
+      if (!stHz.flippedBear) { sell = Math.min(sell, 58); condSell.push(`Above ${hz} Supertrend — sell capped`); }
+    }
+    // Backtest-validated extra confidence (when WR known and strong)
+    if (stBtOk && tech._supertrendBacktestWR >= 60) {
+      if (stHz.direction === 'bull' && buy >= 62) buy = Math.min(95, buy + 2);
+      if (stHz.direction === 'bear' && sell >= 62) sell = Math.min(93, sell + 2);
+    }
+  }
+
+  // ── STRICT SELECTIVE SHORTS ─────────────────────────────────────────────────
+  // Shorting a broadly-rising universe loses money (history: SELL win rate ~12%).
+  // A short is only allowed to reach "Sell" (≥62) when a real bearish confluence
+  // exists. Otherwise we cap it below the threshold so it never gets recommended.
+  //
+  // Required confluence:
+  //   1. Structural downtrend  — price below the 200-DMA
+  //   2. Regime not bullish    — regime is bear/neutral, never bull
+  //   3. Timeframe Supertrend bear — this horizon's ST points down
+  //   4. Real distribution     — OBV falling / LH-LL structure / down-vol (not a
+  //                              low-volume "fake" dip; the closest proxy we have to
+  //                              order-book "real vs fake" pressure without L2 data)
+  //   5. Fundamentals not strong — don't short a high-growth name into a squeeze
+  //   6. Earnings-event aware  — avoid shorting right before earnings (squeeze risk)
+  if (sell >= 62) {
+    const stBearHz = stHz && stHz.direction === 'bear';
+    const realDistribution = (obvBullish === false) || bearStruct === true
+      || rsiFalling === true || (volConf === 'bearish') || (volRatio >= 1.2 && rsi < 45);
+    const epsG = fund?.earningsGrowth ?? null;
+    const revG = fund?.revenueGrowth ?? null;
+    const fundamentallyStrong = (epsG != null && epsG >= 15) && (revG != null && revG >= 12);
+    // Earnings proximity (only applied when the date is known; no-op otherwise).
+    const dte = fund?.daysToEarnings ?? tech?.daysToEarnings ?? null;
+    const earningsSoon = dte != null && dte >= 0 && dte <= 5;
+
+    const shortValid = aboveMa200 === false
+      && regime !== 'bull'
+      && stBearHz
+      && realDistribution
+      && !fundamentallyStrong
+      && !earningsSoon;
+
+    if (!shortValid) {
+      sell = Math.min(sell, 55); // demote to Hold — not a high-conviction short
+    } else {
+      condSell.unshift('Strict short: below MA200 + ST bear + distribution');
+      if (epsG != null && epsG < 0) condSell.push(`Earnings declining ${epsG}%`);
     }
   }
 
@@ -1668,33 +1844,30 @@ function deriveActionRating(buy, sell) {
 
 
 /**
- * Walk-forward backtest aligned with live computeQuantSignal + trailing SL (no TP).
- * Uses the last ~5 years of daily bars. Reports supertrendWinRate separately for validation.
+ * Walk-forward backtest aligned with live computeQuantSignal + the SAME hybrid exit
+ * (TP1 partial + trailing remainder + hysteresis signal-flip) used in live history.
+ * Uses the last ~5 years of daily bars. Reports supertrendWinRate separately.
  */
 async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {}) {
   if (!data || data.length < BACKTEST_WARMUP + 30) return null;
   const windowBars = opts.windowBars || BACKTEST_WINDOW_BARS;
   const entryStep = Math.max(1, opts.entryStep || 2);
   const windowStart = Math.max(BACKTEST_WARMUP, data.length - windowBars);
-  const holdDays = horizonHoldDaysServer(hz);
   const weeklyAll = weeklyData || dailyToWeeklyBars(data);
 
-  let wins = 0, losses = 0, trades = 0, totalReturn = 0;
+  let wins = 0, losses = 0, trades = 0, totalReturn = 0, grossWin = 0, grossLoss = 0;
   let stWins = 0, stTrades = 0;
   let nextAllowed = windowStart;
-  // Yield to the event loop periodically so this CPU-bound walk-forward never
-  // blocks long enough to trip Render's health check (502) and so the GC can
-  // reclaim the many short-lived tech objects (avoids OOM on the 512MB tier).
   let _yc = 0;
-  const _yield = async () => { if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r)); };
 
   for (let i = windowStart; i < data.length - 2; i += entryStep) {
     if (i < nextAllowed) continue;
-    await _yield();
+    if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r));
     const tech = techAtBoundedIndex(data, weeklyAll, i);
     const sig = computeQuantSignal(tech, fund, hz);
-    const st = tech.supertrend;
+    const stHz = (tech.supertrendByHz && tech.supertrendByHz[hz]) || tech.supertrend;
 
+    // Entry only on a real, dominant signal (same 62 threshold as live picks).
     const buyOk = sig.buyScore >= 62 && sig.buyScore > sig.sellScore;
     const sellOk = sig.sellScore >= 62 && sig.sellScore > sig.buyScore;
     if (!buyOk && !sellOk) continue;
@@ -1704,66 +1877,16 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
     const entry = data[i + 1]?.o ?? data[i].c;
     if (!entry || entry <= 0) continue;
 
-    let trailingSl = computeTrailingStopFromTech(tech, entry, hz, isSell, fund);
-    if (!trailingSl || !Number.isFinite(trailingSl)) continue;
-    if (isBuy && trailingSl >= entry * 0.999) continue;
-    if (isSell && trailingSl <= entry * 1.001) continue;
+    const res = await simulateHybridExit(data, i + 1, entry, hz, isSell, weeklyAll, fund);
+    if (!res || res.exitIdx == null) continue;
 
-    let exitPnl = null;
-    let exitIdx = -1;
-    const maxJ = Math.min(i + holdDays, data.length - 1);
+    trades++;
+    totalReturn += res.ret;
+    if (res.ret > 0) { wins++; grossWin += res.ret; } else { losses++; grossLoss += Math.abs(res.ret); }
+    nextAllowed = res.exitIdx + 1;
 
-    for (let j = i + 1; j <= maxJ; j++) {
-      await _yield();
-      const barTech = techAtBoundedIndex(data, weeklyAll, j);
-      const barSig = computeQuantSignal(barTech, fund, hz);
-
-      if (isBuy && (barSig.action === 'Hold' || barSig.action === 'Sell' || barSig.buyScore < 62)) {
-        exitPnl = (data[j].c - entry) / entry;
-        exitIdx = j;
-        break;
-      }
-      if (isSell && (barSig.action === 'Hold' || barSig.action === 'Buy' || barSig.sellScore < 62)) {
-        exitPnl = (entry - data[j].c) / entry;
-        exitIdx = j;
-        break;
-      }
-
-      const eodSl = computeTrailingStopFromTech(barTech, entry, hz, isSell, fund);
-      if (eodSl && Number.isFinite(eodSl)) {
-        if (isBuy) trailingSl = Math.max(trailingSl, eodSl);
-        else trailingSl = Math.min(trailingSl, eodSl);
-      }
-
-      if (isBuy && data[j].l <= trailingSl) {
-        exitPnl = (trailingSl - entry) / entry;
-        exitIdx = j;
-        break;
-      }
-      if (isSell && data[j].h >= trailingSl) {
-        exitPnl = (entry - trailingSl) / entry;
-        exitIdx = j;
-        break;
-      }
-
-      if (j === maxJ) {
-        exitPnl = isBuy ? (data[j].c - entry) / entry : (entry - data[j].c) / entry;
-        exitIdx = j;
-      }
-    }
-
-    if (exitPnl != null && exitIdx >= 0) {
-      trades++;
-      totalReturn += exitPnl;
-      if (exitPnl > 0) wins++; else losses++;
-      nextAllowed = exitIdx + 1;
-
-      const stAligned = (isBuy && st?.direction === 'bull') || (isSell && st?.direction === 'bear');
-      if (stAligned) {
-        stTrades++;
-        if (exitPnl > 0) stWins++;
-      }
-    }
+    const stAligned = (isBuy && stHz?.direction === 'bull') || (isSell && stHz?.direction === 'bear');
+    if (stAligned) { stTrades++; if (res.ret > 0) stWins++; }
   }
 
   if (trades < 5) return null;
@@ -1771,10 +1894,10 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
     winRate: Math.round(wins / trades * 100),
     trades,
     avgReturnPct: parseFloat((totalReturn / trades * 100).toFixed(2)),
-    profitFactor: losses > 0 ? parseFloat((wins / losses).toFixed(2)) : 99,
+    profitFactor: grossLoss > 0 ? parseFloat((grossWin / grossLoss).toFixed(2)) : 99,
     supertrendWinRate: stTrades >= 5 ? Math.round(stWins / stTrades * 100) : null,
     supertrendTrades: stTrades,
-    trailingSL: true,
+    hybridExit: true,
     windowYears: 5
   };
 }
@@ -4054,6 +4177,54 @@ const newsCache  = new Map();
 const TECH_TTL   = 8 * 60 * 1000;
 const NEWS_TTL   = 30 * 60 * 1000;
 
+// ── Previously-missing confirmation indicators (now computed so live + backtest
+//    use the full feature set instead of silently defaulting to null/false). ──
+
+/** On-Balance Volume direction: accumulation (true) vs distribution (false). */
+function calcOBVSignal(daily, lookback = 20) {
+  if (!daily || daily.length < lookback + 2) return null;
+  const rec = daily.slice(-(lookback + 1));
+  let obv = 0; const series = [];
+  for (let i = 1; i < rec.length; i++) {
+    const v = rec[i].v || 0;
+    if (rec[i].c > rec[i - 1].c) obv += v;
+    else if (rec[i].c < rec[i - 1].c) obv -= v;
+    series.push(obv);
+  }
+  const half = Math.floor(series.length / 2);
+  if (half < 2) return null;
+  const fa = series.slice(0, half).reduce((a, b) => a + b, 0) / half;
+  const sa = series.slice(half).reduce((a, b) => a + b, 0) / (series.length - half);
+  if (sa > fa * 1.0001) return true;
+  if (sa < fa * 0.9999) return false;
+  return null;
+}
+
+/** RSI slope over `back` bars → momentum rising / falling. */
+function calcRsiSlope(closes, period = 14, back = 3) {
+  if (!closes || closes.length < period * 2 + back + 2) return { rising: false, falling: false };
+  const now = calcRSI(closes, period);
+  const prev = calcRSI(closes.slice(0, closes.length - back), period);
+  if (now == null || prev == null) return { rising: false, falling: false };
+  return { rising: now > prev + 0.5, falling: now < prev - 0.5 };
+}
+
+/** Swing structure: HH+HL (bull) vs LH+LL (bear) from recent 2-bar pivots. */
+function detectSwingStructure(daily, lookback = 40) {
+  if (!daily || daily.length < 12) return { bull: false, bear: false };
+  const rec = daily.slice(-Math.min(lookback, daily.length));
+  const highs = [], lows = [];
+  for (let i = 2; i < rec.length - 2; i++) {
+    if (rec[i].h > rec[i - 1].h && rec[i].h > rec[i - 2].h && rec[i].h > rec[i + 1].h && rec[i].h > rec[i + 2].h) highs.push(rec[i].h);
+    if (rec[i].l < rec[i - 1].l && rec[i].l < rec[i - 2].l && rec[i].l < rec[i + 1].l && rec[i].l < rec[i + 2].l) lows.push(rec[i].l);
+  }
+  const hh = highs.length >= 2 && highs[highs.length - 1] > highs[highs.length - 2];
+  const hl = lows.length >= 2 && lows[lows.length - 1] > lows[lows.length - 2];
+  const lh = highs.length >= 2 && highs[highs.length - 1] < highs[highs.length - 2];
+  const ll = lows.length >= 2 && lows[lows.length - 1] < lows[lows.length - 2];
+  return { bull: hh && hl, bear: lh && ll };
+}
+
 function buildFullTechResult(sym, daily, weekly) {
   const closes = daily.map(d => d.c);
   const cp = closes[closes.length - 1];
@@ -4090,6 +4261,16 @@ function buildFullTechResult(sym, daily, weekly) {
     weeklyMA50  = calcSMA(wc, 50);
   }
 
+  // Previously-dead confirmation signals — now populated for live AND backtest.
+  const obvBullish = calcOBVSignal(daily, 20);
+  const _rsiSlope = calcRsiSlope(closes, 14, 3);
+  const macdPrev = calcMACDFull(closes.slice(0, -1));
+  const macdTurningUp   = macd && macdPrev && macd.histogram != null && macdPrev.histogram != null ? macd.histogram > macdPrev.histogram : null;
+  const macdTurningDown = macd && macdPrev && macd.histogram != null && macdPrev.histogram != null ? macd.histogram < macdPrev.histogram : null;
+  const _struct = detectSwingStructure(daily, 40);
+  const healthyPullback = !!(aboveMa50 && trend20 !== 'downtrend' && ma20 && cp <= ma20 * 1.02 && ma50 && cp >= ma50 * 0.97
+    && volume && volume.relativeVolume != null && volume.relativeVolume < 1.0);
+
   return {
     symbol: sym, currentPrice: cp, ma20, ma50, ma200,
     aboveMa20, aboveMa50, aboveMa200, bullishMAs, totalMAs,
@@ -4115,7 +4296,13 @@ function buildFullTechResult(sym, daily, weekly) {
       return c < c5*0.98 ? 'downtrend' : c > c5*1.02 ? 'uptrend' : 'sideways';
     })(),
     weeklyRSI, weeklyTrend, weeklyMA50,
+    obvBullish,
+    rsiRising: _rsiSlope.rising, rsiFalling: _rsiSlope.falling,
+    macdTurningUp, macdTurningDown,
+    bullishStructure: _struct.bull, bearishStructure: _struct.bear,
+    healthyPullback,
     supertrend: calcSupertrend(daily),
+    supertrendByHz: calcSupertrendByHorizon(daily),
     summary: `RSI ${rsi} (${rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : 'neutral'}), ADX ${adx ?? 'N/A'}, ${bullishMAs}/${totalMAs} MAs bullish, ${trend20}, S1@${support1}, R1@${resistance1}`
   };
 }
@@ -5980,7 +6167,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260617-fmp-ultimate-v7.7.2',
+    server_build: '20260617-fmp-ultimate-v7.8.0',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -8765,9 +8952,11 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
       row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = '';
       continue;
     }
-    // No fixed TP — capture full move; exit via trailing SL or signal flip.
+    // Hybrid exit: TP1 = first target where we book a partial (locks a win), then
+    // trail the remainder (no hard TP2 — let winners run via the trailing stop).
+    const tp1 = computeFirstTargetFromTech(tech, e, hz, isSell, sl);
     row[hz + 'Entry'] = String(roundPrice(e));
-    row[hz + 'Target1'] = '';
+    row[hz + 'Target1'] = tp1 ? String(tp1) : '';
     row[hz + 'Target2'] = '';
     row[hz + 'StopLoss'] = String(sl);
     row[hz + 'TrailingSL'] = true;
@@ -9474,8 +9663,9 @@ function horizonTimeLimitExceededServer(hz, entryDateOrIso) {
 }
 
 /**
- * Trailing-SL + signal-flip exit simulation (no TP). Walks daily bars from entry,
- * ratchets SL at each EOD from fresh technicals, exits on SL touch or signal flip.
+ * History P&L via the SHARED hybrid exit (TP1 partial + trailing remainder +
+ * hysteresis signal-flip), so live trade outcomes match the backtest exactly.
+ * Returns canonical status + blended return + representative exit price.
  */
 async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) {
   if (!Array.isArray(bars) || !bars.length || !entry) return null;
@@ -9485,53 +9675,28 @@ async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) {
     if ((bars[i].t || 0) * 1000 >= entryMs) { startIdx = i; break; }
   }
   if (startIdx < 0) return null;
-  const maxHold = horizonHoldDaysServer(hz);
-  let trailingSl = null;
-  let _yc = 0;
-
-  for (let j = startIdx; j < bars.length; j++) {
-    if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r));
-    const barTech = techAtBoundedIndex(bars, weeklyAll, j);
-    const barSig = computeQuantSignal(barTech, null, hz);
-
-    if (!isSell && (barSig.action === 'Hold' || barSig.action === 'Sell' || barSig.buyScore < 62)) {
-      return { status: 'signal_exit', exit: bars[j].c, stopLoss: trailingSl };
-    }
-    if (isSell && (barSig.action === 'Hold' || barSig.action === 'Buy' || barSig.sellScore < 62)) {
-      return { status: 'signal_exit', exit: bars[j].c, stopLoss: trailingSl };
-    }
-
-    const eodSl = computeTrailingStopFromTech(barTech, entry, hz, isSell);
-    if (eodSl && Number.isFinite(eodSl)) {
-      if (trailingSl == null) trailingSl = eodSl;
-      else trailingSl = isSell ? Math.min(trailingSl, eodSl) : Math.max(trailingSl, eodSl);
-    }
-
-    if (!isSell && trailingSl && bars[j].l <= trailingSl) {
-      return { status: 'sl_hit', exit: trailingSl, stopLoss: trailingSl };
-    }
-    if (isSell && trailingSl && bars[j].h >= trailingSl) {
-      return { status: 'sl_hit', exit: trailingSl, stopLoss: trailingSl };
-    }
-
-    if (j - startIdx >= maxHold) {
-      return { status: 'time_limit', exit: bars[j].c, stopLoss: trailingSl };
-    }
-  }
-  return trailingSl ? { status: 'open', stopLoss: trailingSl } : null;
+  const res = await simulateHybridExit(bars, startIdx, entry, hz, isSell, weeklyAll, null);
+  if (!res) return null;
+  const open = res.status === 'open' || res.status === 'tp1_open';
+  let status;
+  if (open) status = 'open';
+  else if (res.status.startsWith('tp1')) status = res.ret > 0 ? 'tp1_hit' : 'sl_hit';
+  else if (res.status.includes('sl')) status = 'sl_hit';
+  else if (res.status.includes('signal')) status = 'signal_exit';
+  else status = 'time_limit';
+  return { status, ret: res.ret, exit: res.exitPrice, stopLoss: res.stopLoss, tp1Hit: res.tp1Hit, open };
 }
 
-/** Check if live signal has flipped against an open position — immediate exit. */
+/** Check if live signal has flipped against an open position — uses the same
+ *  HYSTERESIS as the backtest (true reversal only, not a 1-pt dip below 62). */
 function liveSignalFlipExit(ticker, hz, isSell, techMap) {
   const tech = techMap?.[ticker];
   if (!tech?.quantSignal?.[hz]) return null;
   const sig = tech.quantSignal[hz];
-  if (!isSell && (sig.action === 'Hold' || sig.action === 'Sell' || sig.buyScore < 62)) {
-    return { flipped: true, reason: sig.action === 'Sell' ? 'Sell' : 'Hold' };
-  }
-  if (isSell && (sig.action === 'Hold' || sig.action === 'Buy' || sig.sellScore < 62)) {
-    return { flipped: true, reason: sig.action === 'Buy' ? 'Buy' : 'Hold' };
-  }
+  if (!isSell && sig.sellScore >= 62) return { flipped: true, reason: 'Sell' };
+  if (isSell && sig.buyScore >= 62) return { flipped: true, reason: 'Buy' };
+  if (!isSell && sig.buyScore < 45) return { flipped: true, reason: 'Conviction lost' };
+  if (isSell && sig.sellScore < 45) return { flipped: true, reason: 'Conviction lost' };
   return null;
 }
 
@@ -9614,20 +9779,17 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
 
       const pathExit = (bars && entry) ? await simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) : null;
 
-      if (pathExit && pathExit.status !== 'open') {
-        const px = pathExit.exit;
-        h[hz + 'PnlDollar'] = (px - entry) * dir * shares;
-        h[hz + 'PnlPct'] = ((px - entry) / entry) * dir * 100;
+      if (pathExit) {
+        // res.ret is already directional (profit>0 for both long & short) and
+        // already blends the TP1 partial — use it directly, don't re-apply `dir`.
+        const cap = shares * entry || 10000;
+        h[hz + 'PnlPct'] = +(pathExit.ret * 100).toFixed(2);
+        h[hz + 'PnlDollar'] = +(pathExit.ret * cap).toFixed(2);
         h[hz + 'Status'] = pathExit.status;
-        h[hz + 'ExitPrice'] = px;
+        h[hz + 'Tp1Hit'] = !!pathExit.tp1Hit;
+        if (!pathExit.open && pathExit.exit != null) h[hz + 'ExitPrice'] = pathExit.exit;
         if (pathExit.stopLoss) h[hz + 'StopLoss'] = pathExit.stopLoss;
         if (pathExit.status === 'sl_hit') setSLCooldown(h.ticker, hz);
-        rowChanged = true;
-      } else if (pathExit?.stopLoss) {
-        h[hz + 'StopLoss'] = pathExit.stopLoss;
-        h[hz + 'PnlDollar'] = (curr - entry) * dir * shares;
-        h[hz + 'PnlPct'] = ((curr - entry) / entry) * dir * 100;
-        h[hz + 'Status'] = 'open';
         rowChanged = true;
       } else if (horizonTimeLimitExceededServer(hz, h.entryDate || h.timestamp)) {
         h[hz + 'PnlDollar'] = (curr - entry) * dir * shares;
