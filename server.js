@@ -1661,10 +1661,10 @@ function deriveActionRating(buy, sell) {
  * Walk-forward backtest aligned with live computeQuantSignal + trailing SL (no TP).
  * Uses the last ~5 years of daily bars. Reports supertrendWinRate separately for validation.
  */
-function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {}) {
+async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {}) {
   if (!data || data.length < BACKTEST_WARMUP + 30) return null;
   const windowBars = opts.windowBars || BACKTEST_WINDOW_BARS;
-  const entryStep = Math.max(1, opts.entryStep || 1);
+  const entryStep = Math.max(1, opts.entryStep || 2);
   const windowStart = Math.max(BACKTEST_WARMUP, data.length - windowBars);
   const holdDays = horizonHoldDaysServer(hz);
   const weeklyAll = weeklyData || dailyToWeeklyBars(data);
@@ -1672,9 +1672,15 @@ function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {}) {
   let wins = 0, losses = 0, trades = 0, totalReturn = 0;
   let stWins = 0, stTrades = 0;
   let nextAllowed = windowStart;
+  // Yield to the event loop periodically so this CPU-bound walk-forward never
+  // blocks long enough to trip Render's health check (502) and so the GC can
+  // reclaim the many short-lived tech objects (avoids OOM on the 512MB tier).
+  let _yc = 0;
+  const _yield = async () => { if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r)); };
 
   for (let i = windowStart; i < data.length - 2; i += entryStep) {
     if (i < nextAllowed) continue;
+    await _yield();
     const tech = techAtBoundedIndex(data, weeklyAll, i);
     const sig = computeQuantSignal(tech, fund, hz);
     const st = tech.supertrend;
@@ -1698,6 +1704,7 @@ function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {}) {
     const maxJ = Math.min(i + holdDays, data.length - 1);
 
     for (let j = i + 1; j <= maxJ; j++) {
+      await _yield();
       const barTech = techAtBoundedIndex(data, weeklyAll, j);
       const barSig = computeQuantSignal(barTech, fund, hz);
 
@@ -8848,9 +8855,9 @@ app.post('/api/analyze', async (req, res) => {
     const fund  = fundBySym[sym];
     const ohlcv = ohlcvBySym[sym];
     if (!tech) continue;
-    const btShort  = ohlcv ? backtestSignal(ohlcv, 'short', weeklyBySym[sym])  : null;
-    const btMedium = ohlcv ? backtestSignal(ohlcv, 'medium', weeklyBySym[sym]) : null;
-    const btLong   = ohlcv ? backtestSignal(ohlcv, 'long', weeklyBySym[sym])   : null;
+    const btShort  = ohlcv ? await backtestSignal(ohlcv, 'short', weeklyBySym[sym])  : null;
+    const btMedium = ohlcv ? await backtestSignal(ohlcv, 'medium', weeklyBySym[sym]) : null;
+    const btLong   = ohlcv ? await backtestSignal(ohlcv, 'long', weeklyBySym[sym])   : null;
     if (tech) {
       tech._supertrendBacktestWR = btShort?.supertrendWinRate ?? btMedium?.supertrendWinRate ?? null;
     }
@@ -9453,7 +9460,7 @@ function horizonTimeLimitExceededServer(hz, entryDateOrIso) {
  * Trailing-SL + signal-flip exit simulation (no TP). Walks daily bars from entry,
  * ratchets SL at each EOD from fresh technicals, exits on SL touch or signal flip.
  */
-function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) {
+async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) {
   if (!Array.isArray(bars) || !bars.length || !entry) return null;
   const weeklyAll = dailyToWeeklyBars(bars);
   let startIdx = -1;
@@ -9463,8 +9470,10 @@ function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) {
   if (startIdx < 0) return null;
   const maxHold = horizonHoldDaysServer(hz);
   let trailingSl = null;
+  let _yc = 0;
 
   for (let j = startIdx; j < bars.length; j++) {
+    if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r));
     const barTech = techAtBoundedIndex(bars, weeklyAll, j);
     const barSig = computeQuantSignal(barTech, null, hz);
 
@@ -9586,7 +9595,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         continue;
       }
 
-      const pathExit = (bars && entry) ? simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) : null;
+      const pathExit = (bars && entry) ? await simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) : null;
 
       if (pathExit && pathExit.status !== 'open') {
         const px = pathExit.exit;
