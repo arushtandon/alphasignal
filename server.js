@@ -8,6 +8,16 @@ const { buildFullUniverse, MARKET_LABEL: UNIVERSE_MARKET_LABEL } = require('./un
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Defense-in-depth: never let a single request-scoped bug crash-loop the whole
+// service on Render. Log loudly and keep serving. (The real fix is still to not
+// throw, but this prevents one bad code path from taking the site down.)
+process.on('unhandledRejection', (reason) => {
+  console.error('UNHANDLED REJECTION (kept alive):', reason && reason.stack ? reason.stack : reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION (kept alive):', err && err.stack ? err.stack : err);
+});
+
 app.use(express.json({ limit: '10mb' }));
 
 // ── Price headers ─────────────────────────────────────────────────────────
@@ -1273,6 +1283,7 @@ function computeQuantSignal(tech, fund, hz) {
   const rsi     = tech.rsi ?? 50;
   const ma50    = tech.ma50 ?? price;
   const ma200   = tech.ma200 ?? price;
+  const aboveMa20  = tech.aboveMa20  ?? null;
   const aboveMa50  = tech.aboveMa50  ?? false;
   const aboveMa200 = tech.aboveMa200 ?? false;
   const macdBull   = tech.macd?.trend === 'bullish';
@@ -1408,7 +1419,6 @@ function computeQuantSignal(tech, fund, hz) {
     else if (healthyPull===true||volRatio<0.80) buyGates+=0.5;
 
     // Falling-knife filters — block mean-reversion buys in active downtrends
-    const aboveMa20 = tech.aboveMa20 ?? null;
     const lowerCloses = tech.consecutiveLowerCloses ?? 0;
     if (aboveMa20 === false) {
       buyGates = Math.round(buyGates * 0.25);
@@ -5970,7 +5980,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260617-fmp-ultimate-v7.7.1b',
+    server_build: '20260617-fmp-ultimate-v7.7.2',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -8857,9 +8867,14 @@ app.post('/api/analyze', async (req, res) => {
     const fund  = fundBySym[sym];
     const ohlcv = ohlcvBySym[sym];
     if (!tech) continue;
-    const btShort  = ohlcv ? await backtestSignal(ohlcv, 'short', weeklyBySym[sym])  : null;
-    const btMedium = ohlcv ? await backtestSignal(ohlcv, 'medium', weeklyBySym[sym]) : null;
-    const btLong   = ohlcv ? await backtestSignal(ohlcv, 'long', weeklyBySym[sym])   : null;
+    let btShort = null, btMedium = null, btLong = null;
+    try {
+      btShort  = ohlcv ? await backtestSignal(ohlcv, 'short', weeklyBySym[sym])  : null;
+      btMedium = ohlcv ? await backtestSignal(ohlcv, 'medium', weeklyBySym[sym]) : null;
+      btLong   = ohlcv ? await backtestSignal(ohlcv, 'long', weeklyBySym[sym])   : null;
+    } catch (e) {
+      console.warn('backtest failed for', sym, '-', e.message);
+    }
     if (tech) {
       tech._supertrendBacktestWR = btShort?.supertrendWinRate ?? btMedium?.supertrendWinRate ?? null;
     }
