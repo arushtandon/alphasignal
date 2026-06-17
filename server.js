@@ -768,6 +768,175 @@ function calcATRFull(data, period = 14) {
   return parseFloat((trs.reduce((a, b) => a + b, 0) / period).toFixed(4));
 }
 
+/** Supertrend (ATR bands). Returns direction, value, and flip signals for Strong Buy/Sell. */
+function calcSupertrend(daily, period = 10, multiplier = 3) {
+  if (!daily || daily.length < period + 3) return null;
+  let finalUpper = null, finalLower = null, direction = 1, prevDir = 1;
+  for (let i = period; i < daily.length; i++) {
+    const slice = daily.slice(0, i + 1);
+    const atr = calcATRFull(slice, period);
+    if (!atr || atr <= 0) continue;
+    const hl2 = (daily[i].h + daily[i].l) / 2;
+    const bu = hl2 + multiplier * atr;
+    const bl = hl2 - multiplier * atr;
+    if (finalUpper == null) {
+      finalUpper = bu; finalLower = bl; direction = daily[i].c >= bl ? 1 : -1;
+      prevDir = direction;
+      continue;
+    }
+    finalUpper = (bu < finalUpper || daily[i - 1].c > finalUpper) ? bu : finalUpper;
+    finalLower = (bl > finalLower || daily[i - 1].c < finalLower) ? bl : finalLower;
+    prevDir = direction;
+    if (direction === 1) {
+      if (daily[i].c < finalLower) direction = -1;
+    } else if (daily[i].c > finalUpper) {
+      direction = 1;
+    }
+  }
+  const stVal = direction === 1 ? finalLower : finalUpper;
+  if (stVal == null || !Number.isFinite(stVal)) return null;
+  const flippedBull = direction === 1 && prevDir === -1;
+  const flippedBear = direction === -1 && prevDir === 1;
+  return {
+    value: parseFloat(stVal.toFixed(4)),
+    direction: direction === 1 ? 'bull' : 'bear',
+    flippedBull, flippedBear,
+    signal: flippedBull ? 'Strong Buy' : flippedBear ? 'Strong Sell' : direction === 1 ? 'Buy' : 'Sell'
+  };
+}
+
+/** Build weekly OHLCV bars from daily series (for walk-forward backtest). */
+function dailyToWeeklyBars(daily) {
+  if (!daily || !daily.length) return null;
+  const weeks = [];
+  let w = null;
+  for (const bar of daily) {
+    const d = new Date((bar.t || 0) * 1000);
+    const weekKey = `${d.getUTCFullYear()}-W${Math.floor((d.getUTCDate() + 6) / 7)}-${d.getUTCMonth()}`;
+    if (!w || w.key !== weekKey) {
+      if (w) weeks.push(w);
+      w = { key: weekKey, t: bar.t, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: bar.v || 0 };
+    } else {
+      w.h = Math.max(w.h, bar.h);
+      w.l = Math.min(w.l, bar.l);
+      w.c = bar.c;
+      w.v = (w.v || 0) + (bar.v || 0);
+    }
+  }
+  if (w) weeks.push(w);
+  return weeks.length >= 10 ? weeks : null;
+}
+
+function sliceWeeklyForDailyIndex(daily, weeklyAll, idx) {
+  if (weeklyAll && weeklyAll.length) {
+    const cutT = daily[idx]?.t || 0;
+    const sliced = weeklyAll.filter(w => (w.t || 0) <= cutT);
+    if (sliced.length >= 10) return sliced;
+  }
+  return dailyToWeeklyBars(daily.slice(0, idx + 1));
+}
+
+const BACKTEST_WINDOW_BARS = 1260; // ~5 years of daily bars
+const BACKTEST_WARMUP = 220;
+
+function horizonHoldDaysServer(hz) {
+  return hz === 'short' ? 20 : hz === 'medium' ? 63 : 180;
+}
+
+/** Trailing stop from current technicals (no TP — capture full move, ratchet SL at EOD). */
+function computeTrailingStopFromTech(tech, entry, hz, isSell, fund = null) {
+  if (!tech || !entry || entry <= 0) return null;
+  const e = entry;
+  const atr = tech.atr || null;
+  const chan = tech.channels || null;
+  const d20 = chan?.daily20 || null;
+  const d50 = chan?.daily50 || null;
+  const w20 = chan?.weekly20 || null;
+  const w50 = chan?.weekly50 || null;
+  const s1 = tech.support1 || null;
+  const s2 = tech.support2 || null;
+  const r1 = tech.resistance1 || null;
+  const ma50 = tech.ma50 || null;
+  const ma200 = tech.ma200 || null;
+  const st = tech.supertrend || null;
+  let sl;
+
+  if (!isSell) {
+    if (hz === 'short') {
+      const chanSL = d20?.lower2 ?? null;
+      const srSL = s1 && s1 < e * 0.999 && s1 > e * 0.92 ? s1 * (tech.s1Confluence ? 0.992 : 0.994) : null;
+      const candidates = [chanSL, srSL].filter(v => v != null && v < e * 0.999 && v > e * 0.88);
+      sl = candidates.length ? Math.max(...candidates) : (atr ? e - 2.0 * atr : e * 0.975);
+    } else if (hz === 'medium') {
+      const candidates = [w20?.lower1, d20?.lower2, s2 && s2 < e * 0.995 ? s2 * 0.993 : null, s1 && s1 < e * 0.995 ? s1 * 0.993 : null, ma50 ? ma50 * 0.97 : null]
+        .filter(v => v != null && v < e * 0.998 && v > e * 0.85);
+      sl = candidates.length ? Math.max(...candidates) : (atr ? e - 3.0 * atr : e * 0.94);
+    } else {
+      const candidates = [w20?.lower2, w50?.lower1, ma200 ? ma200 * 0.96 : null]
+        .filter(v => v != null && v < e * 0.998 && v > e * 0.78);
+      sl = candidates.length ? Math.max(...candidates) : (atr ? e - 5.5 * atr : e * 0.88);
+    }
+    if (st?.direction === 'bull' && st.value && st.value < e * 0.999 && st.value > e * 0.80) {
+      sl = Math.max(sl, st.value);
+    }
+  } else {
+    if (hz === 'short') {
+      const candidates = [d20?.upper2, r1 && r1 > e * 1.001 ? r1 * 1.008 : null].filter(v => v != null && v > e * 1.001 && v < e * 1.12);
+      sl = candidates.length ? Math.min(...candidates) : (atr ? e + 2.0 * atr : e * 1.028);
+    } else if (hz === 'medium') {
+      const candidates = [w20?.upper1, d20?.upper2, r1 && r1 > e ? r1 * 1.008 : null].filter(v => v != null && v > e * 1.001 && v < e * 1.15);
+      sl = candidates.length ? Math.min(...candidates) : (atr ? e + 3.0 * atr : e * 1.06);
+    } else {
+      const candidates = [w20?.upper2, w50?.upper1, ma200 ? ma200 * 1.04 : null].filter(v => v != null && v > e * 1.001 && v < e * 1.22);
+      sl = candidates.length ? Math.min(...candidates) : (atr ? e + 5.5 * atr : e * 1.12);
+    }
+    if (st?.direction === 'bear' && st.value && st.value > e * 1.001 && st.value < e * 1.20) {
+      sl = Math.min(sl, st.value);
+    }
+  }
+  return sl ? roundPrice(sl) : null;
+}
+
+/** Each ticker may appear in only ONE buy horizon and ONE sell horizon (best score wins). */
+function dedupeCrossTimeframePicks(dashData) {
+  if (!dashData || typeof dashData !== 'object') return dashData;
+  const buyPanes = [
+    { key: 'short', scoreKey: 'shortScore' },
+    { key: 'medium', scoreKey: 'mediumScore' },
+    { key: 'long', scoreKey: 'longScore' }
+  ];
+  const sellPanes = [
+    { key: 'shortSell', scoreKey: 'shortSellScore' },
+    { key: 'medSell', scoreKey: 'mediumSellScore' },
+    { key: 'longSell', scoreKey: 'longSellScore' }
+  ];
+  const bestBuy = new Map();
+  for (const p of buyPanes) {
+    for (const row of (dashData[p.key] || [])) {
+      if (!row?.ticker) continue;
+      const sc = row[p.scoreKey] || 0;
+      const cur = bestBuy.get(row.ticker);
+      if (!cur || sc > cur.score) bestBuy.set(row.ticker, { hz: p.key, score: sc });
+    }
+  }
+  for (const p of buyPanes) {
+    dashData[p.key] = (dashData[p.key] || []).filter(r => bestBuy.get(r.ticker)?.hz === p.key);
+  }
+  const bestSell = new Map();
+  for (const p of sellPanes) {
+    for (const row of (dashData[p.key] || [])) {
+      if (!row?.ticker) continue;
+      const sc = row[p.scoreKey] || 0;
+      const cur = bestSell.get(row.ticker);
+      if (!cur || sc > cur.score) bestSell.set(row.ticker, { hz: p.key, score: sc });
+    }
+  }
+  for (const p of sellPanes) {
+    dashData[p.key] = (dashData[p.key] || []).filter(r => bestSell.get(r.ticker)?.hz === p.key);
+  }
+  return dashData;
+}
+
 function findSupportResistance(data, lookback = 60) {
   const recent = data.slice(-Math.min(lookback, data.length));
   const pivotHighs = [], pivotLows = [];
@@ -1375,21 +1544,37 @@ function computeQuantSignal(tech, fund, hz) {
     sell=sellGates>=5.5?86:sellGates>=4.5?73:sellGates>=3.5?60:sellGates>=2.5?48:Math.min(22,Math.round(sellGates*10));
   }
 
+  // Supertrend alignment — boost when validated by backtest on this symbol (if available)
+  // or when a fresh flip confirms direction. Strong Buy/Sell when flip + score already ≥62.
+  const st = tech.supertrend;
+  if (st) {
+    const stBtOk = !tech._supertrendBacktestWR || tech._supertrendBacktestWR >= 52;
+    if (stBtOk && st.direction === 'bull' && buy > sell) {
+      if (st.flippedBull && buy >= 58) {
+        buy = Math.min(92, buy + 10);
+        condBuy.unshift('Supertrend Strong Buy (fresh bull flip)');
+      } else if (buy >= 62) {
+        buy = Math.min(90, buy + 5);
+        condBuy.push('Supertrend bullish');
+      }
+    }
+    if (stBtOk && st.direction === 'bear' && sell > buy) {
+      if (st.flippedBear && sell >= 58) {
+        sell = Math.min(88, sell + 10);
+        condSell.unshift('Supertrend Strong Sell (fresh bear flip)');
+      } else if (sell >= 62) {
+        sell = Math.min(86, sell + 5);
+        condSell.push('Supertrend bearish');
+      }
+    }
+  }
+
   // Clamp and mutual exclusivity
   buy  = Math.min(92,Math.max(0,Math.round(buy)));
   sell = Math.min(88,Math.max(0,Math.round(sell)));
   if (buy>55&&sell>55) { if(buy>=sell) sell=Math.min(sell,20); else buy=Math.min(buy,20); }
 
-  let action, rating;
-  if (buy>=sell) {
-    if      (buy>=84) { action='Buy';  rating='Strong Buy'; }
-    else if (buy>=66) { action='Buy';  rating='Buy';        }
-    else              { action='Hold'; rating='Hold';       }
-  } else {
-    if      (sell>=80) { action='Sell'; rating='Strong Sell'; }
-    else if (sell>=64) { action='Sell'; rating='Sell';        }
-    else               { action='Hold'; rating='Hold';        }
-  }
+  const { action, rating } = deriveActionRating(buy, sell);
 
   const gates = buy>=sell ? buyGates : sellGates;
 
@@ -1442,191 +1627,111 @@ function deriveActionRating(buy, sell) {
 }
 
 
-function backtestSignal(data, hz) {
-  // Short=1d-1mo(20d), Medium=1-3mo(90d=Danelfin 3M), Long=4-12mo(240d)
-  const holdDays = hz==='short'?20 : hz==='medium'?90 : 240;
-  const warmup   = hz==='short'?50 : hz==='medium'?100: 150;
-  const minBars  = hz==='short'?100: hz==='medium'?240: 420;
-  if (!data||data.length<minBars||data.length<warmup+holdDays+10) return null;
+/**
+ * Walk-forward backtest aligned with live computeQuantSignal + trailing SL (no TP).
+ * Uses the last ~5 years of daily bars. Reports supertrendWinRate separately for validation.
+ */
+function backtestSignal(data, hz, weeklyData = null, fund = null) {
+  if (!data || data.length < BACKTEST_WARMUP + 30) return null;
+  const windowStart = Math.max(BACKTEST_WARMUP, data.length - BACKTEST_WINDOW_BARS);
+  const holdDays = horizonHoldDaysServer(hz);
+  const weeklyAll = weeklyData || dailyToWeeklyBars(data);
 
-  const gSR = findVolumeWeightedSR(data, Math.min(80,data.length-5), 25);
-  let wins=0,losses=0,totalReturn=0,trades=0,nextAllowed=warmup;
+  let wins = 0, losses = 0, trades = 0, totalReturn = 0;
+  let stWins = 0, stTrades = 0;
+  let nextAllowed = windowStart;
 
-  for (let i=warmup; i<data.length-holdDays-1; i++) {
-    if (i<nextAllowed) continue;
-    const slice=data.slice(0,i+1), closes=slice.map(d=>d.c);
-    const price=closes[closes.length-1];
-    if (!price||price<=0) continue;
+  for (let i = windowStart; i < data.length - 2; i++) {
+    if (i < nextAllowed) continue;
+    const slice = data.slice(0, i + 1);
+    const weeklySlice = sliceWeeklyForDailyIndex(data, weeklyAll, i);
+    const tech = buildFullTechResult('X', slice, weeklySlice);
+    const sig = computeQuantSignal(tech, fund, hz);
+    const st = tech.supertrend;
 
-    const ma50  = closes.length>=50  ? calcSMA(closes,50)  : null;
-    const ma200 = closes.length>=200 ? calcSMA(closes,200) : null;
-    const rsi   = calcRSI(closes,14);
-    const atr   = calcATRFull(slice,14);
-    if (!atr||atr<=0||rsi==null) continue;
+    const buyOk = sig.buyScore >= 62 && sig.buyScore > sig.sellScore;
+    const sellOk = sig.sellScore >= 62 && sig.sellScore > sig.buyScore;
+    if (!buyOk && !sellOk) continue;
+    const isBuy = buyOk && (!sellOk || sig.buyScore >= sig.sellScore);
+    const isSell = !isBuy;
 
-    const aboveMa50  = ma50  ? price>ma50  : false;
-    const aboveMa200 = ma200 ? price>ma200 : false;
-    const goldenCross= ma50&&ma200&&ma50>ma200;
-    const deathCross = ma50&&ma200&&ma50<ma200;
+    const entry = data[i + 1]?.o ?? data[i].c;
+    if (!entry || entry <= 0) continue;
 
-    let macdBull=false,macdTurnUp=false,macdTurnDn=false;
-    if (closes.length>=35) {
-      const ema=(c,p)=>{const k=2/(p+1);let e=c[0];for(let j=1;j<c.length;j++) e=c[j]*k+e*(1-k);return e;};
-      const h0=ema(closes,12)-ema(closes,26);
-      const hP=closes.length>4?ema(closes.slice(0,-3),12)-ema(closes.slice(0,-3),26):h0;
-      macdBull=h0>0; macdTurnUp=h0>hP&&hP<=0; macdTurnDn=h0<hP&&hP>=0;
-    }
-    const rsiPrev=closes.length>17?calcRSI(closes.slice(0,-3),14):rsi;
-    const rsiRising=rsiPrev!=null&&(rsi-rsiPrev>1.5);
-    const rsiFalling=rsiPrev!=null&&(rsi-rsiPrev<-1.5);
-    const c20ago=closes.length>20?closes[closes.length-21]:closes[0];
-    const weeklyUp=price>c20ago*1.02, weeklyDn=price<c20ago*0.98;
-    const vol20avg=slice.slice(-21,-1).reduce((a,d)=>a+(d.v||0),0)/20;
-    const volRatio=vol20avg>0?(slice[slice.length-1].v||0)/vol20avg:1;
-    let healthyPull=false;
-    if (slice.length>=8) {
-      const l5=slice.slice(-5),ref=slice.slice(-25,-5).reduce((a,d)=>a+(d.v||0),0)/20;
-      let dv=0,dd=0; l5.forEach((d,k)=>{const pc=k>0?l5[k-1].c:slice[slice.length-6]?.c??d.c;if(d.c<pc){dv+=(d.v||0);dd++;}});
-      healthyPull=dd>0?(dv/dd)<ref*0.88:true;
-    }
-    let obvBullish=null;
-    if (slice.length>=15) {
-      let obv=0;const oa=[0];
-      for(let j=1;j<slice.length;j++){obv+=slice[j].c>slice[j-1].c?(slice[j].v||0):slice[j].c<slice[j-1].c?-(slice[j].v||0):0;oa.push(obv);}
-      const l10=oa.slice(-10);obvBullish=(l10.slice(-5).reduce((a,b)=>a+b,0)/5)>(l10.reduce((a,b)=>a+b,0)/10);
-    }
-    let bullStruct=false,bearStruct=false;
-    if (slice.length>=15) {
-      const L=slice.slice(-15),H=[],LO=[];
-      for(let k=2;k<L.length-2;k++){if(L[k].h>=L[k-1].h&&L[k].h>=L[k+1].h)H.push(L[k].h);if(L[k].l<=L[k-1].l&&L[k].l<=L[k+1].l)LO.push(L[k].l);}
-      bullStruct=H.length>=2&&LO.length>=2&&H[H.length-1]>H[H.length-2]&&LO[LO.length-1]>LO[LO.length-2];
-      bearStruct=H.length>=2&&LO.length>=2&&H[H.length-1]<H[H.length-2]&&LO[LO.length-1]<LO[LO.length-2];
-    }
+    let trailingSl = computeTrailingStopFromTech(tech, entry, hz, isSell, fund);
+    if (!trailingSl || !Number.isFinite(trailingSl)) continue;
+    if (isBuy && trailingSl >= entry * 0.999) continue;
+    if (isSell && trailingSl <= entry * 1.001) continue;
 
-    // SD CHANNEL (primary timing gate)
-    const chan20=calcLinRegChannel(closes,Math.min(20,closes.length));
-    const inSDExcellent=chan20&&price<=chan20.lower2;
-    const inSDGood     =chan20&&price<=chan20.lower1;
-    const inSDNeutral  =chan20&&!inSDGood&&price<chan20.mean;
-    const atSDTop      =chan20&&price>=chan20.upper1;
-    const nearS1=gSR.support1&&price>=gSR.support1*0.985&&price<=gSR.support1*1.025;
-    const nearR1=gSR.resistance1&&price>=gSR.resistance1*0.978&&price<=gSR.resistance1*1.018;
+    let exitPnl = null;
+    let exitIdx = -1;
+    const maxJ = Math.min(i + holdDays, data.length - 1);
 
-    const _bullPts = (aboveMa200?2:0) + (goldenCross?2:0) + (weeklyUp?1:0);
-    const _bearPts = (!aboveMa200?2:0) + (deathCross?2:0) + (weeklyDn?1:0);
-    const regime = _bearPts >= 4 ? 'bear' : _bullPts >= 4 ? 'bull' : 'neutral';
+    for (let j = i + 1; j <= maxJ; j++) {
+      const barSlice = data.slice(0, j + 1);
+      const barWeekly = sliceWeeklyForDailyIndex(data, weeklyAll, j);
+      const barTech = buildFullTechResult('X', barSlice, barWeekly);
+      const barSig = computeQuantSignal(barTech, fund, hz);
 
-    let isBuy=false,isSell=false,buyGates=0,sellGates=0;
+      if (isBuy && (barSig.action === 'Hold' || barSig.action === 'Sell' || barSig.buyScore < 62)) {
+        exitPnl = (data[j].c - entry) / entry;
+        exitIdx = j;
+        break;
+      }
+      if (isSell && (barSig.action === 'Hold' || barSig.action === 'Buy' || barSig.sellScore < 62)) {
+        exitPnl = (entry - data[j].c) / entry;
+        exitIdx = j;
+        break;
+      }
 
-    if (hz==='short') {
-      if (aboveMa50&&(goldenCross||weeklyUp)) buyGates++; else if(aboveMa50) buyGates+=0.5;
-      if (inSDExcellent) buyGates+=2; else if(inSDGood) buyGates++;
-      if (rsi>=24&&rsi<=58&&rsiRising) buyGates++; else if(rsi>=24&&rsi<=55) buyGates+=0.5;
-      if (macdTurnUp) buyGates++; else if(macdBull&&rsiRising&&rsi<52) buyGates+=0.5;
-      if ((healthyPull||volRatio<0.80)&&bullStruct) buyGates++;
-      else if(bullStruct||nearS1) buyGates+=0.8; else if(healthyPull||volRatio<0.80) buyGates+=0.5;
-      if (rsi>72) buyGates=Math.min(buyGates,1.5);
-      if (atSDTop) buyGates=Math.round(buyGates*0.4);
-      if (!aboveMa50) buyGates=Math.round(buyGates*0.45);
-      if (!aboveMa200) buyGates = Math.round(buyGates * 0.20);
-      if (weeklyDn && rsiFalling) buyGates = Math.round(buyGates * 0.30);
-      const _bullCont = aboveMa200 && goldenCross && aboveMa50 && macdBull && rsi >= 45 && rsi <= 70 && !atSDTop;
-      if (_bullCont) buyGates += 0.8;
-      isBuy = (buyGates >= 3 || _bullCont) && aboveMa50 && aboveMa200 && !atSDTop;
-      if (!aboveMa50&&(deathCross||weeklyDn)) sellGates++;
-      if (atSDTop||nearR1) sellGates++;
-      if (rsi>=64&&rsiFalling) sellGates++; else if(rsi>=64) sellGates+=0.5;
-      if (macdTurnDn||(!macdBull&&rsiFalling)) sellGates++;
-      if (bearStruct||nearR1) sellGates++;
-      if (rsi<26) sellGates=Math.round(sellGates*0.4);
-      isSell=sellGates>=4&&!aboveMa50;
+      const eodSl = computeTrailingStopFromTech(barTech, entry, hz, isSell, fund);
+      if (eodSl && Number.isFinite(eodSl)) {
+        if (isBuy) trailingSl = Math.max(trailingSl, eodSl);
+        else trailingSl = Math.min(trailingSl, eodSl);
+      }
 
-    } else if (hz==='medium') {
-      if (aboveMa200&&goldenCross) buyGates+=2; else if(aboveMa200) buyGates++; else if(goldenCross) buyGates++;
-      if (weeklyUp) buyGates++; else if(!weeklyDn&&aboveMa200) buyGates+=0.5;
-      const maDivPct=ma50&&ma200?Math.abs(ma50-ma200)/ma200*100:0;
-      if (maDivPct>3&&aboveMa200) buyGates++; else if(maDivPct>1.5) buyGates+=0.5;
-      if (inSDGood&&aboveMa200) buyGates++; else if(inSDExcellent) buyGates++;
-      if (atSDTop&&!inSDGood) buyGates=Math.round(buyGates*0.7);
-      if (obvBullish===true&&(rsi>=38&&rsi<=68)) buyGates++;
-      else if(obvBullish===true) buyGates+=0.7; else if(bullStruct&&(rsi>=38&&rsi<=68)) buyGates+=0.7;
-      if (rsi>74) buyGates=Math.round(buyGates*0.50);
-      if (!aboveMa200&&!goldenCross) buyGates=Math.round(buyGates*0.20);
-      if (deathCross) buyGates=Math.round(buyGates*0.30);
-      isBuy=buyGates>=4&&(aboveMa200||goldenCross)&&!deathCross;
-      if (!aboveMa200&&deathCross) sellGates+=3; else if(!aboveMa200) sellGates+=2; else if(deathCross) sellGates+=2;
-      if (weeklyDn) sellGates++;
-      if (!macdBull&&!aboveMa200) sellGates++;
-      if (bearStruct&&obvBullish===false) sellGates++; else if(bearStruct||obvBullish===false) sellGates+=0.5;
-      if (rsi<30) sellGates=Math.round(sellGates*0.4);
-      isSell=sellGates>=4&&(!aboveMa200||deathCross);
+      if (isBuy && data[j].l <= trailingSl) {
+        exitPnl = (trailingSl - entry) / entry;
+        exitIdx = j;
+        break;
+      }
+      if (isSell && data[j].h >= trailingSl) {
+        exitPnl = (entry - trailingSl) / entry;
+        exitIdx = j;
+        break;
+      }
 
-    } else {
-      if (!ma200) continue;
-      const maDivPct2=ma50&&ma200?Math.abs(ma50-ma200)/ma200*100:0;
-      const sepaOk=aboveMa200&&aboveMa50&&(ma50?ma50>ma200:true);
-      if (sepaOk&&goldenCross&&weeklyUp) buyGates+=3;
-      else if(sepaOk&&goldenCross) buyGates+=2; else if(aboveMa200&&goldenCross) buyGates+=2; else if(aboveMa200) buyGates++;
-      const hi50=Math.max(...slice.slice(-50).map(d=>d.h)),lo50=Math.min(...slice.slice(-50).map(d=>d.l));
-      if (price>=hi50*0.80&&price>=lo50*1.20) buyGates++; else if(price>=hi50*0.80) buyGates+=0.5;
-      if (weeklyUp&&aboveMa200) buyGates++; else if(weeklyUp) buyGates+=0.5;
-      if (maDivPct2>3&&aboveMa200) buyGates++;
-      if (inSDGood&&aboveMa200) buyGates++; else if(inSDNeutral&&aboveMa200) buyGates+=0.3;
-      if (atSDTop) buyGates=Math.round(buyGates*0.4);
-      if (rsi>=35&&rsi<=65&&aboveMa200) buyGates++;
-      if (obvBullish===true&&bullStruct) buyGates++; else if(obvBullish===true) buyGates+=0.5;
-      if (rsi>76) buyGates=Math.round(buyGates*0.60);
-      if (!aboveMa200) buyGates=0;
-      isBuy=buyGates>=5&&aboveMa200;
-      if (!aboveMa200&&deathCross) sellGates+=3; else if(!aboveMa200) sellGates+=2;
-      if (weeklyDn) sellGates++;
-      if (!macdBull&&!aboveMa200) sellGates++;
-      if (bearStruct&&obvBullish===false) sellGates++;
-      if (rsi<28) sellGates=Math.round(sellGates*0.50);
-      isSell=sellGates>=4&&!aboveMa200;
-    }
-
-    if (isBuy&&isSell) { isBuy=buyGates>=sellGates; isSell=!isBuy; }
-    if (!isBuy&&!isSell) continue;
-    const entry=data[i+1]?.o??price;
-    if (!entry||entry<=0) continue;
-
-    let tpPrice,slPrice;
-    if (hz==='short') {
-      const cm=chan20?.mean,tpD=cm&&cm>entry*1.005?cm-entry:2.5*atr,slD=Math.min(1.5*atr,entry*0.06);
-      slPrice=isBuy?entry-slD:entry+slD; tpPrice=isBuy?entry+tpD:entry-tpD;
-    } else if (hz==='medium') {
-      const c50=calcLinRegChannel(closes,Math.min(50,closes.length));
-      const cu=c50?.upper1??chan20?.upper1,csl=c50?.lower2??chan20?.lower2;
-      const tpD=cu&&cu>entry*1.01?cu-entry:6.0*atr,slD=csl&&csl<entry*0.999&&csl>entry*0.80?entry-csl:2.5*atr;
-      slPrice=isBuy?entry-slD:entry+slD; tpPrice=isBuy?entry+tpD:entry-tpD;
-    } else {
-      slPrice=isBuy?entry-3.5*atr:entry+3.5*atr; tpPrice=isBuy?entry+12.0*atr:entry-12.0*atr;
-    }
-    const tpD_=Math.abs(tpPrice-entry),slD_=Math.abs(slPrice-entry);
-    if (slD_<=0||tpD_/slD_<2.0) continue;
-
-    let exitPnl=null,exitIdx=-1;
-    for (let j=i+1;j<=Math.min(i+holdDays,data.length-1);j++) {
-      const bar=data[j];
-      if (isBuy) {
-        if (bar.h>=tpPrice){exitPnl=(tpPrice-entry)/entry;exitIdx=j;break;}
-        if (bar.l<=slPrice){exitPnl=(slPrice-entry)/entry;exitIdx=j;break;}
-        if (j===i+holdDays){exitPnl=(bar.c-entry)/entry;exitIdx=j;}
-      } else {
-        if (bar.l<=tpPrice){exitPnl=(entry-tpPrice)/entry;exitIdx=j;break;}
-        if (bar.h>=slPrice){exitPnl=(entry-slPrice)/entry;exitIdx=j;break;}
-        if (j===i+holdDays){exitPnl=(entry-bar.c)/entry;exitIdx=j;}
+      if (j === maxJ) {
+        exitPnl = isBuy ? (data[j].c - entry) / entry : (entry - data[j].c) / entry;
+        exitIdx = j;
       }
     }
-    if (exitPnl!==null&&exitIdx>=0) {
-      trades++;totalReturn+=exitPnl;
-      if(exitPnl>0)wins++;else losses++;
-      nextAllowed=exitIdx+1;
+
+    if (exitPnl != null && exitIdx >= 0) {
+      trades++;
+      totalReturn += exitPnl;
+      if (exitPnl > 0) wins++; else losses++;
+      nextAllowed = exitIdx + 1;
+
+      const stAligned = (isBuy && st?.direction === 'bull') || (isSell && st?.direction === 'bear');
+      if (stAligned) {
+        stTrades++;
+        if (exitPnl > 0) stWins++;
+      }
     }
   }
-  if (trades<5) return null; // 5 minimum for statistical signal
-  return {winRate:Math.round(wins/trades*100),trades,avgReturnPct:parseFloat((totalReturn/trades*100).toFixed(2)),profitFactor:losses>0?parseFloat((wins/losses).toFixed(2)):99};
+
+  if (trades < 5) return null;
+  return {
+    winRate: Math.round(wins / trades * 100),
+    trades,
+    avgReturnPct: parseFloat((totalReturn / trades * 100).toFixed(2)),
+    profitFactor: losses > 0 ? parseFloat((wins / losses).toFixed(2)) : 99,
+    supertrendWinRate: stTrades >= 5 ? Math.round(stWins / stTrades * 100) : null,
+    supertrendTrades: stTrades,
+    trailingSL: true,
+    windowYears: 5
+  };
 }
 
 
@@ -3965,6 +4070,7 @@ function buildFullTechResult(sym, daily, weekly) {
       return c < c5*0.98 ? 'downtrend' : c > c5*1.02 ? 'uptrend' : 'sideways';
     })(),
     weeklyRSI, weeklyTrend, weeklyMA50,
+    supertrend: calcSupertrend(daily),
     summary: `RSI ${rsi} (${rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : 'neutral'}), ADX ${adx ?? 'N/A'}, ${bullishMAs}/${totalMAs} MAs bullish, ${trend20}, S1@${support1}, R1@${resistance1}`
   };
 }
@@ -4011,8 +4117,11 @@ app.post('/api/technicals/batch', async (req, res) => {
         return;
       }
 
-      // Need 2y (504+ bars) for MA200, backtestSignal, SEPA gates; fallback to 1y
-      let daily = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
+      // Need 5y for aligned backtest; fallback to 2y / 1y
+      let daily = await fetchOHLCV(sym, '5y', '1d').catch(() => null);
+      if (!daily || daily.length < 400) {
+        daily = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
+      }
       if (!daily || daily.length < 100) {
         daily = await fetchOHLCV(sym, '1y', '1d').catch(() => null);
       }
@@ -4080,6 +4189,29 @@ app.post('/api/technicals/batch', async (req, res) => {
           ? _cachedFundEntry.data
           : null;
 
+      // Real 5-year walk-forward backtest BEFORE quant overlays (feeds supertrend validation)
+      if (daily.length >= BACKTEST_WARMUP + 30) {
+        let weeklyBt = null;
+        try {
+          weeklyBt = await fetchOHLCV(sym, '5y', '1wk').catch(() => dailyToWeeklyBars(daily));
+        } catch (_) { weeklyBt = dailyToWeeklyBars(daily); }
+        const btS = backtestSignal(daily, 'short', weeklyBt, _cachedFund);
+        const btM = backtestSignal(daily, 'medium', weeklyBt, _cachedFund);
+        const btL = backtestSignal(daily, 'long', weeklyBt, _cachedFund);
+        data.backtestShort  = btS;
+        data.backtestMedium = btM;
+        data.backtestLong   = btL;
+        data.backtestShortWinRate  = btS?.winRate ?? null;
+        data.backtestMediumWinRate = btM?.winRate ?? null;
+        data.backtestLongWinRate   = btL?.winRate ?? null;
+        data.backtestShortTrades   = btS?.trades ?? 0;
+        data.backtestMediumTrades  = btM?.trades ?? 0;
+        data.backtestLongTrades    = btL?.trades ?? 0;
+        data.supertrendWinRate     = btM?.supertrendWinRate ?? btS?.supertrendWinRate ?? null;
+        data._supertrendBacktestWR = data.supertrendWinRate;
+      }
+
+      data.supertrend = calcSupertrend(daily);
       data.quantSignal = {
         short:  computeQuantSignal(data, _cachedFund, 'short'),
         medium: computeQuantSignal(data, _cachedFund, 'medium'),
@@ -5551,7 +5683,7 @@ function serverPicksToHistoryRecords(dashData) {
     const tp1 = parseFloat(s[hz + 'Target1'] || 0);
     const tp2 = parseFloat(s[hz + 'Target2'] || 0);
     const sl = parseFloat(s[hz + 'StopLoss'] || 0);
-    if (!entry || !tp1 || !sl) return null;
+    if (!entry || !sl) return null;
     const rating = s[hz + 'Rating'] || (isSell ? 'Sell' : 'Buy');
     return {
       _v: 2,
@@ -5560,8 +5692,9 @@ function serverPicksToHistoryRecords(dashData) {
       action: isSell ? 'Sell' : 'Buy',
       rating, conf: s[hz + 'Conf'] || 0,
       entryDate: ts, timestamp: ts,
-      entry, target1: tp1, target2: tp2, stopLoss: sl,
-      [hz + 'Entry']: entry, [hz + 'Target1']: tp1, [hz + 'Target2']: tp2, [hz + 'StopLoss']: sl,
+      entry, target1: tp1 || null, target2: tp2 || null, stopLoss: sl,
+      [hz + 'Entry']: entry, [hz + 'Target1']: tp1 || null, [hz + 'Target2']: tp2 || null, [hz + 'StopLoss']: sl,
+      [hz + 'TrailingSL']: true,
       sellEntry: entry, sellTarget1: isSell ? tp1 : null, sellTarget2: isSell ? tp2 : null, sellStopLoss: isSell ? sl : null,
       reason: isSell ? (s.sellReason || s.reason || '') : (s.reason || ''),
       shortScore: s.shortScore, mediumScore: s.mediumScore, longScore: s.longScore,
@@ -5629,7 +5762,7 @@ async function generateServerPicksFromShortlist(opts = {}) {
 
     const pickPane = (hz, side) => {
       const scoreKey = side === 'buy' ? hz + 'Score' : hz + 'SellScore';
-      const hasPx = r => r[hz + 'Entry'] && r[hz + 'StopLoss'] && r[hz + 'Target1'];
+      const hasPx = r => r[hz + 'Entry'] && r[hz + 'StopLoss'];
       const arr = rows.filter(r => {
         if (side === 'buy') {
           return r[hz + 'Action'] === 'Buy' && (r[hz + 'Score'] || 0) >= 62
@@ -5641,14 +5774,14 @@ async function generateServerPicksFromShortlist(opts = {}) {
       return arr.slice(0, 5).map(r => ({ ...r }));
     };
 
-    const dashData = {
+    const dashData = dedupeCrossTimeframePicks({
       short: pickPane('short', 'buy'),
       medium: pickPane('medium', 'buy'),
       long: pickPane('long', 'buy'),
       shortSell: pickPane('short', 'sell'),
       medSell: pickPane('medium', 'sell'),
       longSell: pickPane('long', 'sell')
-    };
+    });
     dashboardPicksCache = {
       version: DASHBOARD_PICKS_VERSION,
       schemaVersion: 1,
@@ -5809,7 +5942,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260616-fmp-ultimate-v7.6.4',
+    server_build: '20260616-fmp-ultimate-v7.7.0',
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -7974,17 +8107,17 @@ app.get('/api/earnings/:symbol', async (req, res) => {
 async function pickDailyWeeklyForAnalyze(sym) {
   /** Aligned with fetchOHLCV (≥15 bars); thin listings need longer ranges first */
   const MIN = 15;
-  const ranges = ['12mo', '2y', '5y', 'max', '6mo', '3mo'];
+  const ranges = ['5y', '2y', '12mo', 'max', '6mo', '3mo'];
   let bestDaily = null;
   for (const range of ranges) {
     const daily = await fetchOHLCV(sym, range, '1d');
     if (daily && daily.length >= MIN && (!bestDaily || daily.length > bestDaily.length)) {
       bestDaily = daily;
-      if (daily.length >= 260) break;
+      if (daily.length >= 1000) break;
     }
   }
   if (!bestDaily || bestDaily.length < MIN) return null;
-  const weekly = await fetchOHLCV(sym, '2y', '1wk').catch(() => null);
+  const weekly = await fetchOHLCV(sym, '5y', '1wk').catch(() => dailyToWeeklyBars(bestDaily));
   return { daily: bestDaily, weekly };
 }
 
@@ -8587,165 +8720,17 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
       continue;
     }
     const isSell = act === 'sell';
-    let tp1, tp2, sl;
-
-    if (!isSell) {
-      if (hz === 'short') {
-        const chanSL = d20?.lower2 ?? null;
-        const srSL = s1 && s1 < e * 0.999 && s1 > e * 0.92
-          ? (s1conf ? s1 * 0.992 : s1 * 0.994)
-          : null;
-        if (chanSL && srSL) {
-          sl = roundPrice(Math.max(chanSL, srSL));
-        } else if (chanSL && chanSL < e * 0.999 && chanSL > e * 0.90) {
-          sl = roundPrice(chanSL);
-        } else if (srSL) {
-          sl = roundPrice(srSL);
-        } else {
-          sl = atr ? roundPrice(e - 2.0 * atr) : roundPrice(e * 0.975);
-        }
-
-        const chanTP1 = d20?.mean ?? null;
-        const srTP1 = r1 && r1 > e * 1.004 && r1 < e * 1.10 ? r1 : null;
-        if (chanTP1 && chanTP1 > e * 1.004) {
-          tp1 = srTP1 ? roundPrice(Math.min(chanTP1, srTP1)) : roundPrice(chanTP1);
-        } else if (srTP1) {
-          tp1 = roundPrice(srTP1);
-        } else {
-          tp1 = atr ? roundPrice(e + 2.5 * atr) : roundPrice(e * 1.035);
-        }
-
-        const chanTP2 = d20?.upper1 ?? null;
-        const srTP2 = r2 && r2 > tp1 ? r2 : (r1 && r1 > tp1 ? r1 : null);
-        tp2 = chanTP2 && chanTP2 > tp1
-          ? roundPrice(chanTP2)
-          : (srTP2 ? roundPrice(srTP2) : (atr ? roundPrice(e + 4.5 * atr) : roundPrice(e * 1.065)));
-      } else if (hz === 'medium') {
-        const wkSL = w20?.lower1 ?? null;
-        const dySL = d20?.lower2 ?? null;
-        const srSL = s2 && s2 < e * 0.995 && s2 > e * 0.88
-          ? s2 * 0.993 : (s1 && s1 < e * 0.995 && s1 > e * 0.88 ? s1 * 0.993 : null);
-        const candidates = [wkSL, dySL, srSL, ma50 ? ma50 * 0.97 : null]
-          .filter(v => v != null && v < e * 0.998 && v > e * 0.85);
-        sl = candidates.length
-          ? roundPrice(Math.max(...candidates))
-          : (atr ? roundPrice(e - 3.0 * atr) : roundPrice(e * 0.940));
-
-        const wkMean = w20?.mean ?? d50?.mean ?? null;
-        const srTP1 = r1 && r1 > e * 1.008 ? r1 : null;
-        tp1 = wkMean && wkMean > e * 1.008
-          ? roundPrice(wkMean)
-          : (srTP1 ? roundPrice(srTP1) : (atr ? roundPrice(e + 4.5 * atr) : roundPrice(e * 1.08)));
-
-        const wkUp1 = w20?.upper1 ?? d50?.upper1 ?? null;
-        const srTP2 = r2 && r2 > tp1 ? r2 : null;
-        tp2 = wkUp1 && wkUp1 > tp1
-          ? roundPrice(wkUp1)
-          : (srTP2 ? roundPrice(srTP2) : (atr ? roundPrice(e + 8.0 * atr) : roundPrice(e * 1.14)));
-      } else {
-        const wkSL2 = w20?.lower2 ?? null;
-        const wkSL1 = w50?.lower1 ?? null;
-        const ma200SL = ma200 ? ma200 * 0.96 : null;
-        const candidates = [wkSL2, wkSL1, ma200SL]
-          .filter(v => v != null && v < e * 0.998 && v > e * 0.78);
-        sl = candidates.length
-          ? roundPrice(Math.max(...candidates))
-          : (atr ? roundPrice(e - 5.5 * atr) : roundPrice(e * 0.880));
-
-        const targetOk = analystTarget && analystTarget > e * 1.06 && analystTarget < e * 2.2;
-        const wkUp1 = w20?.upper1 ?? null;
-        tp1 = targetOk
-          ? roundPrice(analystTarget)
-          : (wkUp1 && wkUp1 > e * 1.06 ? roundPrice(wkUp1) : (atr ? roundPrice(e + 10 * atr) : roundPrice(e * 1.22)));
-
-        const targetHighOk = fund?.targetHighPrice && fund.targetHighPrice > tp1;
-        const wkUp2 = w20?.upper2 ?? w50?.upper1 ?? null;
-        tp2 = targetHighOk
-          ? roundPrice(fund.targetHighPrice)
-          : (wkUp2 && wkUp2 > tp1 ? roundPrice(wkUp2) : (atr ? roundPrice(e + 17 * atr) : roundPrice(e * 1.38)));
-      }
-    } else {
-      if (hz === 'short') {
-        const chanSL = d20?.upper2 ?? null;
-        const srSL = r1 && r1 > e * 1.001 && r1 < e * 1.06 ? r1 * 1.008 : null;
-        const candidates = [chanSL, srSL].filter(v => v != null && v > e * 1.001 && v < e * 1.12);
-        sl = candidates.length
-          ? roundPrice(Math.min(...candidates))
-          : (atr ? roundPrice(e + 2.0 * atr) : roundPrice(e * 1.028));
-
-        const chanTP1 = d20?.mean ?? null;
-        const srTP1 = s1 && s1 < e * 0.996 && s1 > e * 0.88 ? s1 : null;
-        tp1 = chanTP1 && chanTP1 < e * 0.996
-          ? roundPrice(chanTP1)
-          : (srTP1 ? roundPrice(srTP1) : (atr ? roundPrice(e - 2.5 * atr) : roundPrice(e * 0.965)));
-
-        const chanTP2 = d20?.lower1 ?? null;
-        tp2 = chanTP2 && chanTP2 < tp1
-          ? roundPrice(chanTP2)
-          : (s2 && s2 < tp1 ? roundPrice(s2) : (atr ? roundPrice(e - 4.5 * atr) : roundPrice(e * 0.935)));
-      } else if (hz === 'medium') {
-        const chanSL = d20?.upper2 ?? null;
-        const wkSL = w20?.upper1 ?? null;
-        const candidates = [chanSL, wkSL, r1 ? r1 * 1.008 : null]
-          .filter(v => v != null && v > e * 1.001 && v < e * 1.15);
-        sl = candidates.length
-          ? roundPrice(Math.min(...candidates))
-          : (atr ? roundPrice(e + 3.0 * atr) : roundPrice(e * 1.060));
-
-        const wkMean = w20?.mean ?? null;
-        tp1 = wkMean && wkMean < e * 0.994
-          ? roundPrice(wkMean)
-          : (s1 && s1 < e * 0.994 ? roundPrice(s1) : (atr ? roundPrice(e - 4.5 * atr) : roundPrice(e * 0.920)));
-
-        const wkLow1 = w20?.lower1 ?? null;
-        tp2 = wkLow1 && wkLow1 < tp1
-          ? roundPrice(wkLow1)
-          : (s2 && s2 < tp1 ? roundPrice(s2) : (atr ? roundPrice(e - 8.0 * atr) : roundPrice(e * 0.860)));
-      } else {
-        const wkUp2 = w20?.upper2 ?? null;
-        sl = wkUp2 && wkUp2 > e * 1.01 && wkUp2 < e * 1.20
-          ? roundPrice(wkUp2)
-          : (atr ? roundPrice(e + 5.5 * atr) : roundPrice(e * 1.120));
-
-        const ma200tp = ma200 && ma200 < e * 0.98 ? ma200 * 1.02 : null;
-        const wkLow1 = w20?.lower1 ?? null;
-        tp1 = ma200tp
-          ? roundPrice(ma200tp)
-          : (wkLow1 && wkLow1 < e * 0.95 ? roundPrice(wkLow1) : (atr ? roundPrice(e - 10 * atr) : roundPrice(e * 0.800)));
-
-        const wkLow2 = w20?.lower2 ?? null;
-        tp2 = wkLow2 && wkLow2 < tp1
-          ? roundPrice(wkLow2)
-          : (atr ? roundPrice(e - 17 * atr) : roundPrice(e * 0.650));
-      }
+    const sl = computeTrailingStopFromTech(tech, e, hz, isSell, fund);
+    if (!sl) {
+      row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = '';
+      continue;
     }
-
-    const _MIN_RR = 1.5;
-    if (!isSell) {
-      if (sl >= e) sl = atr ? roundPrice(e - 2.0 * atr) : roundPrice(e * 0.975);
-      if (sl < e * 0.92) sl = atr ? roundPrice(e - 2.0 * atr) : roundPrice(e * 0.975);
-      if (tp1 <= e) tp1 = atr ? roundPrice(e + 2.5 * atr) : roundPrice(e * 1.035);
-      const _riskB = Math.abs(e - sl);
-      if (_riskB > 0 && (tp1 - e) < _riskB * _MIN_RR) tp1 = roundPrice(e + _riskB * _MIN_RR);
-      if (tp2 <= tp1) tp2 = roundPrice(tp1 * 1.04);
-    } else {
-      if (sl <= e) sl = atr ? roundPrice(e + 2.0 * atr) : roundPrice(e * 1.028);
-      if (sl > e * 1.08) sl = atr ? roundPrice(e + 2.0 * atr) : roundPrice(e * 1.025);
-      if (tp1 >= e) tp1 = atr ? roundPrice(e - 2.5 * atr) : roundPrice(e * 0.965);
-      const _riskS = Math.abs(sl - e);
-      if (_riskS > 0 && (e - tp1) < _riskS * _MIN_RR) tp1 = roundPrice(e - _riskS * _MIN_RR);
-      if (tp2 >= tp1) tp2 = roundPrice(tp1 * 0.96);
-    }
-
-    const rr = applyHorizonMinPctFloors(e, tp1, tp2, sl, isSell, hz);
-    tp1 = rr.tp1;
-    tp2 = rr.tp2;
-    sl = rr.sl;
-
+    // No fixed TP — capture full move; exit via trailing SL or signal flip.
     row[hz + 'Entry'] = String(roundPrice(e));
-    row[hz + 'Target1'] = String(tp1);
-    row[hz + 'Target2'] = String(tp2);
+    row[hz + 'Target1'] = '';
+    row[hz + 'Target2'] = '';
     row[hz + 'StopLoss'] = String(sl);
+    row[hz + 'TrailingSL'] = true;
   }
 
   row.entry = row.shortEntry;
@@ -8795,7 +8780,7 @@ app.post('/api/analyze', async (req, res) => {
   }
 
   // ── Step 2: OHLCV → full technicals + store 12mo series for backtest ───────
-  const techBySym = {}, ohlcvBySym = {};
+  const techBySym = {}, ohlcvBySym = {}, weeklyBySym = {};
   await Promise.all(
     clean.filter(s => priceBySym[s]).map(async sym => {
       try {
@@ -8803,6 +8788,7 @@ app.post('/api/analyze', async (req, res) => {
         if (got?.daily) {
           techBySym[sym]  = buildFullTechResult(sym, got.daily, got.weekly);
           ohlcvBySym[sym] = got.daily;
+          weeklyBySym[sym] = got.weekly;
         }
       } catch(e) { console.warn('analyze tech', sym, e.message); }
     })
@@ -8841,9 +8827,12 @@ app.post('/api/analyze', async (req, res) => {
     const fund  = fundBySym[sym];
     const ohlcv = ohlcvBySym[sym];
     if (!tech) continue;
-    const btShort  = ohlcv ? backtestSignal(ohlcv, 'short')  : null;
-    const btMedium = ohlcv ? backtestSignal(ohlcv, 'medium') : null;
-    const btLong   = ohlcv ? backtestSignal(ohlcv, 'long')   : null;
+    const btShort  = ohlcv ? backtestSignal(ohlcv, 'short', weeklyBySym[sym])  : null;
+    const btMedium = ohlcv ? backtestSignal(ohlcv, 'medium', weeklyBySym[sym]) : null;
+    const btLong   = ohlcv ? backtestSignal(ohlcv, 'long', weeklyBySym[sym])   : null;
+    if (tech) {
+      tech._supertrendBacktestWR = btShort?.supertrendWinRate ?? btMedium?.supertrendWinRate ?? null;
+    }
     const sigShort  = computeQuantSignal(tech, fund, 'short');
     const sigMedium = computeQuantSignal(tech, fund, 'medium');
     const sigLong   = computeQuantSignal(tech, fund, 'long');
@@ -9440,51 +9429,68 @@ function horizonTimeLimitExceededServer(hz, entryDateOrIso) {
 }
 
 /**
- * Path-aware exit detection: walk daily bars chronologically from entry and return the
- * FIRST level touched (TP or SL), the way a real trade would have exited — instead of
- * only checking the latest price (which silently turns past TP wins into SL losses and
- * crushes the medium/long win rate). Same-bar TP+SL ambiguity is broken by proximity to
- * the bar open (closest level reached first); falls back to SL-first if open is unknown.
+ * Trailing-SL + signal-flip exit simulation (no TP). Walks daily bars from entry,
+ * ratchets SL at each EOD from fresh technicals, exits on SL touch or signal flip.
  */
-function detectPathExitServer(bars, entryMs, entry, tp1, tp2, sl, isSell) {
+function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) {
   if (!Array.isArray(bars) || !bars.length || !entry) return null;
-  const validTp1 = tp1 && (isSell ? tp1 < entry : tp1 > entry);
-  const validTp2 = tp2 && (isSell ? tp2 < entry : tp2 > entry);
-  const validSl = sl && (isSell ? sl > entry : sl < entry);
-  for (const b of bars) {
-    const bms = (b.t || 0) * 1000;
-    if (bms < entryMs) continue;
-    const hi = b.h, lo = b.l, op = b.o;
-    if (hi == null || lo == null) continue;
-    let slHit, tp1Hit, tp2Hit;
-    if (!isSell) {
-      slHit = validSl && lo <= sl;
-      tp2Hit = validTp2 && hi >= tp2;
-      tp1Hit = validTp1 && hi >= tp1;
-    } else {
-      slHit = validSl && hi >= sl;
-      tp2Hit = validTp2 && lo <= tp2;
-      tp1Hit = validTp1 && lo <= tp1;
+  const weeklyAll = dailyToWeeklyBars(bars);
+  let startIdx = -1;
+  for (let i = 0; i < bars.length; i++) {
+    if ((bars[i].t || 0) * 1000 >= entryMs) { startIdx = i; break; }
+  }
+  if (startIdx < 0) return null;
+  const maxHold = horizonHoldDaysServer(hz);
+  let trailingSl = null;
+
+  for (let j = startIdx; j < bars.length; j++) {
+    const barSlice = bars.slice(0, j + 1);
+    const barWeekly = sliceWeeklyForDailyIndex(bars, weeklyAll, j);
+    const barTech = buildFullTechResult('X', barSlice, barWeekly);
+    const barSig = computeQuantSignal(barTech, null, hz);
+
+    if (!isSell && (barSig.action === 'Hold' || barSig.action === 'Sell' || barSig.buyScore < 62)) {
+      return { status: 'signal_exit', exit: bars[j].c, stopLoss: trailingSl };
     }
-    const tpHit = tp1Hit || tp2Hit;
-    if (slHit && tpHit) {
-      // Ambiguous within one bar — decide by which level is nearer the open.
-      const tpLvl = tp2Hit ? tp2 : tp1;
-      const distSl = op != null ? Math.abs(op - sl) : 0;
-      const distTp = op != null ? Math.abs(op - tpLvl) : 1;
-      if (op != null && distTp < distSl) {
-        return { status: tp2Hit ? 'tp2_hit' : 'tp1_hit', exit: tpLvl };
-      }
-      return { status: 'sl_hit', exit: sl };
+    if (isSell && (barSig.action === 'Hold' || barSig.action === 'Buy' || barSig.sellScore < 62)) {
+      return { status: 'signal_exit', exit: bars[j].c, stopLoss: trailingSl };
     }
-    if (slHit) return { status: 'sl_hit', exit: sl };
-    if (tp2Hit) return { status: 'tp2_hit', exit: tp2 };
-    if (tp1Hit) return { status: 'tp1_hit', exit: tp1 };
+
+    const eodSl = computeTrailingStopFromTech(barTech, entry, hz, isSell);
+    if (eodSl && Number.isFinite(eodSl)) {
+      if (trailingSl == null) trailingSl = eodSl;
+      else trailingSl = isSell ? Math.min(trailingSl, eodSl) : Math.max(trailingSl, eodSl);
+    }
+
+    if (!isSell && trailingSl && bars[j].l <= trailingSl) {
+      return { status: 'sl_hit', exit: trailingSl, stopLoss: trailingSl };
+    }
+    if (isSell && trailingSl && bars[j].h >= trailingSl) {
+      return { status: 'sl_hit', exit: trailingSl, stopLoss: trailingSl };
+    }
+
+    if (j - startIdx >= maxHold) {
+      return { status: 'time_limit', exit: bars[j].c, stopLoss: trailingSl };
+    }
+  }
+  return trailingSl ? { status: 'open', stopLoss: trailingSl } : null;
+}
+
+/** Check if live signal has flipped against an open position — immediate exit. */
+function liveSignalFlipExit(ticker, hz, isSell, techMap) {
+  const tech = techMap?.[ticker];
+  if (!tech?.quantSignal?.[hz]) return null;
+  const sig = tech.quantSignal[hz];
+  if (!isSell && (sig.action === 'Hold' || sig.action === 'Sell' || sig.buyScore < 62)) {
+    return { flipped: true, reason: sig.action === 'Sell' ? 'Sell' : 'Hold' };
+  }
+  if (isSell && (sig.action === 'Hold' || sig.action === 'Buy' || sig.sellScore < 62)) {
+    return { flipped: true, reason: sig.action === 'Buy' ? 'Buy' : 'Hold' };
   }
   return null;
 }
 
-// POST /api/history/refresh-pnl — server-side TP/SL hit detection + PnL for all history rows
+// POST /api/history/refresh-pnl — server-side trailing SL + signal-flip exit + PnL
 app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
   // Render's disk is ephemeral; on each deploy the client re-uploads its localStorage history
   // (which can still contain pre-floor tight stops). Re-run the migration here so the fix
@@ -9505,20 +9511,31 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
     } catch (_) {}
   }));
 
-  // Daily OHLCV per ticker for path-aware (chronological) TP/SL exit detection. Throttled
-  // in small chunks to stay friendly to the data vendor.
   const ohlcvMap = {};
+  const techLiveMap = {};
   for (let off = 0; off < tickers.length; off += 6) {
     const slice = tickers.slice(off, off + 6);
     await Promise.all(slice.map(async sym => {
       try {
-        const bars = await fetchOHLCV(sym, '1y', '1d').catch(() => null);
-        if (bars && bars.length) ohlcvMap[sym] = bars;
+        let bars = await fetchOHLCV(sym, '5y', '1d').catch(() => null);
+        if (!bars || bars.length < 100) bars = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
+        if (bars && bars.length) {
+          ohlcvMap[sym] = bars;
+          const weekly = await fetchOHLCV(sym, '5y', '1wk').catch(() => dailyToWeeklyBars(bars));
+          const tech = buildFullTechResult(sym, bars, weekly);
+          tech.quantSignal = {
+            short: computeQuantSignal(tech, null, 'short'),
+            medium: computeQuantSignal(tech, null, 'medium'),
+            long: computeQuantSignal(tech, null, 'long')
+          };
+          techLiveMap[sym] = tech;
+        }
       } catch (_) {}
     }));
   }
 
   let updated = 0;
+  let signalExits = 0;
   for (const h of tradeHistory) {
     if (sinceMs && new Date(h.entryDate || h.timestamp || 0).getTime() < sinceMs) continue;
     const curr = priceMap[h.ticker];
@@ -9530,27 +9547,42 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
 
     for (const hz of hzList) {
       const st = h[hz + 'Status'];
-      // Re-evaluate open AND previously sl_hit/time_limit rows with the accurate path-aware
-      // detector (fixes losses that were really TP wins under the old current-price-only logic).
-      // Confirmed TP wins are left alone.
-      if (st === 'tp1_hit' || st === 'tp2_hit') continue;
+      if (st === 'tp1_hit' || st === 'tp2_hit' || st === 'signal_exit') continue;
       const entry = parseFloat(h[hz + 'Entry'] || h.entry || 0);
       if (!entry) continue;
-      const tp1 = parseFloat(h[hz + 'Target1'] || h.target1 || 0);
-      const tp2 = parseFloat(h[hz + 'Target2'] || h.target2 || 0);
-      const sl = parseFloat(h[hz + 'StopLoss'] || h.stopLoss || 0);
       const shares = Math.floor(10000 / entry);
       const entryMs = new Date(h.entryDate || h.timestamp || 0).getTime();
       const bars = ohlcvMap[h.ticker];
-      const pathExit = (bars && entry) ? detectPathExitServer(bars, entryMs, entry, tp1, tp2, sl, isSell) : null;
 
-      if (pathExit) {
+      // Immediate exit if live signal has flipped against the open position
+      const flip = (st === 'open' || !st || st === 'n/a') ? liveSignalFlipExit(h.ticker, hz, isSell, techLiveMap) : null;
+      if (flip) {
+        h[hz + 'PnlDollar'] = (curr - entry) * dir * shares;
+        h[hz + 'PnlPct'] = ((curr - entry) / entry) * dir * 100;
+        h[hz + 'Status'] = 'signal_exit';
+        h[hz + 'ExitPrice'] = curr;
+        h[hz + 'ExitReason'] = 'Signal → ' + flip.reason;
+        rowChanged = true;
+        signalExits++;
+        continue;
+      }
+
+      const pathExit = (bars && entry) ? simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) : null;
+
+      if (pathExit && pathExit.status !== 'open') {
         const px = pathExit.exit;
         h[hz + 'PnlDollar'] = (px - entry) * dir * shares;
         h[hz + 'PnlPct'] = ((px - entry) / entry) * dir * 100;
         h[hz + 'Status'] = pathExit.status;
         h[hz + 'ExitPrice'] = px;
+        if (pathExit.stopLoss) h[hz + 'StopLoss'] = pathExit.stopLoss;
         if (pathExit.status === 'sl_hit') setSLCooldown(h.ticker, hz);
+        rowChanged = true;
+      } else if (pathExit?.stopLoss) {
+        h[hz + 'StopLoss'] = pathExit.stopLoss;
+        h[hz + 'PnlDollar'] = (curr - entry) * dir * shares;
+        h[hz + 'PnlPct'] = ((curr - entry) / entry) * dir * 100;
+        h[hz + 'Status'] = 'open';
         rowChanged = true;
       } else if (horizonTimeLimitExceededServer(hz, h.entryDate || h.timestamp)) {
         h[hz + 'PnlDollar'] = (curr - entry) * dir * shares;
@@ -9558,7 +9590,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         h[hz + 'Status'] = 'time_limit';
         h[hz + 'ExitPrice'] = curr;
         rowChanged = true;
-      } else if (st !== 'time_limit') {
+      } else if (st !== 'time_limit' && st !== 'sl_hit') {
         h[hz + 'PnlDollar'] = (curr - entry) * dir * shares;
         h[hz + 'PnlPct'] = ((curr - entry) / entry) * dir * 100;
         h[hz + 'Status'] = 'open';

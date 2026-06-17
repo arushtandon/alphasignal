@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260616-fmp-ultimate-v7.6.4">
+<meta name="alphasignal-build" content="20260616-fmp-ultimate-v7.7.0">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -2214,6 +2214,35 @@ async function pollUniverseScan(){
     }
   }
 }
+function dedupeCrossTimeframePicksClient(dashData) {
+  if (!dashData) return dashData;
+  var buyPanes = [{key:'short',sk:'shortScore'},{key:'medium',sk:'mediumScore'},{key:'long',sk:'longScore'}];
+  var sellPanes = [{key:'shortSell',sk:'shortSellScore'},{key:'medSell',sk:'mediumSellScore'},{key:'longSell',sk:'longSellScore'}];
+  var bestBuy = {};
+  buyPanes.forEach(function(p){
+    (dashData[p.key]||[]).forEach(function(row){
+      if(!row||!row.ticker)return;
+      var sc=row[p.sk]||0;
+      if(!bestBuy[row.ticker]||sc>bestBuy[row.ticker].score) bestBuy[row.ticker]={hz:p.key,score:sc};
+    });
+  });
+  buyPanes.forEach(function(p){
+    dashData[p.key]=(dashData[p.key]||[]).filter(function(r){return bestBuy[r.ticker]&&bestBuy[r.ticker].hz===p.key;});
+  });
+  var bestSell = {};
+  sellPanes.forEach(function(p){
+    (dashData[p.key]||[]).forEach(function(row){
+      if(!row||!row.ticker)return;
+      var sc=row[p.sk]||0;
+      if(!bestSell[row.ticker]||sc>bestSell[row.ticker].score) bestSell[row.ticker]={hz:p.key,score:sc};
+    });
+  });
+  sellPanes.forEach(function(p){
+    dashData[p.key]=(dashData[p.key]||[]).filter(function(r){return bestSell[r.ticker]&&bestSell[r.ticker].hz===p.key;});
+  });
+  return dashData;
+}
+
 async function runDashScan(force){
   if(!force){
     const server=await fetchServerDashPicksWithRetry(2);
@@ -2532,13 +2561,15 @@ async function runDashScan(force){
               r.shortAction  = act(sh,shS); r.mediumAction = act(me,meS); r.longAction = act(lo,loS);
 
               var domS=Math.max(sh,shS), domM=Math.max(me,meS), domL=Math.max(lo,loS);
-              var nb=(newsBull||newsBear)?2:0;
-              r.backtestShortWinRate  = domS>=75?62+nb:domS>=62?56+nb:domS>=50?48:40;
-              r.backtestMediumWinRate = domM>=75?60+nb:domM>=62?54+nb:domM>=50?46:38;
-              r.backtestLongWinRate   = domL>=75?63+nb:domL>=62?57+nb:domL>=50?49:41;
+              var tBt = batchTech[r.ticker] || {};
+              r.backtestShortWinRate  = tBt.backtestShortWinRate  ?? (qs.short  && qs.short.winRateHint)  ?? null;
+              r.backtestMediumWinRate = tBt.backtestMediumWinRate ?? (qs.medium && qs.medium.winRateHint) ?? null;
+              r.backtestLongWinRate   = tBt.backtestLongWinRate   ?? (qs.long   && qs.long.winRateHint)   ?? null;
               r.backtestedWinRate     = r.backtestShortWinRate;
-              r.backtestShortTrades=null; r.backtestMediumTrades=null; r.backtestLongTrades=null;
-              var dom = domS;
+              r.backtestShortTrades   = tBt.backtestShortTrades  ?? null;
+              r.backtestMediumTrades  = tBt.backtestMediumTrades ?? null;
+              r.backtestLongTrades    = tBt.backtestLongTrades   ?? null;
+              r.supertrendWinRate     = tBt.supertrendWinRate ?? null;
               r.quantConditions = (qs.short && qs.short.conditions ? qs.short.conditions.slice() : []).concat(news && news.catalysts ? news.catalysts : []);
               r._shortConditions = (qs.short && qs.short.conditions) ? qs.short.conditions.slice() : [];
               r._mediumConditions = (qs.medium && qs.medium.conditions) ? qs.medium.conditions.slice() : [];
@@ -2628,9 +2659,9 @@ async function runDashScan(force){
               r.longWinRateEst   = _longTier>=1   ? _tierWR(_longTier)   : null;
 
               // If tier1+ confirmed, upgrade backtested win rate display
-              if (_shortTier>=1  && r.backtestShortWinRate  < _tierWR(_shortTier))  r.backtestShortWinRate  = _tierWR(_shortTier);
-              if (_medTier>=1    && r.backtestMediumWinRate < _tierWR(_medTier))     r.backtestMediumWinRate = _tierWR(_medTier);
-              if (_longTier>=1   && r.backtestLongWinRate   < _tierWR(_longTier))    r.backtestLongWinRate   = _tierWR(_longTier);
+              if (_shortTier>=1  && r.backtestShortWinRate  == null)  r.backtestShortWinRate  = _tierWR(_shortTier);
+              if (_medTier>=1    && r.backtestMediumWinRate == null)  r.backtestMediumWinRate = _tierWR(_medTier);
+              if (_longTier>=1   && r.backtestLongWinRate   == null)  r.backtestLongWinRate   = _tierWR(_longTier);
 
             } else {
               if (!r.shortScore)  r.shortScore  = scoreFrom(r.shortRating,  r.action, r.backtestedWinRate);
@@ -2804,7 +2835,7 @@ async function runDashScan(force){
 
   // Never fabricate sell picks — empty sell pane is honest when no shortAction === 'Sell'
 
-  const dashData={short:shortTop5,medium:medTop5,long:longTop5,shortSell:shortSell5,medSell:medSell5,longSell:longSell5};
+  const dashData=dedupeCrossTimeframePicksClient({short:shortTop5,medium:medTop5,long:longTop5,shortSell:shortSell5,medSell:medSell5,longSell:longSell5});
   ST.dashData=pruneDashDataByLiveActions(dashData);ST.dashTs=Date.now();
   await renderDashboardWhenReady(dashData);
   await hydrateDashDataWithLiveBatch(ST.dashData,{resyncScores:true});
@@ -4246,7 +4277,7 @@ function renderCard(s){
       key:'medium', label:'Medium', period:'1–3 months',
       tier:s.mediumTier||0, tierLabel:s.mediumTierLabel||'',
       winRateEst:s.mediumWinRateEst||null, regime:s._medRegime||s._regime||'neutral', danScore:s.danelfinAiScore||null, danDriver:s.danelfinAiScore||null, danDriverLabel:'AI Score', compositeAlpha:s.compositeAlphaMedium||s.compositeAlpha||null,
-      rating:applyWinRateThreshold(s.mediumRating, s.backtestedWinRate), conf:s.mediumConf,
+      rating:applyWinRateThreshold(s.mediumRating, s.backtestMediumWinRate), conf:s.mediumConf,
       weighting:s.mediumWeighting||'70% Technical · 30% News',
       action: hzActionFromRow('medium', s.mediumRating, s.mediumAction),
       entry:  s.mediumEntry  || s.entry,
@@ -4264,7 +4295,7 @@ function renderCard(s){
       key:'long', label:'Long', period:'4–12 months',
       tier:s.longTier||0, tierLabel:s.longTierLabel||'',
       winRateEst:s.longWinRateEst||null, regime:s._longRegime||s._regime||'neutral', danScore:s.danelfinAiScore||null, danDriver:s.danelfinFundamental||null, danDriverLabel:'Fundamental', compositeAlpha:s.compositeAlphaLong||null,
-      rating:applyWinRateThreshold(s.longRating, s.backtestedWinRate), conf:s.longConf,
+      rating:applyWinRateThreshold(s.longRating, s.backtestLongWinRate), conf:s.longConf,
       weighting:s.longWeighting||'60% Technical · 20% Fundamental · 20% News',
       action: hzActionFromRow('long', s.longRating, s.longAction),
       entry:  s.longEntry  || s.entry,
@@ -4940,14 +4971,14 @@ function calcSummaryForHz(hzKey) {
   const realised = withPnl.filter(function (x) { return x.isClosed; }).reduce(function (s, x) { return s + Number(x.pnl); }, 0);
   const unrealised = withPnl.filter(function (x) { return x.isOpen; }).reduce(function (s, x) { return s + Number(x.pnl); }, 0);
   const closedForWr = hzHist.filter(function (h) {
-    return ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit'].includes(h[hzKey + 'Status']);
+    return ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit', 'signal_exit'].includes(h[hzKey + 'Status']);
   });
   function hzWin(h) {
     const s = h[hzKey + 'Status'];
     const p = resolveHistoricalHzPnl(h, hzKey);
     if (s === 'sl_hit') return false;
     if (s === 'tp1_hit' || s === 'tp2_hit') return p == null ? true : p > 0;
-    if (s === 'time_limit') return p != null && p > 0;
+    if (s === 'time_limit' || s === 'signal_exit') return p != null && p > 0;
     return false;
   }
   const winsClosed = closedForWr.filter(hzWin).length;
