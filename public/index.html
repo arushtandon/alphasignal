@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260617-fmp-ultimate-v7.8.1">
+<meta name="alphasignal-build" content="20260617-fmp-ultimate-v7.8.2">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1028,6 +1028,78 @@ function drawChart(canvasId, data, ticker, entryPrice, tp1, tp2, slPrice, action
     }
   };
 
+  // Supertrend(10,3) computed live from the displayed candles, so it appears on
+  // EVERY timeframe tab. Green when price is above the band (uptrend), red below.
+  const supertrendPlugin = {
+    id: 'supertrend',
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea: { left, right, top, bottom }, scales: { x, y } } = chart;
+      const bars = chart._rawBars || raw;
+      const n = bars.length;
+      if (!x || !y || n < 15) return;
+      const period = 10, mult = 3;
+      const tr = new Array(n);
+      for (let i = 0; i < n; i++) {
+        const h = bars[i].h, l = bars[i].l, pc = i > 0 ? bars[i - 1].c : bars[i].c;
+        tr[i] = Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+      }
+      const atr = new Array(n).fill(null);
+      let pAtr = null;
+      for (let i = 0; i < n; i++) {
+        if (i < period - 1) continue;
+        if (i === period - 1) { let s = 0; for (let k = 0; k < period; k++) s += tr[k]; pAtr = s / period; }
+        else pAtr = (pAtr * (period - 1) + tr[i]) / period;
+        atr[i] = pAtr;
+      }
+      const st = new Array(n).fill(null), dir = new Array(n).fill(0);
+      let pFU = null, pFL = null, pST = null, pBand = null;
+      for (let i = 0; i < n; i++) {
+        if (atr[i] == null) continue;
+        const hl2 = (bars[i].h + bars[i].l) / 2;
+        const bU = hl2 + mult * atr[i], bL = hl2 - mult * atr[i];
+        const pc = i > 0 ? bars[i - 1].c : bars[i].c;
+        const fU = (pFU == null || bU < pFU || pc > pFU) ? bU : pFU;
+        const fL = (pFL == null || bL > pFL || pc < pFL) ? bL : pFL;
+        let cur;
+        if (pST == null) cur = fU;
+        else if (pBand === 'U') cur = (bars[i].c <= fU) ? fU : fL;
+        else cur = (bars[i].c >= fL) ? fL : fU;
+        st[i] = cur; dir[i] = bars[i].c >= cur ? 1 : -1;
+        pFU = fU; pFL = fL; pST = cur; pBand = (cur === fU) ? 'U' : 'L';
+      }
+      ctx.save();
+      ctx.beginPath(); ctx.rect(left, top, right - left, bottom - top); ctx.clip();
+      ctx.lineWidth = 1.7;
+      let prevDir = null, prevX = 0, prevY = 0;
+      for (let i = 0; i < n; i++) {
+        if (st[i] == null) continue;
+        const xPx = x.getPixelForValue(i), yPx = y.getPixelForValue(st[i]);
+        if (dir[i] !== prevDir) {
+          if (prevDir !== null) ctx.stroke();
+          ctx.beginPath();
+          ctx.strokeStyle = dir[i] >= 0 ? 'rgba(61,219,123,0.95)' : 'rgba(244,108,108,0.95)';
+          if (prevDir !== null) ctx.moveTo(prevX, prevY); else ctx.moveTo(xPx, yPx);
+          ctx.lineTo(xPx, yPx);
+          prevDir = dir[i];
+        } else {
+          ctx.lineTo(xPx, yPx);
+        }
+        prevX = xPx; prevY = yPx;
+      }
+      if (prevDir !== null) ctx.stroke();
+      let lastIdx = -1;
+      for (let i = n - 1; i >= 0; i--) { if (st[i] != null) { lastIdx = i; break; } }
+      if (lastIdx >= 0) {
+        const up = dir[lastIdx] >= 0;
+        ctx.fillStyle = up ? 'rgba(61,219,123,0.95)' : 'rgba(244,108,108,0.95)';
+        ctx.font = 'bold 8px DM Mono,monospace';
+        const lx = Math.min(x.getPixelForValue(lastIdx) + 4, right - 64);
+        ctx.fillText('ST ' + (up ? '▲' : '▼'), lx, y.getPixelForValue(st[lastIdx]) - 4);
+      }
+      ctx.restore();
+    }
+  };
+
   const candlestickPlugin = {
     id:'candlestick',
     afterDatasetsDraw(chart){
@@ -1152,7 +1224,7 @@ function drawChart(canvasId, data, ticker, entryPrice, tp1, tp2, slPrice, action
              border:{display:false}}
         }
       },
-      plugins:[candlestickPlugin, tradeLevels, maLinesPlugin]
+      plugins:[candlestickPlugin, tradeLevels, maLinesPlugin, supertrendPlugin]
     };
     const chart = new window.Chart(canvas,cfg);
     chart._rawBars = raw;

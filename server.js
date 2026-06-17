@@ -467,11 +467,15 @@ app.get('/api/chart', async (req, res) => {
             ? new Date(t * 1000).toISOString().slice(0, 10)
             : null
         ),
-        opens:   (quote.open   || []).map(v => v != null ? +v.toFixed(4) : null),
-        highs:   (quote.high   || []).map(v => v != null ? +v.toFixed(4) : null),
-        lows:    (quote.low    || []).map(v => v != null ? +v.toFixed(4) : null),
-        closes:  (adjclose || quote.close || []).map(v => v != null ? +v.toFixed(4) : null),
-        volumes: (quote.volume || []).map(v => v || 0)
+        // Candles MUST use raw OHLC together — mixing adjusted close with raw open
+        // makes bodies render the wrong colour (systematically red the further back
+        // you go). Adjusted close is exposed separately for any continuity needs.
+        opens:    (quote.open   || []).map(v => v != null ? +v.toFixed(4) : null),
+        highs:    (quote.high   || []).map(v => v != null ? +v.toFixed(4) : null),
+        lows:     (quote.low    || []).map(v => v != null ? +v.toFixed(4) : null),
+        closes:   (quote.close  || []).map(v => v != null ? +v.toFixed(4) : null),
+        adjcloses:(adjclose     || []).map(v => v != null ? +v.toFixed(4) : null),
+        volumes:  (quote.volume || []).map(v => v || 0)
       });
     } catch(e) {
       console.error('Chart error:', e.message);
@@ -1043,9 +1047,14 @@ function computeMeanReversionLevels(tech, entry, isSell) {
 /** Short-horizon MEAN-REVERSION exit: bank the bounce at the channel mean/resistance
  *  (or when the fast oscillator normalises), with a fixed stop beyond the band. No
  *  trend trailing — this is a range/swing exit suited to choppy markets. */
-async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund = null) {
+async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund = null, markPrice = null) {
   const holdDays = Math.min(15, horizonHoldDaysServer('short')); // banks quickly
   const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
+  const lastIdx = data.length - 1;
+  // Mark an unrealised position at the LIVE price (when we've simply run out of
+  // historical bars) rather than the last daily close — otherwise a trade entered
+  // at yesterday's close shows ~0 PnL until the next daily bar prints.
+  const markAt = (idx, fallback) => (markPrice && idx >= lastIdx) ? markPrice : fallback;
   const eTech = techAtBoundedIndex(data, weeklyAll, entryIdx);
   const lv = computeMeanReversionLevels(eTech, entry, isSell) || {};
   const target = lv.target, stop = lv.stop;
@@ -1067,20 +1076,22 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
     const r2 = bt.rsi2, rr = bt.rsi;
     if (!isSell && bar.c > entry && ((r2 != null && r2 > 70) || rr >= 58)) return finish('signal_exit', j, bar.c);
     if (isSell && bar.c < entry && ((r2 != null && r2 < 30) || rr <= 42)) return finish('signal_exit', j, bar.c);
-    if (j === maxJ) return finish('time_limit', j, bar.c);
+    if (j === maxJ) return finish('time_limit', j, markAt(j, bar.c));
   }
-  return finish('open', maxJ, data[maxJ].c);
+  return finish('open', maxJ, markAt(maxJ, data[maxJ].c));
 }
 
 /** Unified HYBRID exit simulator used by BOTH the backtest and the history P&L
  *  refresh, so reported win rates match what the live rules would have done.
  *  SHORT horizon delegates to the mean-reversion exit; medium/long book a partial
  *  at TP1 (locks a win) and ride the remainder with a wide chandelier trail. */
-async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, fund = null) {
+async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, fund = null, markPrice = null) {
   if (!data || entryIdx == null || !(entry > 0)) return null;
-  if (hz === 'short') return simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund);
+  if (hz === 'short') return simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund, markPrice);
   const holdDays = horizonHoldDaysServer(hz);
   const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
+  const lastIdx = data.length - 1;
+  const markAt = (idx, fallback) => (markPrice && idx >= lastIdx) ? markPrice : fallback;
   const entryTech = techAtBoundedIndex(data, weeklyAll, entryIdx);
   const atrEntry = entryTech.atr || entry * 0.02;
   let trailingSl = computeTrailingStopFromTech(entryTech, entry, hz, isSell, fund);
@@ -1137,10 +1148,10 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
       }
     }
     // horizon time cap
-    if (j === maxJ) return finish(tp1Hit ? 'tp1_then_time' : 'time_limit', j, bar.c);
+    if (j === maxJ) return finish(tp1Hit ? 'tp1_then_time' : 'time_limit', j, markAt(j, bar.c));
   }
   // Still open at the last available bar (history mark-to-market on the remainder).
-  return finish(tp1Hit ? 'tp1_open' : 'open', maxJ, data[maxJ].c);
+  return finish(tp1Hit ? 'tp1_open' : 'open', maxJ, markAt(maxJ, data[maxJ].c));
 }
 
 /** Each ticker may appear in only ONE buy horizon and ONE sell horizon (best score wins). */
@@ -6067,6 +6078,29 @@ async function generateServerPicksFromShortlist(opts = {}) {
       medSell: topN(sellAssign.medium, 'mediumSellScore'),
       longSell: topN(sellAssign.long, 'longSellScore')
     };
+
+    // Re-price the FINAL picks with LIVE quotes so the recorded entry (and the
+    // dashboard card) reflect the real tradeable price, not the last daily close
+    // — which lags intraday / pre-market and was making entries show yesterday's
+    // close (and history PnL hover near 0).
+    try {
+      const pickRows = [...dashData.short, ...dashData.medium, ...dashData.long,
+                        ...dashData.shortSell, ...dashData.medSell, ...dashData.longSell];
+      const pickTickers = [...new Set(pickRows.map(r => r.ticker))];
+      if (pickTickers.length) {
+        const liveQuotes = await fetchQuotesV7Bulk(pickTickers);
+        for (const r of pickRows) {
+          const px = liveQuotes[r.ticker]?.price;
+          if (px && px > 0) {
+            const tech = techMap[r.ticker];
+            const fEntry = fundCache.get(r.ticker);
+            const fnd = fEntry && Date.now() - fEntry.ts < TECH_TTL * 4 ? fEntry.data : null;
+            applyServerPriceLevels(r, px, tech, fnd);
+          }
+        }
+      }
+    } catch (e) { console.warn('Live re-pricing of picks failed:', e.message); }
+
     dashboardPicksCache = {
       version: DASHBOARD_PICKS_VERSION,
       schemaVersion: 1,
@@ -6227,7 +6261,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260617-fmp-ultimate-v7.8.1',
+    server_build: '20260617-fmp-ultimate-v7.8.2',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -9739,7 +9773,7 @@ function horizonTimeLimitExceededServer(hz, entryDateOrIso) {
  * hysteresis signal-flip), so live trade outcomes match the backtest exactly.
  * Returns canonical status + blended return + representative exit price.
  */
-async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) {
+async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markPrice = null) {
   if (!Array.isArray(bars) || !bars.length || !entry) return null;
   const weeklyAll = dailyToWeeklyBars(bars);
   let startIdx = -1;
@@ -9747,7 +9781,7 @@ async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) {
     if ((bars[i].t || 0) * 1000 >= entryMs) { startIdx = i; break; }
   }
   if (startIdx < 0) return null;
-  const res = await simulateHybridExit(bars, startIdx, entry, hz, isSell, weeklyAll, null);
+  const res = await simulateHybridExit(bars, startIdx, entry, hz, isSell, weeklyAll, null, markPrice);
   if (!res) return null;
   const open = res.status === 'open' || res.status === 'tp1_open';
   let status;
@@ -9849,7 +9883,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         continue;
       }
 
-      const pathExit = (bars && entry) ? await simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) : null;
+      const pathExit = (bars && entry) ? await simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, curr) : null;
 
       if (pathExit) {
         // res.ret is already directional (profit>0 for both long & short) and
