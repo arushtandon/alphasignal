@@ -771,10 +771,18 @@ function calcATRFull(data, period = 14) {
 /** Supertrend (ATR bands). Returns direction, value, and flip signals for Strong Buy/Sell. */
 function calcSupertrend(daily, period = 10, multiplier = 3) {
   if (!daily || daily.length < period + 3) return null;
+  // O(n) rolling ATR (SMA of True Range over `period`, matching calcATRFull).
+  const tr = new Array(daily.length).fill(0);
+  for (let i = 1; i < daily.length; i++) {
+    const prev = daily[i - 1].c;
+    tr[i] = Math.max(daily[i].h - daily[i].l, Math.abs(daily[i].h - prev), Math.abs(daily[i].l - prev));
+  }
+  let trSum = 0;
+  for (let i = 1; i <= period && i < daily.length; i++) trSum += tr[i];
   let finalUpper = null, finalLower = null, direction = 1, prevDir = 1;
   for (let i = period; i < daily.length; i++) {
-    const slice = daily.slice(0, i + 1);
-    const atr = calcATRFull(slice, period);
+    if (i > period) trSum += tr[i] - tr[i - period]; // slide window [i-period+1 .. i]
+    const atr = trSum / period;
     if (!atr || atr <= 0) continue;
     const hl2 = (daily[i].h + daily[i].l) / 2;
     const bu = hl2 + multiplier * atr;
@@ -838,9 +846,31 @@ function sliceWeeklyForDailyIndex(daily, weeklyAll, idx) {
 
 const BACKTEST_WINDOW_BARS = 1260; // ~5 years of daily bars
 const BACKTEST_WARMUP = 220;
+// Trailing window fed to buildFullTechResult during walk-forward. Must exceed 200
+// (for MA200) plus enough warmup for MACD/Supertrend to stabilise. Using a bounded
+// window keeps each per-bar tech recompute O(1) amortised instead of O(n).
+const BACKTEST_TECH_WINDOW = 280;
 
 function horizonHoldDaysServer(hz) {
   return hz === 'short' ? 20 : hz === 'medium' ? 63 : 180;
+}
+
+// Build full technicals for the bar at index `i` using only a bounded trailing
+// window of daily bars (and the weekly bars up to that date). This is the key to
+// a fast walk-forward backtest: indicator helpers all read the tail of the array,
+// so a fixed-size window gives the same recent values without O(n) per-call cost.
+function techAtBoundedIndex(data, weeklyAll, i) {
+  const lo = Math.max(0, i - (BACKTEST_TECH_WINDOW - 1));
+  const dw = data.slice(lo, i + 1);
+  let weekly;
+  if (weeklyAll && weeklyAll.length) {
+    const cutT = data[i]?.t || 0;
+    weekly = weeklyAll.filter(w => (w.t || 0) <= cutT).slice(-160);
+    if (!weekly || weekly.length < 10) weekly = dailyToWeeklyBars(dw);
+  } else {
+    weekly = dailyToWeeklyBars(dw);
+  }
+  return buildFullTechResult('X', dw, weekly);
 }
 
 /** Trailing stop from current technicals (no TP — capture full move, ratchet SL at EOD). */
@@ -1631,9 +1661,11 @@ function deriveActionRating(buy, sell) {
  * Walk-forward backtest aligned with live computeQuantSignal + trailing SL (no TP).
  * Uses the last ~5 years of daily bars. Reports supertrendWinRate separately for validation.
  */
-function backtestSignal(data, hz, weeklyData = null, fund = null) {
+function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {}) {
   if (!data || data.length < BACKTEST_WARMUP + 30) return null;
-  const windowStart = Math.max(BACKTEST_WARMUP, data.length - BACKTEST_WINDOW_BARS);
+  const windowBars = opts.windowBars || BACKTEST_WINDOW_BARS;
+  const entryStep = Math.max(1, opts.entryStep || 1);
+  const windowStart = Math.max(BACKTEST_WARMUP, data.length - windowBars);
   const holdDays = horizonHoldDaysServer(hz);
   const weeklyAll = weeklyData || dailyToWeeklyBars(data);
 
@@ -1641,11 +1673,9 @@ function backtestSignal(data, hz, weeklyData = null, fund = null) {
   let stWins = 0, stTrades = 0;
   let nextAllowed = windowStart;
 
-  for (let i = windowStart; i < data.length - 2; i++) {
+  for (let i = windowStart; i < data.length - 2; i += entryStep) {
     if (i < nextAllowed) continue;
-    const slice = data.slice(0, i + 1);
-    const weeklySlice = sliceWeeklyForDailyIndex(data, weeklyAll, i);
-    const tech = buildFullTechResult('X', slice, weeklySlice);
+    const tech = techAtBoundedIndex(data, weeklyAll, i);
     const sig = computeQuantSignal(tech, fund, hz);
     const st = tech.supertrend;
 
@@ -1668,9 +1698,7 @@ function backtestSignal(data, hz, weeklyData = null, fund = null) {
     const maxJ = Math.min(i + holdDays, data.length - 1);
 
     for (let j = i + 1; j <= maxJ; j++) {
-      const barSlice = data.slice(0, j + 1);
-      const barWeekly = sliceWeeklyForDailyIndex(data, weeklyAll, j);
-      const barTech = buildFullTechResult('X', barSlice, barWeekly);
+      const barTech = techAtBoundedIndex(data, weeklyAll, j);
       const barSig = computeQuantSignal(barTech, fund, hz);
 
       if (isBuy && (barSig.action === 'Hold' || barSig.action === 'Sell' || barSig.buyScore < 62)) {
@@ -4189,28 +4217,11 @@ app.post('/api/technicals/batch', async (req, res) => {
           ? _cachedFundEntry.data
           : null;
 
-      // Real 5-year walk-forward backtest BEFORE quant overlays (feeds supertrend validation)
-      if (daily.length >= BACKTEST_WARMUP + 30) {
-        let weeklyBt = null;
-        try {
-          weeklyBt = await fetchOHLCV(sym, '5y', '1wk').catch(() => dailyToWeeklyBars(daily));
-        } catch (_) { weeklyBt = dailyToWeeklyBars(daily); }
-        const btS = backtestSignal(daily, 'short', weeklyBt, _cachedFund);
-        const btM = backtestSignal(daily, 'medium', weeklyBt, _cachedFund);
-        const btL = backtestSignal(daily, 'long', weeklyBt, _cachedFund);
-        data.backtestShort  = btS;
-        data.backtestMedium = btM;
-        data.backtestLong   = btL;
-        data.backtestShortWinRate  = btS?.winRate ?? null;
-        data.backtestMediumWinRate = btM?.winRate ?? null;
-        data.backtestLongWinRate   = btL?.winRate ?? null;
-        data.backtestShortTrades   = btS?.trades ?? 0;
-        data.backtestMediumTrades  = btM?.trades ?? 0;
-        data.backtestLongTrades    = btL?.trades ?? 0;
-        data.supertrendWinRate     = btM?.supertrendWinRate ?? btS?.supertrendWinRate ?? null;
-        data._supertrendBacktestWR = data.supertrendWinRate;
-      }
-
+      // NOTE: the full 5-year walk-forward backtest is intentionally NOT run here.
+      // On the Render Starter instance, running 3 horizons × ~120 dashboard symbols
+      // would block the event loop long enough to trigger 502s. The real, aligned
+      // 5-year backtest runs on-demand in /api/analyze (single ticker). The dashboard
+      // shows the quant winRateHint as an estimate until the user opens full analysis.
       data.supertrend = calcSupertrend(daily);
       data.quantSignal = {
         short:  computeQuantSignal(data, _cachedFund, 'short'),
@@ -5760,28 +5771,38 @@ async function generateServerPicksFromShortlist(opts = {}) {
       rows.push(row);
     }
 
-    const pickPane = (hz, side) => {
-      const scoreKey = side === 'buy' ? hz + 'Score' : hz + 'SellScore';
-      const hasPx = r => r[hz + 'Entry'] && r[hz + 'StopLoss'];
-      const arr = rows.filter(r => {
-        if (side === 'buy') {
-          return r[hz + 'Action'] === 'Buy' && (r[hz + 'Score'] || 0) >= 62
-            && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r);
-        }
-        return r[hz + 'Action'] === 'Sell' && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r);
-      });
-      arr.sort((a, b) => (b[scoreKey] || 0) - (a[scoreKey] || 0));
-      return arr.slice(0, 5).map(r => ({ ...r }));
-    };
+    // Cross-timeframe dedup done BEFORE slicing: assign each ticker to its single
+    // best horizon (highest score), then take the top 5 per pane from that
+    // assignment. This guarantees a name appears in only one timeframe AND keeps
+    // every pane as full as the universe allows (slicing-then-deduping left gaps).
+    const HZS = ['short', 'medium', 'long'];
+    const hasPx = (r, hz) => r[hz + 'Entry'] && r[hz + 'StopLoss'];
+    const buyAssign = { short: [], medium: [], long: [] };
+    const sellAssign = { short: [], medium: [], long: [] };
 
-    const dashData = dedupeCrossTimeframePicks({
-      short: pickPane('short', 'buy'),
-      medium: pickPane('medium', 'buy'),
-      long: pickPane('long', 'buy'),
-      shortSell: pickPane('short', 'sell'),
-      medSell: pickPane('medium', 'sell'),
-      longSell: pickPane('long', 'sell')
-    });
+    for (const r of rows) {
+      let bBuyHz = null, bBuyScore = -1;
+      let bSellHz = null, bSellScore = -1;
+      for (const hz of HZS) {
+        const buyOk = r[hz + 'Action'] === 'Buy' && (r[hz + 'Score'] || 0) >= 62
+          && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r, hz);
+        if (buyOk && (r[hz + 'Score'] || 0) > bBuyScore) { bBuyScore = r[hz + 'Score'] || 0; bBuyHz = hz; }
+        const sellOk = r[hz + 'Action'] === 'Sell' && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r, hz);
+        if (sellOk && (r[hz + 'SellScore'] || 0) > bSellScore) { bSellScore = r[hz + 'SellScore'] || 0; bSellHz = hz; }
+      }
+      if (bBuyHz) buyAssign[bBuyHz].push(r);
+      else if (bSellHz) sellAssign[bSellHz].push(r); // a name is buy XOR sell, never both
+    }
+
+    const topN = (arr, key) => arr.slice().sort((a, b) => (b[key] || 0) - (a[key] || 0)).slice(0, 5).map(r => ({ ...r }));
+    const dashData = {
+      short: topN(buyAssign.short, 'shortScore'),
+      medium: topN(buyAssign.medium, 'mediumScore'),
+      long: topN(buyAssign.long, 'longScore'),
+      shortSell: topN(sellAssign.short, 'shortSellScore'),
+      medSell: topN(sellAssign.medium, 'mediumSellScore'),
+      longSell: topN(sellAssign.long, 'longSellScore')
+    };
     dashboardPicksCache = {
       version: DASHBOARD_PICKS_VERSION,
       schemaVersion: 1,
@@ -9444,9 +9465,7 @@ function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell) {
   let trailingSl = null;
 
   for (let j = startIdx; j < bars.length; j++) {
-    const barSlice = bars.slice(0, j + 1);
-    const barWeekly = sliceWeeklyForDailyIndex(bars, weeklyAll, j);
-    const barTech = buildFullTechResult('X', barSlice, barWeekly);
+    const barTech = techAtBoundedIndex(bars, weeklyAll, j);
     const barSig = computeQuantSignal(barTech, null, hz);
 
     if (!isSell && (barSig.action === 'Hold' || barSig.action === 'Sell' || barSig.buyScore < 62)) {
