@@ -6261,7 +6261,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260618-fmp-ultimate-v7.8.3',
+    server_build: '20260618-fmp-ultimate-v7.8.4',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -9823,13 +9823,16 @@ function liveSignalFlipExit(ticker, hz, isSell, techMap) {
   const tech = techMap?.[ticker];
   if (!tech?.quantSignal?.[hz]) return null;
   const sig = tech.quantSignal[hz];
-  const HOLD_FLOOR = 58; // below this the side is no longer a valid signal
+  // Close exactly when the side is no longer a valid signal — i.e. the moment it
+  // would display as "Hold" (score < 62, the same cutoff used for the Buy/Sell
+  // rating). This removes the dead-zone where a row showed "Hold" yet stayed open.
+  const VALID = 62;
   if (!isSell) {
-    if (sig.sellScore >= 62) return { flipped: true, reason: 'Sell' };
-    if ((sig.buyScore || 0) < HOLD_FLOOR) return { flipped: true, reason: 'Hold (Buy lost)' };
+    if (sig.sellScore >= VALID) return { flipped: true, reason: 'Sell' };
+    if ((sig.buyScore || 0) < VALID) return { flipped: true, reason: 'Hold (Buy lost)' };
   } else {
-    if (sig.buyScore >= 62) return { flipped: true, reason: 'Buy' };
-    if ((sig.sellScore || 0) < HOLD_FLOOR) return { flipped: true, reason: 'Hold (Sell lost)' };
+    if (sig.buyScore >= VALID) return { flipped: true, reason: 'Buy' };
+    if ((sig.sellScore || 0) < VALID) return { flipped: true, reason: 'Hold (Sell lost)' };
   }
   return null;
 }
@@ -9961,6 +9964,8 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         rowChanged = true;
       }
       h[hz + 'CurrentPrice'] = curr;
+      // A row that is still genuinely open must not carry a stale exit note.
+      if (h[hz + 'Status'] === 'open' && h[hz + 'ExitReason']) h[hz + 'ExitReason'] = '';
       if (h.hz === hz || !h.hz) {
         h.pnlDollar = h[hz + 'PnlDollar'];
         h.pnlPct = h[hz + 'PnlPct'];
