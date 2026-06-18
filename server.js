@@ -6261,7 +6261,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260618-fmp-ultimate-v7.8.4',
+    server_build: '20260618-fmp-ultimate-v7.8.5',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -9862,31 +9862,48 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
   if (dollarFixed) saveHistoryFile(tradeHistory);
 
   const sinceMs = req.body?.since ? new Date(req.body.since).getTime() : 0;
+
+  // Only OPEN positions need a live price + fresh signal. Closed rows are frozen
+  // (the $0 backfill above already repaired their dollar figures). Scoping the
+  // heavy OHLCV/signal work to open trades stops the refresh from timing out on a
+  // multi-thousand-row history — which previously left flips/PnL never updated.
+  const isOpenRow = (h) => {
+    const hz = h.hz || 'short';
+    const s = h[hz + 'Status'] || h.status;
+    return !s || s === 'open' || s === 'tp1_open' || s === 'n/a';
+  };
   const tickers = [...new Set(
     tradeHistory
-      .filter(h => !sinceMs || new Date(h.entryDate || h.timestamp || 0).getTime() >= sinceMs)
+      .filter(h => (h.action === 'Buy' || h.action === 'Sell') && isOpenRow(h)
+        && (!sinceMs || new Date(h.entryDate || h.timestamp || 0).getTime() >= sinceMs))
       .map(h => h.ticker)
       .filter(Boolean)
   )];
+  const DEADLINE = Date.now() + 230000; // return before Render's request ceiling
   const priceMap = {};
-  await Promise.all(tickers.map(async sym => {
-    try {
-      const q = await fetchSinglePrice(sym);
-      if (q?.price) priceMap[sym] = parseFloat(q.price);
-    } catch (_) {}
-  }));
+  for (let off = 0; off < tickers.length; off += 12) {
+    if (Date.now() > DEADLINE) break;
+    await Promise.all(tickers.slice(off, off + 12).map(async sym => {
+      try {
+        const q = await fetchSinglePrice(sym);
+        if (q?.price) priceMap[sym] = parseFloat(q.price);
+      } catch (_) {}
+    }));
+  }
 
   const ohlcvMap = {};
   const techLiveMap = {};
-  for (let off = 0; off < tickers.length; off += 6) {
-    const slice = tickers.slice(off, off + 6);
+  for (let off = 0; off < tickers.length; off += 8) {
+    if (Date.now() > DEADLINE) break;
+    const slice = tickers.slice(off, off + 8);
     await Promise.all(slice.map(async sym => {
       try {
-        let bars = await fetchOHLCV(sym, '5y', '1d').catch(() => null);
-        if (!bars || bars.length < 100) bars = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
-        if (bars && bars.length) {
+        // 2y daily is ample for live signals and the (recent-entry) path sim;
+        // derive weekly locally to avoid a second network round-trip per symbol.
+        const bars = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
+        if (bars && bars.length >= 60) {
           ohlcvMap[sym] = bars;
-          const weekly = await fetchOHLCV(sym, '5y', '1wk').catch(() => dailyToWeeklyBars(bars));
+          const weekly = dailyToWeeklyBars(bars);
           const tech = buildFullTechResult(sym, bars, weekly);
           tech.quantSignal = {
             short: computeQuantSignal(tech, null, 'short'),
