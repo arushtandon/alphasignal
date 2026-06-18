@@ -6261,7 +6261,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260618-fmp-ultimate-v7.8.5',
+    server_build: '20260618-fmp-ultimate-v7.8.6',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -9823,16 +9823,17 @@ function liveSignalFlipExit(ticker, hz, isSell, techMap) {
   const tech = techMap?.[ticker];
   if (!tech?.quantSignal?.[hz]) return null;
   const sig = tech.quantSignal[hz];
-  // Close exactly when the side is no longer a valid signal — i.e. the moment it
-  // would display as "Hold" (score < 62, the same cutoff used for the Buy/Sell
-  // rating). This removes the dead-zone where a row showed "Hold" yet stayed open.
-  const VALID = 62;
+  // Hysteresis: hold through a merely SOFT signal (score 55-61) so a brief wobble
+  // doesn't churn out a good position, but close on a genuine BREAKDOWN (< 55) or
+  // when the OPPOSITE side becomes a real signal (>= 62).
+  const VALID = 62;       // opposite side this strong → true reversal
+  const BREAKDOWN = 55;   // own side this weak → conviction genuinely gone
   if (!isSell) {
     if (sig.sellScore >= VALID) return { flipped: true, reason: 'Sell' };
-    if ((sig.buyScore || 0) < VALID) return { flipped: true, reason: 'Hold (Buy lost)' };
+    if ((sig.buyScore || 0) < BREAKDOWN) return { flipped: true, reason: 'Buy broke down' };
   } else {
     if (sig.buyScore >= VALID) return { flipped: true, reason: 'Buy' };
-    if ((sig.sellScore || 0) < VALID) return { flipped: true, reason: 'Hold (Sell lost)' };
+    if ((sig.sellScore || 0) < BREAKDOWN) return { flipped: true, reason: 'Sell broke down' };
   }
   return null;
 }
