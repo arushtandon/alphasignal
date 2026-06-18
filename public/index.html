@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260618-fmp-ultimate-v7.8.6">
+<meta name="alphasignal-build" content="20260618-fmp-ultimate-v7.8.7">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1638,14 +1638,13 @@ function switchTab(t){
   if(t==='history') {
     renderHist();
     renderSummaryCards('short');
-    fixHistoryPrices(true).then(async function () {
-      renderHist();
-      if (ST.history.length) {
-        try { await refreshHistoryPnl(); } catch (e) { console.warn(e); }
-      }
-    });
+    // Server owns entries/levels/PnL now. Just pull the authoritative state —
+    // do NOT run the old client recompute or fixHistoryPrices (which reset
+    // entries to the live price and wiped server history).
     if (ST.history.length) {
-      refreshHistoryPnl().catch(function (e) { console.warn(e); });
+      refreshHistoryPnl()
+        .then(function () { renderHist(); renderSummaryCards('short'); })
+        .catch(function (e) { console.warn(e); });
     }
   }
   if(t==='watchlist') renderWl();
@@ -3337,7 +3336,13 @@ async function resyncHistory() {
 }
 
 async function fixHistoryPrices(silent) {
-  if(!silent && !confirm('Recalculate all open trade entry/target/stop prices using live market prices?')) return;
+  // SAFE MODE: this previously snapped entries to the live price and DELETE+re-
+  // uploaded the whole history, which corrupted frozen entries (PnL → 0). Entries
+  // are now frozen server-side, so this just pulls the authoritative server state.
+  if (!silent && !confirm('Refresh all trade prices and P&L from the server?')) return;
+  await refreshHistoryPnl();
+  return;
+  /* eslint-disable no-unreachable */
   const tickers = [...new Set(ST.history.filter(h=>h.ticker).map(h=>h.ticker))];
   if(!tickers.length) return;
   // Fetch prices for all tickers
@@ -4915,9 +4920,10 @@ function renderHist() {
         const exitV = parsePrice(exitRaw);
         if(entryV && exitV) {
           const dir = isSc ? -1 : 1;
-          const shares = Math.floor(10000/entryV);
-          computedPnlD = (exitV - entryV) * dir * shares;
+          // Fixed $10k notional (NOT floor(10000/entry) shares, which is 0 for
+          // high-priced names and shows a bogus $0).
           computedPnlP = (exitV - entryV) / entryV * dir * 100;
+          computedPnlD = computedPnlP / 100 * 10000;
         }
       }
       const status    = h[stk] && h[stk] !== 'n/a' ? h[stk] : (h.status||'open');
@@ -5125,10 +5131,10 @@ function calcHistPnl(entryStr, currentPrice, action) {
   const entry = parsePrice(entryStr);
   if(!entry || !currentPrice) return null;
   const dir = (action||'Buy').toLowerCase()==='sell' ? -1 : 1;
-  const shares = Math.floor(10000 / entry);
-  const pnlDollar = (currentPrice - entry) * dir * shares;
+  // Fixed $10k notional so high-priced names don't collapse to $0.
   const pnlPct = (currentPrice - entry) / entry * dir * 100;
-  return { pnlDollar, pnlPct, shares };
+  const pnlDollar = pnlPct / 100 * 10000;
+  return { pnlDollar, pnlPct, shares: Math.max(1, Math.floor(10000 / entry)) };
 }
 
 /** $10k notional realised PnL for one horizon row; prefers stored hz*PnlDollar, recomputes TP/SL from levels if missing */
@@ -5147,8 +5153,7 @@ function resolveHistoricalHzPnl(h, hz) {
     const exitV = parsePrice(h[hz + 'ExitPrice']);
     if (!entryV || !exitV) return null;
     const dir = isSell ? -1 : 1;
-    const shares = Math.floor(10000 / entryV);
-    return (exitV - entryV) * dir * shares;
+    return (exitV - entryV) / entryV * dir * 10000; // $10k notional
   }
   if (st !== 'tp1_hit' && st !== 'tp2_hit' && st !== 'sl_hit') return null;
   const isSell = (h.action || '').toLowerCase() === 'sell';
@@ -5167,8 +5172,7 @@ function resolveHistoricalHzPnl(h, hz) {
   const exitV = parsePrice(exitRaw);
   if (!entryV || !exitV) return null;
   const dir = isSell ? -1 : 1;
-  const shares = Math.floor(10000 / entryV);
-  return (exitV - entryV) * dir * shares;
+  return (exitV - entryV) / entryV * dir * 10000; // $10k notional
 }
 
 function isMarketTrading(ticker) {
@@ -5212,113 +5216,36 @@ function horizonTimeLimitExceeded(hz, entryDateOrIso) {
   return false;
 }
 
+let _histRefreshInFlight = null;
 async function refreshHistoryPnl() {
-  if(!ST.history.length) return;
-  const syms = [...new Set(ST.history.map(h=>h.ticker))];
-  try {
-    const r = await fetch('/api/prices?symbols='+encodeURIComponent(syms.join(',')));
-    if(!r.ok) return;
-    const prices = await r.json();
-    ST.history.forEach(h => {
-      const p = prices[h.ticker];
-      if(!p || !p.price) return;
-      const curr = parseFloat(p.price);
-      h.currentPrice = curr;
-      const isSell = (h.action||'').toLowerCase()==='sell';
-      const dir = isSell ? -1 : 1;
-
-      // Per-horizon PnL with TP/SL hit detection
-      // Determine which horizons to process for this record
-      const hzList = h.hz ? [h.hz] : ['short','medium','long'];
-      hzList.forEach(hz => {
-        const hzAction = (h.action||'').toLowerCase(); // new format uses single action
-        if(hzAction !== 'buy' && hzAction !== 'sell') return;
-        const entryStr = h[hz+'Entry'] || h.entry;
-        const entry = parsePrice(entryStr);
-        if(!entry) return;
-        const tp1 = parsePrice(h[hz+'Target1'] || h.target1);
-        const tp2 = parsePrice(h[hz+'Target2'] || h.target2);
-        const sl  = parsePrice(h[hz+'StopLoss'] || h.stopLoss);
-        const shares = Math.floor(10000 / entry);
-        const pnlDollar = (curr - entry) * dir * shares;
-        const pnlPct    = (curr - entry) / entry * dir * 100;
-
-        // Check if TP1 hit — validate direction first
-        // For BUY: TP should be ABOVE entry, SL should be BELOW entry
-        // For SELL: TP should be BELOW entry, SL should be ABOVE entry
-        const validTp1 = tp1 && (isSell ? tp1 < entry : tp1 > entry);
-        const validTp2 = tp2 && (isSell ? tp2 < entry : tp2 > entry);
-        const validSl  = sl  && (isSell ? sl  > entry : sl  < entry);
-        // Only flag as hit if target is in the right direction
-        const tp1Hit = validTp1 && (isSell ? curr <= tp1 : curr >= tp1);
-        const tp2Hit = validTp2 && (isSell ? curr <= tp2 : curr >= tp2);
-        const slHit  = validSl  && (isSell ? curr >= sl  : curr <= sl);
-
-        if(slHit && h[hz+'Status'] !== 'tp1_hit' && h[hz+'Status'] !== 'tp2_hit') {
-          // SL hit — trade exited at stop loss
-          const exitPnl = (sl - entry) * dir * shares;
-          const exitPct = (sl - entry) / entry * dir * 100;
-          h[hz+'PnlDollar'] = exitPnl;
-          h[hz+'PnlPct']    = exitPct;
-          h[hz+'Status']    = 'sl_hit';
-          h[hz+'ExitPrice'] = sl;
-        } else if(tp2Hit) {
-          const exitPnl = (tp2 - entry) * dir * shares;
-          h[hz+'PnlDollar'] = exitPnl;
-          h[hz+'PnlPct']    = (tp2 - entry) / entry * dir * 100;
-          h[hz+'Status']    = 'tp2_hit';
-          h[hz+'ExitPrice'] = tp2;
-        } else if(tp1Hit) {
-          const exitPnl = (tp1 - entry) * dir * shares;
-          h[hz+'PnlDollar'] = exitPnl;
-          h[hz+'PnlPct']    = (tp1 - entry) / entry * dir * 100;
-          h[hz+'Status']    = 'tp1_hit';
-          h[hz+'ExitPrice'] = tp1;
-        } else {
-          var entryDt = h.entryDate || h.timestamp;
-          var overLimit = horizonTimeLimitExceeded(hz, entryDt);
-          if (!overLimit && h[hz+'Status'] === 'time_limit') {
-            // Rule was tightened (was 3 calendar days); restore incorrectly time-limited trades
-            h[hz+'PnlDollar'] = pnlDollar;
-            h[hz+'PnlPct'] = pnlPct;
-            h[hz+'Status'] = 'open';
-            h[hz+'ExitPrice'] = '';
-          } else if (overLimit && h[hz+'Status'] !== 'time_limit') {
-            h[hz+'PnlDollar'] = pnlDollar;
-            h[hz+'PnlPct'] = pnlPct;
-            h[hz+'Status'] = 'time_limit';
-            h[hz+'ExitPrice'] = curr.toFixed(2);
-          } else if (h[hz+'Status'] !== 'time_limit') {
-            h[hz+'PnlDollar'] = pnlDollar;
-            h[hz+'PnlPct'] = pnlPct;
-            h[hz+'Status'] = 'open';
-          }
-        }
-        h[hz+'CurrentPrice'] = curr;
-        // Also set generic pnl fields for display compatibility
-        if(h.hz === hz || !h.hz) {
-          h.pnlDollar = h[hz+'PnlDollar'];
-          h.pnlPct    = h[hz+'PnlPct'];
-          h.status    = h[hz+'Status'];
-        }
-      }); // end hzList.forEach
-      h.currentPrice = curr;
-    });
-    // Post PnL updates to server
+  if (!ST.history.length) return;
+  if (_histRefreshInFlight) return _histRefreshInFlight;
+  // The SERVER is the single source of truth for history P&L: it uses the hybrid
+  // exit, a fixed $10k notional, FROZEN entry prices and signal-flip exits with
+  // hysteresis. The browser must NOT recompute (the old naive shares=floor(10000/
+  // entry) math returned $0 for high-priced names and overwrote the server fixes,
+  // then pushed the wrong numbers back). Just trigger the server pass and reload.
+  _histRefreshInFlight = (async () => {
     try {
-      const updates = ST.history.map(h => ({
-        ticker: h.ticker, entryDate: h.entryDate || h.timestamp,
-        shortPnlDollar: h.shortPnlDollar, shortPnlPct: h.shortPnlPct, shortStatus: h.shortStatus, shortCurrentPrice: h.shortCurrentPrice,
-        mediumPnlDollar: h.mediumPnlDollar, mediumPnlPct: h.mediumPnlPct, mediumStatus: h.mediumStatus,
-        longPnlDollar: h.longPnlDollar, longPnlPct: h.longPnlPct, longStatus: h.longStatus,
-        currentPrice: h.currentPrice
-      }));
-      await fetch('/api/history/update-pnl', {
-        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(updates)
-      });
-    } catch(e) {}
-    ss(); renderHist();
-  } catch(e) { console.warn('PnL refresh failed:', e.message); }
+      await fetch('/api/history/refresh-pnl', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      }).catch(() => {});
+      const r = await fetch('/api/history');
+      if (r.ok) {
+        const data = await r.json();
+        if (Array.isArray(data) && data.length) {
+          ST.history = data;
+          ss();
+          renderHist();
+        }
+      }
+    } catch (e) {
+      console.warn('PnL refresh failed:', e.message);
+    } finally {
+      _histRefreshInFlight = null;
+    }
+  })();
+  return _histRefreshInFlight;
 }
 
 // ── Bootstrap ────────────────────────────────────────────────────────
