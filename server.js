@@ -1051,6 +1051,9 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
   const holdDays = Math.min(15, horizonHoldDaysServer('short')); // banks quickly
   const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
   const lastIdx = data.length - 1;
+  // Only a GENUINELY elapsed hold period is a time-limit exit. If we merely ran
+  // out of bars (a recent trade), the position is still OPEN — don't close it.
+  const heldFull = (entryIdx + holdDays) <= lastIdx;
   // Mark an unrealised position at the LIVE price (when we've simply run out of
   // historical bars) rather than the last daily close — otherwise a trade entered
   // at yesterday's close shows ~0 PnL until the next daily bar prints.
@@ -1076,7 +1079,7 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
     const r2 = bt.rsi2, rr = bt.rsi;
     if (!isSell && bar.c > entry && ((r2 != null && r2 > 70) || rr >= 58)) return finish('signal_exit', j, bar.c);
     if (isSell && bar.c < entry && ((r2 != null && r2 < 30) || rr <= 42)) return finish('signal_exit', j, bar.c);
-    if (j === maxJ) return finish('time_limit', j, markAt(j, bar.c));
+    if (j === maxJ) return finish(heldFull ? 'time_limit' : 'open', j, markAt(j, bar.c));
   }
   return finish('open', maxJ, markAt(maxJ, data[maxJ].c));
 }
@@ -1092,6 +1095,8 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
   const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
   const lastIdx = data.length - 1;
   const markAt = (idx, fallback) => (markPrice && idx >= lastIdx) ? markPrice : fallback;
+  // Genuine time-limit only if the full hold elapsed; otherwise still OPEN.
+  const heldFull = (entryIdx + holdDays) <= lastIdx;
   const entryTech = techAtBoundedIndex(data, weeklyAll, entryIdx);
   const atrEntry = entryTech.atr || entry * 0.02;
   let trailingSl = computeTrailingStopFromTech(entryTech, entry, hz, isSell, fund);
@@ -1147,8 +1152,11 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
         if (bar.h >= trailingSl) return finish('tp1_then_sl', j, trailingSl);
       }
     }
-    // horizon time cap
-    if (j === maxJ) return finish(tp1Hit ? 'tp1_then_time' : 'time_limit', j, markAt(j, bar.c));
+    // horizon time cap (only if the hold genuinely elapsed; else still open)
+    if (j === maxJ) {
+      const st = tp1Hit ? (heldFull ? 'tp1_then_time' : 'tp1_open') : (heldFull ? 'time_limit' : 'open');
+      return finish(st, j, markAt(j, bar.c));
+    }
   }
   // Still open at the last available bar (history mark-to-market on the remainder).
   return finish(tp1Hit ? 'tp1_open' : 'open', maxJ, markAt(maxJ, data[maxJ].c));
@@ -6261,7 +6269,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260618-fmp-ultimate-v7.8.7',
+    server_build: '20260618-fmp-ultimate-v7.8.8',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',

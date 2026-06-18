@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260618-fmp-ultimate-v7.8.7">
+<meta name="alphasignal-build" content="20260618-fmp-ultimate-v7.8.8">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -3211,7 +3211,7 @@ function getDisplayHistoryForHz(hzKey) {
 
 /** PnL + open/closed snapshot for one horizon row (aligned with History table). */
 function histRowPnlSnapshot(h, hzKey) {
-  const closedKinds = ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit'];
+  const closedKinds = ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit', 'signal_exit'];
   const status = h[hzKey + 'Status'] && h[hzKey + 'Status'] !== 'n/a' ? h[hzKey + 'Status'] : (h.status || 'open');
   const isToday = new Date(h.entryDate || h.timestamp).toDateString() === new Date().toDateString();
   const mktNowOpen = isMarketTrading(h.ticker);
@@ -4904,7 +4904,7 @@ function renderHist() {
       const pnlP      = h[ppk] !== undefined ? h[ppk] : h.pnlPct;
       // If closed (TP/SL hit) but pnlD is null, compute from stored levels
       let computedPnlD = pnlD, computedPnlP = pnlP;
-      if(pnlD == null && (h[hz+'Status']==='tp1_hit'||h[hz+'Status']==='tp2_hit'||h[hz+'Status']==='sl_hit'||h[hz+'Status']==='time_limit')) {
+      if(pnlD == null && (h[hz+'Status']==='tp1_hit'||h[hz+'Status']==='tp2_hit'||h[hz+'Status']==='sl_hit'||h[hz+'Status']==='time_limit'||h[hz+'Status']==='signal_exit')) {
         const isSc = (h.action||'').toLowerCase()==='sell';
         const entryV = parsePrice(h[hz+'Entry']||h.entry||h.entryPrice);
         let exitRaw = h[hz+'ExitPrice'];
@@ -4933,8 +4933,8 @@ function renderHist() {
       const minsElapsed = (Date.now() - new Date(h.entryDate||h.timestamp).getTime()) / 60000;
       const mktNowOpen = isMarketTrading(h.ticker);
       const isToday = new Date(h.entryDate||h.timestamp).toDateString() === new Date().toDateString();
-      const wasClosed = status==='tp1_hit'||status==='tp2_hit'||status==='sl_hit'||status==='time_limit';
-      const wouldBePending = (isToday && !mktNowOpen && status!=='tp1_hit' && status!=='tp2_hit' && status!=='sl_hit' && status!=='time_limit');
+      const wasClosed = status==='tp1_hit'||status==='tp2_hit'||status==='sl_hit'||status==='time_limit'||status==='signal_exit';
+      const wouldBePending = (isToday && !mktNowOpen && !wasClosed);
       const effectiveStatus = (wouldBePending && computedPnlD == null) ? 'pending' : status;
       const effectiveIsOpen = effectiveStatus === 'open' || effectiveStatus === 'pending';
       const effectiveIsTp1  = effectiveStatus === 'tp1_hit';
@@ -4944,7 +4944,8 @@ function renderHist() {
       const isTp1   = effectiveIsTp1;
       const isTp2   = effectiveIsTp2;
       const isSl    = effectiveIsSl;
-      const isClosed= isTp1||isTp2||isSl||effectiveStatus==='time_limit';
+      const effectiveIsSignalExit = effectiveStatus==='signal_exit';
+      const isClosed= isTp1||isTp2||isSl||effectiveStatus==='time_limit'||effectiveIsSignalExit;
 
       const rowBg = effectiveIsOpen && computedPnlD != null
         ? 'background:rgba(245,200,66,0.06);'
@@ -4955,6 +4956,7 @@ function renderHist() {
       const statusBadge = effectiveStatus==='pending'
         ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(245,200,66,0.15);color:#F5C842;font-family:DM Mono,monospace">⏳ Pending open</span>'
         : effectiveStatus==='time_limit' ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(180,180,180,0.15);color:#aaa;font-family:DM Mono,monospace">⏱ Time limit</span>'
+        : effectiveIsSignalExit ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(120,170,255,0.18);color:#7aaaff;font-family:DM Mono,monospace">⇄ Signal exit</span>'
         : effectiveIsTp2 ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.2);color:var(--buy);font-family:DM Mono,monospace">✓ TP2 Hit</span>'
         : effectiveIsTp1 ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.15);color:var(--buy);font-family:DM Mono,monospace">✓ TP1 Hit</span>'
         : effectiveIsSl  ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(244,108,108,0.2);color:var(--sell);font-family:DM Mono,monospace">✗ SL Hit</span>'
@@ -4966,7 +4968,7 @@ function renderHist() {
         const pos  = computedPnlD >= 0;
         const col  = pos ? 'var(--buy)' : 'var(--sell)';
         const sign = pos ? '+' : '';
-        const exitLabel = effectiveIsTp2?'TP2':effectiveIsTp1?'TP1':effectiveIsSl?'SL':'Closed';
+        const exitLabel = effectiveIsTp2?'TP2':effectiveIsTp1?'TP1':effectiveIsSl?'SL':effectiveIsSignalExit?'Flip':'Closed';
         const exitP = h[hz+'ExitPrice'] ? ' @ '+h[hz+'ExitPrice'] : '';
         pnlDisplay = '<span style="color:'+col+';font-family:DM Mono,monospace;font-size:11px;font-weight:500">'
           +sign+'$'+Math.abs(computedPnlD).toFixed(0)+' ('+sign+Math.abs(computedPnlP||0).toFixed(1)+'%)'
@@ -5155,7 +5157,7 @@ function resolveHistoricalHzPnl(h, hz) {
     const dir = isSell ? -1 : 1;
     return (exitV - entryV) / entryV * dir * 10000; // $10k notional
   }
-  if (st !== 'tp1_hit' && st !== 'tp2_hit' && st !== 'sl_hit') return null;
+  if (st !== 'tp1_hit' && st !== 'tp2_hit' && st !== 'sl_hit' && st !== 'signal_exit') return null;
   const isSell = (h.action || '').toLowerCase() === 'sell';
   const entryV = parsePrice(h[hz + 'Entry'] || h.entry || h.entryPrice);
   let exitRaw = h[hz + 'ExitPrice'];
