@@ -6261,7 +6261,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260617-fmp-ultimate-v7.8.2',
+    server_build: '20260618-fmp-ultimate-v7.8.3',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -6417,18 +6417,19 @@ async function addTradesToHistory(trades) {
     return { accepted: 0, skipped: 0, total: tradeHistory.length };
   }
   const todayStr = new Date().toDateString();
-  const incomingKeys = new Set(
-    trades.map(t => {
-      const hz = t.hz || 'short';
-      const day = new Date(t.entryDate || t.timestamp || Date.now()).toDateString();
-      return `${t.ticker}|${hz}|${day}`;
-    })
-  );
-  tradeHistory = tradeHistory.filter(h => {
-    const hz = h.hz || 'short';
-    const day = new Date(h.entryDate || h.timestamp).toDateString();
-    return !incomingKeys.has(`${h.ticker}|${hz}|${day}`);
-  });
+  const keyOf = (t) => {
+    const hz = t.hz || 'short';
+    const day = new Date(t.entryDate || t.timestamp || Date.now()).toDateString();
+    return `${t.ticker}|${hz}|${day}`;
+  };
+  // Snapshot existing rows by key BEFORE we drop them, so a re-recorded pick keeps
+  // its ORIGINAL entry/date/levels/outcome instead of being reset to today's live
+  // price on every scan (that reset made entry==live and PnL hover at 0).
+  const existingByKey = new Map();
+  for (const h of tradeHistory) existingByKey.set(keyOf(h), h);
+
+  const incomingKeys = new Set(trades.map(keyOf));
+  tradeHistory = tradeHistory.filter(h => !incomingKeys.has(keyOf(h)));
 
   const caches = {};
   const accepted = [];
@@ -6448,6 +6449,26 @@ async function addTradesToHistory(trades) {
     } else if (!trade.revalidatedAt) {
       trade.revalidatedAt = new Date().toISOString();
       trade.analyticsVersion = 2;
+    }
+
+    // FREEZE: if this pick was already recorded earlier (same ticker/hz/day),
+    // carry over the first-seen entry, entry date, frozen TP/SL levels and any
+    // realised outcome. Entry is the price WHEN FIRST SIGNALLED — it must never
+    // drift to the live price.
+    const prev = existingByKey.get(keyOf(trade));
+    if (prev) {
+      const origEntry = prev.entry != null ? prev.entry : prev[hz + 'Entry'];
+      if (origEntry != null) { trade.entry = origEntry; trade[hz + 'Entry'] = origEntry; }
+      trade.entryDate = prev.entryDate || trade.entryDate;
+      trade.timestamp = prev.timestamp || trade.timestamp;
+      for (const f of [
+        'target1', 'target2', 'stopLoss', 'sellEntry', 'sellTarget1', 'sellTarget2', 'sellStopLoss',
+        hz + 'Target1', hz + 'Target2', hz + 'StopLoss', hz + 'TrailingSL',
+        hz + 'Status', hz + 'PnlDollar', hz + 'PnlPct', hz + 'ExitPrice', hz + 'ExitReason',
+        hz + 'Tp1Hit', hz + 'CurrentPrice', 'status', 'pnlDollar', 'pnlPct', 'currentPrice'
+      ]) {
+        if (prev[f] !== undefined) trade[f] = prev[f];
+      }
     }
     accepted.push(trade);
   }
@@ -9793,16 +9814,23 @@ async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markP
   return { status, ret: res.ret, exit: res.exitPrice, stopLoss: res.stopLoss, tp1Hit: res.tp1Hit, open };
 }
 
-/** Check if live signal has flipped against an open position — uses the same
- *  HYSTERESIS as the backtest (true reversal only, not a 1-pt dip below 62). */
+/** Close an open position the moment the live signal stops supporting it.
+ *  Per the trading spec: a Buy that decays to Hold/Sell (or a Sell that decays
+ *  to Hold/Buy) is booked out immediately. We use a small 4-pt buffer below the
+ *  62 entry threshold (i.e. <58) so a genuine downgrade to Hold closes, while a
+ *  trivial 62→61 wobble does not churn the book. */
 function liveSignalFlipExit(ticker, hz, isSell, techMap) {
   const tech = techMap?.[ticker];
   if (!tech?.quantSignal?.[hz]) return null;
   const sig = tech.quantSignal[hz];
-  if (!isSell && sig.sellScore >= 62) return { flipped: true, reason: 'Sell' };
-  if (isSell && sig.buyScore >= 62) return { flipped: true, reason: 'Buy' };
-  if (!isSell && sig.buyScore < 45) return { flipped: true, reason: 'Conviction lost' };
-  if (isSell && sig.sellScore < 45) return { flipped: true, reason: 'Conviction lost' };
+  const HOLD_FLOOR = 58; // below this the side is no longer a valid signal
+  if (!isSell) {
+    if (sig.sellScore >= 62) return { flipped: true, reason: 'Sell' };
+    if ((sig.buyScore || 0) < HOLD_FLOOR) return { flipped: true, reason: 'Hold (Buy lost)' };
+  } else {
+    if (sig.buyScore >= 62) return { flipped: true, reason: 'Buy' };
+    if ((sig.sellScore || 0) < HOLD_FLOOR) return { flipped: true, reason: 'Hold (Sell lost)' };
+  }
   return null;
 }
 
@@ -9812,6 +9840,24 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
   // (which can still contain pre-floor tight stops). Re-run the migration here so the fix
   // applies to whatever was just uploaded, not only to boot-time data.
   const legacyFix = migrateLegacyTightStops();
+
+  // One-time backfill: older closed rows stored $0 PnL because position sizing
+  // floored to 0 shares for high-priced names. Recompute $ from the stored % on
+  // a fixed $10k notional so the history display is correct without re-simulating.
+  let dollarFixed = 0;
+  for (const h of tradeHistory) {
+    for (const hz of ['short', 'medium', 'long']) {
+      const pct = h[hz + 'PnlPct'];
+      const dol = h[hz + 'PnlDollar'];
+      if (pct != null && Number.isFinite(+pct) && +pct !== 0 && (dol == null || +dol === 0)) {
+        h[hz + 'PnlDollar'] = +((+pct / 100) * 10000).toFixed(2);
+        if ((h.hz || 'short') === hz) h.pnlDollar = h[hz + 'PnlDollar'];
+        dollarFixed++;
+      }
+    }
+  }
+  if (dollarFixed) saveHistoryFile(tradeHistory);
+
   const sinceMs = req.body?.since ? new Date(req.body.since).getTime() : 0;
   const tickers = [...new Set(
     tradeHistory
@@ -9866,15 +9912,15 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
       if (st === 'tp1_hit' || st === 'tp2_hit' || st === 'signal_exit') continue;
       const entry = parseFloat(h[hz + 'Entry'] || h.entry || 0);
       if (!entry) continue;
-      const shares = Math.floor(10000 / entry);
       const entryMs = new Date(h.entryDate || h.timestamp || 0).getTime();
       const bars = ohlcvMap[h.ticker];
 
       // Immediate exit if live signal has flipped against the open position
       const flip = (st === 'open' || !st || st === 'n/a') ? liveSignalFlipExit(h.ticker, hz, isSell, techLiveMap) : null;
       if (flip) {
-        h[hz + 'PnlDollar'] = (curr - entry) * dir * shares;
-        h[hz + 'PnlPct'] = ((curr - entry) / entry) * dir * 100;
+        const pct = ((curr - entry) / entry) * dir;
+        h[hz + 'PnlDollar'] = +(pct * 10000).toFixed(2);
+        h[hz + 'PnlPct'] = +(pct * 100).toFixed(2);
         h[hz + 'Status'] = 'signal_exit';
         h[hz + 'ExitPrice'] = curr;
         h[hz + 'ExitReason'] = 'Signal → ' + flip.reason;
@@ -9885,12 +9931,15 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
 
       const pathExit = (bars && entry) ? await simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, curr) : null;
 
+      // Fixed $10k notional for the $ figure. Sizing by floor(10000/entry) shares
+      // collapses to 0 shares for high-priced names (e.g. ¥-denominated stocks),
+      // which made the $ PnL show $0 even when the % was non-zero.
+      const NOTIONAL = 10000;
       if (pathExit) {
         // res.ret is already directional (profit>0 for both long & short) and
         // already blends the TP1 partial — use it directly, don't re-apply `dir`.
-        const cap = shares * entry || 10000;
         h[hz + 'PnlPct'] = +(pathExit.ret * 100).toFixed(2);
-        h[hz + 'PnlDollar'] = +(pathExit.ret * cap).toFixed(2);
+        h[hz + 'PnlDollar'] = +(pathExit.ret * NOTIONAL).toFixed(2);
         h[hz + 'Status'] = pathExit.status;
         h[hz + 'Tp1Hit'] = !!pathExit.tp1Hit;
         if (!pathExit.open && pathExit.exit != null) h[hz + 'ExitPrice'] = pathExit.exit;
@@ -9898,14 +9947,16 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         if (pathExit.status === 'sl_hit') setSLCooldown(h.ticker, hz);
         rowChanged = true;
       } else if (horizonTimeLimitExceededServer(hz, h.entryDate || h.timestamp)) {
-        h[hz + 'PnlDollar'] = (curr - entry) * dir * shares;
-        h[hz + 'PnlPct'] = ((curr - entry) / entry) * dir * 100;
+        const pct = ((curr - entry) / entry) * dir;
+        h[hz + 'PnlDollar'] = +(pct * NOTIONAL).toFixed(2);
+        h[hz + 'PnlPct'] = +(pct * 100).toFixed(2);
         h[hz + 'Status'] = 'time_limit';
         h[hz + 'ExitPrice'] = curr;
         rowChanged = true;
       } else if (st !== 'time_limit' && st !== 'sl_hit') {
-        h[hz + 'PnlDollar'] = (curr - entry) * dir * shares;
-        h[hz + 'PnlPct'] = ((curr - entry) / entry) * dir * 100;
+        const pct = ((curr - entry) / entry) * dir;
+        h[hz + 'PnlDollar'] = +(pct * NOTIONAL).toFixed(2);
+        h[hz + 'PnlPct'] = +(pct * 100).toFixed(2);
         h[hz + 'Status'] = 'open';
         rowChanged = true;
       }
