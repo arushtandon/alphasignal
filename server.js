@@ -5543,27 +5543,37 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
   applyAnalyticsSnapshotToTrade(trade, shell, fund, hz);
   trade.quantRegime = shell.quantSignal[hz]?.regime || trade.quantRegime || null;
 
-  const livePx = tech.currentPrice || parseFloat(trade[hz + 'Entry'] || trade.entry);
-  if (livePx && Number.isFinite(livePx)) {
+  // CRITICAL: the entry price is the price WHEN THE TRADE WAS SIGNALLED and must be
+  // IMMUTABLE. Previously this re-priced levels off tech.currentPrice (today's live
+  // price), so every revalidation snapped a 12-Jun trade's entry to today's price
+  // (entry == live, PnL == 0 — the recurring "overfitting" bug). We now base levels
+  // on the FROZEN entry, so revalidation only refreshes TP/SL geometry & analytics;
+  // the entry never moves. Only a brand-new row with no entry yet uses the live price.
+  const frozenEntry = parseFloat(trade[hz + 'Entry'] || trade.entry || 0);
+  const basePx = (frozenEntry && Number.isFinite(frozenEntry) && frozenEntry > 0)
+    ? frozenEntry
+    : tech.currentPrice;
+  if (basePx && Number.isFinite(basePx)) {
     const tempRow = {
       ...trade,
       shortAction: trade.shortAction || (String(trade.action || '').toLowerCase() === 'sell' ? 'Sell' : 'Buy'),
       mediumAction: trade.mediumAction || trade.shortAction || 'Hold',
       longAction: trade.longAction || trade.shortAction || 'Hold'
     };
-    applyServerPriceLevels(tempRow, livePx, tech, fund);
+    applyServerPriceLevels(tempRow, basePx, tech, fund);
     ['short', 'medium', 'long'].forEach(hzKey => {
-      trade[hzKey + 'Entry'] = tempRow[hzKey + 'Entry'];
+      // Never overwrite an existing (frozen) entry — only fill it if it's missing.
+      if (!(parseFloat(trade[hzKey + 'Entry']) > 0)) trade[hzKey + 'Entry'] = tempRow[hzKey + 'Entry'];
       trade[hzKey + 'Target1'] = tempRow[hzKey + 'Target1'];
       trade[hzKey + 'Target2'] = tempRow[hzKey + 'Target2'];
       trade[hzKey + 'StopLoss'] = tempRow[hzKey + 'StopLoss'];
     });
-    trade.entry = tempRow.shortEntry;
+    if (!(parseFloat(trade.entry) > 0)) trade.entry = tempRow.shortEntry;
     trade.target1 = tempRow.shortTarget1;
     trade.target2 = tempRow.shortTarget2;
     trade.stopLoss = tempRow.shortStopLoss;
     if (String(trade.action || '').toLowerCase() === 'sell') {
-      trade.sellEntry = tempRow.shortEntry;
+      if (!(parseFloat(trade.sellEntry) > 0)) trade.sellEntry = tempRow.shortEntry;
       trade.sellTarget1 = tempRow.shortTarget1;
       trade.sellTarget2 = tempRow.shortTarget2;
       trade.sellStopLoss = tempRow.shortStopLoss;
@@ -6269,7 +6279,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260619-fmp-ultimate-v7.9.2',
+    server_build: '20260619-fmp-ultimate-v7.9.3',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -9847,6 +9857,9 @@ function liveSignalFlipExit(ticker, hz, isSell, techMap) {
 // (signal_exit / time_limit) by the old buggy logic so the corrected rules
 // (current-signal flips only + genuine time-limit) re-decide each position.
 let _softCloseRemediated = false;
+// One-time-per-boot flag: repair entries a prior bug had snapped to the live price
+// by reconstructing each entry as the close on the trade's own entry date.
+let _entryBackfilled = false;
 
 // POST /api/history/refresh-pnl — server-side trailing SL + signal-flip exit + PnL
 app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
@@ -9972,16 +9985,37 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
     for (const hz of hzList) {
       const st = h[hz + 'Status'];
       if (st === 'tp1_hit' || st === 'tp2_hit' || st === 'signal_exit') continue;
-      const entry = parseFloat(h[hz + 'Entry'] || h.entry || 0);
-      if (!entry) continue;
       const entryMs = new Date(h.entryDate || h.timestamp || 0).getTime();
       const bars = ohlcvMap[h.ticker];
+      // A trade entered today keeps its scan-time entry (that IS the correct entry);
+      // only older rows need the historical-close repair / are eligible to flip.
+      const enteredToday = new Date(entryMs).toDateString() === new Date().toDateString();
+
+      // ONE-TIME entry repair: a prior bug snapped stored entries to the live price
+      // (entry == live, PnL == 0). Reconstruct the true entry as the CLOSE on the
+      // trade's own entry date (last bar at or before entryDate).
+      if (!_entryBackfilled && !enteredToday && bars && bars.length) {
+        const dayStr = new Date(entryMs).toISOString().slice(0, 10);
+        let entryBar = null;
+        for (const b of bars) {
+          const bs = new Date((b.t || 0) * 1000).toISOString().slice(0, 10);
+          if (bs <= dayStr) entryBar = b; else break;
+        }
+        if (entryBar && entryBar.c > 0) {
+          const fixed = roundPrice(entryBar.c);
+          h[hz + 'Entry'] = fixed;
+          if ((h.hz || 'short') === hz) h.entry = fixed;
+          rowChanged = true;
+        }
+      }
+
+      const entry = parseFloat(h[hz + 'Entry'] || h.entry || 0);
+      if (!entry) continue;
 
       // Immediate exit if live signal has flipped against the open position.
-      // Never flip on the SAME DAY as entry: a pick and its instant same-price
-      // "Signal exit" ($0) is pure churn and destroys trust. Give every trade at
-      // least one full session before the flip rule can close it.
-      const enteredToday = new Date(h.entryDate || h.timestamp || 0).toDateString() === new Date().toDateString();
+      // Never flip on the SAME DAY as entry (enteredToday): a pick and its instant
+      // same-price "Signal exit" ($0) is pure churn. Give every trade at least one
+      // full session before the flip rule can close it.
       const flip = (!enteredToday && (st === 'open' || !st || st === 'n/a'))
         ? liveSignalFlipExit(h.ticker, hz, isSell, techLiveMap) : null;
       if (flip) {
@@ -10044,6 +10078,8 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
     if (rowChanged) updated++;
   }
 
+  // Mark the one-time entry repair done once we've made a real pass over the data.
+  if (tickers.length) _entryBackfilled = true;
   saveHistoryFile(tradeHistory);
   res.json({
     ok: true,
