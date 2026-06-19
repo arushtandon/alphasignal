@@ -6269,7 +6269,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260619-fmp-ultimate-v7.8.9',
+    server_build: '20260619-fmp-ultimate-v7.9.0',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -9941,10 +9941,19 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
           ohlcvMap[sym] = bars;
           const weekly = dailyToWeeklyBars(bars);
           const tech = buildFullTechResult(sym, bars, weekly);
+          // Use the SAME cached fundamentals the dashboard scored with, so the live
+          // signal here matches the displayed rating. Recomputing with fund=null made
+          // a fund-boosted "Strong Buy" look like a Hold and falsely flipped it out.
+          let fund = fundCache.get(sym)?.data || null;
+          if (!fund && Date.now() < DEADLINE) {
+            // Cold cache (e.g. just after a deploy) — fetch once and cache for reuse.
+            fund = await fetchFundamentals(sym).catch(() => null);
+            if (fund) fundCache.set(sym, { ts: Date.now(), data: fund });
+          }
           tech.quantSignal = {
-            short: computeQuantSignal(tech, null, 'short'),
-            medium: computeQuantSignal(tech, null, 'medium'),
-            long: computeQuantSignal(tech, null, 'long')
+            short: computeQuantSignal(tech, fund, 'short'),
+            medium: computeQuantSignal(tech, fund, 'medium'),
+            long: computeQuantSignal(tech, fund, 'long')
           };
           techLiveMap[sym] = tech;
         }
@@ -9971,8 +9980,13 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
       const entryMs = new Date(h.entryDate || h.timestamp || 0).getTime();
       const bars = ohlcvMap[h.ticker];
 
-      // Immediate exit if live signal has flipped against the open position
-      const flip = (st === 'open' || !st || st === 'n/a') ? liveSignalFlipExit(h.ticker, hz, isSell, techLiveMap) : null;
+      // Immediate exit if live signal has flipped against the open position.
+      // Never flip on the SAME DAY as entry: a pick and its instant same-price
+      // "Signal exit" ($0) is pure churn and destroys trust. Give every trade at
+      // least one full session before the flip rule can close it.
+      const enteredToday = new Date(h.entryDate || h.timestamp || 0).toDateString() === new Date().toDateString();
+      const flip = (!enteredToday && (st === 'open' || !st || st === 'n/a'))
+        ? liveSignalFlipExit(h.ticker, hz, isSell, techLiveMap) : null;
       if (flip) {
         const pct = ((curr - entry) / entry) * dir;
         h[hz + 'PnlDollar'] = +(pct * 10000).toFixed(2);
