@@ -1047,7 +1047,7 @@ function computeMeanReversionLevels(tech, entry, isSell) {
 /** Short-horizon MEAN-REVERSION exit: bank the bounce at the channel mean/resistance
  *  (or when the fast oscillator normalises), with a fixed stop beyond the band. No
  *  trend trailing — this is a range/swing exit suited to choppy markets. */
-async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund = null, markPrice = null) {
+async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund = null, markPrice = null, liveMark = false) {
   const holdDays = Math.min(15, horizonHoldDaysServer('short')); // banks quickly
   const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
   const lastIdx = data.length - 1;
@@ -1077,8 +1077,8 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
     // Oscillator-normalised exit: reversion complete, bank at close if in profit
     const bt = techAtBoundedIndex(data, weeklyAll, j);
     const r2 = bt.rsi2, rr = bt.rsi;
-    if (!isSell && bar.c > entry && ((r2 != null && r2 > 70) || rr >= 58)) return finish('signal_exit', j, bar.c);
-    if (isSell && bar.c < entry && ((r2 != null && r2 < 30) || rr <= 42)) return finish('signal_exit', j, bar.c);
+    if (!liveMark && !isSell && bar.c > entry && ((r2 != null && r2 > 70) || rr >= 58)) return finish('signal_exit', j, bar.c);
+    if (!liveMark && isSell && bar.c < entry && ((r2 != null && r2 < 30) || rr <= 42)) return finish('signal_exit', j, bar.c);
     if (j === maxJ) return finish(heldFull ? 'time_limit' : 'open', j, markAt(j, bar.c));
   }
   return finish('open', maxJ, markAt(maxJ, data[maxJ].c));
@@ -1088,9 +1088,9 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
  *  refresh, so reported win rates match what the live rules would have done.
  *  SHORT horizon delegates to the mean-reversion exit; medium/long book a partial
  *  at TP1 (locks a win) and ride the remainder with a wide chandelier trail. */
-async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, fund = null, markPrice = null) {
+async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, fund = null, markPrice = null, liveMark = false) {
   if (!data || entryIdx == null || !(entry > 0)) return null;
-  if (hz === 'short') return simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund, markPrice);
+  if (hz === 'short') return simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund, markPrice, liveMark);
   const holdDays = horizonHoldDaysServer(hz);
   const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
   const lastIdx = data.length - 1;
@@ -1136,7 +1136,7 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
       }
       if (!isSell && trailingSl && bar.l <= trailingSl) return finish('sl_hit', j, trailingSl);
       if (isSell && trailingSl && bar.h >= trailingSl)  return finish('sl_hit', j, trailingSl);
-      if (signalFlipped(barSig, isSell)) return finish('signal_exit', j, bar.c);
+      if (!liveMark && signalFlipped(barSig, isSell)) return finish('signal_exit', j, bar.c);
     } else {
       // ── POST-TP1: let the runner RUN. Wide chandelier trail off the favorable
       //    extreme, floored at breakeven; no signal-flip exit (breakeven protects). ──
@@ -6269,7 +6269,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260618-fmp-ultimate-v7.8.8',
+    server_build: '20260619-fmp-ultimate-v7.8.9',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -9802,7 +9802,7 @@ function horizonTimeLimitExceededServer(hz, entryDateOrIso) {
  * hysteresis signal-flip), so live trade outcomes match the backtest exactly.
  * Returns canonical status + blended return + representative exit price.
  */
-async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markPrice = null) {
+async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markPrice = null, liveMark = false) {
   if (!Array.isArray(bars) || !bars.length || !entry) return null;
   const weeklyAll = dailyToWeeklyBars(bars);
   let startIdx = -1;
@@ -9810,7 +9810,7 @@ async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markP
     if ((bars[i].t || 0) * 1000 >= entryMs) { startIdx = i; break; }
   }
   if (startIdx < 0) return null;
-  const res = await simulateHybridExit(bars, startIdx, entry, hz, isSell, weeklyAll, null, markPrice);
+  const res = await simulateHybridExit(bars, startIdx, entry, hz, isSell, weeklyAll, null, markPrice, liveMark);
   if (!res) return null;
   const open = res.status === 'open' || res.status === 'tp1_open';
   let status;
@@ -9846,6 +9846,11 @@ function liveSignalFlipExit(ticker, hz, isSell, techMap) {
   return null;
 }
 
+// One-time-per-boot remediation flag: reopen rows that were soft-closed
+// (signal_exit / time_limit) by the old buggy logic so the corrected rules
+// (current-signal flips only + genuine time-limit) re-decide each position.
+let _softCloseRemediated = false;
+
 // POST /api/history/refresh-pnl — server-side trailing SL + signal-flip exit + PnL
 app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
   // Render's disk is ephemeral; on each deploy the client re-uploads its localStorage history
@@ -9869,6 +9874,28 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
     }
   }
   if (dollarFixed) saveHistoryFile(tradeHistory);
+
+  // One-time remediation: the previous build retroactively closed live trades as
+  // signal_exit by replaying fund-less historical signals (and mislabeled recent
+  // opens as time_limit). Reopen those soft-closed rows once so the corrected
+  // logic re-evaluates them; genuine flips / expiries will simply re-close.
+  if (!_softCloseRemediated) {
+    let reopened = 0;
+    for (const h of tradeHistory) {
+      for (const hz of ['short', 'medium', 'long']) {
+        const s = h[hz + 'Status'];
+        if (s === 'signal_exit' || s === 'time_limit') {
+          h[hz + 'Status'] = 'open';
+          h[hz + 'ExitPrice'] = undefined;
+          h[hz + 'ExitReason'] = '';
+          if ((h.hz || 'short') === hz) h.status = 'open';
+          reopened++;
+        }
+      }
+    }
+    _softCloseRemediated = true;
+    if (reopened) saveHistoryFile(tradeHistory);
+  }
 
   const sinceMs = req.body?.since ? new Date(req.body.since).getTime() : 0;
 
@@ -9958,7 +9985,11 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         continue;
       }
 
-      const pathExit = (bars && entry) ? await simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, curr) : null;
+      // liveMark=true → path sim only detects PRICE exits (TP1/SL/trailing). Signal-
+      // flip closing for a live OPEN trade is decided above by liveSignalFlipExit on
+      // the CURRENT signal, never by replaying noisy fund-less historical signals
+      // (which was retroactively closing trades that are still rated Buy today).
+      const pathExit = (bars && entry) ? await simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, curr, true) : null;
 
       // Fixed $10k notional for the $ figure. Sizing by floor(10000/entry) shares
       // collapses to 0 shares for high-priced names (e.g. ¥-denominated stocks),
