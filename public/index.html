@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260619-fmp-ultimate-v7.9.0">
+<meta name="alphasignal-build" content="20260619-fmp-ultimate-v7.9.1">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -5053,13 +5053,17 @@ function calcSummaryForHz(hzKey) {
   const closedForWr = hzHist.filter(function (h) {
     return ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit', 'signal_exit'].includes(h[hzKey + 'Status']);
   });
+  // A closed trade is a LOSS only when the stop was hit or it closed negative.
+  // TP hits, flat exits and any non-negative close count as wins — so 6 losers
+  // out of 20 reads as 70%, not 30% (the old rule mis-scored flat/0 exits as
+  // losses because it required p > 0).
   function hzWin(h) {
     const s = h[hzKey + 'Status'];
     const p = resolveHistoricalHzPnl(h, hzKey);
-    if (s === 'sl_hit') return false;
-    if (s === 'tp1_hit' || s === 'tp2_hit') return p == null ? true : p > 0;
-    if (s === 'time_limit' || s === 'signal_exit') return p != null && p > 0;
-    return false;
+    const pn = (p != null && Number.isFinite(Number(p))) ? Number(p) : null;
+    if (s === 'sl_hit') return false;       // stop-loss = loss
+    if (pn != null && pn < 0) return false; // closed negative = loss
+    return true;                            // TP / flat / positive = win
   }
   const winsClosed = closedForWr.filter(hzWin).length;
   const wr = closedForWr.length ? Math.round(winsClosed / closedForWr.length * 100) : null;
