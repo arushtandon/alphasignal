@@ -6269,7 +6269,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260619-fmp-ultimate-v7.9.1',
+    server_build: '20260619-fmp-ultimate-v7.9.2',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -9822,26 +9822,23 @@ async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markP
   return { status, ret: res.ret, exit: res.exitPrice, stopLoss: res.stopLoss, tp1Hit: res.tp1Hit, open };
 }
 
-/** Close an open position the moment the live signal stops supporting it.
- *  Per the trading spec: a Buy that decays to Hold/Sell (or a Sell that decays
- *  to Hold/Buy) is booked out immediately. We use a small 4-pt buffer below the
- *  62 entry threshold (i.e. <58) so a genuine downgrade to Hold closes, while a
- *  trivial 62→61 wobble does not churn the book. */
+/** Close an open position only on a TRUE reversal to the opposite side — a Buy
+ *  whose live signal now reads an entry-grade Sell (or vice-versa). Softening to
+ *  Hold is NOT an exit: we hold the position so normal conviction wobble never
+ *  churns a good trade out near breakeven. (Reversal-only flip policy.) */
 function liveSignalFlipExit(ticker, hz, isSell, techMap) {
   const tech = techMap?.[ticker];
   if (!tech?.quantSignal?.[hz]) return null;
   const sig = tech.quantSignal[hz];
-  // Hysteresis: hold through a merely SOFT signal (score 55-61) so a brief wobble
-  // doesn't churn out a good position, but close on a genuine BREAKDOWN (< 55) or
-  // when the OPPOSITE side becomes a real signal (>= 62).
-  const VALID = 62;       // opposite side this strong → true reversal
-  const BREAKDOWN = 55;   // own side this weak → conviction genuinely gone
+  // REVERSAL-ONLY policy: close a position only when the OPPOSITE side becomes a
+  // genuine, entry-grade signal (score >= 62, i.e. an actual Buy→Sell or Sell→Buy
+  // reversal). We deliberately HOLD through any mere softening to Hold so a normal
+  // wobble in conviction never churns a good position out at ~breakeven.
+  const VALID = 62; // opposite side this strong → true reversal
   if (!isSell) {
-    if (sig.sellScore >= VALID) return { flipped: true, reason: 'Sell' };
-    if ((sig.buyScore || 0) < BREAKDOWN) return { flipped: true, reason: 'Buy broke down' };
+    if ((sig.sellScore || 0) >= VALID) return { flipped: true, reason: 'Sell' };
   } else {
-    if (sig.buyScore >= VALID) return { flipped: true, reason: 'Buy' };
-    if ((sig.sellScore || 0) < BREAKDOWN) return { flipped: true, reason: 'Sell broke down' };
+    if ((sig.buyScore || 0) >= VALID) return { flipped: true, reason: 'Buy' };
   }
   return null;
 }
