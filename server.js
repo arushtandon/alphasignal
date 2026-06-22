@@ -6279,7 +6279,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260619-fmp-ultimate-v7.9.3',
+    server_build: '20260622-fmp-ultimate-v7.9.4',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',

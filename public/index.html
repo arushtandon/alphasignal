@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260619-fmp-ultimate-v7.9.3">
+<meta name="alphasignal-build" content="20260622-fmp-ultimate-v7.9.4">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -527,6 +527,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
         <div style="flex:1"></div>
         <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px" onclick="ST.dashData=null;ST.dashTs=null;loadDashboard(false)" title="Pull the latest server-generated picks (instant — scan runs on the server)">↻ Refresh picks</button>
         <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px;margin-left:6px" onclick="rescanUniverse()" title="Re-rank the entire index-member universe + regenerate picks on the server (runs in the background, ~5-15 min — you can close the page)">⟳ Rescan universe</button>
+        <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px;margin-left:6px" onclick="exportRecommendedTrades()" title="Download all recommended Buy/Sell picks across every timeframe (entry, TP1/TP2, stop-loss, score) as an Excel-ready CSV">⬇ Export Excel</button>
       </div>
       <div id="dashStatus"></div>
       <div id="hzShort" class="hz-pane">
@@ -588,7 +589,10 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
 
     <!-- HISTORY -->
     <div id="pane-history" class="pane">
-      <div class="ph"><div class="pt">Recommendation history</div></div>
+      <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div class="pt">Recommendation history</div>
+        <button class="btn" style="font-size:10px;padding:4px 10px" onclick="exportHistoryTrades()" title="Download every historical trade across all timeframes (entry, TP/SL, exit, status, $10k PnL) as an Excel-ready CSV">⬇ Export Excel</button>
+      </div>
       <div id="histContent"></div>
     </div>
 
@@ -3207,6 +3211,102 @@ function getDisplayHistoryForHz(hzKey) {
     if (!h.hz) return true;
     return h.hz === hzKey;
   });
+}
+
+// ── Excel (CSV) export ──────────────────────────────────────────────────────
+// CSV with a UTF-8 BOM opens cleanly in Excel/Numbers/Sheets on every platform.
+function _csvCell(v) {
+  if (v == null) return '';
+  let s = String(v);
+  if (/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+function _downloadCsv(filename, headers, rows) {
+  const lines = [headers.map(_csvCell).join(',')];
+  for (const r of rows) lines.push(r.map(_csvCell).join(','));
+  const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+function _num(v) {
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : '';
+}
+const _HZ_LABEL = { short: 'Short (1d–1mo)', medium: 'Medium (1–3mo)', long: 'Long (4–12mo)' };
+
+function exportRecommendedTrades() {
+  const dd = ST.dashData;
+  if (!dd) { alert('No recommended picks loaded yet — open the Dashboard first.'); return; }
+  const panes = [
+    { key: 'short',     hz: 'short',  side: 'Buy'  },
+    { key: 'medium',    hz: 'medium', side: 'Buy'  },
+    { key: 'long',      hz: 'long',   side: 'Buy'  },
+    { key: 'shortSell', hz: 'short',  side: 'Sell' },
+    { key: 'medSell',   hz: 'medium', side: 'Sell' },
+    { key: 'longSell',  hz: 'long',   side: 'Sell' }
+  ];
+  const headers = ['Timeframe', 'Side', 'Ticker', 'Name', 'Market', 'Rating', 'Score',
+    'Entry', 'Target 1', 'Target 2', 'Stop Loss', 'Reason'];
+  const rows = [];
+  for (const p of panes) {
+    const list = dd[p.key] || [];
+    for (const s of list) {
+      const isSell = p.side === 'Sell';
+      const entry = isSell ? (s.sellEntry || s[p.hz + 'Entry'] || s.entry) : (s[p.hz + 'Entry'] || s.entry);
+      const tp1 = isSell ? (s.sellTarget1 || s[p.hz + 'Target1'] || s.target1) : (s[p.hz + 'Target1'] || s.target1);
+      const tp2 = isSell ? (s.sellTarget2 || s[p.hz + 'Target2'] || s.target2) : (s[p.hz + 'Target2'] || s.target2);
+      const sl = isSell ? (s.sellStopLoss || s[p.hz + 'StopLoss'] || s.stopLoss) : (s[p.hz + 'StopLoss'] || s.stopLoss);
+      const score = isSell ? (s[p.hz + 'SellScore'] || s.sellScore) : (s[p.hz + 'Score'] || s.buyScore);
+      rows.push([
+        _HZ_LABEL[p.hz], p.side, s.ticker || '', s.name || s.ticker || '', s.market || '',
+        s[p.hz + 'Rating'] || s.rating || p.side, _num(score),
+        _num(entry), _num(tp1), _num(tp2), _num(sl),
+        isSell ? (s.sellReason || s.reason || '') : (s.reason || '')
+      ]);
+    }
+  }
+  if (!rows.length) { alert('No recommended trades to export.'); return; }
+  const stamp = new Date().toISOString().slice(0, 10);
+  _downloadCsv('alphasignal-recommended-' + stamp + '.csv', headers, rows);
+}
+
+function exportHistoryTrades() {
+  const hist = getDisplayHistory();
+  if (!hist.length) { alert('No historical trades to export yet.'); return; }
+  const headers = ['Timeframe', 'Side', 'Ticker', 'Name', 'Market', 'Rating', 'Entry Date',
+    'Entry', 'Target 1', 'Target 2', 'Stop Loss', 'Status', 'Exit Price',
+    'Current Price', 'PnL ($10k)', 'PnL %'];
+  const rows = [];
+  for (const h of hist) {
+    const hz = h.hz || 'short';
+    const isSell = String(h.action || '').toLowerCase() === 'sell';
+    const status = h[hz + 'Status'] || h.status || 'open';
+    const pnlD = (typeof resolveHistoricalHzPnl === 'function') ? resolveHistoricalHzPnl(h, hz) : (h[hz + 'PnlDollar']);
+    const pnlP = h[hz + 'PnlPct'] != null ? h[hz + 'PnlPct'] : h.pnlPct;
+    const entryDate = h.entryDate || h.timestamp;
+    rows.push([
+      _HZ_LABEL[hz] || hz,
+      isSell ? 'Sell' : 'Buy',
+      h.ticker || '', h.name || h.ticker || '', h.market || '',
+      h.rating || h[hz + 'Rating'] || h.action || '',
+      entryDate ? new Date(entryDate).toISOString().slice(0, 10) : '',
+      _num(h[hz + 'Entry'] || h.entry),
+      _num(h[hz + 'Target1'] || h.target1),
+      _num(h[hz + 'Target2'] || h.target2),
+      _num(h[hz + 'StopLoss'] || (isSell ? h.sellStopLoss : h.stopLoss) || h.stopLoss),
+      status,
+      _num(h[hz + 'ExitPrice']),
+      _num(h.currentPrice || h[hz + 'CurrentPrice']),
+      _num(pnlD),
+      _num(pnlP)
+    ]);
+  }
+  const stamp = new Date().toISOString().slice(0, 10);
+  _downloadCsv('alphasignal-history-' + stamp + '.csv', headers, rows);
 }
 
 /** PnL + open/closed snapshot for one horizon row (aligned with History table). */
