@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260622-fmp-ultimate-v7.9.4">
+<meta name="alphasignal-build" content="20260624-fmp-ultimate-v7.9.5">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -2160,21 +2160,18 @@ async function liveFilterDashPicksInPlace(dashData) {
 }
 
 async function applyServerDashPicks(server){
+  // The SERVER is the single source of truth for picks. We render them AS-IS and
+  // never re-filter / re-score / re-save on the client — doing that on every page
+  // load was changing the displayed names on each refresh and overwriting the
+  // server's stable, authoritative picks (dashboard churn).
   ST.dashData=normalizeDashData(server.dashData);
-  ST.dashTs=server.dashTs;
+  ST.dashTs=server.dashTs||Date.now();
   ST.dashSummary=server.summary||'';
-  try {
-    await liveFilterDashPicksInPlace(ST.dashData);
-    ST.dashTs = Date.now();
-  } catch (e) {
-    console.warn('Live pick filter failed:', e.message || e);
-  }
   const dashTsEl=document.getElementById('dashTs');
   if(dashTsEl){
     const sum=ST.dashSummary?(' · '+ST.dashSummary):'';
-    dashTsEl.textContent='Live-validated · '+new Date(ST.dashTs).toLocaleString()+sum;
+    dashTsEl.textContent='Updated · '+new Date(ST.dashTs).toLocaleString()+sum;
   }
-  await saveServerDashPicks(ST.dashData, ST.dashTs);
   await renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true});
 }
 

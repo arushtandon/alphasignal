@@ -6108,7 +6108,10 @@ async function generateServerPicksFromShortlist(opts = {}) {
       if (pickTickers.length) {
         const liveQuotes = await fetchQuotesV7Bulk(pickTickers);
         for (const r of pickRows) {
-          const px = liveQuotes[r.ticker]?.price;
+          const q = liveQuotes[r.ticker];
+          // Entry = the SESSION OPEN for the day (what a trader would actually get
+          // filled at on the open), falling back to last price only if open is absent.
+          const px = (q?.open && q.open > 0) ? q.open : q?.price;
           if (px && px > 0) {
             const tech = techMap[r.ticker];
             const fEntry = fundCache.get(r.ticker);
@@ -6279,7 +6282,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
     res.json({
     status: 'ok',
-    server_build: '20260622-fmp-ultimate-v7.9.4',
+    server_build: '20260624-fmp-ultimate-v7.9.5',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -8875,21 +8878,46 @@ setTimeout(async function bootDashHistorySync() {
   }
 }, 4000);
 
-// ── Full-universe scan scheduler ─────────────────────────────────────────────
-// Boot: if the shortlist is missing or stale, run an initial scan (after the
-// heavier boot sync settles). Then refresh once per day.
-setTimeout(() => {
-  try {
-    const stale = !universeShortlist || (Date.now() - universeShortlist.ts) > UNIVERSE_SHORTLIST_TTL_MS;
-    if (stale && !universeScanState.running) runUniverseScan({ reason: 'boot' });
-  } catch (e) { console.warn('Boot universe scan:', e.message); }
-}, 30000);
+// ── Pick / universe scan scheduler ───────────────────────────────────────────
+// Two cadences, decoupled:
+//   • DAILY  — regenerate the dashboard picks from the existing shortlist using
+//              fresh OHLCV/signals, so new recommendations appear every morning
+//              WITHOUT needing a manual redeploy. Triggered when the UTC calendar
+//              day rolls over (≈ 08:00 for a UTC+8 user — i.e. the morning).
+//   • WEEKLY — rebuild the full-universe shortlist (heavy, ~5–15 min), which then
+//              regenerates picks when it finishes.
+const UNIVERSE_RESCAN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const _utcDateKey = (ms) => new Date(ms || Date.now()).toISOString().slice(0, 10);
+// Seed "last generated" from whatever picks already exist so we don't regenerate
+// on every process restart — only when a genuinely new day has begun.
+let _lastPicksDateKey = (dashboardPicksCache && dashboardPicksCache.dashTs)
+  ? _utcDateKey(dashboardPicksCache.dashTs) : null;
 
-setInterval(() => {
+async function scanSchedulerTick(boot = false) {
   try {
-    if (!universeScanState.running) runUniverseScan({ reason: 'daily' });
-  } catch (e) { console.warn('Scheduled universe scan:', e.message); }
-}, 24 * 60 * 60 * 1000);
+    if (universeScanState.running || serverPicksGenerating) return;
+    const shortlistStale = !universeShortlist
+      || (Date.now() - (universeShortlist.ts || 0)) > UNIVERSE_RESCAN_TTL_MS;
+    // Weekly (or first-ever) full rescan — this regenerates picks on completion.
+    if (shortlistStale) {
+      console.log('Scheduler: universe shortlist stale → full rescan');
+      runUniverseScan({ reason: boot ? 'boot' : 'weekly' });
+      _lastPicksDateKey = _utcDateKey();
+      return;
+    }
+    // Daily picks regeneration when the calendar day rolls over.
+    const todayKey = _utcDateKey();
+    if (_lastPicksDateKey !== todayKey) {
+      _lastPicksDateKey = todayKey;
+      console.log('Scheduler: new day → regenerating picks from shortlist');
+      await generateServerPicksFromShortlist().catch(e => console.warn('daily picks:', e.message));
+    }
+  } catch (e) { console.warn('scanSchedulerTick:', e.message); }
+}
+
+// Initial kick once the heavier boot sync has settled, then poll every 30 min.
+setTimeout(() => scanSchedulerTick(true), 30000);
+setInterval(() => scanSchedulerTick(false), 30 * 60 * 1000);
 
 function countConsecutiveLowerCloses(daily) {
   if (!daily || daily.length < 2) return 0;
@@ -9992,8 +10020,8 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
       const enteredToday = new Date(entryMs).toDateString() === new Date().toDateString();
 
       // ONE-TIME entry repair: a prior bug snapped stored entries to the live price
-      // (entry == live, PnL == 0). Reconstruct the true entry as the CLOSE on the
-      // trade's own entry date (last bar at or before entryDate).
+      // (entry == live, PnL == 0). Reconstruct the true entry as the OPEN price on
+      // the trade's own entry date (the fill a trader would have got on the open).
       if (!_entryBackfilled && !enteredToday && bars && bars.length) {
         const dayStr = new Date(entryMs).toISOString().slice(0, 10);
         let entryBar = null;
@@ -10001,8 +10029,9 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
           const bs = new Date((b.t || 0) * 1000).toISOString().slice(0, 10);
           if (bs <= dayStr) entryBar = b; else break;
         }
-        if (entryBar && entryBar.c > 0) {
-          const fixed = roundPrice(entryBar.c);
+        const op = entryBar ? ((entryBar.o != null && entryBar.o > 0) ? entryBar.o : entryBar.c) : null;
+        if (op && op > 0) {
+          const fixed = roundPrice(op);
           h[hz + 'Entry'] = fixed;
           if ((h.hz || 'short') === hz) h.entry = fixed;
           rowChanged = true;
