@@ -942,10 +942,15 @@ function computeTrailingStopFromTech(tech, entry, hz, isSell, fund = null) {
   // small fixed % as a safety floor for stocks with missing/near-zero ATR.
   const atrPctNow = (atr && cur) ? (atr / cur) : null;
   const atrMult = hz === 'short' ? 1.5 : hz === 'medium' ? 2.5 : 3.5;
-  const pctSafetyFloor = hz === 'short' ? 0.020 : hz === 'medium' ? 0.035 : 0.055;
+  // Minimum stop distance = the horizon's floor % (short 2.5% / medium 5% / long 8%),
+  // widened further for volatile names via the ATR multiple. This keeps a long-term
+  // stop genuinely long-term (never a 2% noise stop) and keeps the displayed level,
+  // the exit simulator, and the backtest all in agreement.
+  const hzFloors = (typeof HORIZON_MIN_PCT !== 'undefined' && HORIZON_MIN_PCT[hz]) ? HORIZON_MIN_PCT[hz] : null;
+  const pctSafetyFloor = hzFloors ? hzFloors.sl : (hz === 'short' ? 0.025 : hz === 'medium' ? 0.05 : 0.08);
   const minGap = atrPctNow
     ? Math.max(atrMult * atrPctNow, pctSafetyFloor)
-    : (hz === 'short' ? 0.025 : hz === 'medium' ? 0.05 : 0.085);
+    : pctSafetyFloor;
   let sl;
 
   if (!isSell) {
@@ -9193,10 +9198,12 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
     // Hybrid exit: TP1 = first target where we book a partial (locks a win), then
     // trail the remainder (no hard TP2 — let winners run via the trailing stop).
     const tp1 = computeFirstTargetFromTech(tech, e, hz, isSell, sl);
+    // Enforce horizon min-% + reward:risk floors so displayed picks match the model.
+    const fl = applyHorizonMinPctFloors(e, tp1, null, sl, isSell, hz);
     row[hz + 'Entry'] = String(roundPrice(e));
-    row[hz + 'Target1'] = tp1 ? String(tp1) : '';
+    row[hz + 'Target1'] = fl.tp1 != null ? String(fl.tp1) : '';
     row[hz + 'Target2'] = '';
-    row[hz + 'StopLoss'] = String(sl);
+    row[hz + 'StopLoss'] = fl.sl != null ? String(fl.sl) : '';
     row[hz + 'TrailingSL'] = true;
   }
 

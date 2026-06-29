@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260629-fmp-ultimate-v7.9.7-rr-refloor">
+<meta name="alphasignal-build" content="20260629-fmp-ultimate-v7.9.8-rr-floors">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -4484,6 +4484,28 @@ function renderCard(s){
       conditions: s._longConditions || []
     }
   ];
+
+  // Render-time safety net: re-floor every horizon's TP/SL to the horizon min-% +
+  // reward:risk discipline so NO pick (incl. stale cached ones) can show a sub-floor
+  // level like a 2% "long-term" stop. Entry is never changed.
+  horizons.forEach(function (h) {
+    if (h.action !== 'Buy' && h.action !== 'Sell') return;
+    var isS = h.action === 'Sell';
+    var e = parseFloat(isS ? (h.sellEntry || h.entry) : h.entry);
+    if (!e || !isFinite(e)) return;
+    var t1 = parseFloat(isS ? (h.sellTp1 || h.tp1) : h.tp1);
+    var t2 = parseFloat(isS ? (h.sellTp2 || h.tp2) : h.tp2);
+    var sv = parseFloat(isS ? (h.sellSl || h.sl) : h.sl);
+    if (!isFinite(t1) && !isFinite(sv)) return;
+    var rr = applyHorizonMinPctFloorsDash(e, isFinite(t1) ? t1 : null, isFinite(t2) ? t2 : null, isFinite(sv) ? sv : null, isS, h.key);
+    if (isS) {
+      h.sellTp1 = rr.tp1 != null ? String(rr.tp1) : h.sellTp1;
+      h.sellSl  = rr.sl  != null ? String(rr.sl)  : h.sellSl;
+    } else {
+      h.tp1 = rr.tp1 != null ? String(rr.tp1) : h.tp1;
+      h.sl  = rr.sl  != null ? String(rr.sl)  : h.sl;
+    }
+  });
 
   if (!_mm.danelfin && s.fmpScore && typeof s.fmpScore === 'object') {
     var fm = s.fmpScore;
