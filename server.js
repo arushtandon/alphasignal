@@ -996,21 +996,22 @@ function computeTrailingStopFromTech(tech, entry, hz, isSell, fund = null) {
 function computeFirstTargetFromTech(tech, entry, hz, isSell, stopLevel = null) {
   if (!tech || !entry || entry <= 0) return null;
   const atr = tech.atr || entry * 0.02;
-  const ratio = 0.62; // TP1 ≈ 62% of the stop distance → ~60%+ raw hit rate
-  const floorPct = hz === 'short' ? 0.015 : hz === 'medium' ? 0.03 : 0.05;
-  const capPct   = hz === 'short' ? 0.08 : hz === 'medium' ? 0.16 : 0.32;
+  // TP1 must REWARD MORE than it RISKS. The old ratio (0.62) set the target closer
+  // than the stop, which is negative-expectancy by construction: a 62% hit rate only
+  // breaks even and brokerage turns it negative. We now make TP1 a MULTIPLE of the
+  // stop distance (reward ≥ minRR × risk), so even a sub-60% hit rate is profitable.
+  const mins = (typeof HORIZON_MIN_PCT !== 'undefined' && HORIZON_MIN_PCT[hz]) ? HORIZON_MIN_PCT[hz] : null;
+  const ratio = mins ? mins.minRR : (hz === 'long' ? 1.9 : 1.8);
+  const floorPct = mins ? mins.tp1 : (hz === 'short' ? 0.045 : hz === 'medium' ? 0.09 : 0.15);
+  const capPct   = hz === 'short' ? 0.10 : hz === 'medium' ? 0.20 : 0.40;
   if (!isSell) {
     const stopDist = stopLevel && stopLevel < entry ? (entry - stopLevel) : (hz === 'short' ? 2.0 : hz === 'medium' ? 3.0 : 5.0) * atr;
     let tp = entry + ratio * stopDist;
-    const r1 = tech.resistance1;
-    if (r1 && r1 > entry * (1 + floorPct) && r1 < tp) tp = r1; // nearer resistance = even easier hit
     tp = Math.min(Math.max(tp, entry * (1 + floorPct)), entry * (1 + capPct));
     return roundPrice(tp);
   } else {
     const stopDist = stopLevel && stopLevel > entry ? (stopLevel - entry) : (hz === 'short' ? 2.0 : hz === 'medium' ? 3.0 : 5.0) * atr;
     let tp = entry - ratio * stopDist;
-    const s1 = tech.support1;
-    if (s1 && s1 < entry * (1 - floorPct) && s1 > tp) tp = s1;
     tp = Math.max(Math.min(tp, entry * (1 - floorPct)), entry * (1 - capPct));
     return roundPrice(tp);
   }
@@ -1035,7 +1036,7 @@ function computeMeanReversionLevels(tech, entry, isSell) {
   if (!isSell) {
     const cands = [mean, tech.resistance1].filter(v => v && v > entry * 1.005);
     let target = cands.length ? Math.min(...cands) : entry + 1.5 * atr;
-    target = Math.max(Math.min(target, entry * 1.10), entry * 1.02);
+    target = Math.max(Math.min(target, entry * 1.12), entry * 1.02);
     const lower2 = tech.channels?.daily20?.lower2;
     // ATR-based stop: 1.5×ATR beyond entry, or the channel lower-2σ, whichever is wider.
     let stop = Math.min(entry - 1.5 * atr, lower2 || entry * 0.97);
@@ -1043,17 +1044,20 @@ function computeMeanReversionLevels(tech, entry, isSell) {
     const minDist = Math.max(1.2 * atr, entry * 0.018);
     stop = Math.min(stop, entry - minDist);
     stop = Math.max(stop, entry * 0.92);
-    return { target: roundPrice(target), stop: roundPrice(stop) };
+    // Enforce horizon min-% + reward:risk floors so the bounce justifies the cost.
+    const fl = applyHorizonMinPctFloors(entry, target, null, stop, false, 'short');
+    return { target: roundPrice(fl.tp1), stop: roundPrice(fl.sl) };
   } else {
     const cands = [mean, tech.support1].filter(v => v && v < entry * 0.995);
     let target = cands.length ? Math.max(...cands) : entry - 1.5 * atr;
-    target = Math.min(Math.max(target, entry * 0.90), entry * 0.98);
+    target = Math.min(Math.max(target, entry * 0.88), entry * 0.98);
     const upper2 = tech.channels?.daily20?.upper2;
     let stop = Math.max(entry + 1.5 * atr, upper2 || entry * 1.03);
     const minDistS = Math.max(1.2 * atr, entry * 0.018);
     stop = Math.max(stop, entry + minDistS);
     stop = Math.min(stop, entry * 1.08);
-    return { target: roundPrice(target), stop: roundPrice(stop) };
+    const fl = applyHorizonMinPctFloors(entry, target, null, stop, true, 'short');
+    return { target: roundPrice(fl.tp1), stop: roundPrice(fl.sl) };
   }
 }
 
