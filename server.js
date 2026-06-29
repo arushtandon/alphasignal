@@ -9953,6 +9953,10 @@ let _softCloseRemediated = false;
 // One-time-per-boot flag: repair entries a prior bug had snapped to the live price
 // by reconstructing each entry as the close on the trade's own entry date.
 let _entryBackfilled = false;
+// One-time-per-boot flag: re-floor still-OPEN trades to the v7.9.6 reward:risk model
+// (TP1 ≥ minRR × stop distance). Earlier picks used a 0.62× target that sat closer
+// than the stop; this widens TP1/SL on live positions so displayed levels match.
+let _rrRefloored = false;
 
 // POST /api/history/refresh-pnl — server-side trailing SL + signal-flip exit + PnL
 app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
@@ -9998,6 +10002,40 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
     }
     _softCloseRemediated = true;
     if (reopened) saveHistoryFile(tradeHistory);
+  }
+
+  // One-time R:R re-floor (v7.9.6): widen TP1/SL on still-OPEN trades to the new
+  // reward:risk discipline. Entry is NEVER changed (frozen); closed/settled rows
+  // keep their historical levels. Fixes legacy picks whose stop met the floor but
+  // whose TP1 was the old 0.62× (too-tight) target.
+  if (!_rrRefloored) {
+    let rrFixed = 0;
+    for (const h of tradeHistory) {
+      if (!isHistoryBuySellRecord(h)) continue;
+      const isSell = String(h.action || '').toLowerCase() === 'sell';
+      for (const hz of ['short', 'medium', 'long']) {
+        const isPrimary = (h.hz || 'short') === hz;
+        const hasHzEntry = h[hz + 'Entry'] != null && h[hz + 'Entry'] !== '';
+        if (!hasHzEntry && !isPrimary) continue; // don't fabricate levels for unused horizons
+        const status = (h[hz + 'Status'] != null && h[hz + 'Status'] !== '')
+          ? h[hz + 'Status'] : (isPrimary ? (h.status || 'open') : 'open');
+        if (status !== 'open') continue; // only adjust live positions
+        const entry = parseFloat(hasHzEntry ? h[hz + 'Entry'] : (h.entry || 0));
+        if (!entry || !Number.isFinite(entry)) continue;
+        const tp1 = parseFloat(h[hz + 'Target1'] || h.target1 || 0) || null;
+        const sl  = parseFloat(h[hz + 'StopLoss'] || h.stopLoss || 0) || null;
+        if (!tp1 && !sl) continue;
+        const fixed = applyHorizonMinPctFloors(entry, tp1, null, sl, isSell, hz);
+        h[hz + 'Target1'] = fixed.tp1;
+        h[hz + 'Target2'] = '';
+        h[hz + 'StopLoss'] = fixed.sl;
+        if (isPrimary) { h.target1 = fixed.tp1; h.target2 = ''; h.stopLoss = fixed.sl; }
+        if (isSell) { h.sellTarget1 = fixed.tp1; h.sellTarget2 = ''; h.sellStopLoss = fixed.sl; }
+        rrFixed++;
+      }
+    }
+    _rrRefloored = true;
+    if (rrFixed) { saveHistoryFile(tradeHistory); console.log('R:R re-floor (v7.9.6): adjusted', rrFixed, 'open rows'); }
   }
 
   const sinceMs = req.body?.since ? new Date(req.body.since).getTime() : 0;
