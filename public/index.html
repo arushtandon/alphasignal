@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260629-fmp-ultimate-v7.9.8-rr-floors">
+<meta name="alphasignal-build" content="20260629-fmp-ultimate-v7.9.9-tf-stops">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1702,9 +1702,9 @@ function fmtPct(n){
 
 /** Same minimum % floors as server.js HORIZON_MIN_PCT */
 const DASH_HORIZON_MIN_PCT = {
-  short:  { sl: 0.025, tp1: 0.045, tp2: 0.075, minRR: 1.8 },
-  medium: { sl: 0.050, tp1: 0.090, tp2: 0.140, minRR: 1.75 },
-  long:   { sl: 0.080, tp1: 0.150, tp2: 0.250, minRR: 1.9 }
+  short:  { sl: 0.030, tp1: 0.060, tp2: 0.100, minRR: 1.8 },
+  medium: { sl: 0.080, tp1: 0.150, tp2: 0.230, minRR: 1.85 },
+  long:   { sl: 0.160, tp1: 0.300, tp2: 0.450, minRR: 1.85 }
 };
 /** Legacy mid-range fallback (unused when channel math runs) */
 const DASH_HORIZON_PCT = {
@@ -1937,16 +1937,21 @@ function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
   }
 
   var _MIN_RR = 1.5;
+  // Sanity bounds SCALE WITH THE HORIZON: the max stop distance and the ATR fallback
+  // both widen for longer holds, so a long-term stop is never clamped to a 2% noise
+  // level (the old fixed e*0.92 cap reset every long stop back to ~2.5%).
+  var _maxSlDist = hz === 'short' ? 0.06 : hz === 'medium' ? 0.13 : 0.26;
+  var _atrMult   = hz === 'short' ? 2.0 : hz === 'medium' ? 4.0 : 6.5;
+  var _dfltSlPct = hz === 'short' ? 0.030 : hz === 'medium' ? 0.080 : 0.160;
+  var _dfltSlDist = atr ? _atrMult * atr : e * _dfltSlPct;
   if (!isSell) {
-    if (sl >= e) sl = atr ? roundDashPrice(e - 2.0 * atr) : roundDashPrice(e * 0.975);
-    if (sl < e * 0.92) sl = atr ? roundDashPrice(e - 2.0 * atr) : roundDashPrice(e * 0.975);
+    if (sl >= e || sl < e * (1 - _maxSlDist)) sl = roundDashPrice(e - _dfltSlDist);
     if (tp1 <= e) tp1 = atr ? roundDashPrice(e + 2.5 * atr) : roundDashPrice(e * 1.035);
     var _riskB = Math.abs(e - sl);
     if (_riskB > 0 && (tp1 - e) < _riskB * _MIN_RR) tp1 = roundDashPrice(e + _riskB * _MIN_RR);
     if (tp2 <= tp1) tp2 = roundDashPrice(tp1 * 1.04);
   } else {
-    if (sl <= e) sl = atr ? roundDashPrice(e + 2.0 * atr) : roundDashPrice(e * 1.028);
-    if (sl > e * 1.08) sl = atr ? roundDashPrice(e + 2.0 * atr) : roundDashPrice(e * 1.025);
+    if (sl <= e || sl > e * (1 + _maxSlDist)) sl = roundDashPrice(e + _dfltSlDist);
     if (tp1 >= e) tp1 = atr ? roundDashPrice(e - 2.5 * atr) : roundDashPrice(e * 0.965);
     var _riskS = Math.abs(sl - e);
     if (_riskS > 0 && (e - tp1) < _riskS * _MIN_RR) tp1 = roundDashPrice(e - _riskS * _MIN_RR);

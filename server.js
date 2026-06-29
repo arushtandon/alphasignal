@@ -941,7 +941,8 @@ function computeTrailingStopFromTech(tech, entry, hz, isSell, fund = null) {
   // room. We size the floor as an ATR multiple (wider for longer holds), with a
   // small fixed % as a safety floor for stocks with missing/near-zero ATR.
   const atrPctNow = (atr && cur) ? (atr / cur) : null;
-  const atrMult = hz === 'short' ? 1.5 : hz === 'medium' ? 2.5 : 3.5;
+  // ATR multiple widens with the horizon — longer holds need much more room.
+  const atrMult = hz === 'short' ? 2.0 : hz === 'medium' ? 4.0 : 6.5;
   // Minimum stop distance = the horizon's floor % (short 2.5% / medium 5% / long 8%),
   // widened further for volatile names via the ATR multiple. This keeps a long-term
   // stop genuinely long-term (never a 2% noise stop) and keeps the displayed level,
@@ -8652,10 +8653,14 @@ const HORIZON_PCT = {
 };
 
 /** Minimum distance floors — medium always wider than short, long wider than medium. */
+// Stop/target floors SCALE WITH THE HOLDING PERIOD: a 1-day trade can use a tight
+// 3% stop, but a 4–12 month position must tolerate normal multi-month swings — a
+// 5% stop on a long-term hold just guarantees a noise stop-out. Targets scale with
+// the stop so reward:risk stays ~1.85 across all horizons.
 const HORIZON_MIN_PCT = {
-  short:  { sl: 0.025, tp1: 0.045, tp2: 0.075, minRR: 1.8 },
-  medium: { sl: 0.050, tp1: 0.090, tp2: 0.140, minRR: 1.75 },
-  long:   { sl: 0.080, tp1: 0.150, tp2: 0.250, minRR: 1.9 }
+  short:  { sl: 0.030, tp1: 0.060, tp2: 0.100, minRR: 1.8 },
+  medium: { sl: 0.080, tp1: 0.150, tp2: 0.230, minRR: 1.85 },
+  long:   { sl: 0.160, tp1: 0.300, tp2: 0.450, minRR: 1.85 }
 };
 
 const SL_COOLDOWN_MS = 6 * 24 * 60 * 60 * 1000;
