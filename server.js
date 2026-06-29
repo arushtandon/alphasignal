@@ -936,9 +936,16 @@ function computeTrailingStopFromTech(tech, entry, hz, isSell, fund = null) {
   const ma200 = tech.ma200 || null;
   const st = (tech.supertrendByHz && tech.supertrendByHz[hz]) || tech.supertrend || null;
   const cur = tech.currentPrice || e;
-  // Minimum stop distance from CURRENT price — prevents noise stop-outs (a 0.75%
-  // stop on a 12-month trade was a major PnL killer). Wider room for longer holds.
-  const minGap = hz === 'short' ? 0.025 : hz === 'medium' ? 0.05 : 0.085;
+  // Minimum stop distance from CURRENT price — ATR-based (volatility-adaptive).
+  // A fixed % stop is wrong: a quiet stock needs a tight stop, a volatile one needs
+  // room. We size the floor as an ATR multiple (wider for longer holds), with a
+  // small fixed % as a safety floor for stocks with missing/near-zero ATR.
+  const atrPctNow = (atr && cur) ? (atr / cur) : null;
+  const atrMult = hz === 'short' ? 1.5 : hz === 'medium' ? 2.5 : 3.5;
+  const pctSafetyFloor = hz === 'short' ? 0.020 : hz === 'medium' ? 0.035 : 0.055;
+  const minGap = atrPctNow
+    ? Math.max(atrMult * atrPctNow, pctSafetyFloor)
+    : (hz === 'short' ? 0.025 : hz === 'medium' ? 0.05 : 0.085);
   let sl;
 
   if (!isSell) {
@@ -1030,8 +1037,12 @@ function computeMeanReversionLevels(tech, entry, isSell) {
     let target = cands.length ? Math.min(...cands) : entry + 1.5 * atr;
     target = Math.max(Math.min(target, entry * 1.10), entry * 1.02);
     const lower2 = tech.channels?.daily20?.lower2;
+    // ATR-based stop: 1.5×ATR beyond entry, or the channel lower-2σ, whichever is wider.
     let stop = Math.min(entry - 1.5 * atr, lower2 || entry * 0.97);
-    stop = Math.max(Math.min(stop, entry * 0.985), entry * 0.93);
+    // Clamp: at least 1.2×ATR away (noise floor), at most 8% away (risk cap).
+    const minDist = Math.max(1.2 * atr, entry * 0.018);
+    stop = Math.min(stop, entry - minDist);
+    stop = Math.max(stop, entry * 0.92);
     return { target: roundPrice(target), stop: roundPrice(stop) };
   } else {
     const cands = [mean, tech.support1].filter(v => v && v < entry * 0.995);
@@ -1039,7 +1050,9 @@ function computeMeanReversionLevels(tech, entry, isSell) {
     target = Math.min(Math.max(target, entry * 0.90), entry * 0.98);
     const upper2 = tech.channels?.daily20?.upper2;
     let stop = Math.max(entry + 1.5 * atr, upper2 || entry * 1.03);
-    stop = Math.min(Math.max(stop, entry * 1.015), entry * 1.07);
+    const minDistS = Math.max(1.2 * atr, entry * 0.018);
+    stop = Math.max(stop, entry + minDistS);
+    stop = Math.min(stop, entry * 1.08);
     return { target: roundPrice(target), stop: roundPrice(stop) };
   }
 }
@@ -1138,17 +1151,31 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
       if (isSell && trailingSl && bar.h >= trailingSl)  return finish('sl_hit', j, trailingSl);
       if (!liveMark && signalFlipped(barSig, isSell)) return finish('signal_exit', j, bar.c);
     } else {
-      // ── POST-TP1: let the runner RUN. Wide chandelier trail off the favorable
-      //    extreme, floored at breakeven; no signal-flip exit (breakeven protects). ──
+      // ── POST-TP1: DAILY-%-MOVE RATCHET (ratchet up only, never down). ──
+      //    Each day the stock moves favorably by X%, the trailing stop moves the
+      //    SAME X% in the favorable direction. On an adverse day the stop is left
+      //    UNCHANGED (it never loosens). Floored at breakeven so the runner can
+      //    never turn into a loss after TP1.
+      const prevClose = data[j - 1] ? data[j - 1].c : entry;
+      const todayClose = bar.c;
+      const dayMovePct = prevClose > 0 ? (todayClose - prevClose) / prevClose : 0;
       if (!isSell) {
-        peak = Math.max(peak, bar.h);
-        const chand = Math.max(entry, peak - runK * atrEntry);
-        trailingSl = trailingSl == null ? chand : Math.max(trailingSl, chand);
+        // Long: favorable = up day. Ratchet stop up by today's % gain.
+        if (dayMovePct > 0 && trailingSl != null) {
+          const ratcheted = trailingSl * (1 + dayMovePct);
+          trailingSl = Math.max(trailingSl, ratcheted);
+        }
+        if (trailingSl == null) trailingSl = entry;
+        trailingSl = Math.max(trailingSl, entry); // never below breakeven post-TP1
         if (bar.l <= trailingSl) return finish('tp1_then_sl', j, trailingSl);
       } else {
-        peak = Math.min(peak, bar.l);
-        const chand = Math.min(entry, peak + runK * atrEntry);
-        trailingSl = trailingSl == null ? chand : Math.min(trailingSl, chand);
+        // Short: favorable = down day. Ratchet stop down by today's % drop.
+        if (dayMovePct < 0 && trailingSl != null) {
+          const ratcheted = trailingSl * (1 + dayMovePct); // dayMovePct negative → lowers stop
+          trailingSl = Math.min(trailingSl, ratcheted);
+        }
+        if (trailingSl == null) trailingSl = entry;
+        trailingSl = Math.min(trailingSl, entry); // never above breakeven post-TP1
         if (bar.h >= trailingSl) return finish('tp1_then_sl', j, trailingSl);
       }
     }
@@ -5421,6 +5448,24 @@ async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
   return dataShell;
 }
 
+// ── No-repeat filter: is this ticker ALREADY open in the given direction? ──────
+// A name that's already an open Buy should not be re-recommended as a Buy; only a
+// DIRECTION CHANGE (Buy↔Sell) makes it eligible again. Looks across all horizons —
+// once a trader holds a direction on a name, we don't spam the same call daily.
+function hasOpenTradeInDirection(ticker, wantSell) {
+  if (!Array.isArray(tradeHistory) || !ticker) return false;
+  const tk = String(ticker).toUpperCase();
+  for (const h of tradeHistory) {
+    if (!h || String(h.ticker || '').toUpperCase() !== tk) continue;
+    const hz = h.hz || 'short';
+    const status = h[hz + 'Status'] || h.status || 'open';
+    if (status !== 'open') continue;
+    const isSell = String(h.action || '').toLowerCase() === 'sell';
+    if (isSell === !!wantSell) return true; // same direction already open
+  }
+  return false;
+}
+
 function isHistoryBuySellRecord(h) {
   if (!h || !h.ticker) return false;
   const mainAct = String(h.action || '').toLowerCase();
@@ -6076,11 +6121,14 @@ async function generateServerPicksFromShortlist(opts = {}) {
     for (const r of rows) {
       let bBuyHz = null, bBuyScore = -1;
       let bSellHz = null, bSellScore = -1;
+      // No-repeat: suppress a direction if the name is ALREADY open that way.
+      const alreadyLong  = hasOpenTradeInDirection(r.ticker, false);
+      const alreadyShort = hasOpenTradeInDirection(r.ticker, true);
       for (const hz of HZS) {
         const buyOk = r[hz + 'Action'] === 'Buy' && (r[hz + 'Score'] || 0) >= 62
-          && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r, hz);
+          && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r, hz) && !alreadyLong;
         if (buyOk && (r[hz + 'Score'] || 0) > bBuyScore) { bBuyScore = r[hz + 'Score'] || 0; bBuyHz = hz; }
-        const sellOk = r[hz + 'Action'] === 'Sell' && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r, hz);
+        const sellOk = r[hz + 'Action'] === 'Sell' && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r, hz) && !alreadyShort;
         if (sellOk && (r[hz + 'SellScore'] || 0) > bSellScore) { bSellScore = r[hz + 'SellScore'] || 0; bSellHz = hz; }
       }
       if (bBuyHz) buyAssign[bBuyHz].push(r);
@@ -6190,7 +6238,13 @@ app.get('/api/dashboard/universe/status', (req, res) => {
     lastError: universeScanState.lastError,
     lastFinishedAt: universeScanState.lastFinishedAt,
     shortlistTs: universeShortlist ? universeShortlist.ts : null,
-    shortlistCount: universeShortlistTickers().length
+    shortlistCount: universeShortlistTickers().length,
+    // Per-market breakdown — lets you SEE whether the scan produced international
+    // names. If this shows only {US: N} or international counts are 0, the scan
+    // is failing to fetch non-US OHLCV (not a downstream display bug).
+    shortlistByMarket: universeShortlist ? (universeShortlist.byMarket || {}) : {},
+    scannedTotal: universeShortlist ? universeShortlist.scannedTotal : null,
+    scannedOk: universeShortlist ? universeShortlist.scannedOk : null
   });
 });
 
@@ -8703,7 +8757,14 @@ function filterDashDataByQuantTechMap(dashData, techMap, paneMap = DASH_PANE_MAP
     out[pane] = (dashData[pane] || []).filter(pick => {
       const tech = techMap[pick.ticker];
       const sig = tech?.quantSignal?.[hz];
-      if (!sig) return false;
+      // CRITICAL: if we have NO fresh signal (OHLCV fetch failed or the re-scan
+      // timed out before reaching this name — common for slower international
+      // symbols like .NS/.HK/.T), KEEP the already-validated pick rather than
+      // silently dropping it. Dropping-on-missing-data was erasing every non-US
+      // name whenever the boot re-validation ran out of its time budget, leaving
+      // a US-only dashboard. A pick is only removed when fresh data ACTIVELY
+      // contradicts it (action flipped or score fell below threshold).
+      if (!sig) return true; // no fresh data → trust the existing pick
       pick[hz + 'Score'] = sig.buyScore ?? pick[hz + 'Score'];
       pick[hz + 'SellScore'] = sig.sellScore ?? pick[hz + 'SellScore'];
       pick[hz + 'Rating'] = sig.rating ?? pick[hz + 'Rating'];
@@ -8791,14 +8852,14 @@ function migrateLegacyTightStops() {
     const tp2 = parseFloat(h[hz + 'Target2'] || h.target2 || 0) || null;
     const fixed = applyHorizonMinPctFloors(entry, tp1, tp2, sl, isSell, hz);
     h[hz + 'Target1'] = fixed.tp1;
-    h[hz + 'Target2'] = fixed.tp2;
+    h[hz + 'Target2'] = ''; // TP1-only model — no TP2
     h[hz + 'StopLoss'] = fixed.sl;
     if (h.hz === hz || !h.hz) {
       h.target1 = fixed.tp1;
-      h.target2 = fixed.tp2;
+      h.target2 = ''; // TP1-only
       h.stopLoss = fixed.sl;
     }
-    if (isSell) { h.sellTarget1 = fixed.tp1; h.sellTarget2 = fixed.tp2; h.sellStopLoss = fixed.sl; }
+    if (isSell) { h.sellTarget1 = fixed.tp1; h.sellTarget2 = ''; h.sellStopLoss = fixed.sl; }
     refloored++;
 
     // Reopen trades that were stopped out on the bogus tight stop so refresh-pnl re-evaluates them.
