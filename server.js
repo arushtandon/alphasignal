@@ -186,6 +186,7 @@ function normalizeV7Quote(q) {
     high: q.regularMarketDayHigh,
     low: q.regularMarketDayLow,
     currency: q.currency || 'USD',
+    marketState: q.marketState || null, // REGULAR | PRE | POST | CLOSED — drives entry semantics
     source: 'yahoo_v7_bulk'
   };
 }
@@ -1124,16 +1125,27 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
   const atrEntry = entryTech.atr || entry * 0.02;
   let trailingSl = computeTrailingStopFromTech(entryTech, entry, hz, isSell, fund);
   const tp1 = computeFirstTargetFromTech(entryTech, entry, hz, isSell, trailingSl);
+  // TP2 = the runner's full-exit target (2× TP1 distance, horizon-floored) — must
+  // mirror applyServerPriceLevels so simulated exits match the displayed levels.
+  let tp2 = null;
+  if (tp1 != null && Number.isFinite(+tp1)) {
+    const _d1 = Math.abs(+tp1 - entry);
+    tp2 = isSell ? entry - 2 * _d1 : entry + 2 * _d1;
+    const _f2 = (HORIZON_MIN_PCT[hz] || HORIZON_MIN_PCT.short).tp2;
+    const _floor2 = isSell ? entry * (1 - _f2) : entry * (1 + _f2);
+    tp2 = isSell ? Math.min(tp2, _floor2) : Math.max(tp2, _floor2);
+  }
   const PARTIAL = 0.5;
   // Chandelier multiple for the post-TP1 runner — wide so winners can actually run.
   const runK = hz === 'short' ? 3.0 : hz === 'medium' ? 4.0 : 5.5;
   let tp1Hit = false, realized = 0, remaining = 1.0, _yc = 0;
+  let tp2AltRet = null; // hypothetical 'full exit at TP2' outcome — ANALYSIS ONLY, never an exit
   let peak = isSell ? entry : entry; // best favorable price since entry
 
   const longRet  = px => (px - entry) / entry;
   const shortRet = px => (entry - px) / entry;
   const ret = px => isSell ? shortRet(px) : longRet(px);
-  const finish = (status, exitIdx, px) => ({ ret: realized + remaining * ret(px), status, exitIdx, tp1Hit, stopLoss: trailingSl, exitPrice: px });
+  const finish = (status, exitIdx, px) => ({ ret: realized + remaining * ret(px), status, exitIdx, tp1Hit, stopLoss: trailingSl, exitPrice: px, tp2Ref: tp2 != null ? tp2 : null, tp2AltRet });
 
   for (let j = entryIdx + 1; j <= maxJ; j++) {
     if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r));
@@ -1161,6 +1173,15 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
       if (isSell && trailingSl && bar.h >= trailingSl)  return finish('sl_hit', j, trailingSl);
       if (!liveMark && signalFlipped(barSig, isSell)) return finish('signal_exit', j, bar.c);
     } else {
+      // TP2 is a REFERENCE level only — NEVER an actual exit. The first time it
+      // prints we freeze the hypothetical "closed the runner at TP2" outcome so
+      // History can compare it against what the ratchet actually delivered
+      // (exit-quality analysis for smarter exits). The position keeps riding
+      // the trailing stop regardless.
+      if (tp2 != null && tp2AltRet == null) {
+        if (!isSell && bar.h >= tp2) tp2AltRet = realized + remaining * longRet(tp2);
+        else if (isSell && bar.l <= tp2) tp2AltRet = realized + remaining * shortRet(tp2);
+      }
       // ── POST-TP1: DAILY-%-MOVE RATCHET (ratchet up only, never down). ──
       //    Each day the stock moves favorably by X%, the trailing stop moves the
       //    SAME X% in the favorable direction. On an adverse day the stop is left
@@ -1741,15 +1762,41 @@ function computeQuantSignal(tech, fund, hz) {
     buy = buyGates>=5.5?90:buyGates>=4.5?78:buyGates>=3.5?62:buyGates>=2.5?46:Math.min(22,Math.round(buyGates*14));
 
     // SELL: structural regime breakdown
-    if (!aboveMa200&&deathCross&&weeklyTrend==='downtrend') { sellGates+=4; condSell.push('BEAR BREAKDOWN: MA200+DC+weekly down'); }
-    else if (!aboveMa200&&deathCross)         { sellGates+=3; condSell.push('Bear regime: below MA200 + Death Cross'); }
-    else if (!aboveMa200)                { sellGates+=2; condSell.push('Below MA200 — bear regime'); }
-    else if (deathCross)                 { sellGates+=2; condSell.push('Death Cross — trend reversal'); }
+    // Structure gates establish PERMISSION (bear regime). Weights trimmed slightly:
+    // structural conditions persist for MONTHS after the damage, so on their own
+    // they short far too late — timing gates below decide if the short is LIVE.
+    if (!aboveMa200&&deathCross&&weeklyTrend==='downtrend') { sellGates+=3.5; condSell.push('BEAR BREAKDOWN: MA200+DC+weekly down'); }
+    else if (!aboveMa200&&deathCross)         { sellGates+=2.5; condSell.push('Bear regime: below MA200 + Death Cross'); }
+    else if (!aboveMa200)                { sellGates+=1.5; condSell.push('Below MA200 — bear regime'); }
+    else if (deathCross)                 { sellGates+=1.5; condSell.push('Death Cross — trend reversal'); }
     if (weeklyTrend==='downtrend')       { sellGates++;  condSell.push('Weekly downtrend'); }
     if (!macdBull&&!aboveMa200)          { sellGates++;  condSell.push('MACD bearish in bear regime'); }
     if (inSDSellZone&&bearStruct)        { sellGates++;  condSell.push('SD top + distribution'); }
     else if (bearStruct||obvBullish===false) sellGates+=0.5;
-    if (rsi<30) sellGates=Math.round(sellGates*0.4);
+    // Bear-rally REJECTION — the highest-quality medium short entry: price pulled
+    // up into MA20/MA50 from below and momentum is rolling back over (not chasing
+    // the hole, not fighting a live recovery).
+    const _ma20m = tech.ma20 ?? null;
+    const _nearMaReject = (!aboveMa50 && ma50 && price > ma50*0.94 && price < ma50*1.01)
+                       || (!aboveMa200 && _ma20m && price > _ma20m*0.97 && price < _ma20m*1.02);
+    if (_nearMaReject && !macdBull && rsi>=40 && rsi<=60) { sellGates+=1.5; condSell.push('Bear-rally rejection at resistance'); }
+
+    // ── TIMING & EXHAUSTION GUARDS (fix for medium shorts bleeding) ─────────
+    // 1) The downtrend must be ACTIVE. Price re-claiming its MAs = live recovery;
+    //    a structural bear score alone was shorting stocks mid-rebound.
+    if (aboveMa50)       sellGates = Math.round(sellGates*0.35); // recovery underway — stand aside
+    else if (aboveMa20)  sellGates = Math.round(sellGates*0.50); // near-term bounce in progress
+    // 2) Momentum turning UP = bear-market rally / short-squeeze risk.
+    if (rsiRising && macdBull) sellGates = Math.round(sellGates*0.35);
+    // 3) Don't short the hole — graduated oversold protection (was only rsi<30).
+    if (rsi<30)      sellGates = Math.round(sellGates*0.30);
+    else if (rsi<38) sellGates = Math.round(sellGates*0.60);
+    // 4) Overextended downside: >22% below MA200 → most of the move has happened;
+    //    1–3 month mean-reversion makes fresh shorts here consistently lose.
+    if (ma200 && price < ma200*0.78) sellGates = Math.round(sellGates*0.50);
+    // 5) Active rally: 3+ consecutive higher closes → wait for the bounce to stall.
+    const _consHigher = tech.consecutiveHigherCloses ?? 0;
+    if (_consHigher >= 3) sellGates = Math.round(sellGates*0.40);
     // Regime-scaled medium sell — BEAR amplifies breakdown trades
     sellGates *= _sellMult; sellGates = Math.max(0, sellGates);
     sell = sellGates>=5.5?88:sellGates>=4.5?75:sellGates>=3.5?62:sellGates>=2.5?50:Math.min(24,Math.round(sellGates*11));
@@ -1986,6 +2033,9 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
     if (!buyOk && !sellOk) continue;
     const isBuy = buyOk && (!sellOk || sig.buyScore >= sig.sellScore);
     const isSell = !isBuy;
+    // Optional side filter — lets the backtest endpoint measure ONE side in isolation
+    if (opts.side === 'sell' && !isSell) continue;
+    if (opts.side === 'buy' && !isBuy) continue;
 
     const entry = data[i + 1]?.o ?? data[i].c;
     if (!entry || entry <= 0) continue;
@@ -4404,6 +4454,7 @@ function buildFullTechResult(sym, daily, weekly) {
     low52w:  daily.length>=52?Math.min(...daily.slice(-252).filter(d=>d.l>0).map(d=>d.l)):null,
     volume, candlePattern: pattern,
     consecutiveLowerCloses: countConsecutiveLowerCloses(daily),
+    consecutiveHigherCloses: countConsecutiveHigherCloses(daily),
     ma100, aboveMa100: ma100 ? cp > ma100 : null,
     recentTrend: (function(){
       const cl = closes; const c = cp;
@@ -5391,14 +5442,35 @@ async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
   }
 
   if (_mkt.danelfin) {
+    let _danApplied = false;
     try {
       const _dkey = (process.env.DANELFIN_API_KEY || '').trim();
       if (_dkey) {
-        const _ds = opts.danelfinPre || (await fetchDanelfinRow(_dkey, sym));
-        if (_ds && _ds.aiscore != null) applyDanelfinTierOverlay(dataShell, _ds);
+        const _ds = opts.danelfinPre || (await cachedDanelfinRow(_dkey, sym));
+        if (_ds && _ds.aiscore != null) { applyDanelfinTierOverlay(dataShell, _ds); _danApplied = true; }
       }
     } catch (e) {
       console.warn('Danelfin overlay', sym, e.message);
+    }
+    // FMP QUALITY FALLBACK: when Danelfin is unavailable (daily budget spent,
+    // monthly limit hit, key missing, or API error) US names previously got NO
+    // quality overlay at all — the FMP fetch only ran for non-US tiers. Fall back
+    // to FMP financial scores so buys/sells stay quality-aware either way.
+    if (!_danApplied) {
+      try {
+        const _fk2 = fmpEnvKeyFund();
+        if (_fk2) {
+          const _fmp2 = opts.fmpPre || dataShell.fmpScore || (await fetchFmpScore(sym, { batchMode }));
+          if (_fmp2) {
+            applyFmpTierOverlay(dataShell, sym, _fmp2);
+            dataShell.qualitySource = 'fmp_fallback'; // visible in payloads for verification
+          }
+        }
+      } catch (e) {
+        console.warn('FMP fallback overlay', sym, e.message);
+      }
+    } else {
+      dataShell.qualitySource = 'danelfin';
     }
   }
 
@@ -5653,7 +5725,7 @@ app.post('/api/danelfin/batch', async (req, res) => {
   const out = {};
   await Promise.allSettled(
     equities.map(async sym => {
-      const row = await fetchDanelfinRow(apiKey, sym);
+      const row = await cachedDanelfinRow(apiKey, sym);
       if (row && row.aiscore != null) out[sym] = row;
     })
   );
@@ -6167,10 +6239,27 @@ async function generateServerPicksFromShortlist(opts = {}) {
         const liveQuotes = await fetchQuotesV7Bulk(pickTickers);
         for (const r of pickRows) {
           const q = liveQuotes[r.ticker];
-          // Entry = the SESSION OPEN for the day (what a trader would actually get
-          // filled at on the open), falling back to last price only if open is absent.
-          const px = (q?.open && q.open > 0) ? q.open : q?.price;
+          // ENTRY SEMANTICS (fix for "random" entry prices):
+          //  • Market in REGULAR session → the live price IS the best executable
+          //    fill right now. (Using q.open mid-session was hindsight — and worse,
+          //    when a market hadn't opened yet Yahoo's regularMarketOpen is the
+          //    PREVIOUS session's open, so pre-market picks recorded stale prices.)
+          //  • Market PRE/POST/CLOSED → the real fill happens at the NEXT session's
+          //    open, which is unknowable now. Record the live/prev-close price as a
+          //    PROVISIONAL entry and flag entryPending — the history PnL refresh
+          //    finalises it to the actual session open once that bar exists.
+          const _inSession = q?.marketState === 'REGULAR';
+          const px = _inSession
+            ? (q?.price && q.price > 0 ? q.price : null)
+            : ((q?.price && q.price > 0) ? q.price : (q?.prevClose > 0 ? q.prevClose : null));
           if (px && px > 0) {
+            r.entryPending = !_inSession; // finalise to next session's open later
+            // Sector trend on the PICK itself (buy & sell, every horizon) —
+            // entering WITH the sector's tide is part of the entry decision.
+            try {
+              const _rSec = r._fmpSector || r.sector || (r.fundSnapshot && r.fundSnapshot._fmpSector) || null;
+              if (_rSec) { const _rst = await sectorTrendLabel(_rSec); if (_rst) r.sectorTrend = _rst; }
+            } catch (_) { /* best-effort */ }
             const tech = techMap[r.ticker];
             const fEntry = fundCache.get(r.ticker);
             const fnd = fEntry && Date.now() - fEntry.ts < TECH_TTL * 4 ? fEntry.data : null;
@@ -6550,7 +6639,8 @@ async function addTradesToHistory(trades) {
         'target1', 'target2', 'stopLoss', 'sellEntry', 'sellTarget1', 'sellTarget2', 'sellStopLoss',
         hz + 'Target1', hz + 'Target2', hz + 'StopLoss', hz + 'TrailingSL',
         hz + 'Status', hz + 'PnlDollar', hz + 'PnlPct', hz + 'ExitPrice', hz + 'ExitReason',
-        hz + 'Tp1Hit', hz + 'CurrentPrice', 'status', 'pnlDollar', 'pnlPct', 'currentPrice'
+        hz + 'Tp1Hit', hz + 'CurrentPrice', 'status', 'pnlDollar', 'pnlPct', 'currentPrice',
+        'entryPending', 'entryFinalized' // entry-finalisation state must survive re-records
       ]) {
         if (prev[f] !== undefined) trade[f] = prev[f];
       }
@@ -8663,6 +8753,100 @@ const HORIZON_MIN_PCT = {
   long:   { sl: 0.160, tp1: 0.300, tp2: 0.450, minRR: 1.85 }
 };
 
+// ── Sector trend (hold/exit context) ─────────────────────────────────────────
+// Maps a stock's sector to its SPDR sector ETF as a trend proxy (used globally —
+// for non-US names the US sector ETF still captures the sector's world cycle).
+// Trend = ETF close vs its MA20/MA50. Cached 6h; one OHLCV fetch per sector max.
+const SECTOR_ETF = {
+  'technology': 'XLK', 'information technology': 'XLK', 'tech': 'XLK',
+  'financial services': 'XLF', 'financials': 'XLF', 'financial': 'XLF', 'banks': 'XLF',
+  'energy': 'XLE', 'oil & gas': 'XLE',
+  'healthcare': 'XLV', 'health care': 'XLV', 'pharmaceuticals': 'XLV',
+  'industrials': 'XLI', 'industrial': 'XLI',
+  'consumer cyclical': 'XLY', 'consumer discretionary': 'XLY', 'retail': 'XLY', 'automobiles': 'XLY',
+  'consumer defensive': 'XLP', 'consumer staples': 'XLP',
+  'basic materials': 'XLB', 'materials': 'XLB', 'metals & mining': 'XLB', 'chemicals': 'XLB',
+  'real estate': 'XLRE',
+  'utilities': 'XLU',
+  'communication services': 'XLC', 'communication': 'XLC', 'telecom': 'XLC', 'media': 'XLC'
+};
+const _sectorTrendCache = new Map(); // etf → { ts, label }
+const SECTOR_TREND_TTL = 6 * 60 * 60 * 1000;
+async function sectorTrendLabel(sectorRaw) {
+  const sector = String(sectorRaw || '').trim();
+  if (!sector) return null;
+  const key = sector.toLowerCase();
+  let etf = SECTOR_ETF[key] || null;
+  if (!etf) { for (const [k, v] of Object.entries(SECTOR_ETF)) { if (key.includes(k)) { etf = v; break; } } }
+  if (!etf) return null;
+  const hit = _sectorTrendCache.get(etf);
+  if (hit && Date.now() - hit.ts < SECTOR_TREND_TTL) return hit.label ? `${sector} ${hit.label}` : null;
+  let label = null;
+  try {
+    const bars = await fetchOHLCV(etf, '6mo', '1d').catch(() => null);
+    if (bars && bars.length >= 50) {
+      const closes = bars.map(b => b.c).filter(v => v != null);
+      const ma20 = calcSMA(closes, 20), ma50 = calcSMA(closes, 50);
+      const last = closes[closes.length - 1];
+      if (last > ma20 && ma20 > ma50) label = '↑ uptrend';
+      else if (last < ma20 && ma20 < ma50) label = '↓ downtrend';
+      else label = '→ sideways';
+    }
+  } catch (_) { /* leave null */ }
+  _sectorTrendCache.set(etf, { ts: Date.now(), label });
+  return label ? `${sector} ${label}` : null;
+}
+
+
+// ── Danelfin call discipline ─────────────────────────────────────────────────
+// Danelfin's plan allows ~2500 calls/MONTH. Without a cache, every page load /
+// boot / pick-gen re-fetched every US name and burnt the whole month in a day.
+// Scores update once daily, so: disk cache with a 20h TTL + a hard daily budget.
+// When the budget is spent (or the API errors), callers get null and the FMP
+// quality fallback takes over — the model keeps working.
+const DANELFIN_CACHE_FILE = path.join(DATA_DIR, 'danelfin_cache.json'); // DATA_DIR → Render persistent disk when mounted
+const DANELFIN_TTL_MS = 20 * 60 * 60 * 1000; // 20h — scores are daily
+const DANELFIN_DAILY_BUDGET = Math.max(5, parseInt(process.env.DANELFIN_DAILY_BUDGET || '12', 10) || 12); // 10-12/day: ~360/mo, safely inside the 2500/mo plan
+let danelfinCache = {};
+let danelfinBudget = { day: '', used: 0 };
+function loadDanelfinCache() {
+  try {
+    if (fs.existsSync(DANELFIN_CACHE_FILE)) {
+      const j = JSON.parse(fs.readFileSync(DANELFIN_CACHE_FILE, 'utf8'));
+      danelfinCache = j.cache || {};
+      danelfinBudget = j.budget || { day: '', used: 0 };
+    }
+  } catch (e) { console.warn('Danelfin cache load:', e.message); }
+}
+function saveDanelfinCache() {
+  try {
+    fs.mkdirSync(path.dirname(DANELFIN_CACHE_FILE), { recursive: true });
+    fs.writeFileSync(DANELFIN_CACHE_FILE, JSON.stringify({ cache: danelfinCache, budget: danelfinBudget }));
+  } catch (e) { console.warn('Danelfin cache save:', e.message); }
+}
+function danelfinBudgetLeft() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (danelfinBudget.day !== today) danelfinBudget = { day: today, used: 0 };
+  return DANELFIN_DAILY_BUDGET - danelfinBudget.used;
+}
+/** Cached, budget-guarded Danelfin fetch. Returns the cached row (even stale, as
+ *  a last resort) rather than burning calls; null only when nothing is known. */
+async function cachedDanelfinRow(apiKey, sym) {
+  const k = String(sym || '').toUpperCase();
+  const hit = danelfinCache[k];
+  if (hit && Date.now() - hit.ts < DANELFIN_TTL_MS) return hit.row; // fresh (row may be null = known-missing)
+  if (danelfinBudgetLeft() <= 0) {
+    if (hit) return hit.row; // stale beats nothing when out of budget
+    return null;
+  }
+  danelfinBudget.used++;
+  const row = await fetchDanelfinRow(apiKey, sym).catch(() => null);
+  danelfinCache[k] = { ts: Date.now(), row };
+  saveDanelfinCache();
+  return row;
+}
+
+
 const SL_COOLDOWN_MS = 6 * 24 * 60 * 60 * 1000;
 const SL_COOLDOWN_FILE = path.join(DATA_DIR, 'sl_cooldowns.json');
 let slCooldowns = {};
@@ -8866,14 +9050,14 @@ function migrateLegacyTightStops() {
     const tp2 = parseFloat(h[hz + 'Target2'] || h.target2 || 0) || null;
     const fixed = applyHorizonMinPctFloors(entry, tp1, tp2, sl, isSell, hz);
     h[hz + 'Target1'] = fixed.tp1;
-    h[hz + 'Target2'] = ''; // TP1-only model — no TP2
+    h[hz + 'Target2'] = fixed.tp2; // TP2 = runner full-exit target
     h[hz + 'StopLoss'] = fixed.sl;
     if (h.hz === hz || !h.hz) {
       h.target1 = fixed.tp1;
-      h.target2 = ''; // TP1-only
+      h.target2 = fixed.tp2;
       h.stopLoss = fixed.sl;
     }
-    if (isSell) { h.sellTarget1 = fixed.tp1; h.sellTarget2 = ''; h.sellStopLoss = fixed.sl; }
+    if (isSell) { h.sellTarget1 = fixed.tp1; h.sellTarget2 = fixed.tp2; h.sellStopLoss = fixed.sl; }
     refloored++;
 
     // Reopen trades that were stopped out on the bogus tight stop so refresh-pnl re-evaluates them.
@@ -8924,6 +9108,7 @@ function scanHistoryForSLCooldowns() {
 }
 
 loadSLCooldowns();
+loadDanelfinCache();
 scanHistoryForSLCooldowns();
 purgeOpenCooldownBuysFromHistory();
 
@@ -9002,6 +9187,21 @@ function countConsecutiveLowerCloses(daily) {
     const p = daily[i - 1].c ?? daily[i - 1].close;
     if (c == null || p == null) break;
     if (c < p) count++;
+    else break;
+  }
+  return count;
+}
+
+/** Mirror of the above for the SELL side: how many days in a row the stock has
+ *  CLOSED HIGHER. 3+ = an active rally — a terrible moment to open a new short. */
+function countConsecutiveHigherCloses(daily) {
+  if (!daily || daily.length < 2) return 0;
+  let count = 0;
+  for (let i = daily.length - 1; i >= 1; i--) {
+    const c = daily[i].c ?? daily[i].close;
+    const p = daily[i - 1].c ?? daily[i - 1].close;
+    if (c == null || p == null) break;
+    if (c > p) count++;
     else break;
   }
   return count;
@@ -9200,14 +9400,23 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
       row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = '';
       continue;
     }
-    // Hybrid exit: TP1 = first target where we book a partial (locks a win), then
-    // trail the remainder (no hard TP2 — let winners run via the trailing stop).
+    // Hybrid exit: TP1 books a 50% partial (locks a win); the remainder rides the
+    // daily-%-ratchet trailing stop. TP2 = the runner's FULL-EXIT target: 2× the
+    // TP1 distance from entry, floored by the horizon minimum — hit it and the
+    // remaining half banks in full.
     const tp1 = computeFirstTargetFromTech(tech, e, hz, isSell, sl);
-    // Enforce horizon min-% + reward:risk floors so displayed picks match the model.
     const fl = applyHorizonMinPctFloors(e, tp1, null, sl, isSell, hz);
+    let tp2 = null;
+    if (fl.tp1 != null && Number.isFinite(+fl.tp1)) {
+      const _d1 = Math.abs(+fl.tp1 - e);
+      tp2 = isSell ? roundPrice(e - 2 * _d1) : roundPrice(e + 2 * _d1);
+      const _f2 = (HORIZON_MIN_PCT[hz] || HORIZON_MIN_PCT.short).tp2;
+      const _floor2 = isSell ? roundPrice(e * (1 - _f2)) : roundPrice(e * (1 + _f2));
+      tp2 = isSell ? Math.min(tp2, _floor2) : Math.max(tp2, _floor2);
+    }
     row[hz + 'Entry'] = String(roundPrice(e));
     row[hz + 'Target1'] = fl.tp1 != null ? String(fl.tp1) : '';
-    row[hz + 'Target2'] = '';
+    row[hz + 'Target2'] = tp2 != null ? String(tp2) : '';
     row[hz + 'StopLoss'] = fl.sl != null ? String(fl.sl) : '';
     row[hz + 'TrailingSL'] = true;
   }
@@ -9528,7 +9737,7 @@ Output ONLY the JSON array. No markdown.`;
         mergedRow.danelfinLowRisk = sig.danelfin.low_risk;
         mergedRow.danelfinBuyTrack = sig.danelfin.buy_track_record;
       } else if (dk && !sym.includes('=F') && !sym.includes('-USD') && !sym.includes('-EUR')) {
-        const df = await fetchDanelfinRow(dk, sym);
+        const df = await cachedDanelfinRow(dk, sym);
         if (df && df.aiscore != null) {
           mergedRow.danelfinAiScore = df.aiscore;
           mergedRow.danelfinTechnical = df.technical;
@@ -9962,9 +10171,7 @@ function liveSignalFlipExit(ticker, hz, isSell, techMap) {
 // (signal_exit / time_limit) by the old buggy logic so the corrected rules
 // (current-signal flips only + genuine time-limit) re-decide each position.
 let _softCloseRemediated = false;
-// One-time-per-boot flag: repair entries a prior bug had snapped to the live price
-// by reconstructing each entry as the close on the trade's own entry date.
-let _entryBackfilled = false;
+// (entry repair is now always-on per-trade via h.entryFinalized — no boot flag)
 // One-time-per-boot flag: re-floor still-OPEN trades to the v7.9.6 reward:risk model
 // (TP1 ≥ minRR × stop distance). Earlier picks used a 0.62× target that sat closer
 // than the stop; this widens TP1/SL on live positions so displayed levels match.
@@ -10134,27 +10341,118 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
       // only older rows need the historical-close repair / are eligible to flip.
       const enteredToday = new Date(entryMs).toDateString() === new Date().toDateString();
 
-      // ONE-TIME entry repair: a prior bug snapped stored entries to the live price
-      // (entry == live, PnL == 0). Reconstruct the true entry as the OPEN price on
-      // the trade's own entry date (the fill a trader would have got on the open).
-      if (!_entryBackfilled && !enteredToday && bars && bars.length) {
+      // ENTRY FINALISATION (always-on, once per trade): the recorded entry must be
+      // the MARKET OPEN of the session the fill actually happens in — the FIRST
+      // daily bar ON OR AFTER the signal date. (The old repair picked the bar
+      // on-or-BEFORE the date, so weekend/pre-market picks froze the PREVIOUS
+      // session's open — a price the trade could never have got. It was also
+      // one-time and skipped today's trades, so fresh picks kept provisional
+      // prices forever.) Runs until the target bar exists, then locks.
+      if (!h.entryFinalized && bars && bars.length) {
         const dayStr = new Date(entryMs).toISOString().slice(0, 10);
         let entryBar = null;
         for (const b of bars) {
           const bs = new Date((b.t || 0) * 1000).toISOString().slice(0, 10);
-          if (bs <= dayStr) entryBar = b; else break;
+          if (bs >= dayStr) { entryBar = b; break; } // first session ON/AFTER signal
         }
         const op = entryBar ? ((entryBar.o != null && entryBar.o > 0) ? entryBar.o : entryBar.c) : null;
         if (op && op > 0) {
           const fixed = roundPrice(op);
+          const prevEntry = parseFloat(h[hz + 'Entry'] || h.entry || 0) || null;
           h[hz + 'Entry'] = fixed;
           if ((h.hz || 'short') === hz) h.entry = fixed;
+          h.entryFinalized = true;
+          h.entryPending = false;
+          // Keep TP/SL consistent with the corrected entry: scale the stored
+          // levels by the entry ratio (full re-derivation happens on the next
+          // recalibrate-levels pass; this keeps RR sane in the meantime).
+          if (prevEntry && Math.abs(fixed - prevEntry) / prevEntry > 0.0005) {
+            const k = fixed / prevEntry;
+            for (const lf of [hz + 'Target1', hz + 'StopLoss']) {
+              const v = parseFloat(h[lf] || 0);
+              if (v > 0) h[lf] = roundPrice(v * k);
+            }
+          }
           rowChanged = true;
         }
       }
 
       const entry = parseFloat(h[hz + 'Entry'] || h.entry || 0);
       if (!entry) continue;
+
+      // TRADE GIVEBACK ("drawdown"): the move from the trade's favorable extreme
+      // since entry to the current price. Longs: peak high → CMP. Shorts: trough
+      // low → CMP (the adverse retrace). Recorded on every refresh so History can
+      // show how much of the best excursion each open trade has donated back.
+      if (bars && bars.length && curr > 0) {
+        const _dd0 = new Date(entryMs).toISOString().slice(0, 10);
+        let _pk = null, _tr = null;
+        for (const b of bars) {
+          const _bs = new Date((b.t || 0) * 1000).toISOString().slice(0, 10);
+          if (_bs < _dd0) continue;
+          if (b.h != null && (_pk == null || b.h > _pk)) _pk = b.h;
+          if (b.l != null && (_tr == null || b.l < _tr)) _tr = b.l;
+        }
+        let _peakP = null, _givePct = null;
+        if (!isSell && _pk > 0) { _peakP = roundPrice(_pk); _givePct = +(((_pk - curr) / _pk) * 100).toFixed(2); }
+        else if (isSell && _tr > 0) { _peakP = roundPrice(_tr); _givePct = +(((curr - _tr) / _tr) * 100).toFixed(2); }
+        if (_peakP != null && (h[hz + 'PeakPrice'] !== _peakP || h[hz + 'DrawdownFromPeakPct'] !== _givePct)) {
+          h[hz + 'PeakPrice'] = _peakP;
+          h[hz + 'DrawdownFromPeakPct'] = _givePct;
+          rowChanged = true;
+        }
+      }
+
+      // SECTOR TREND context — is the stock's sector trending with or against
+      // the position? Cached per-ETF, so this costs at most one fetch per sector
+      // per 6h regardless of how many trades share it.
+      try {
+        const _sec = h.fundSnapshot?._fmpSector || h.sector || null;
+        if (_sec) {
+          const _stLabel = await sectorTrendLabel(_sec);
+          if (_stLabel && h[hz + 'SectorTrend'] !== _stLabel) {
+            h[hz + 'SectorTrend'] = _stLabel;
+            rowChanged = true;
+          }
+        }
+      } catch (_) { /* sector context is best-effort */ }
+
+      // EXHAUSTION analysis — how stretched is the move powering this trade?
+      // High exhaustion = the favorable move is statistically tired (RSI extreme,
+      // price far from MA20, long run of one-way closes) → tighten the trail /
+      // consider banking. This is the exit-quality input the TP/TSL tuning uses.
+      try {
+        if (bars && bars.length >= 25 && curr > 0) {
+          const _cl = bars.map(b => b.c).filter(v => v != null);
+          const _rsiX = calcRSI(_cl, 14);
+          const _ma20X = calcSMA(_cl, 20);
+          const _stretch = _ma20X ? ((curr - _ma20X) / _ma20X) * 100 : 0;
+          let _run = 0;
+          for (let _i = _cl.length - 1; _i >= 1; _i--) {
+            const up = _cl[_i] > _cl[_i - 1];
+            if ((!isSell && up) || (isSell && !up)) _run++; else break;
+          }
+          // Favorable-direction extremes: overbought+stretched for longs,
+          // oversold+overshot for shorts.
+          let _score = 0; const _why = [];
+          if (!isSell) {
+            if (_rsiX >= 78) { _score += 2; _why.push('RSI ' + Math.round(_rsiX)); }
+            else if (_rsiX >= 70) { _score += 1; _why.push('RSI ' + Math.round(_rsiX)); }
+            if (_stretch >= 12) { _score += 2; _why.push('+' + _stretch.toFixed(0) + '% vs MA20'); }
+            else if (_stretch >= 8) { _score += 1; _why.push('+' + _stretch.toFixed(0) + '% vs MA20'); }
+            if (_run >= 4) { _score += 1; _why.push(_run + '↑'); }
+          } else {
+            if (_rsiX <= 22) { _score += 2; _why.push('RSI ' + Math.round(_rsiX)); }
+            else if (_rsiX <= 30) { _score += 1; _why.push('RSI ' + Math.round(_rsiX)); }
+            if (_stretch <= -12) { _score += 2; _why.push(_stretch.toFixed(0) + '% vs MA20'); }
+            else if (_stretch <= -8) { _score += 1; _why.push(_stretch.toFixed(0) + '% vs MA20'); }
+            if (_run >= 4) { _score += 1; _why.push(_run + '↓'); }
+          }
+          const _exLabel = _score >= 3 ? 'Exhaustion HIGH' : _score >= 1 ? 'Exhaustion building' : null;
+          const _exStr = _exLabel ? (_exLabel + (_why.length ? ' (' + _why.join(' · ') + ')' : '')) : null;
+          if (h[hz + 'Exhaustion'] !== _exStr) { h[hz + 'Exhaustion'] = _exStr; rowChanged = true; }
+        }
+      } catch (_) { /* exhaustion is best-effort */ }
 
       // Immediate exit if live signal has flipped against the open position.
       // Never flip on the SAME DAY as entry (enteredToday): a pick and its instant
@@ -10189,6 +10487,13 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         // already blends the TP1 partial — use it directly, don't re-apply `dir`.
         h[hz + 'PnlPct'] = +(pathExit.ret * 100).toFixed(2);
         h[hz + 'PnlDollar'] = +(pathExit.ret * NOTIONAL).toFixed(2);
+        // EXIT-QUALITY ANALYSIS: the hypothetical "closed the runner at TP2"
+        // outcome vs what the ratchet actually produced. Null = TP2 never printed.
+        h[hz + 'Tp2AltPnlPct'] = pathExit.tp2AltRet != null ? +(pathExit.tp2AltRet * 100).toFixed(2) : null;
+        h[hz + 'Tp2AltPnlDollar'] = pathExit.tp2AltRet != null ? +(pathExit.tp2AltRet * NOTIONAL).toFixed(2) : null;
+        // Surface the LIVE trailing stop — post-TP1 this ratchets daily on
+        // favorable moves (never loosens), so History shows today's actual level.
+        h[hz + 'LiveTrailSL'] = (pathExit.tp1Hit && pathExit.stopLoss > 0) ? roundPrice(pathExit.stopLoss) : null;
         h[hz + 'Status'] = pathExit.status;
         h[hz + 'Tp1Hit'] = !!pathExit.tp1Hit;
         if (!pathExit.open && pathExit.exit != null) h[hz + 'ExitPrice'] = pathExit.exit;
@@ -10223,7 +10528,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
   }
 
   // Mark the one-time entry repair done once we've made a real pass over the data.
-  if (tickers.length) _entryBackfilled = true;
+  // entry finalisation is per-trade (h.entryFinalized) — no global flag to set
   saveHistoryFile(tradeHistory);
   res.json({
     ok: true,
@@ -10286,6 +10591,55 @@ app.get('/api/institutional-flow/:symbol', async (req, res) => {
   if (!sym) return res.status(400).json({ error: 'symbol required' });
   const data = await fetchInstitutionalFlow(sym);
   res.json(data || { symbol: sym, netShares: 0, netFlowLabel: 'No data', topBuyers: [], topSellers: [] });
+});
+
+
+// GET /api/backtest/medium-sell?tickers=A,B,C&window=180&side=sell&hz=medium
+// Replays the CURRENT signal logic (incl. the new timing/exhaustion guards) over
+// recent history and reports per-ticker + aggregate stats. Defaults to the sell
+// side on the medium horizon across the scan shortlist (capped for runtime).
+app.get('/api/backtest/medium-sell', async (req, res) => {
+  try {
+    const hz = ['short','medium','long'].includes(req.query.hz) ? req.query.hz : 'medium';
+    const side = ['buy','sell'].includes(req.query.side) ? req.query.side : 'sell';
+    const windowBars = Math.min(360, Math.max(60, parseInt(req.query.window, 10) || 180));
+    let tickers = String(req.query.tickers || '').split(',').map(t => t.trim().toUpperCase()).filter(Boolean);
+    if (!tickers.length) tickers = universeShortlistTickers().slice(0, 40);
+    if (!tickers.length) return res.json({ error: 'no tickers — run a universe scan first or pass ?tickers=' });
+    tickers = tickers.slice(0, 60); // runtime cap
+
+    const perTicker = [];
+    let tTrades = 0, tWins = 0, tRet = 0, gW = 0, gL = 0;
+    for (const sym of tickers) {
+      try {
+        const daily = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
+        if (!daily || daily.length < 150) { perTicker.push({ ticker: sym, skipped: 'insufficient data' }); continue; }
+        const weekly = await fetchOHLCV(sym, '2y', '1wk').catch(() => null);
+        const fe = fundCache.get(sym);
+        const fund = fe && Date.now() - fe.ts < TECH_TTL * 4 ? fe.data : null;
+        const bt = await backtestSignal(daily, hz, weekly, fund, { windowBars, side });
+        if (!bt || !bt.trades) { perTicker.push({ ticker: sym, trades: 0 }); continue; }
+        perTicker.push({ ticker: sym, trades: bt.trades, winRate: bt.winRate, avgReturnPct: bt.avgReturnPct, profitFactor: bt.profitFactor });
+        tTrades += bt.trades;
+        tWins += Math.round(bt.winRate / 100 * bt.trades);
+        tRet += bt.avgReturnPct * bt.trades;
+        if (bt.profitFactor && bt.profitFactor < 99) { gW += bt.profitFactor; gL += 1; }
+      } catch (e) { perTicker.push({ ticker: sym, error: e.message }); }
+    }
+    res.json({
+      hz, side, windowBars, tickersTested: tickers.length,
+      aggregate: {
+        totalTrades: tTrades,
+        winRate: tTrades ? Math.round(tWins / tTrades * 100) : null,
+        avgReturnPct: tTrades ? +(tRet / tTrades).toFixed(2) : null,
+        meanProfitFactor: gL ? +(gW / gL).toFixed(2) : null
+      },
+      note: 'Replays CURRENT signal logic (new guards included). Entry = next-bar open, exits per live hybrid rules.',
+      perTicker: perTicker.sort((a, b) => (b.trades || 0) - (a.trades || 0))
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Static files AFTER /api routes so `/api/*` never gets swallowed by filesystem lookup
