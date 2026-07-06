@@ -3313,7 +3313,7 @@ function exportHistoryTrades() {
 
 /** PnL + open/closed snapshot for one horizon row (aligned with History table). */
 function histRowPnlSnapshot(h, hzKey) {
-  const closedKinds = ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit', 'signal_exit'];
+  const closedKinds = ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit', 'signal_exit', 'tp1_then_sl', 'tp1_then_time'];
   const status = h[hzKey + 'Status'] && h[hzKey + 'Status'] !== 'n/a' ? h[hzKey + 'Status'] : (h.status || 'open');
   const isToday = new Date(h.entryDate || h.timestamp).toDateString() === new Date().toDateString();
   const mktNowOpen = isMarketTrading(h.ticker);
@@ -3328,7 +3328,7 @@ function histRowPnlSnapshot(h, hzKey) {
 
   const effectiveStatus = wouldBePending && pnlD == null ? 'pending' : status;
   const isClosed = closedKinds.includes(effectiveStatus);
-  const isOpen = effectiveStatus === 'open' || effectiveStatus === 'pending';
+  const isOpen = effectiveStatus === 'open' || effectiveStatus === 'pending' || effectiveStatus === 'tp1_open'; // runner live = still in the market
   return { pnl: pnlD, isOpen, isClosed };
 }
 
@@ -4940,6 +4940,11 @@ function clearHistoryAll() {
     .catch(e => alert('Failed: ' + e.message));
 }
 
+function setHistView(v) {
+  ST.histView = v === 'closed' ? 'closed' : 'live';
+  renderHist();
+}
+
 function renderHist() {
   const el = document.getElementById('histContent');
   const histPh = document.querySelector('#pane-history .ph');
@@ -4986,7 +4991,7 @@ function renderHist() {
     const s = v>=0?'+':'-'; return s+'$'+Math.abs(v).toFixed(0);
   }
 
-  const summaryCards = '<div id="histPortfolioSummary"></div><div id="histSummaryCards" class="hist-summary-strip"></div>';
+  const summaryCards = '<div id="histPortfolioSummary"></div><div id="histPerformance"></div><div id="histSummaryCards" class="hist-summary-strip"></div>';
 
   const horizonTabs = '<div class="hist-horizon-tabs">'
     + '<div class="ht act" id="hist-ht-short" onclick="switchHistHz(\'short\')">Short · 1d–1mo</div>'
@@ -5002,12 +5007,35 @@ function renderHist() {
     const ak  = hz+'Action';
 
     // Records with hz: show on matching tab. Records without hz (old format from 20 Apr): show on ALL tabs
-    const hzHist = hist.filter(h => {
+    let hzHist = hist.filter(h => {
       if(!h.hz) return true;  // no hz = old format, show everywhere
       return h.hz === hz;
     });
 
+    // ── LIVE vs REALISED split ──────────────────────────────────────────────
+    // Live: fully open positions + TP1-banked runners (still in the market).
+    // Realised: every trade with a REALISED event — TP1 partials (runner may
+    // still be live → highlighted green) and all full exits.
+    const FULL_EXITS = ['tp1_hit','tp2_hit','sl_hit','time_limit','signal_exit','tp1_then_sl','tp1_then_time'];
+    const _view = (window.ST && ST.histView) || 'live';
+    const _liveCount = hzHist.filter(function(t){ const st=t[hz+'Status']||t.status||'open'; return st==='open'||st==='tp1_open'||st==='pending'; }).length;
+    const _realCount = hzHist.filter(function(t){ const st=t[hz+'Status']||t.status||'open'; return st==='tp1_open'||FULL_EXITS.includes(st); }).length;
+    hzHist = hzHist.filter(function(t){
+      const st = t[hz+'Status'] || t.status || 'open';
+      if (_view === 'live') return st === 'open' || st === 'tp1_open' || st === 'pending';
+      return st === 'tp1_open' || FULL_EXITS.includes(st); // realised view
+    });
+    const _viewTabs = '<div style="display:flex;gap:6px;margin:8px 0 6px 0">'
+      +'<button onclick="setHistView(\'live\')" style="background:'+(_view==='live'?'rgba(61,219,123,0.12)':'rgba(255,255,255,0.04)')+';border:1px solid '+(_view==='live'?'rgba(61,219,123,0.35)':'var(--b1)')+';color:'+(_view==='live'?'var(--buy)':'var(--m1)')+';border-radius:5px;padding:4px 12px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">● Live ('+_liveCount+')</button>'
+      +'<button onclick="setHistView(\'closed\')" style="background:'+(_view==='closed'?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.04)')+';border:1px solid '+(_view==='closed'?'var(--m2)':'var(--b1)')+';color:'+(_view==='closed'?'var(--t1)':'var(--m1)')+';border-radius:5px;padding:4px 12px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">✓ Realised / Exited ('+_realCount+')</button>'
+      +'</div>';
+
     if(!hzHist.length) {
+      return '<div id="hist-table-'+hz+'" style="display:'+(hz==='short'?'block':'none')+'">'+_viewTabs
+        +'<div style="padding:1.5rem;text-align:center;color:var(--m1);font-family:DM Mono,monospace;font-size:11px">'
+        +'No '+(_view==='live'?'live':'realised')+' trades for this timeframe.</div></div>';
+    }
+    if(false) {
       return '<div id="hist-table-'+hz+'" style="display:'+(hz==='short'?'block':'none')+'">'
         +'<div style="padding:1.5rem;text-align:center;color:var(--m1);font-family:DM Mono,monospace;font-size:11px">'
         +'No Buy/Sell recommendations for this timeframe.</div></div>';
@@ -5062,7 +5090,8 @@ function renderHist() {
       const wouldBePending = (isToday && !mktNowOpen && !wasClosed);
       const effectiveStatus = (wouldBePending && computedPnlD == null) ? 'pending' : status;
       const effectiveIsOpen = effectiveStatus === 'open' || effectiveStatus === 'pending';
-      const effectiveIsTp1  = effectiveStatus === 'tp1_hit';
+      const effectiveIsRunner = effectiveStatus === 'tp1_open'; // TP1 banked, runner LIVE
+      const effectiveIsTp1  = effectiveStatus === 'tp1_hit' || effectiveStatus === 'tp1_then_sl' || effectiveStatus === 'tp1_then_time' || effectiveIsRunner;
       const effectiveIsTp2  = effectiveStatus === 'tp2_hit';
       const effectiveIsSl   = effectiveStatus === 'sl_hit';
       const isOpen  = effectiveIsOpen;
@@ -5072,7 +5101,9 @@ function renderHist() {
       const effectiveIsSignalExit = effectiveStatus==='signal_exit';
       const isClosed= isTp1||isTp2||isSl||effectiveStatus==='time_limit'||effectiveIsSignalExit;
 
-      const rowBg = effectiveIsOpen && computedPnlD != null
+      const rowBg = effectiveIsRunner
+        ? 'background:rgba(61,219,123,0.12);border-left:2px solid var(--buy);' // TP1 banked · runner LIVE
+        : effectiveIsOpen && computedPnlD != null
         ? 'background:rgba(245,200,66,0.06);'
         : effectiveIsTp1||effectiveIsTp2 ? 'background:rgba(61,219,123,0.05);'
         : effectiveIsSl ? 'background:rgba(244,108,108,0.05);'
@@ -5083,6 +5114,7 @@ function renderHist() {
         : effectiveStatus==='time_limit' ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(180,180,180,0.15);color:#aaa;font-family:DM Mono,monospace">⏱ Time limit</span>'
         : effectiveIsSignalExit ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(120,170,255,0.18);color:#7aaaff;font-family:DM Mono,monospace">⇄ Signal exit</span>'
         : effectiveIsTp2 ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.2);color:var(--buy);font-family:DM Mono,monospace">✓ TP2 Hit</span>'
+        : effectiveIsRunner ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.25);color:var(--buy);font-family:DM Mono,monospace" title="TP1 hit — 50% banked, remaining 50% riding the trailing stop">✓ TP1 · Runner LIVE</span>'
         : effectiveIsTp1 ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.15);color:var(--buy);font-family:DM Mono,monospace">✓ TP1 Hit</span>'
         : effectiveIsSl  ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(244,108,108,0.2);color:var(--sell);font-family:DM Mono,monospace">✗ SL Hit</span>'
         : '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(245,200,66,0.2);color:#F5C842;font-family:DM Mono,monospace">● Open</span>';
@@ -5125,18 +5157,22 @@ function renderHist() {
         +td(actionBadge + ' ' + statusBadge)
         +td('<span style="font-size:10px;padding:2px 6px;border-radius:6px;font-family:DM Mono,monospace;background:'+ratingBg+'">'+rating+'</span>')
         +td('<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--m2)">'+ds+'</span>')
-        +td('<span style="font-family:DM Mono,monospace;font-size:11px">'+ep+'</span>','right')
+        +td('<span style="font-family:DM Mono,monospace;font-size:11px" title="'+((h.entrySource||'pre-fix entry').replace(/"/g,'&quot;'))+'">'+ep+'</span>','right')
         +td('<span style="font-family:DM Mono,monospace;font-size:11px">'+livePrice+'</span>','right')
         +td(pnlDisplay,'right')
+        +td('<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--buy)">'+tp+'</span>')
         +td((function(){
           var tp2v = h[hz+'Target2'] || h.target2 || '';
-          var base = '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--buy)">'+tp
-            + (tp2v && tp2v !== 'unavailable' ? '<span style="color:var(--m1)" title="TP2 — reference level for exit analysis (not an exit)"> · </span>'+tp2v : '')
-            + '</span><span style="color:var(--m1)"> / </span><span style="font-family:DM Mono,monospace;font-size:10px;color:var(--sell)">'+sl+'</span>';
-          // Exit-quality analysis line: giveback from peak · TP2-exit vs actual · sector trend
+          return tp2v && tp2v !== 'unavailable'
+            ? '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--m2)" title="TP2 — reference level for exit analysis (not an exit)">'+tp2v+'</span>'
+            : '<span style="color:var(--m1)">—</span>';
+        })())
+        +td((function(){
+          var tsl = h[hz+'LiveTrailSL'];
+          var slHtml = tsl
+            ? '<span style="font-family:DM Mono,monospace;font-size:10px;color:#F5C842" title="Trailing stop — ratchets daily on favorable moves, never loosens">TSL @ '+tsl+'</span>'
+            : '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--sell)">'+sl+'</span>';
           var bits = [];
-          var give = h[hz+'DrawdownFromPeakPct'];
-          if (give != null && isFinite(give) && give > 0.05) bits.push('<span title="Giveback: trade\'s best price → current">↓'+Number(give).toFixed(1)+'% off peak</span>');
           var alt = h[hz+'Tp2AltPnlPct'];
           if (alt != null && isFinite(alt)) {
             var actP = (computedPnlP != null && isFinite(computedPnlP)) ? Number(computedPnlP).toFixed(1)+'%' : '—';
@@ -5145,20 +5181,28 @@ function renderHist() {
             bits.push('<span title="Hypothetical full exit at TP2 vs actual trailing-runner result">TP2-exit '+Number(alt).toFixed(1)+'% vs '+actP+diffTxt+'</span>');
           }
           var sec = h[hz+'SectorTrend'];
-          if (sec) bits.push('<span title="Sector trend via sector-ETF proxy — hold/exit context">'+sec+'</span>');
-          var tsl = h[hz+'LiveTrailSL'];
-          if (tsl) bits.push('<span title="Live trailing stop — ratchets daily on favorable moves, never loosens">TSL @ '+tsl+'</span>');
+          if (sec) bits.push('<span title="Sector trend via sector-ETF proxy">'+sec+'</span>');
+          if (bits.length) slHtml += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--m1);margin-top:1px">'+bits.join(' <span style="opacity:0.4">·</span> ')+'</div>';
+          return slHtml;
+        })())
+        +td((function(){
+          var give = h[hz+'DrawdownFromPeakPct'];
+          if (give == null || !isFinite(give) || give <= 0.05) return '<span style="color:var(--m1)">—</span>';
+          var col = give >= 5 ? 'var(--sell)' : give >= 2 ? '#F5C842' : 'var(--m2)';
+          return '<span style="font-family:DM Mono,monospace;font-size:10px;color:'+col+'" title="Giveback from the trade\'s best price ('+(h[hz+'PeakPrice']||'—')+') to current">↓'+Number(give).toFixed(1)+'%</span>';
+        })())
+        +td((function(){
           var ex = h[hz+'Exhaustion'];
-          if (ex) bits.push('<span style="color:#F5C842" title="Move-exhaustion read: RSI extreme, stretch vs MA20, one-way run — HIGH = consider tightening the trail or banking">'+ex+'</span>');
-          if (bits.length) base += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--m1);margin-top:1px">'+bits.join(' <span style="opacity:0.4">·</span> ')+'</div>';
-          return base;
+          return ex
+            ? '<span style="font-family:DM Mono,monospace;font-size:10px;color:'+(ex.indexOf('HIGH')>=0?'var(--sell)':'#F5C842')+'" title="'+ex.replace(/"/g,'&quot;')+'">Yes</span>'
+            : '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--m1)">No</span>';
         })())
         +td('<button class="btn" style="font-size:10px;padding:3px 7px" data-t="'+h.ticker+'" onclick="sbAn(this.getAttribute(\'data-t\'),\'\',\'\')">↻</button>')
         +'</tr>';
     }).join('');
 
     const th = 'padding:8px 10px;font-size:9px;font-family:DM Mono,monospace;color:var(--m1);text-transform:uppercase;letter-spacing:.06em;font-weight:400;border-bottom:1px solid var(--b1);background:var(--s2)';
-    return '<div id="hist-table-'+hz+'" style="display:'+(hz==='short'?'block':'none')+'">'
+    return '<div id="hist-table-'+hz+'" style="display:'+(hz==='short'?'block':'none')+'">'+_viewTabs
       +'<div class="lcard" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
       +'<thead><tr>'
       +'<th style="text-align:left;'+th+'">Instrument</th>'
@@ -5168,7 +5212,11 @@ function renderHist() {
       +'<th style="text-align:right;'+th+'">Entry</th>'
       +'<th style="text-align:right;'+th+'">Live</th>'
       +'<th style="text-align:right;'+th+'">PnL ($10k)</th>'
-      +'<th style="text-align:left;'+th+'">TP / SL</th>'
+      +'<th style="text-align:left;'+th+'">TP1</th>'
+      +'<th style="text-align:left;'+th+'">TP2</th>'
+      +'<th style="text-align:left;'+th+'">SL / TSL</th>'
+      +'<th style="text-align:left;'+th+'" title="Donation: giveback from the trade\'s best price to current">Don %</th>'
+      +'<th style="text-align:left;'+th+'" title="Move exhaustion — Yes = RSI extreme / stretched vs MA20 / long one-way run">Exh</th>'
       +'<th style="text-align:left;'+th+'"></th>'
       +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
   }
@@ -5177,7 +5225,7 @@ function renderHist() {
     .filter(function (h) {
       const hz = window._histActiveHz || 'short';
       const st = h[hz + 'Status'];
-      return h[hz + 'PnlDollar'] == null && !['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit'].includes(st);
+      return h[hz + 'PnlDollar'] == null && !['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit', 'signal_exit', 'tp1_then_sl', 'tp1_then_time'].includes(st);
     }).length;
   const pendingBanner = pendingCount > 0
     ? '<div style="background:rgba(245,200,66,0.08);border:1px solid rgba(245,200,66,0.25);border-radius:8px;padding:8px 12px">'
@@ -5200,7 +5248,7 @@ function calcSummaryForHz(hzKey) {
   const realised = withPnl.filter(function (x) { return x.isClosed; }).reduce(function (s, x) { return s + Number(x.pnl); }, 0);
   const unrealised = withPnl.filter(function (x) { return x.isOpen; }).reduce(function (s, x) { return s + Number(x.pnl); }, 0);
   const closedForWr = hzHist.filter(function (h) {
-    return ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit', 'signal_exit'].includes(h[hzKey + 'Status']);
+    return ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit', 'signal_exit', 'tp1_then_sl', 'tp1_then_time'].includes(h[hzKey + 'Status']);
   });
   // A closed trade is a LOSS only when the stop was hit or it closed negative.
   // TP hits, flat exits and any non-negative close count as wins — so 6 losers
@@ -5223,7 +5271,7 @@ function calcSummaryForHz(hzKey) {
   function sideStats(isSell) {
     const rows = hzHist.filter(function (h) { return (String(h.action || '').toLowerCase() === 'sell') === isSell; });
     const closed = rows.filter(function (h) {
-      return ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit', 'signal_exit'].includes(h[hzKey + 'Status']);
+      return ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit', 'signal_exit', 'tp1_then_sl', 'tp1_then_time'].includes(h[hzKey + 'Status']);
     });
     const wins = closed.filter(hzWin).length;
     const realisedSide = closed.reduce(function (s, h) {
@@ -5244,30 +5292,108 @@ function calcSummaryForHz(hzKey) {
  *  aren't stored, so trades are treated as committed from entry — a conservative
  *  peak that slightly understates rather than flatters the return). */
 function calcPortfolioSummary() {
+  // ONE pass over the raw display list; each record counted exactly ONCE under
+  // its own horizon (legacy rows without an hz previously appeared in all three
+  // horizon lists and were triple-counted — inflating actives and PnL).
+  const NOTIONAL = 10000;
   const agg = { openCnt:0, unrealised:0, realised:0, wins:0, closed:0, buyPnl:0, sellPnl:0 };
-  ['short','medium','long'].forEach(function(hzKey){
-    const s = calcSummaryForHz(hzKey);
-    agg.openCnt += s.openCnt||0;
-    agg.unrealised += s.unrealised||0;
-    agg.realised += s.realised||0;
-    agg.closed += s.closedLen||0;
-    if (s.wr != null && s.closedLen) agg.wins += Math.round(s.wr/100*s.closedLen);
-    if (s.buySide && s.buySide.pnl != null) agg.buyPnl += s.buySide.pnl;
-    if (s.sellSide && s.sellSide.pnl != null) agg.sellPnl += s.sellSide.pnl;
+  const list = getDisplayHistory();
+  list.forEach(function(t){
+    const hz = t.hz || 'short';
+    const snap = histRowPnlSnapshot(t, hz);
+    const pnl = (snap.pnl != null && Number.isFinite(Number(snap.pnl))) ? Number(snap.pnl) : null;
+    const isSell = String(t.action||'').toLowerCase() === 'sell';
+    if (snap.isOpen) {
+      agg.openCnt++;
+      if (pnl != null) { agg.unrealised += pnl; if (isSell) agg.sellPnl += pnl; else agg.buyPnl += pnl; }
+    } else if (snap.isClosed) {
+      agg.closed++;
+      if (pnl != null) {
+        agg.realised += pnl;
+        if (isSell) agg.sellPnl += pnl; else agg.buyPnl += pnl;
+        if (pnl >= 0) agg.wins++;
+      }
+    }
   });
   // Peak net equity from entry-date-ordered notional commitments
-  const NOTIONAL = 10000;
-  const evts = getDisplayHistory().map(function(t){
+  const evts = list.map(function(t){
     return { ts: new Date(t.entryDate||t.timestamp||0).getTime(),
              d: (String(t.action||'').toLowerCase()==='sell' ? -NOTIONAL : NOTIONAL) };
-  }).filter(function(e){ return Number.isFinite(e.ts); }).sort(function(a,b){ return a.ts-b.ts; });
+  }).filter(function(e){ return Number.isFinite(e.ts) && e.ts > 0; }).sort(function(a,b){ return a.ts-b.ts; });
   let cum = 0, peak = 0;
   evts.forEach(function(e){ cum += e.d; if (cum > peak) peak = cum; });
-  const peakEquity = Math.max(peak, NOTIONAL); // floor: one position
+  const peakEquity = Math.max(peak, NOTIONAL);
   const totalPnl = agg.realised + agg.unrealised;
   const returnPct = +(totalPnl / peakEquity * 100).toFixed(2);
   const wr = agg.closed ? Math.round(agg.wins/agg.closed*100) : null;
   return { ...agg, wr, peakEquity, totalPnl, returnPct };
+}
+/** Weekly & monthly REALISED performance from full exits (bucketed by the exit
+ *  bar's session — ExitTs — falling back to entry date for legacy rows).
+ *  Return % per period = realised PnL / ($10k × trades closed that period). */
+function calcPeriodPerformance() {
+  const FULL_EXITS = ['tp1_hit','tp2_hit','sl_hit','time_limit','signal_exit','tp1_then_sl','tp1_then_time'];
+  const months = {}, weeks = {};
+  getDisplayHistory().forEach(function(t){
+    const hz = t.hz || 'short';
+    const st = t[hz+'Status'] || t.status || 'open';
+    if (!FULL_EXITS.includes(st)) return;
+    const snap = histRowPnlSnapshot(t, hz);
+    const pnl = (snap.pnl != null && Number.isFinite(Number(snap.pnl))) ? Number(snap.pnl) : null;
+    if (pnl == null) return;
+    const ts = Number(t[hz+'ExitTs']) || new Date(t.entryDate||t.timestamp||0).getTime();
+    if (!Number.isFinite(ts) || ts <= 0) return;
+    const d = new Date(ts);
+    const mKey = d.toISOString().slice(0,7); // YYYY-MM
+    // ISO week key
+    const wd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    const dayNum = wd.getUTCDay() || 7; wd.setUTCDate(wd.getUTCDate() + 4 - dayNum);
+    const yStart = new Date(Date.UTC(wd.getUTCFullYear(),0,1));
+    const wNum = Math.ceil((((wd - yStart) / 864e5) + 1) / 7);
+    const wKey = wd.getUTCFullYear() + '-W' + String(wNum).padStart(2,'0');
+    [[months,mKey],[weeks,wKey]].forEach(function(pair){
+      const b = pair[0][pair[1]] || (pair[0][pair[1]] = { n:0, pnl:0, wins:0 });
+      b.n++; b.pnl += pnl; if (pnl >= 0) b.wins++;
+    });
+  });
+  const fmt = function(obj, lastN){
+    return Object.keys(obj).sort().slice(-lastN).map(function(k){
+      const b = obj[k];
+      return { key:k, n:b.n, pnl:+b.pnl.toFixed(0), wr:Math.round(b.wins/b.n*100), ret:+((b.pnl/(b.n*10000))*100).toFixed(2) };
+    }).reverse();
+  };
+  return { monthly: fmt(months, 12), weekly: fmt(weeks, 8) };
+}
+
+function renderPerformancePanel() {
+  const el = document.getElementById('histPerformance');
+  if (!el) return;
+  const p = calcPeriodPerformance();
+  if (!p.monthly.length && !p.weekly.length) { el.innerHTML=''; return; }
+  const tbl = function(title, rows, keyLabel){
+    if (!rows.length) return '';
+    const tr = rows.map(function(r){
+      const c = r.pnl>=0?'var(--buy)':'var(--sell)';
+      return '<tr>'
+        +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;color:var(--m2)">'+r.key+'</td>'
+        +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:var(--m1)">'+r.n+'</td>'
+        +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:'+c+'">'+(r.pnl>=0?'+':'')+'$'+Math.abs(r.pnl)+'</td>'
+        +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:var(--m2)">'+r.wr+'%</td>'
+        +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:'+c+'">'+(r.ret>=0?'+':'')+r.ret+'%</td>'
+        +'</tr>';
+    }).join('');
+    return '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;flex:1;min-width:260px">'
+      +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">'+title+'</div>'
+      +'<table style="width:100%;border-collapse:collapse"><thead><tr>'
+      +['<th style="text-align:left','<th style="text-align:right','<th style="text-align:right','<th style="text-align:right','<th style="text-align:right'].map(function(s,i){
+          return s+';padding:2px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase">'+[keyLabel,'Closed','PnL','Win %','Return %'][i]+'</th>';
+        }).join('')
+      +'</tr></thead><tbody>'+tr+'</tbody></table></div>';
+  };
+  el.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+    + tbl('Monthly performance — realised', p.monthly, 'Month')
+    + tbl('Weekly performance — last 8 weeks', p.weekly, 'Week')
+    + '</div>';
 }
 
 function renderPortfolioSummary() {
@@ -5291,10 +5417,11 @@ function renderPortfolioSummary() {
     + tile('Unrealised PnL', fp(p.unrealised), null, p.unrealised>=0?'var(--buy)':'var(--sell)')
     + tile('Realised PnL', fp(p.realised), p.closed+' closed', p.realised>=0?'var(--buy)':'var(--sell)')
     + tile('Win rate', p.wr!=null?p.wr+'%':'—', p.closed?('on '+p.closed+' closed'):'no closed yet', wrColor)
-    + tile('Buy side', fp(p.buyPnl), 'long trades', p.buyPnl>=0?'var(--buy)':'var(--sell)')
-    + tile('Sell side', fp(p.sellPnl), 'short trades', p.sellPnl>=0?'var(--buy)':'var(--sell)')
+    + tile('Buy side', fp(p.buyPnl), 'long · real + unreal', p.buyPnl>=0?'var(--buy)':'var(--sell)')
+    + tile('Sell side', fp(p.sellPnl), 'short · real + unreal', p.sellPnl>=0?'var(--buy)':'var(--sell)')
     + tile('Return %', (p.returnPct>=0?'+':'')+p.returnPct+'%', 'PnL / peak equity $'+(p.peakEquity/1000).toFixed(0)+'k', retColor)
     +'</div></div>';
+  renderPerformancePanel();
 }
 
 function renderSummaryCards(hzKey) {

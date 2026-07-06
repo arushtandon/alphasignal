@@ -6123,6 +6123,9 @@ function serverPicksToHistoryRecords(dashData) {
       action: isSell ? 'Sell' : 'Buy',
       rating, conf: s[hz + 'Conf'] || 0,
       entryDate: ts, timestamp: ts,
+      entryPending: s.entryPending === true,
+      entryFinalized: s.entryFinalized === true,
+      entrySource: s.entrySource || null,
       entry, target1: tp1 || null, target2: tp2 || null, stopLoss: sl,
       [hz + 'Entry']: entry, [hz + 'Target1']: tp1 || null, [hz + 'Target2']: tp2 || null, [hz + 'StopLoss']: sl,
       [hz + 'TrailingSL']: true,
@@ -6254,6 +6257,8 @@ async function generateServerPicksFromShortlist(opts = {}) {
             : ((q?.price && q.price > 0) ? q.price : (q?.prevClose > 0 ? q.prevClose : null));
           if (px && px > 0) {
             r.entryPending = !_inSession; // finalise to next session's open later
+            r.entryFinalized = _inSession; // live in-session fill IS the entry — lock it
+            r.entrySource = _inSession ? 'live @ generation' : 'pending next session open';
             // Sector trend on the PICK itself (buy & sell, every horizon) —
             // entering WITH the sector's tide is part of the entry decision.
             try {
@@ -6639,7 +6644,7 @@ async function addTradesToHistory(trades) {
         'target1', 'target2', 'stopLoss', 'sellEntry', 'sellTarget1', 'sellTarget2', 'sellStopLoss',
         hz + 'Target1', hz + 'Target2', hz + 'StopLoss', hz + 'TrailingSL',
         hz + 'Status', hz + 'PnlDollar', hz + 'PnlPct', hz + 'ExitPrice', hz + 'ExitReason',
-        hz + 'Tp1Hit', hz + 'CurrentPrice', 'status', 'pnlDollar', 'pnlPct', 'currentPrice',
+        hz + 'Tp1Hit', hz + 'ExitTs', hz + 'CurrentPrice', 'status', 'pnlDollar', 'pnlPct', 'currentPrice',
         'entryPending', 'entryFinalized' // entry-finalisation state must survive re-records
       ]) {
         if (prev[f] !== undefined) trade[f] = prev[f];
@@ -9971,6 +9976,38 @@ app.post('/api/history/recalibrate-levels', async (req, res) => {
 // One-time cleanup: fix impossible entries in server history (must be before SPA GET *)
 app.post('/api/history/cleanup-entries', async (req, res) => {
   let fixed = 0;
+  // ── DEDUP STACKED OPENS ────────────────────────────────────────────────────
+  // Before the no-repeat filter existed, the daily regen re-recommended the same
+  // name day after day, stacking many concurrent $10k "positions" in one ticker/
+  // direction. Those phantom duplicates multiply unrealised PnL and active-trade
+  // counts. Keep the EARLIEST open per ticker|hz|direction (the real position);
+  // REMOVE the rest entirely so they never pollute realised PnL or win rate.
+  let deduped = 0;
+  {
+    const keepIdx = new Map(); // key → index of earliest open
+    tradeHistory.forEach((t, i) => {
+      if (!t || !t.ticker) return;
+      const hz = t.hz || 'short';
+      const status = t[hz + 'Status'] || t.status || 'open';
+      if (status !== 'open') return;
+      const key = String(t.ticker).toUpperCase() + '|' + hz + '|' + ((t.action || '').toLowerCase() === 'sell' ? 'S' : 'B');
+      const ts = new Date(t.entryDate || t.timestamp || 0).getTime() || 0;
+      const prev = keepIdx.get(key);
+      if (!prev || ts < prev.ts) keepIdx.set(key, { i, ts });
+    });
+    const keep = new Set([...keepIdx.values()].map(v => v.i));
+    const before = tradeHistory.length;
+    tradeHistory = tradeHistory.filter((t, i) => {
+      if (!t || !t.ticker) return true;
+      const hz = t.hz || 'short';
+      const status = t[hz + 'Status'] || t.status || 'open';
+      if (status !== 'open') return true; // closed rows are untouched history
+      const key = String(t.ticker).toUpperCase() + '|' + hz + '|' + ((t.action || '').toLowerCase() === 'sell' ? 'S' : 'B');
+      return keep.has(i) || !keepIdx.has(key);
+    });
+    deduped = before - tradeHistory.length;
+    if (deduped > 0) console.log('cleanup: removed ' + deduped + ' stacked duplicate open trades');
+  }
   tradeHistory = tradeHistory.map(h => {
     if(!h.hz || !h.ticker) return h;
     const hz = h.hz;
@@ -9997,7 +10034,8 @@ app.post('/api/history/cleanup-entries', async (req, res) => {
   });
   saveHistoryFile(tradeHistory);
   console.log('Cleanup: fixed', fixed, 'bad entries');
-  res.json({ fixed, total: tradeHistory.length });
+  if (deduped > 0 || fixed > 0) saveHistoryFile(tradeHistory);
+  res.json({ fixed, deduped, total: tradeHistory.length });
 });
 
 
@@ -10348,13 +10386,23 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
       // session's open — a price the trade could never have got. It was also
       // one-time and skipped today's trades, so fresh picks kept provisional
       // prices forever.) Runs until the target bar exists, then locks.
+      // Rows finalised under the old UTC-date rule carry no entrySource — clear
+      // the flag once so the corrected epoch rule re-derives their entry.
+      if (h.entryFinalized && !h.entrySource) h.entryFinalized = false;
       if (!h.entryFinalized && bars && bars.length) {
-        const dayStr = new Date(entryMs).toISOString().slice(0, 10);
+        // Fill = the first session whose OPEN happens AFTER the signal existed.
+        // (Bar timestamps are session starts.) The old UTC-date match backdated
+        // any after-close signal to that same morning's open — a price the trade
+        // could never have executed at, which made entries look arbitrary.
         let entryBar = null;
         for (const b of bars) {
-          const bs = new Date((b.t || 0) * 1000).toISOString().slice(0, 10);
-          if (bs >= dayStr) { entryBar = b; break; } // first session ON/AFTER signal
+          const bT = (b.t || 0) * 1000;
+          if (bT > entryMs) { entryBar = b; break; } // first session starting after signal
         }
+        // If the signal landed DURING a session (bar started before the signal but
+        // that session's date matches the signal date), a same-day live fill is
+        // legitimate — but those rows are entryFinalized at generation and never
+        // reach here. Anything else waits for the next bar to print.
         const op = entryBar ? ((entryBar.o != null && entryBar.o > 0) ? entryBar.o : entryBar.c) : null;
         if (op && op > 0) {
           const fixed = roundPrice(op);
@@ -10363,6 +10411,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
           if ((h.hz || 'short') === hz) h.entry = fixed;
           h.entryFinalized = true;
           h.entryPending = false;
+          h.entrySource = 'session open ' + new Date((entryBar.t || 0) * 1000).toISOString().slice(0, 10);
           // Keep TP/SL consistent with the corrected entry: scale the stored
           // levels by the entry ratio (full re-derivation happens on the next
           // recalibrate-levels pass; this keeps RR sane in the meantime).
@@ -10497,6 +10546,12 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         h[hz + 'Status'] = pathExit.status;
         h[hz + 'Tp1Hit'] = !!pathExit.tp1Hit;
         if (!pathExit.open && pathExit.exit != null) h[hz + 'ExitPrice'] = pathExit.exit;
+        // Exit timestamp = the exit BAR's session (drives weekly/monthly performance)
+        const _fullExit = ['tp1_then_sl','tp1_then_time','sl_hit','time_limit','signal_exit','tp2_hit','tp1_hit'].includes(pathExit.status);
+        if (_fullExit && !h[hz + 'ExitTs']) {
+          const _xb = bars && pathExit.exitIdx != null ? bars[pathExit.exitIdx] : null;
+          h[hz + 'ExitTs'] = _xb && _xb.t ? _xb.t * 1000 : Date.now();
+        }
         if (pathExit.stopLoss) h[hz + 'StopLoss'] = pathExit.stopLoss;
         if (pathExit.status === 'sl_hit') setSLCooldown(h.ticker, hz);
         rowChanged = true;
