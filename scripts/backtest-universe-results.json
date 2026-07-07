@@ -1,0 +1,99 @@
+{
+  "runAt": "2026-07-07T05:21:20.202Z",
+  "windowBars": 252,
+  "universeSize": 609,
+  "symbolsWithData": 594,
+  "symbolsSkipped": 15,
+  "results": [
+    {
+      "bracket": "buy × short",
+      "hz": "short",
+      "side": "buy",
+      "universeSize": 609,
+      "symbolsWithData": 594,
+      "symbolsSkipped": 15,
+      "symbolsWithTrades": 593,
+      "aggregate": {
+        "totalTrades": 6898,
+        "winRate": 69,
+        "avgReturnPct": 0.32,
+        "meanProfitFactor": 1.64
+      }
+    },
+    {
+      "bracket": "sell × short",
+      "hz": "short",
+      "side": "sell",
+      "universeSize": 609,
+      "symbolsWithData": 594,
+      "symbolsSkipped": 15,
+      "symbolsWithTrades": 106,
+      "aggregate": {
+        "totalTrades": 593,
+        "winRate": 61,
+        "avgReturnPct": -0.06,
+        "meanProfitFactor": 1.2
+      }
+    },
+    {
+      "bracket": "buy × medium",
+      "hz": "medium",
+      "side": "buy",
+      "universeSize": 609,
+      "symbolsWithData": 594,
+      "symbolsSkipped": 15,
+      "symbolsWithTrades": 408,
+      "aggregate": {
+        "totalTrades": 3338,
+        "winRate": 60,
+        "avgReturnPct": 1.84,
+        "meanProfitFactor": 2.44
+      }
+    },
+    {
+      "bracket": "sell × medium",
+      "hz": "medium",
+      "side": "sell",
+      "universeSize": 609,
+      "symbolsWithData": 594,
+      "symbolsSkipped": 15,
+      "symbolsWithTrades": 238,
+      "aggregate": {
+        "totalTrades": 1828,
+        "winRate": 36,
+        "avgReturnPct": -0.15,
+        "meanProfitFactor": 1.42
+      }
+    },
+    {
+      "bracket": "buy × long",
+      "hz": "long",
+      "side": "buy",
+      "universeSize": 609,
+      "symbolsWithData": 594,
+      "symbolsSkipped": 15,
+      "symbolsWithTrades": 460,
+      "aggregate": {
+        "totalTrades": 4688,
+        "winRate": 66,
+        "avgReturnPct": 1.52,
+        "meanProfitFactor": 2.71
+      }
+    },
+    {
+      "bracket": "sell × long",
+      "hz": "long",
+      "side": "sell",
+      "universeSize": 609,
+      "symbolsWithData": 594,
+      "symbolsSkipped": 15,
+      "symbolsWithTrades": 197,
+      "aggregate": {
+        "totalTrades": 1545,
+        "winRate": 39,
+        "avgReturnPct": -0.05,
+        "meanProfitFactor": 1.46
+      }
+    }
+  ]
+}

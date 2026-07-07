@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260707-fmp-ultimate-v7.10.0-sell-ref">
+<meta name="alphasignal-build" content="20260629-fmp-ultimate-v7.9.9-tf-stops">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -2124,7 +2124,8 @@ async function fetchServerDashPicks(){
     if(!r.ok)return null;
     const d=await r.json();
     if(!d||!d.dashData)return null;
-    return{dashData:normalizeDashData(d.dashData),dashTs:d.dashTs||null,summary:d.summary||null,sellPickEnabled:d.sellPickEnabled||null};
+    if(window.ST)ST.sellPicksDisabled=!!d.sellPicksDisabled;
+    return{dashData:normalizeDashData(d.dashData),dashTs:d.dashTs||null,summary:d.summary||null};
   }catch(e){
     console.warn('fetchServerDashPicks',e.message||e);
     return null;
@@ -2183,7 +2184,6 @@ async function liveFilterDashPicksInPlace(dashData) {
 }
 
 async function applyServerDashPicks(server){
-  if (server && server.sellPickEnabled) window.SELL_PICK_ENABLED = server.sellPickEnabled;
   // The SERVER is the single source of truth for picks. We render them AS-IS and
   // never re-filter / re-score / re-save on the client — doing that on every page
   // load was changing the displayed names on each refresh and overwriting the
@@ -3609,11 +3609,8 @@ function renderPicksPane(elId,picks,hz,side){
     return action==='Buy' && (s[hz+'Score']||0)>=62 && hasPricing;
   });
   if(!picks||!picks.length){
-    const sellOff = isSell && window.SELL_PICK_ENABLED && window.SELL_PICK_ENABLED[hz] === false;
     el.innerHTML = '<div style="padding:.75rem 1rem;font-size:11px;color:var(--m1);font-family:DM Mono,monospace;border:1px dashed var(--b1);border-radius:8px;margin:.5rem 0">'
-      +(sellOff
-        ? 'Short recommendations disabled for this horizon — walk-forward backtest did not show positive expectancy with current guards. Sell signals remain visible in full analysis (reference only).'
-        : (isSell?'No sell setups identified for this horizon. Conditions do not support a short trade.':'No buy setups identified for this horizon. Conditions do not support a long trade.'))
+      +(isSell?((window.ST&&ST.sellPicksDisabled)?'Sell picks are reference-only: backtests show no positive expectancy on short trades (buy brackets carry the edge). Sell scores remain visible in Analysis.':'No sell setups identified for this horizon. Conditions do not support a short trade.'):'No buy setups identified for this horizon. Conditions do not support a long trade.')
       +'</div>';
     return;
   }

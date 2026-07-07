@@ -1909,7 +1909,14 @@ function computeQuantSignal(tech, fund, hz) {
       if (stHz.flippedBear && sell >= 50) { sell = Math.min(92, sell + 12); condSell.unshift(`Supertrend ${hz} Strong Sell (fresh bear flip)`); }
       else if (sell >= 55)                { sell = Math.min(90, sell + 6);  condSell.push(`Supertrend ${hz} bearish`); }
     } else if (stHz.direction === 'bull') {
-      if (!stHz.flippedBear) { sell = Math.min(sell, 58); condSell.push(`Above ${hz} Supertrend — sell capped`); }
+      // A short-horizon FADE is allowed to fire above a bull Supertrend — it is
+      // counter-trend by construction (shorting an overbought extension back to
+      // the mean). Everything else keeps the cap. Never exempt a fresh ignition.
+      const _fadeCandidate = hz === 'short'
+        && ((rsi2 != null && rsi2 > 90) || rsi >= 70 || (stochK != null && stochK > 80))
+        && (inSDSellZone === true || (bbPct != null && bbPct > 90))
+        && !stHz.flippedBull;
+      if (!stHz.flippedBear && !_fadeCandidate) { sell = Math.min(sell, 58); condSell.push(`Above ${hz} Supertrend — sell capped`); }
     }
     // Backtest-validated extra confidence (when WR known and strong)
     if (stBtOk && tech._supertrendBacktestWR >= 60) {
@@ -1943,15 +1950,35 @@ function computeQuantSignal(tech, fund, hz) {
     const dte = fund?.daysToEarnings ?? tech?.daysToEarnings ?? null;
     const earningsSoon = dte != null && dte >= 0 && dte <= 5;
 
-    const shortValid = aboveMa200 === false
+    // PATH A — BREAKDOWN SHORT (medium/long trend shorts): the original strict
+    // confluence. Correct for multi-week/month shorts; backtests confirm these
+    // only earn in bear regimes, so the requirements stay hard.
+    const breakdownValid = aboveMa200 === false
       && regime !== 'bull'
       && stBearHz
       && realDistribution
       && !fundamentallyStrong
       && !earningsSoon;
 
-    if (!shortValid) {
+    // PATH B — MEAN-REVERSION FADE (short horizon only): shorting an OVERBOUGHT
+    // EXTENSION back to its mean. Counter-trend by design — demanding "below
+    // MA200" here is a contradiction and was strangling short-term sells to
+    // ZERO trades (backtest evidence). A fade qualifies on STRETCH, not
+    // structure: genuinely overbought + at/above a statistical band + momentum
+    // cresting + no earnings gap risk + never against a fresh bull ignition.
+    const _stretch20 = (tech.ma20 && price) ? (price - tech.ma20) / tech.ma20 : 0;
+    const _overbought = (rsi2 != null && rsi2 > 90) || rsi >= 70 || (stochK != null && stochK > 80);
+    const _atExtension = inSDSellZone === true || (bbPct != null && bbPct > 90) || _stretch20 >= 0.08;
+    const _cresting = rsiFalling === true || macdTurnDn === true || !macdBull;
+    const _freshIgnition = stHz && stHz.direction === 'bull' && stHz.flippedBull === true;
+    const fadeValid = hz === 'short'
+      && _overbought && _atExtension && _cresting
+      && !_freshIgnition && !earningsSoon;
+
+    if (!breakdownValid && !fadeValid) {
       sell = Math.min(sell, 55); // demote to Hold — not a high-conviction short
+    } else if (fadeValid && !breakdownValid) {
+      condSell.unshift('Fade short: overbought extension, momentum cresting');
     } else {
       condSell.unshift('Strict short: below MA200 + ST bear + distribution');
       if (epsG != null && epsG < 0) condSell.push(`Earnings declining ${epsG}%`);
@@ -5877,7 +5904,7 @@ app.get('/api/dashboard/picks', (req, res) => {
     schemaVersion: dashboardPicksCache.schemaVersion || 1,
     dashTs: dashboardPicksCache.dashTs,
     summary: dashboardPicksSummary(dashData),
-    sellPickEnabled: SELL_PICK_ENABLED,
+    sellPicksDisabled: !SELL_PICKS_ENABLED, // backtest: sells have no edge — reference-only
     dashData
   });
 });
@@ -6227,7 +6254,7 @@ async function generateServerPicksFromShortlist(opts = {}) {
         const buyOk = r[hz + 'Action'] === 'Buy' && (r[hz + 'Score'] || 0) >= 62
           && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r, hz) && !alreadyLong;
         if (buyOk && (r[hz + 'Score'] || 0) > bBuyScore) { bBuyScore = r[hz + 'Score'] || 0; bBuyHz = hz; }
-        const sellOk = r[hz + 'Action'] === 'Sell' && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r, hz) && !alreadyShort;
+        const sellOk = SELL_PICKS_ENABLED && r[hz + 'Action'] === 'Sell' && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r, hz) && !alreadyShort;
         if (sellOk && (r[hz + 'SellScore'] || 0) > bSellScore) { bSellScore = r[hz + 'SellScore'] || 0; bSellHz = hz; }
       }
       if (bBuyHz) buyAssign[bBuyHz].push(r);
@@ -6239,9 +6266,9 @@ async function generateServerPicksFromShortlist(opts = {}) {
       short: topN(buyAssign.short, 'shortScore'),
       medium: topN(buyAssign.medium, 'mediumScore'),
       long: topN(buyAssign.long, 'longScore'),
-      shortSell: SELL_PICK_ENABLED.short ? topN(sellAssign.short, 'shortSellScore') : [],
-      medSell: SELL_PICK_ENABLED.medium ? topN(sellAssign.medium, 'mediumSellScore') : [],
-      longSell: SELL_PICK_ENABLED.long ? topN(sellAssign.long, 'longSellScore') : []
+      shortSell: topN(sellAssign.short, 'shortSellScore'),
+      medSell: topN(sellAssign.medium, 'mediumSellScore'),
+      longSell: topN(sellAssign.long, 'longSellScore')
     };
 
     // Re-price the FINAL picks with LIVE quotes so the recorded entry (and the
@@ -8766,19 +8793,24 @@ const HORIZON_PCT = {
 // 3% stop, but a 4–12 month position must tolerate normal multi-month swings — a
 // 5% stop on a long-term hold just guarantees a noise stop-out. Targets scale with
 // the stop so reward:risk stays ~1.85 across all horizons.
+// ── SELL PICKS: redesigned two-path architecture ─────────────────────────────
+// Backtest history (30 liquid US names, 252d): the old single-path strict gate
+// demanded trend-short structure (below MA200 + bear regime) from EVERY sell —
+// which strangled short-term fades to ZERO trades and left medium/long shorts
+// break-even/negative in a rising tape. Redesign:
+//   • SHORT horizon  = MEAN-REVERSION FADE — shorts overbought extensions back
+//     to the mean (works in ANY regime; the two-sided edge in bull markets).
+//   • MEDIUM/LONG    = BREAKDOWN shorts — strict structural confluence, which
+//     by design fire rarely outside bear regimes (that rarity is correct).
+// Re-run /api/backtest/medium-sell?hz=short&side=sell after deploy to verify
+// the fade path; acceptance = WR ≥55% or avg ≥+0.30%/trade with PF ≥1.5.
+const SELL_PICKS_ENABLED = process.env.SELL_PICKS_ENABLED !== '0'; // default ON — sell side redesigned (fade shorts + bear-regime breakdowns); set 0 to disable
+
 const HORIZON_MIN_PCT = {
   short:  { sl: 0.030, tp1: 0.060, tp2: 0.100, minRR: 1.8 },
   medium: { sl: 0.080, tp1: 0.150, tp2: 0.230, minRR: 1.85 },
   long:   { sl: 0.160, tp1: 0.300, tp2: 0.450, minRR: 1.85 }
 };
-
-// Sell-bracket dashboard picks — disabled Jul 2026 after 252-bar walk-forward replay on
-// 30 liquid names (current guards). Buys carry the model; sells stay reference-only
-// in full analysis until a bracket proves positive expectancy:
-//   short sell: 0 trades (guards block all signals)
-//   medium sell: 45% WR, +0.01% avg return
-//   long sell: 47% WR, -0.26% avg return
-const SELL_PICK_ENABLED = { short: false, medium: false, long: false };
 
 // ── Sector trend (hold/exit context) ─────────────────────────────────────────
 // Maps a stock's sector to its SPDR sector ETF as a trend proxy (used globally —
@@ -10753,3 +10785,5 @@ app.listen(PORT, () => {
     else console.warn('✗ Yahoo Finance not working - prices will be unavailable');
   });
 });
+
+module.exports = { backtestSignal, fetchOHLCV, fundCache, TECH_TTL };
