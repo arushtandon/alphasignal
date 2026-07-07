@@ -1048,7 +1048,7 @@ function computeMeanReversionLevels(tech, entry, isSell) {
     // ATR-based stop: 1.5×ATR beyond entry, or the channel lower-2σ, whichever is wider.
     let stop = Math.min(entry - 1.5 * atr, lower2 || entry * 0.97);
     // Clamp: at least 1.2×ATR away (noise floor), at most 8% away (risk cap).
-    const minDist = Math.max(1.2 * atr, entry * 0.018);
+    const minDist = Math.max(1.5 * atr, entry * 0.025); // ≥1.5×ATR and ≥2.5% — a stop inside daily noise is a donation
     stop = Math.min(stop, entry - minDist);
     stop = Math.max(stop, entry * 0.92);
     // Enforce horizon min-% + reward:risk floors so the bounce justifies the cost.
@@ -1060,7 +1060,7 @@ function computeMeanReversionLevels(tech, entry, isSell) {
     target = Math.min(Math.max(target, entry * 0.88), entry * 0.98);
     const upper2 = tech.channels?.daily20?.upper2;
     let stop = Math.max(entry + 1.5 * atr, upper2 || entry * 1.03);
-    const minDistS = Math.max(1.2 * atr, entry * 0.018);
+    const minDistS = Math.max(1.5 * atr, entry * 0.025);
     stop = Math.max(stop, entry + minDistS);
     stop = Math.min(stop, entry * 1.08);
     const fl = applyHorizonMinPctFloors(entry, target, null, stop, true, 'short');
@@ -1862,15 +1862,28 @@ function computeQuantSignal(tech, fund, hz) {
     buy=buyGates>=9?92:buyGates>=8?85:buyGates>=7?76:buyGates>=6?64:buyGates>=5?52:buyGates>=4?38:0;
     if(!aboveMa200) buy=0;
 
+    // Structure = PERMISSION only. A 4-12 month short needs a confirmed bear
+    // regime AND live downside momentum AND a non-exhausted move — structural
+    // weakness alone was shorting bottoms and bleeding through recoveries.
     if(!aboveMa200&&deathCross){sellGates+=3;condSell.push('Bear regime: below MA200+Death Cross');}
     else if(!aboveMa200){sellGates+=2;condSell.push('Below MA200');}
     if(weeklyTrend==='downtrend'){sellGates++;condSell.push('Weekly downtrend');}
     if(!macdBull&&!aboveMa200) sellGates++;
     if(bearStruct&&obvBullish===false){sellGates++;condSell.push('Distribution pattern');}
-    if(rsi<28) sellGates=Math.round(sellGates*0.50);
+    // ── TIMING & EXHAUSTION GUARDS (mirror of the medium-short fix) ─────────
+    if (aboveMa50)       sellGates = Math.round(sellGates*0.30); // recovery underway
+    else if (aboveMa20)  sellGates = Math.round(sellGates*0.45); // bounce in progress
+    if (rsiRising && macdBull) sellGates = Math.round(sellGates*0.35); // squeeze risk
+    if (rsi<28)      sellGates = Math.round(sellGates*0.30); // don't short the hole
+    else if (rsi<36) sellGates = Math.round(sellGates*0.60);
+    if (ma200 && price < ma200*0.75) sellGates = Math.round(sellGates*0.50); // >25% below MA200 — move done
+    if ((tech.consecutiveHigherCloses ?? 0) >= 3) sellGates = Math.round(sellGates*0.40); // active rally
+    // Multi-month shorts outside a confirmed bear regime carry drift risk — halve.
+    if (regime !== 'bear' && weeklyTrend !== 'downtrend') sellGates = Math.round(sellGates*0.50);
     // Regime-scaled long sell — BEAR makes structural shorts primary
     sellGates *= _sellMult; sellGates = Math.max(0, sellGates);
-    sell=sellGates>=5.5?86:sellGates>=4.5?73:sellGates>=3.5?60:sellGates>=2.5?48:Math.min(22,Math.round(sellGates*10));
+    // Higher bar than before: weak long shorts (score 60 at 3.5 gates) no longer fire.
+    sell=sellGates>=6.5?86:sellGates>=5.5?73:sellGates>=4.5?62:sellGates>=3?45:Math.min(22,Math.round(sellGates*10));
   }
 
   // ── SUPERTREND as a core PER-TIMEFRAME trend filter (not just a cosmetic boost) ──
@@ -5864,6 +5877,7 @@ app.get('/api/dashboard/picks', (req, res) => {
     schemaVersion: dashboardPicksCache.schemaVersion || 1,
     dashTs: dashboardPicksCache.dashTs,
     summary: dashboardPicksSummary(dashData),
+    sellPickEnabled: SELL_PICK_ENABLED,
     dashData
   });
 });
@@ -6225,9 +6239,9 @@ async function generateServerPicksFromShortlist(opts = {}) {
       short: topN(buyAssign.short, 'shortScore'),
       medium: topN(buyAssign.medium, 'mediumScore'),
       long: topN(buyAssign.long, 'longScore'),
-      shortSell: topN(sellAssign.short, 'shortSellScore'),
-      medSell: topN(sellAssign.medium, 'mediumSellScore'),
-      longSell: topN(sellAssign.long, 'longSellScore')
+      shortSell: SELL_PICK_ENABLED.short ? topN(sellAssign.short, 'shortSellScore') : [],
+      medSell: SELL_PICK_ENABLED.medium ? topN(sellAssign.medium, 'mediumSellScore') : [],
+      longSell: SELL_PICK_ENABLED.long ? topN(sellAssign.long, 'longSellScore') : []
     };
 
     // Re-price the FINAL picks with LIVE quotes so the recorded entry (and the
@@ -8758,6 +8772,14 @@ const HORIZON_MIN_PCT = {
   long:   { sl: 0.160, tp1: 0.300, tp2: 0.450, minRR: 1.85 }
 };
 
+// Sell-bracket dashboard picks — disabled Jul 2026 after 252-bar walk-forward replay on
+// 30 liquid names (current guards). Buys carry the model; sells stay reference-only
+// in full analysis until a bracket proves positive expectancy:
+//   short sell: 0 trades (guards block all signals)
+//   medium sell: 45% WR, +0.01% avg return
+//   long sell: 47% WR, -0.26% avg return
+const SELL_PICK_ENABLED = { short: false, medium: false, long: false };
+
 // ── Sector trend (hold/exit context) ─────────────────────────────────────────
 // Maps a stock's sector to its SPDR sector ETF as a trend proxy (used globally —
 // for non-US names the US sector ETF still captures the sector's world cycle).
@@ -9395,7 +9417,16 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
       if (!lv) { row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = ''; continue; }
       row[hz + 'Entry'] = String(roundPrice(e));
       row[hz + 'Target1'] = String(lv.target);
-      row[hz + 'Target2'] = '';
+      // TP2 reference on SHORT too — same convention as med/long: 2× the TP1
+      // distance, floored by the horizon minimum. Analysis-only, never an exit.
+      {
+        const _d1s = Math.abs(parseFloat(lv.target) - e);
+        let _tp2s = isSell ? e - 2 * _d1s : e + 2 * _d1s;
+        const _f2s = (HORIZON_MIN_PCT.short || {}).tp2 || 0.075;
+        const _fl2s = isSell ? e * (1 - _f2s) : e * (1 + _f2s);
+        _tp2s = isSell ? Math.min(_tp2s, _fl2s) : Math.max(_tp2s, _fl2s);
+        row[hz + 'Target2'] = String(roundPrice(_tp2s));
+      }
       row[hz + 'StopLoss'] = String(lv.stop);
       row[hz + 'TrailingSL'] = false;
       continue;

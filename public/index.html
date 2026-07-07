@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260629-fmp-ultimate-v7.9.9-tf-stops">
+<meta name="alphasignal-build" content="20260707-fmp-ultimate-v7.10.0-sell-ref">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -401,6 +401,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
     <button class="nb act" id="nav-dashboard" onclick="switchTab('dashboard')">Dashboard</button>
     <button class="nb" id="nav-analysis" onclick="switchTab('analysis')">Analysis</button>
     <button class="nb" id="nav-history" onclick="switchTab('history')">History</button>
+    <button class="nb" id="nav-performance" onclick="switchTab('performance')">Performance</button>
     <button class="nb" id="nav-watchlist" onclick="switchTab('watchlist')">Watchlist</button>
     <div class="key-indicator" id="keyIndicator" style="margin-left:6px;cursor:pointer" title="AI status · click for optional client key" onclick="openQuickStartModal()">
       <span class="key-dot" id="keyDot"></span><span id="keyLabel">Checking...</span>
@@ -594,6 +595,17 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
         <button class="btn" style="font-size:10px;padding:4px 10px" onclick="exportHistoryTrades()" title="Download every historical trade across all timeframes (entry, TP/SL, exit, status, $10k PnL) as an Excel-ready CSV">⬇ Export Excel</button>
       </div>
       <div id="histContent"></div>
+    </div>
+
+    <!-- PERFORMANCE -->
+    <div id="pane-performance" class="pane">
+      <div class="ph"><div class="pt">Performance</div>
+        <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Realised returns by period · trade-bracket analysis</div>
+      </div>
+      <div id="perfContent">
+        <div id="histPerformance"></div>
+        <div id="bracketPerformance"></div>
+      </div>
     </div>
 
     <!-- WATCHLIST -->
@@ -1635,7 +1647,7 @@ function closeMobileSidebar(){
 // ══════════════════════════════════════════════
 function switchTab(t){
   closeMobileSidebar();
-  ['dashboard','analysis','history','watchlist'].forEach(id=>{
+  ['dashboard','analysis','history','performance','watchlist'].forEach(id=>{
     document.getElementById('nav-'+id).classList.toggle('act',id===t);
     document.getElementById('pane-'+id).classList.toggle('vis',id===t);
   });
@@ -1650,6 +1662,12 @@ function switchTab(t){
         .then(function () { renderHist(); renderSummaryCards('short'); renderPortfolioSummary(); })
         .catch(function (e) { console.warn(e); });
     }
+  }
+  if(t==='performance') {
+    const renderPerf = function(){ renderPerformancePanel(); renderBracketPerformance(); };
+    if (ST.history.length) { renderPerf(); }
+    // pull authoritative history if empty or stale, then render
+    loadHistoryFromServer().then(renderPerf).catch(function(e){ console.warn(e); renderPerf(); });
   }
   if(t==='watchlist') renderWl();
 }
@@ -2106,7 +2124,7 @@ async function fetchServerDashPicks(){
     if(!r.ok)return null;
     const d=await r.json();
     if(!d||!d.dashData)return null;
-    return{dashData:normalizeDashData(d.dashData),dashTs:d.dashTs||null,summary:d.summary||null};
+    return{dashData:normalizeDashData(d.dashData),dashTs:d.dashTs||null,summary:d.summary||null,sellPickEnabled:d.sellPickEnabled||null};
   }catch(e){
     console.warn('fetchServerDashPicks',e.message||e);
     return null;
@@ -2165,6 +2183,7 @@ async function liveFilterDashPicksInPlace(dashData) {
 }
 
 async function applyServerDashPicks(server){
+  if (server && server.sellPickEnabled) window.SELL_PICK_ENABLED = server.sellPickEnabled;
   // The SERVER is the single source of truth for picks. We render them AS-IS and
   // never re-filter / re-score / re-save on the client — doing that on every page
   // load was changing the displayed names on each refresh and overwriting the
@@ -3590,8 +3609,11 @@ function renderPicksPane(elId,picks,hz,side){
     return action==='Buy' && (s[hz+'Score']||0)>=62 && hasPricing;
   });
   if(!picks||!picks.length){
+    const sellOff = isSell && window.SELL_PICK_ENABLED && window.SELL_PICK_ENABLED[hz] === false;
     el.innerHTML = '<div style="padding:.75rem 1rem;font-size:11px;color:var(--m1);font-family:DM Mono,monospace;border:1px dashed var(--b1);border-radius:8px;margin:.5rem 0">'
-      +(isSell?'No sell setups identified for this horizon. Conditions do not support a short trade.':'No buy setups identified for this horizon. Conditions do not support a long trade.')
+      +(sellOff
+        ? 'Short recommendations disabled for this horizon — walk-forward backtest did not show positive expectancy with current guards. Sell signals remain visible in full analysis (reference only).'
+        : (isSell?'No sell setups identified for this horizon. Conditions do not support a short trade.':'No buy setups identified for this horizon. Conditions do not support a long trade.'))
       +'</div>';
     return;
   }
@@ -4940,10 +4962,10 @@ function clearHistoryAll() {
     .catch(e => alert('Failed: ' + e.message));
 }
 
-function setHistView(v) {
+window.setHistView = function (v) {
   ST.histView = v === 'closed' ? 'closed' : 'live';
-  renderHist();
-}
+  try { renderHist(); } catch (e) { console.error('setHistView render:', e); }
+};
 
 function renderHist() {
   const el = document.getElementById('histContent');
@@ -4991,7 +5013,7 @@ function renderHist() {
     const s = v>=0?'+':'-'; return s+'$'+Math.abs(v).toFixed(0);
   }
 
-  const summaryCards = '<div id="histPortfolioSummary"></div><div id="histPerformance"></div><div id="histSummaryCards" class="hist-summary-strip"></div>';
+  const summaryCards = '<div id="histPortfolioSummary"></div><div id="histSummaryCards" class="hist-summary-strip"></div>';
 
   const horizonTabs = '<div class="hist-horizon-tabs">'
     + '<div class="ht act" id="hist-ht-short" onclick="switchHistHz(\'short\')">Short · 1d–1mo</div>'
@@ -5026,8 +5048,8 @@ function renderHist() {
       return st === 'tp1_open' || FULL_EXITS.includes(st); // realised view
     });
     const _viewTabs = '<div style="display:flex;gap:6px;margin:8px 0 6px 0">'
-      +'<button onclick="setHistView(\'live\')" style="background:'+(_view==='live'?'rgba(61,219,123,0.12)':'rgba(255,255,255,0.04)')+';border:1px solid '+(_view==='live'?'rgba(61,219,123,0.35)':'var(--b1)')+';color:'+(_view==='live'?'var(--buy)':'var(--m1)')+';border-radius:5px;padding:4px 12px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">● Live ('+_liveCount+')</button>'
-      +'<button onclick="setHistView(\'closed\')" style="background:'+(_view==='closed'?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.04)')+';border:1px solid '+(_view==='closed'?'var(--m2)':'var(--b1)')+';color:'+(_view==='closed'?'var(--t1)':'var(--m1)')+';border-radius:5px;padding:4px 12px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">✓ Realised / Exited ('+_realCount+')</button>'
+      +'<button type="button" onclick="window.setHistView(\'live\')" style="background:'+(_view==='live'?'rgba(61,219,123,0.12)':'rgba(255,255,255,0.04)')+';border:1px solid '+(_view==='live'?'rgba(61,219,123,0.35)':'var(--b1)')+';color:'+(_view==='live'?'var(--buy)':'var(--m1)')+';border-radius:5px;padding:4px 12px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">● Live ('+_liveCount+')</button>'
+      +'<button type="button" onclick="window.setHistView(\'closed\')" style="background:'+(_view==='closed'?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.04)')+';border:1px solid '+(_view==='closed'?'var(--m2)':'var(--b1)')+';color:'+(_view==='closed'?'var(--t1)':'var(--m1)')+';border-radius:5px;padding:4px 12px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">✓ Realised / Exited ('+_realCount+')</button>'
       +'</div>';
 
     if(!hzHist.length) {
@@ -5365,6 +5387,79 @@ function calcPeriodPerformance() {
   return { monthly: fmt(months, 12), weekly: fmt(weeks, 8) };
 }
 
+/** Trade-bracket analysis: Buy/Sell × short/medium/long. Per bracket: trade
+ *  counts, realised + unrealised PnL, win rate, TP1 hits, live runners (TSL),
+ *  average donation (giveback), and exhaustion flags — the full parameter set. */
+function calcBracketPerformance() {
+  const FULL_EXITS = ['tp1_hit','tp2_hit','sl_hit','time_limit','signal_exit','tp1_then_sl','tp1_then_time'];
+  const out = {};
+  ['Buy','Sell'].forEach(function(act){ ['short','medium','long'].forEach(function(hz){
+    out[act+'|'+hz] = { act:act, hz:hz, open:0, closed:0, realised:0, unrealised:0, wins:0, tp1:0, runners:0, donSum:0, donN:0, exh:0 };
+  });});
+  getDisplayHistory().forEach(function(t){
+    const hz = t.hz || 'short';
+    const act = String(t.action||'').toLowerCase()==='sell' ? 'Sell' : 'Buy';
+    const b = out[act+'|'+hz]; if (!b) return;
+    const st = t[hz+'Status'] || t.status || 'open';
+    const snap = histRowPnlSnapshot(t, hz);
+    const pnl = (snap.pnl != null && Number.isFinite(Number(snap.pnl))) ? Number(snap.pnl) : null;
+    if (snap.isOpen) { b.open++; if (pnl != null) b.unrealised += pnl; }
+    else if (snap.isClosed) { b.closed++; if (pnl != null) { b.realised += pnl; if (pnl >= 0) b.wins++; } }
+    if (t[hz+'Tp1Hit'] || st.indexOf('tp1') === 0) b.tp1++;
+    if (st === 'tp1_open') b.runners++;
+    const don = t[hz+'DrawdownFromPeakPct'];
+    if (don != null && isFinite(don) && don > 0) { b.donSum += Number(don); b.donN++; }
+    if (t[hz+'Exhaustion']) b.exh++;
+  });
+  return Object.values(out);
+}
+
+function renderBracketPerformance() {
+  const el = document.getElementById('bracketPerformance');
+  if (!el) return;
+  const rows = calcBracketPerformance();
+  const any = rows.some(function(r){ return r.open || r.closed; });
+  if (!any) { el.innerHTML = ''; return; }
+  const fp = function(v){ if(v==null) return '—'; var x=Math.round(v); return (x>=0?'+':'-')+'$'+Math.abs(x); };
+  const HZL = { short:'Short · 1d-1mo', medium:'Medium · 1-3mo', long:'Long · 4-12mo' };
+  const tr = rows.map(function(r){
+    const wr = r.closed ? Math.round(r.wins/r.closed*100) : null;
+    const avgDon = r.donN ? (r.donSum/r.donN) : null;
+    const total = r.realised + r.unrealised;
+    const cTot = total>=0?'var(--buy)':'var(--sell)';
+    const cAct = r.act==='Buy'?'var(--buy)':'var(--sell)';
+    return '<tr style="border-top:1px solid var(--b1)">'
+      +'<td style="padding:5px 8px;font-family:DM Mono,monospace;font-size:9px"><span style="color:'+cAct+';font-weight:700">'+r.act.toUpperCase()+'</span> <span style="color:var(--m1)">'+HZL[r.hz]+'</span></td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--t1)">'+r.open+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--m2)">'+r.closed+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.realised>=0?'var(--buy)':'var(--sell)')+'">'+fp(r.realised)+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.unrealised>=0?'var(--buy)':'var(--sell)')+'">'+fp(r.unrealised)+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:'+cTot+'">'+fp(total)+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(wr==null?'var(--m1)':wr>=55?'var(--buy)':wr>=40?'#F5C842':'var(--sell)')+'">'+(wr!=null?wr+'%':'—')+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--buy)">'+r.tp1+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.runners?'var(--buy)':'var(--m1)')+'">'+r.runners+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(avgDon!=null&&avgDon>=5?'var(--sell)':avgDon!=null&&avgDon>=2?'#F5C842':'var(--m2)')+'">'+(avgDon!=null?'↓'+avgDon.toFixed(1)+'%':'—')+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.exh?'#F5C842':'var(--m1)')+'">'+r.exh+'</td>'
+      +'</tr>';
+  }).join('');
+  const th = 'padding:4px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.05em';
+  el.innerHTML = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:10px;overflow-x:auto">'
+    +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">Trade brackets — Buy / Sell × horizon</div>'
+    +'<table style="width:100%;border-collapse:collapse;min-width:760px"><thead><tr>'
+    +'<th style="text-align:left;'+th+'">Bracket</th>'
+    +'<th style="text-align:right;'+th+'">Open</th>'
+    +'<th style="text-align:right;'+th+'">Closed</th>'
+    +'<th style="text-align:right;'+th+'">Realised</th>'
+    +'<th style="text-align:right;'+th+'">Unrealised</th>'
+    +'<th style="text-align:right;'+th+'">Total PnL</th>'
+    +'<th style="text-align:right;'+th+'">Win %</th>'
+    +'<th style="text-align:right;'+th+'" title="Trades that banked the TP1 partial">TP1 hit</th>'
+    +'<th style="text-align:right;'+th+'" title="TP1 banked and runner still riding the trailing stop">Runner (TSL)</th>'
+    +'<th style="text-align:right;'+th+'" title="Average giveback from best price to current">Avg Don %</th>'
+    +'<th style="text-align:right;'+th+'" title="Trades currently flagged with move exhaustion">Exh</th>'
+    +'</tr></thead><tbody>'+tr+'</tbody></table></div>';
+}
+
 function renderPerformancePanel() {
   const el = document.getElementById('histPerformance');
   if (!el) return;
@@ -5421,7 +5516,6 @@ function renderPortfolioSummary() {
     + tile('Sell side', fp(p.sellPnl), 'short · real + unreal', p.sellPnl>=0?'var(--buy)':'var(--sell)')
     + tile('Return %', (p.returnPct>=0?'+':'')+p.returnPct+'%', 'PnL / peak equity $'+(p.peakEquity/1000).toFixed(0)+'k', retColor)
     +'</div></div>';
-  renderPerformancePanel();
 }
 
 function renderSummaryCards(hzKey) {
