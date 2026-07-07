@@ -10237,14 +10237,73 @@ async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markP
   if (startIdx < 0) return null;
   const res = await simulateHybridExit(bars, startIdx, entry, hz, isSell, weeklyAll, null, markPrice, liveMark);
   if (!res) return null;
-  const open = res.status === 'open' || res.status === 'tp1_open';
-  let status;
-  if (open) status = 'open';
-  else if (res.status.startsWith('tp1')) status = res.ret > 0 ? 'tp1_hit' : 'sl_hit';
-  else if (res.status.includes('sl')) status = 'sl_hit';
-  else if (res.status.includes('signal')) status = 'signal_exit';
-  else status = 'time_limit';
-  return { status, ret: res.ret, exit: res.exitPrice, stopLoss: res.stopLoss, tp1Hit: res.tp1Hit, open };
+  // Preserve the hybrid engine's native status. The UI needs to distinguish
+  // TP1 runner-live, TP1-then-TSL, TP1-then-time, signal exits, and SL exits.
+  const status = res.status || 'open';
+  const open = status === 'open' || status === 'tp1_open';
+  return {
+    status,
+    ret: res.ret,
+    exit: res.exitPrice,
+    stopLoss: res.stopLoss,
+    tp1Hit: !!res.tp1Hit,
+    tp2AltRet: res.tp2AltRet,
+    exitIdx: res.exitIdx,
+    open
+  };
+}
+
+function computeTpDonationAnalytics(bars, entryMs, hz, trade, isSell) {
+  if (!Array.isArray(bars) || !bars.length || !trade) return null;
+  const tp1 = parseFloat(trade[hz + 'Target1'] || trade.target1 || 0);
+  const tp2 = parseFloat(trade[hz + 'Target2'] || trade.target2 || 0);
+  const out = {
+    tp1Hit: false,
+    tp2Hit: false,
+    tp1DonationPct: null,
+    tp2DonationPct: null,
+    tp1BestPrice: null,
+    tp2BestPrice: null
+  };
+  if (!tp1 && !tp2) return out;
+  let afterTp1Best = null;
+  let afterTp2Best = null;
+  for (const b of bars) {
+    const bt = (b.t || 0) * 1000;
+    if (bt < entryMs) continue;
+    if (!isSell) {
+      if (tp1 && b.h >= tp1) {
+        out.tp1Hit = true;
+        if (afterTp1Best == null || b.h > afterTp1Best) afterTp1Best = b.h;
+      }
+      if (tp2 && b.h >= tp2) {
+        out.tp2Hit = true;
+        if (afterTp2Best == null || b.h > afterTp2Best) afterTp2Best = b.h;
+      }
+    } else {
+      if (tp1 && b.l <= tp1) {
+        out.tp1Hit = true;
+        if (afterTp1Best == null || b.l < afterTp1Best) afterTp1Best = b.l;
+      }
+      if (tp2 && b.l <= tp2) {
+        out.tp2Hit = true;
+        if (afterTp2Best == null || b.l < afterTp2Best) afterTp2Best = b.l;
+      }
+    }
+  }
+  if (out.tp1Hit && tp1 && afterTp1Best > 0) {
+    out.tp1BestPrice = roundPrice(afterTp1Best);
+    out.tp1DonationPct = !isSell
+      ? +(((afterTp1Best - tp1) / tp1) * 100).toFixed(2)
+      : +(((tp1 - afterTp1Best) / tp1) * 100).toFixed(2);
+  }
+  if (out.tp2Hit && tp2 && afterTp2Best > 0) {
+    out.tp2BestPrice = roundPrice(afterTp2Best);
+    out.tp2DonationPct = !isSell
+      ? +(((afterTp2Best - tp2) / tp2) * 100).toFixed(2)
+      : +(((tp2 - afterTp2Best) / tp2) * 100).toFixed(2);
+  }
+  return out;
 }
 
 /** Close an open position only on a TRUE reversal to the opposite side — a Buy
@@ -10435,7 +10494,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
 
     for (const hz of hzList) {
       const st = h[hz + 'Status'];
-      if (st === 'tp1_hit' || st === 'tp2_hit' || st === 'signal_exit') continue;
+      if (['tp1_hit', 'tp2_hit', 'sl_hit', 'signal_exit', 'time_limit', 'tp1_then_sl', 'tp1_then_time'].includes(st)) continue;
       const entryMs = new Date(h.entryDate || h.timestamp || 0).getTime();
       const bars = ohlcvMap[h.ticker];
       // A trade entered today keeps its scan-time entry (that IS the correct entry);
@@ -10491,6 +10550,26 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
 
       const entry = parseFloat(h[hz + 'Entry'] || h.entry || 0);
       if (!entry) continue;
+
+      const tpDonation = bars && bars.length
+        ? computeTpDonationAnalytics(bars, entryMs, hz, h, isSell)
+        : null;
+      if (tpDonation) {
+        const pairs = [
+          ['Tp1Hit', tpDonation.tp1Hit],
+          ['Tp2Hit', tpDonation.tp2Hit],
+          ['Tp1DonationPct', tpDonation.tp1DonationPct],
+          ['Tp2DonationPct', tpDonation.tp2DonationPct],
+          ['Tp1BestPrice', tpDonation.tp1BestPrice],
+          ['Tp2BestPrice', tpDonation.tp2BestPrice]
+        ];
+        for (const [suffix, val] of pairs) {
+          if (h[hz + suffix] !== val) {
+            h[hz + suffix] = val;
+            rowChanged = true;
+          }
+        }
+      }
 
       // TRADE GIVEBACK ("drawdown"): the move from the trade's favorable extreme
       // since entry to the current price. Longs: peak high → CMP. Shorts: trough
@@ -10579,6 +10658,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         h[hz + 'Status'] = 'signal_exit';
         h[hz + 'ExitPrice'] = curr;
         h[hz + 'ExitReason'] = 'Signal → ' + flip.reason;
+        h[hz + 'TslActivated'] = false;
         rowChanged = true;
         signalExits++;
         continue;
@@ -10608,6 +10688,19 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         h[hz + 'LiveTrailSL'] = (pathExit.tp1Hit && pathExit.stopLoss > 0) ? roundPrice(pathExit.stopLoss) : null;
         h[hz + 'Status'] = pathExit.status;
         h[hz + 'Tp1Hit'] = !!pathExit.tp1Hit;
+        h[hz + 'Tp2Hit'] = !!(tpDonation && tpDonation.tp2Hit);
+        h[hz + 'TslActivated'] = !!(pathExit.tp1Hit && pathExit.stopLoss > 0);
+        const exitReasonMap = {
+          open: pathExit.tp1Hit ? 'TP1 banked; runner open on trailing stop' : '',
+          tp1_open: 'TP1 banked; runner open on trailing stop',
+          tp1_hit: 'TP1 target hit',
+          tp1_then_sl: 'TP1 banked; trailing stop closed runner',
+          tp1_then_time: 'TP1 banked; horizon time exit closed runner',
+          sl_hit: 'Stop loss / trailing stop hit',
+          signal_exit: 'Signal reversal exit',
+          time_limit: 'Horizon time limit exit'
+        };
+        h[hz + 'ExitReason'] = exitReasonMap[pathExit.status] || pathExit.status || '';
         if (!pathExit.open && pathExit.exit != null) h[hz + 'ExitPrice'] = pathExit.exit;
         // Exit timestamp = the exit BAR's session (drives weekly/monthly performance)
         const _fullExit = ['tp1_then_sl','tp1_then_time','sl_hit','time_limit','signal_exit','tp2_hit','tp1_hit'].includes(pathExit.status);
@@ -10624,12 +10717,15 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         h[hz + 'PnlPct'] = +(pct * 100).toFixed(2);
         h[hz + 'Status'] = 'time_limit';
         h[hz + 'ExitPrice'] = curr;
+        h[hz + 'ExitReason'] = 'Horizon time limit exit';
+        h[hz + 'TslActivated'] = false;
         rowChanged = true;
       } else if (st !== 'time_limit' && st !== 'sl_hit') {
         const pct = ((curr - entry) / entry) * dir;
         h[hz + 'PnlDollar'] = +(pct * NOTIONAL).toFixed(2);
         h[hz + 'PnlPct'] = +(pct * 100).toFixed(2);
         h[hz + 'Status'] = 'open';
+        h[hz + 'TslActivated'] = false;
         rowChanged = true;
       }
       h[hz + 'CurrentPrice'] = curr;
@@ -10786,4 +10882,14 @@ app.listen(PORT, () => {
   });
 });
 
-module.exports = { backtestSignal, fetchOHLCV, fundCache, TECH_TTL };
+module.exports = {
+  backtestSignal,
+  computeQuantSignal,
+  fetchOHLCV,
+  fetchFundamentals,
+  fetchFmpScore,
+  fundCache,
+  simulateHybridExit,
+  TECH_TTL,
+  techAtBoundedIndex
+};
