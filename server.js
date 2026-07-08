@@ -1953,8 +1953,14 @@ function computeQuantSignal(tech, fund, hz) {
     // PATH A — BREAKDOWN SHORT (medium/long trend shorts): the original strict
     // confluence. Correct for multi-week/month shorts; backtests confirm these
     // only earn in bear regimes, so the requirements stay hard.
+    // Backtest (594 symbols × 252 bars): breakdown shorts fired 1.8k/1.5k times
+    // on medium/long at 36-39% win rate — they were shorting NEUTRAL-regime
+    // pullbacks that recovered. Tightened: a 1-3mo short needs the WEEKLY trend
+    // confirming down; a 4-12mo short needs a CONFIRMED BEAR regime, full stop.
     const breakdownValid = aboveMa200 === false
       && regime !== 'bull'
+      && (hz !== 'medium' || weeklyTrend === 'downtrend')
+      && (hz !== 'long' || regime === 'bear')
       && stBearHz
       && realDistribution
       && !fundamentallyStrong
@@ -1971,8 +1977,16 @@ function computeQuantSignal(tech, fund, hz) {
     const _atExtension = inSDSellZone === true || (bbPct != null && bbPct > 90) || _stretch20 >= 0.08;
     const _cresting = rsiFalling === true || macdTurnDn === true || !macdBull;
     const _freshIgnition = stHz && stHz.direction === 'bull' && stHz.flippedBull === true;
+    // REWARD:RISK requirement — the fade backtested at 61% win rate yet NEGATIVE
+    // expectancy: wins (reversion to MA20) were smaller than losses (~1.5×ATR
+    // stop). A fade only pays when the stretch itself exceeds the stop risk:
+    // require price ≥ 1.65×ATR above MA20 (≈1.1:1 reward:risk at entry).
+    const _atrF = tech.atr || null;
+    const _rrOk = (_atrF > 0 && tech.ma20)
+      ? ((price - tech.ma20) / _atrF) >= 1.65
+      : _stretch20 >= 0.06; // ATR unknown → fall back to a hard 6% stretch
     const fadeValid = hz === 'short'
-      && _overbought && _atExtension && _cresting
+      && _overbought && _atExtension && _cresting && _rrOk
       && !_freshIgnition && !earningsSoon;
 
     if (!breakdownValid && !fadeValid) {
@@ -10885,6 +10899,9 @@ app.listen(PORT, () => {
 module.exports = {
   backtestSignal,
   computeQuantSignal,
+  computeTrailingStopFromTech,
+  signalFlipped,
+  horizonHoldDaysServer,
   fetchOHLCV,
   fetchFundamentals,
   fetchFmpScore,

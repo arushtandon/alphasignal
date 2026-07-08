@@ -1508,7 +1508,7 @@ const SK='as_v6';
 const DASH_SCHEMA_VERSION = 2;
 /** Max history rows kept in localStorage (must stay in sync with appetite for multi-day multi-horizon scans). */
 const HISTORY_MAX_LOCAL = 3000;
-let ST={history:[],watchlist:[],dashData:null,dashTs:null,dashSummary:'',dashSchemaVersion:DASH_SCHEMA_VERSION};
+let ST={history:[],watchlist:[],dashData:null,dashTs:null,dashSummary:'',dashSchemaVersion:DASH_SCHEMA_VERSION,histView:'live'};
 
 /** Reject corrupted localStorage dashboard payloads (would leave UI stuck on "Loading…"). */
 function normalizeDashData(raw){
@@ -5039,7 +5039,7 @@ function renderHist() {
     // Realised: every trade with a REALISED event — TP1 partials (runner may
     // still be live → highlighted green) and all full exits.
     const FULL_EXITS = ['tp1_hit','tp2_hit','sl_hit','time_limit','signal_exit','tp1_then_sl','tp1_then_time'];
-    const _view = (window.ST && ST.histView) || 'live';
+    const _view = ST.histView === 'closed' ? 'closed' : 'live';
     const _liveCount = hzHist.filter(function(t){ const rh=rowHz(t); const st=t[rh+'Status']||t.status||'open'; return st==='open'||st==='tp1_open'||st==='pending'; }).length;
     const _realCount = hzHist.filter(function(t){ const rh=rowHz(t); const st=t[rh+'Status']||t.status||'open'; return st==='tp1_open'||FULL_EXITS.includes(st); }).length;
     hzHist = hzHist.filter(function(t){
@@ -5565,7 +5565,7 @@ function renderSummaryCards(hzKey) {
   ].join('');
 }
 
-function switchHistHz(hzKey) {
+window.switchHistHz = function switchHistHz(hzKey) {
   hzKey = ['all','short','medium','long'].includes(hzKey) ? hzKey : 'all';
   window._histActiveHz = hzKey;
   ['all','short','medium','long'].forEach(k => {
@@ -5575,7 +5575,7 @@ function switchHistHz(hzKey) {
     if(tbl) tbl.style.display = k===hzKey?'block':'none';
   });
   renderSummaryCards(hzKey === 'all' ? 'short' : hzKey); renderPortfolioSummary();
-}
+};
 
 function calcHistPnl(entryStr, currentPrice, action) {
   const entry = parsePrice(entryStr);
@@ -5605,7 +5605,8 @@ function resolveHistoricalHzPnl(h, hz) {
     const dir = isSell ? -1 : 1;
     return (exitV - entryV) / entryV * dir * 10000; // $10k notional
   }
-  if (st !== 'tp1_hit' && st !== 'tp2_hit' && st !== 'sl_hit' && st !== 'signal_exit') return null;
+  if (st !== 'tp1_hit' && st !== 'tp2_hit' && st !== 'sl_hit' && st !== 'signal_exit'
+      && st !== 'tp1_then_sl' && st !== 'tp1_then_time' && st !== 'time_limit') return null;
   const isSell = (h.action || '').toLowerCase() === 'sell';
   const entryV = parsePrice(h[hz + 'Entry'] || h.entry || h.entryPrice);
   let exitRaw = h[hz + 'ExitPrice'];
