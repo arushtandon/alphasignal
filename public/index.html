@@ -590,19 +590,27 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
 
     <!-- HISTORY -->
     <div id="pane-history" class="pane">
-      <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div class="pt">Recommendation history</div>
-        <button class="btn" style="font-size:10px;padding:4px 10px" onclick="exportHistoryTrades()" title="Download every historical trade across all timeframes (entry, TP/SL, exit, status, $10k PnL) as an Excel-ready CSV">⬇ Export Excel</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn" style="font-size:10px;padding:4px 10px" onclick="exportHistoryTrades()" title="Download every trade with TP1/TP2/TSL/donation/shares for model review">⬇ Export Excel</button>
+          <button class="btn" style="font-size:10px;padding:4px 10px" onclick="exportClosedExitQuality()" title="Closed trades only — exit quality CSV for TP/TSL/donation analysis">⬇ Closed exit quality</button>
+        </div>
       </div>
       <div id="histContent"></div>
     </div>
 
     <!-- PERFORMANCE -->
     <div id="pane-performance" class="pane">
-      <div class="ph"><div class="pt">Performance</div>
-        <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Realised returns by period · trade-bracket analysis</div>
+      <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div>
+          <div class="pt">Performance</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Realised returns · brackets · exit quality (TP1/TP2/TSL/donation)</div>
+        </div>
+        <button class="btn" style="font-size:10px;padding:4px 10px" onclick="exportClosedExitQuality()">⬇ Exit quality CSV</button>
       </div>
       <div id="perfContent">
+        <div id="exitQualityPerformance"></div>
         <div id="histPerformance"></div>
         <div id="bracketPerformance"></div>
       </div>
@@ -1664,10 +1672,16 @@ function switchTab(t){
     }
   }
   if(t==='performance') {
-    const renderPerf = function(){ renderPerformancePanel(); renderBracketPerformance(); };
+    const renderPerf = function(){
+      renderExitQualityPerformance();
+      renderPerformancePanel();
+      renderBracketPerformance();
+    };
     if (ST.history.length) { renderPerf(); }
     // pull authoritative history if empty or stale, then render
-    loadHistoryFromServer().then(renderPerf).catch(function(e){ console.warn(e); renderPerf(); });
+    loadHistoryFromServer().then(function(){
+      return refreshHistoryPnl().catch(function(){});
+    }).then(renderPerf).catch(function(e){ console.warn(e); renderPerf(); });
   }
   if(t==='watchlist') renderWl();
 }
@@ -3307,9 +3321,17 @@ function exportRecommendedTrades() {
 function exportHistoryTrades() {
   const hist = getDisplayHistory();
   if (!hist.length) { alert('No historical trades to export yet.'); return; }
-  const headers = ['Timeframe', 'Side', 'Ticker', 'Name', 'Market', 'Rating', 'Entry Date',
-    'Entry', 'Target 1', 'Target 2', 'Stop Loss', 'Status', 'Exit Price',
-    'Current Price', 'PnL ($10k)', 'PnL %'];
+  const headers = [
+    'Timeframe', 'Side', 'Ticker', 'Name', 'Market', 'Rating', 'Entry Date', 'Exit Date',
+    'Entry', 'Target 1', 'Target 2', 'Stop Loss', 'Exit Price', 'Current Price',
+    'Status', 'Exit Reason',
+    'Shares Total', 'Shares Sold TP1', 'Shares Runner',
+    'TP1 Hit', 'TP2 Hit', 'TSL Activated',
+    'Giveback Donation %', 'Giveback $ (on $10k)', 'Fav Extreme',
+    'Beyond TP1 %', 'Beyond TP2 %', 'TP2 Alt PnL %',
+    'Sector Trend', 'Exhaustion',
+    'PnL ($10k)', 'PnL %'
+  ];
   const rows = [];
   for (const h of hist) {
     const hz = h.hz || 'short';
@@ -3318,25 +3340,277 @@ function exportHistoryTrades() {
     const pnlD = (typeof resolveHistoricalHzPnl === 'function') ? resolveHistoricalHzPnl(h, hz) : (h[hz + 'PnlDollar']);
     const pnlP = h[hz + 'PnlPct'] != null ? h[hz + 'PnlPct'] : h.pnlPct;
     const entryDate = h.entryDate || h.timestamp;
+    const exitTs = h[hz + 'ExitTs'];
+    const don = h[hz + 'DonationPct'];
+    const donDol = (don != null && isFinite(don)) ? +(Number(don) / 100 * 10000).toFixed(2) : '';
+    let shares = h[hz + 'SharesTotal'];
+    let sold = h[hz + 'SharesSoldTP1'];
+    let runner = h[hz + 'SharesRunner'];
+    if (shares == null) {
+      const e = parseFloat(h[hz + 'Entry'] || h.entry || 0);
+      shares = e > 0 ? Math.floor(10000 / e) : '';
+      if (shares >= 1) { sold = Math.floor(shares / 2); runner = shares - sold; }
+      else shares = '';
+    }
     rows.push([
       _HZ_LABEL[hz] || hz,
       isSell ? 'Sell' : 'Buy',
       h.ticker || '', h.name || h.ticker || '', h.market || '',
       h.rating || h[hz + 'Rating'] || h.action || '',
       entryDate ? new Date(entryDate).toISOString().slice(0, 10) : '',
+      exitTs ? new Date(exitTs).toISOString().slice(0, 10) : '',
       _num(h[hz + 'Entry'] || h.entry),
       _num(h[hz + 'Target1'] || h.target1),
       _num(h[hz + 'Target2'] || h.target2),
       _num(h[hz + 'StopLoss'] || (isSell ? h.sellStopLoss : h.stopLoss) || h.stopLoss),
-      status,
       _num(h[hz + 'ExitPrice']),
       _num(h.currentPrice || h[hz + 'CurrentPrice']),
+      status,
+      h[hz + 'ExitReason'] || '',
+      shares, sold != null ? sold : '', runner != null ? runner : '',
+      h[hz + 'Tp1Hit'] ? 'Y' : (String(status).indexOf('tp1') === 0 ? 'Y' : 'N'),
+      h[hz + 'Tp2Hit'] ? 'Y' : 'N',
+      h[hz + 'TslActivated'] ? 'Y' : (status === 'tp1_then_sl' || status === 'tp1_then_time' || status === 'tp1_open' ? 'Y' : 'N'),
+      don != null ? don : '',
+      donDol,
+      _num(h[hz + 'FavExtreme']),
+      h[hz + 'Tp1DonationPct'] != null ? h[hz + 'Tp1DonationPct'] : '',
+      h[hz + 'Tp2DonationPct'] != null ? h[hz + 'Tp2DonationPct'] : '',
+      h[hz + 'Tp2AltPnlPct'] != null ? h[hz + 'Tp2AltPnlPct'] : '',
+      h[hz + 'SectorTrend'] || h.sectorTrend || h.sector || '',
+      h[hz + 'Exhaustion'] || '',
       _num(pnlD),
       _num(pnlP)
     ]);
   }
   const stamp = new Date().toISOString().slice(0, 10);
   _downloadCsv('alphasignal-history-' + stamp + '.csv', headers, rows);
+}
+
+/** Closed trades only — exit-quality CSV for model review (TP1/TP2/TSL/donation). */
+function exportClosedExitQuality() {
+  const FULL = ['tp1_hit','tp2_hit','sl_hit','time_limit','signal_exit','tp1_then_sl','tp1_then_time'];
+  const hist = getDisplayHistory().filter(function(h){
+    const hz = h.hz || 'short';
+    return FULL.includes(h[hz + 'Status'] || h.status || '');
+  });
+  if (!hist.length) {
+    alert('No closed trades yet. Open History once after deploy so PnL refresh can settle exits, then retry.');
+    return;
+  }
+  const headers = [
+    'Timeframe', 'Side', 'Ticker', 'Status', 'Exit Reason',
+    'Entry', 'TP1', 'TP2', 'SL', 'Exit',
+    'Shares', 'Sold@TP1', 'Runner',
+    'TP1 Hit', 'TP2 Hit', 'TSL',
+    'Donation %', 'Donation $', 'Beyond TP1 %', 'Beyond TP2 %', 'TP2-alt PnL %',
+    'Sector', 'PnL $', 'PnL %', 'Entry Date', 'Exit Date'
+  ];
+  const rows = hist.map(function(h){
+    const hz = h.hz || 'short';
+    const isSell = String(h.action || '').toLowerCase() === 'sell';
+    const status = h[hz + 'Status'] || h.status;
+    const pnlD = resolveHistoricalHzPnl(h, hz);
+    const don = h[hz + 'DonationPct'];
+    let shares = h[hz + 'SharesTotal'];
+    let sold = h[hz + 'SharesSoldTP1'];
+    let runner = h[hz + 'SharesRunner'];
+    if (shares == null) {
+      const e = parseFloat(h[hz + 'Entry'] || h.entry || 0);
+      shares = e > 0 ? Math.floor(10000 / e) : '';
+      if (shares >= 1) { sold = Math.floor(shares / 2); runner = shares - sold; } else shares = '';
+    }
+    const tp1Hit = !!(h[hz + 'Tp1Hit'] || String(status).indexOf('tp1') === 0 || status === 'tp2_hit');
+    const tsl = !!(h[hz + 'TslActivated'] || status === 'tp1_then_sl' || status === 'tp1_then_time' || status === 'tp1_open');
+    return [
+      _HZ_LABEL[hz] || hz, isSell ? 'Sell' : 'Buy', h.ticker || '', status, h[hz + 'ExitReason'] || '',
+      _num(h[hz + 'Entry'] || h.entry), _num(h[hz + 'Target1'] || h.target1), _num(h[hz + 'Target2'] || h.target2),
+      _num(h[hz + 'StopLoss'] || h.stopLoss), _num(h[hz + 'ExitPrice']),
+      shares, sold != null ? sold : '', runner != null ? runner : '',
+      tp1Hit ? 'Y' : 'N',
+      h[hz + 'Tp2Hit'] ? 'Y' : 'N',
+      tsl ? 'Y' : 'N',
+      don != null ? don : '',
+      don != null && isFinite(don) ? +(Number(don) / 100 * 10000).toFixed(2) : '',
+      h[hz + 'Tp1DonationPct'] != null ? h[hz + 'Tp1DonationPct'] : '',
+      h[hz + 'Tp2DonationPct'] != null ? h[hz + 'Tp2DonationPct'] : '',
+      h[hz + 'Tp2AltPnlPct'] != null ? h[hz + 'Tp2AltPnlPct'] : '',
+      h[hz + 'SectorTrend'] || h.sector || '',
+      _num(pnlD), _num(h[hz + 'PnlPct']),
+      h.entryDate ? new Date(h.entryDate).toISOString().slice(0, 10) : '',
+      h[hz + 'ExitTs'] ? new Date(h[hz + 'ExitTs']).toISOString().slice(0, 10) : ''
+    ];
+  });
+  _downloadCsv('alphasignal-closed-exit-quality-' + new Date().toISOString().slice(0, 10) + '.csv', headers, rows);
+}
+
+/** Aggregate exit-quality stats across closed trades for model review. */
+function calcExitQualityStats() {
+  const FULL = ['tp1_hit','tp2_hit','sl_hit','time_limit','signal_exit','tp1_then_sl','tp1_then_time'];
+  const closed = getDisplayHistory().filter(function(h){
+    const hz = h.hz || 'short';
+    return FULL.includes(h[hz + 'Status'] || h.status || '');
+  });
+  const byStatus = {};
+  let tp1 = 0, tp2 = 0, tsl = 0, donSum = 0, donN = 0, beyond1 = 0, beyond1N = 0, beyond2 = 0, beyond2N = 0;
+  let win = 0, pnlSum = 0, avgWin = 0, avgLoss = 0, wN = 0, lN = 0;
+  const bySide = { Buy: { n:0, pnl:0, tp1:0, tp2:0, don:0, donN:0 }, Sell: { n:0, pnl:0, tp1:0, tp2:0, don:0, donN:0 } };
+  const byHz = { short: { n:0, pnl:0, tp1:0, tp2:0 }, medium: { n:0, pnl:0, tp1:0, tp2:0 }, long: { n:0, pnl:0, tp1:0, tp2:0 } };
+  closed.forEach(function(h){
+    const hz = h.hz || 'short';
+    const st = h[hz + 'Status'] || h.status;
+    byStatus[st] = (byStatus[st] || 0) + 1;
+    const isSell = String(h.action || '').toLowerCase() === 'sell';
+    const side = isSell ? 'Sell' : 'Buy';
+    const pnl = resolveHistoricalHzPnl(h, hz);
+    const pn = (pnl != null && Number.isFinite(Number(pnl))) ? Number(pnl) : null;
+    if (pn != null) {
+      pnlSum += pn;
+      if (pn >= 0) { win++; avgWin += pn; wN++; } else { avgLoss += Math.abs(pn); lN++; }
+      bySide[side].pnl += pn;
+      byHz[hz].pnl += pn;
+    }
+    bySide[side].n++;
+    byHz[hz].n++;
+    const hit1 = !!(h[hz + 'Tp1Hit'] || st.indexOf('tp1') === 0 || st === 'tp2_hit');
+    const hit2 = !!h[hz + 'Tp2Hit'];
+    const usedTsl = !!(h[hz + 'TslActivated'] || st === 'tp1_then_sl' || st === 'tp1_then_time' || st === 'tp1_open');
+    if (hit1) { tp1++; bySide[side].tp1++; byHz[hz].tp1++; }
+    if (hit2) { tp2++; bySide[side].tp2++; byHz[hz].tp2++; }
+    if (usedTsl) tsl++;
+    const don = h[hz + 'DonationPct'];
+    if (don != null && isFinite(don)) {
+      donSum += Number(don); donN++;
+      bySide[side].don += Number(don); bySide[side].donN++;
+    }
+    const d1 = h[hz + 'Tp1DonationPct'];
+    const d2 = h[hz + 'Tp2DonationPct'];
+    if (d1 != null && isFinite(d1) && d1 > 0) { beyond1 += Number(d1); beyond1N++; }
+    if (d2 != null && isFinite(d2) && d2 > 0) { beyond2 += Number(d2); beyond2N++; }
+  });
+  return {
+    closed: closed.length,
+    byStatus,
+    tp1Rate: closed.length ? +(tp1 / closed.length * 100).toFixed(1) : null,
+    tp2Rate: closed.length ? +(tp2 / closed.length * 100).toFixed(1) : null,
+    tslRate: closed.length ? +(tsl / closed.length * 100).toFixed(1) : null,
+    avgDonation: donN ? +(donSum / donN).toFixed(2) : null,
+    avgBeyondTp1: beyond1N ? +(beyond1 / beyond1N).toFixed(2) : null,
+    avgBeyondTp2: beyond2N ? +(beyond2 / beyond2N).toFixed(2) : null,
+    winRate: closed.length ? Math.round(win / closed.length * 100) : null,
+    realised: +pnlSum.toFixed(0),
+    avgWin: wN ? +(avgWin / wN).toFixed(0) : null,
+    avgLoss: lN ? +(avgLoss / lN).toFixed(0) : null,
+    bySide, byHz,
+    rows: closed
+  };
+}
+
+function renderExitQualityPerformance() {
+  const el = document.getElementById('exitQualityPerformance');
+  if (!el) return;
+  const s = calcExitQualityStats();
+  if (!s.closed) {
+    el.innerHTML = '<div style="background:rgba(245,200,66,0.08);border:1px solid rgba(245,200,66,0.25);border-radius:8px;padding:10px 12px;margin-bottom:10px">'
+      +'<div style="font-size:11px;color:#F5C842;font-family:DM Mono,monospace;margin-bottom:4px">Exit quality — no closed trades yet</div>'
+      +'<div style="font-size:10px;color:var(--m2);line-height:1.45">Open History once after deploy so refresh can settle exits and backfill TP1/TP2 hit, TSL, donation %, and share counts. Then return here.</div></div>';
+    return;
+  }
+  const fp = function(v){ if(v==null) return '—'; return (v>=0?'+':'-')+'$'+Math.abs(v); };
+  const tile = function(l,v,sub,c){
+    return '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:10px 12px;min-width:110px;flex:1">'
+      +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace">'+l+'</div>'
+      +'<div style="font-size:16px;font-weight:600;font-family:DM Mono,monospace;color:'+(c||'var(--t1)')+';margin-top:2px">'+v+'</div>'
+      +(sub?'<div style="font-size:8px;color:var(--m1);font-family:DM Mono,monospace;margin-top:1px">'+sub+'</div>':'')
+      +'</div>';
+  };
+  const statusOrder = ['tp1_then_sl','tp1_then_time','tp1_hit','tp2_hit','sl_hit','signal_exit','time_limit'];
+  const statusRows = statusOrder.filter(function(k){ return s.byStatus[k]; }).map(function(k){
+    const label = ({
+      tp1_then_sl: 'TSL after TP1',
+      tp1_then_time: 'Time after TP1',
+      tp1_hit: 'Legacy full TP1',
+      tp2_hit: 'Legacy TP2',
+      sl_hit: 'Stop loss',
+      signal_exit: 'Signal reversal',
+      time_limit: 'Time limit'
+    })[k] || k;
+    const n = s.byStatus[k];
+    const pct = +(n / s.closed * 100).toFixed(0);
+    return '<tr><td style="padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;color:var(--m2)">'+label+'</td>'
+      +'<td style="padding:4px 8px;text-align:right;font-family:DM Mono,monospace;font-size:10px">'+n+'</td>'
+      +'<td style="padding:4px 8px;text-align:right;font-family:DM Mono,monospace;font-size:10px;color:var(--m1)">'+pct+'%</td></tr>';
+  }).join('');
+
+  // Top donation / beyond-TP closed trades for model review
+  const ranked = s.rows.slice().map(function(h){
+    const hz = h.hz || 'short';
+    return {
+      ticker: h.ticker, hz, side: String(h.action||'').toLowerCase()==='sell'?'Sell':'Buy',
+      status: h[hz+'Status'],
+      pnl: resolveHistoricalHzPnl(h, hz),
+      don: h[hz+'DonationPct'],
+      d1: h[hz+'Tp1DonationPct'],
+      d2: h[hz+'Tp2DonationPct'],
+      tp2Hit: !!h[hz+'Tp2Hit'],
+      reason: h[hz+'ExitReason'] || ''
+    };
+  }).filter(function(r){ return r.don != null || r.d1 != null || r.d2 != null; })
+    .sort(function(a,b){ return (Number(b.don)||0) - (Number(a.don)||0); })
+    .slice(0, 12);
+
+  const donRows = ranked.map(function(r){
+    const pc = (r.pnl!=null && r.pnl>=0)?'var(--buy)':'var(--sell)';
+    return '<tr>'
+      +'<td style="padding:4px 8px;font-family:DM Mono,monospace;font-size:10px">'+r.ticker+' <span style="color:var(--m1)">'+r.side+' · '+r.hz+'</span></td>'
+      +'<td style="padding:4px 8px;font-family:DM Mono,monospace;font-size:9px;color:var(--m2)">'+r.status+'</td>'
+      +'<td style="padding:4px 8px;text-align:right;font-family:DM Mono,monospace;font-size:10px;color:'+pc+'">'+(r.pnl!=null?fp(r.pnl):'—')+'</td>'
+      +'<td style="padding:4px 8px;text-align:right;font-family:DM Mono,monospace;font-size:10px;color:'+(r.don>=5?'var(--sell)':r.don>=2?'#F5C842':'var(--m2)')+'">'+(r.don!=null?Number(r.don).toFixed(1)+'%':'—')+'</td>'
+      +'<td style="padding:4px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--m1)">'+(r.d1!=null&&r.d1>0?'+'+Number(r.d1).toFixed(1)+'%':'—')+'</td>'
+      +'<td style="padding:4px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.tp2Hit?'var(--buy)':'var(--m1)')+'">'+(r.tp2Hit?(r.d2!=null?'✓ +'+Number(r.d2).toFixed(1)+'%':'✓'):'—')+'</td>'
+      +'</tr>';
+  }).join('');
+
+  const insight = [];
+  if (s.tp1Rate != null && s.tp1Rate < 35) insight.push('TP1 hit rate is low ('+s.tp1Rate+'%) — targets may be too far or entries too late.');
+  if (s.tp1Rate != null && s.tp1Rate >= 55 && s.avgBeyondTp1 != null && s.avgBeyondTp1 >= 3) insight.push('TP1 often prints then price runs further (avg +'+s.avgBeyondTp1+'% beyond) — consider trailing sooner or a wider TP1.');
+  if (s.tp2Rate != null && s.tp2Rate < 10 && s.tp1Rate >= 40) insight.push('TP2 rarely reached ('+s.tp2Rate+'%) after TP1 — runners are stopping out before 2R; review TSL ratchet tightness.');
+  if (s.avgDonation != null && s.avgDonation >= 4) insight.push('Avg giveback '+s.avgDonation+'% is high — exits may be late relative to the favorable extreme.');
+  if (s.avgWin != null && s.avgLoss != null && s.avgWin < s.avgLoss) insight.push('Avg win $'+s.avgWin+' < avg loss $'+s.avgLoss+' — R:R / trail not protecting expectancy.');
+  if (s.byStatus.tp1_hit && s.byStatus.tp1_hit > s.closed * 0.25) insight.push((s.byStatus.tp1_hit)+' legacy full-TP1 exits still in history — new engine uses partial+TSL; compare cohorts separately.');
+
+  el.innerHTML = '<div style="margin-bottom:12px">'
+    +'<div style="font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;margin-bottom:6px">Exit quality — closed trades (model review)</div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+    + tile('Closed', s.closed, 'settled exits')
+    + tile('Win rate', s.winRate!=null?s.winRate+'%':'—', 'on closed', s.winRate>=55?'var(--buy)':s.winRate>=40?'#F5C842':'var(--sell)')
+    + tile('Realised', fp(s.realised), 'sum $10k notional', s.realised>=0?'var(--buy)':'var(--sell)')
+    + tile('TP1 hit', s.tp1Rate!=null?s.tp1Rate+'%':'—', 'partial banked')
+    + tile('TP2 reached', s.tp2Rate!=null?s.tp2Rate+'%':'—', 'reference only')
+    + tile('TSL used', s.tslRate!=null?s.tslRate+'%':'—', 'post-TP1 trail')
+    + tile('Avg donation', s.avgDonation!=null?s.avgDonation+'%':'—', 'giveback fav→exit', s.avgDonation>=5?'var(--sell)':s.avgDonation>=2?'#F5C842':'var(--m2)')
+    + tile('Beyond TP1', s.avgBeyondTp1!=null?'+'+s.avgBeyondTp1+'%':'—', 'after TP1 printed')
+    + tile('Avg win / loss', (s.avgWin!=null?'$'+s.avgWin:'—')+' / '+(s.avgLoss!=null?'$'+s.avgLoss:'—'), 'closed legs')
+    +'</div>'
+    +(insight.length ? '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--b1);border-radius:8px;padding:8px 12px;margin-bottom:10px">'
+      + insight.map(function(t){ return '<div style="font-size:11px;color:var(--m2);line-height:1.45;margin:3px 0">• '+t+'</div>'; }).join('')
+      +'</div>' : '')
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    +'<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;flex:1;min-width:240px">'
+    +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">Exit reason mix</div>'
+    +'<table style="width:100%;border-collapse:collapse"><thead><tr>'
+    +'<th style="text-align:left;padding:2px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace">REASON</th>'
+    +'<th style="text-align:right;padding:2px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace">N</th>'
+    +'<th style="text-align:right;padding:2px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace">%</th>'
+    +'</tr></thead><tbody>'+statusRows+'</tbody></table></div>'
+    +(donRows ? '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;flex:2;min-width:320px;overflow-x:auto">'
+      +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">Highest giveback closed trades</div>'
+      +'<table style="width:100%;border-collapse:collapse;min-width:480px"><thead><tr>'
+      +['Instrument','Status','PnL','Don %','Beyond TP1','TP2'].map(function(l,i){
+        return '<th style="text-align:'+(i<2?'left':'right')+';padding:2px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase">'+l+'</th>';
+      }).join('')
+      +'</tr></thead><tbody>'+donRows+'</tbody></table></div>' : '')
+    +'</div></div>';
 }
 
 /** PnL + open/closed snapshot for one horizon row (aligned with History table). */
@@ -5487,7 +5761,7 @@ function calcBracketPerformance() {
   const FULL_EXITS = ['tp1_hit','tp2_hit','sl_hit','time_limit','signal_exit','tp1_then_sl','tp1_then_time'];
   const out = {};
   ['Buy','Sell'].forEach(function(act){ ['short','medium','long'].forEach(function(hz){
-    out[act+'|'+hz] = { act:act, hz:hz, open:0, closed:0, realised:0, unrealised:0, wins:0, tp1:0, runners:0, donSum:0, donN:0, exh:0 };
+    out[act+'|'+hz] = { act:act, hz:hz, open:0, closed:0, realised:0, unrealised:0, wins:0, tp1:0, tp2:0, runners:0, donSum:0, donN:0, exh:0 };
   });});
   getDisplayHistory().forEach(function(t){
     const hz = t.hz || 'short';
@@ -5498,9 +5772,10 @@ function calcBracketPerformance() {
     const pnl = (snap.pnl != null && Number.isFinite(Number(snap.pnl))) ? Number(snap.pnl) : null;
     if (snap.isOpen) { b.open++; if (pnl != null) b.unrealised += pnl; }
     else if (snap.isClosed) { b.closed++; if (pnl != null) { b.realised += pnl; if (pnl >= 0) b.wins++; } }
-    if (t[hz+'Tp1Hit'] || st.indexOf('tp1') === 0) b.tp1++;
+    if (t[hz+'Tp1Hit'] || st.indexOf('tp1') === 0 || st === 'tp2_hit') b.tp1++;
+    if (t[hz+'Tp2Hit']) b.tp2++;
     if (st === 'tp1_open') b.runners++;
-    const don = t[hz+'DrawdownFromPeakPct'];
+    const don = t[hz+'DonationPct'] != null ? t[hz+'DonationPct'] : t[hz+'DrawdownFromPeakPct'];
     if (don != null && isFinite(don) && don > 0) { b.donSum += Number(don); b.donN++; }
     if (t[hz+'Exhaustion']) b.exh++;
   });
@@ -5530,6 +5805,7 @@ function renderBracketPerformance() {
       +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:'+cTot+'">'+fp(total)+'</td>'
       +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(wr==null?'var(--m1)':wr>=55?'var(--buy)':wr>=40?'#F5C842':'var(--sell)')+'">'+(wr!=null?wr+'%':'—')+'</td>'
       +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--buy)">'+r.tp1+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.tp2?'var(--buy)':'var(--m1)')+'">'+r.tp2+'</td>'
       +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.runners?'var(--buy)':'var(--m1)')+'">'+r.runners+'</td>'
       +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(avgDon!=null&&avgDon>=5?'var(--sell)':avgDon!=null&&avgDon>=2?'#F5C842':'var(--m2)')+'">'+(avgDon!=null?'↓'+avgDon.toFixed(1)+'%':'—')+'</td>'
       +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.exh?'#F5C842':'var(--m1)')+'">'+r.exh+'</td>'
@@ -5538,7 +5814,7 @@ function renderBracketPerformance() {
   const th = 'padding:4px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.05em';
   el.innerHTML = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:10px;overflow-x:auto">'
     +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">Trade brackets — Buy / Sell × horizon</div>'
-    +'<table style="width:100%;border-collapse:collapse;min-width:760px"><thead><tr>'
+    +'<table style="width:100%;border-collapse:collapse;min-width:820px"><thead><tr>'
     +'<th style="text-align:left;'+th+'">Bracket</th>'
     +'<th style="text-align:right;'+th+'">Open</th>'
     +'<th style="text-align:right;'+th+'">Closed</th>'
@@ -5547,8 +5823,9 @@ function renderBracketPerformance() {
     +'<th style="text-align:right;'+th+'">Total PnL</th>'
     +'<th style="text-align:right;'+th+'">Win %</th>'
     +'<th style="text-align:right;'+th+'" title="Trades that banked the TP1 partial">TP1 hit</th>'
+    +'<th style="text-align:right;'+th+'" title="Price reached TP2 reference level">TP2 hit</th>'
     +'<th style="text-align:right;'+th+'" title="TP1 banked and runner still riding the trailing stop">Runner (TSL)</th>'
-    +'<th style="text-align:right;'+th+'" title="Average giveback from best price to current">Avg Don %</th>'
+    +'<th style="text-align:right;'+th+'" title="Average giveback donation % (fav extreme → exit/CMP)">Avg Don %</th>'
     +'<th style="text-align:right;'+th+'" title="Trades currently flagged with move exhaustion">Exh</th>'
     +'</tr></thead><tbody>'+tr+'</tbody></table></div>';
 }

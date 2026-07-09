@@ -6725,6 +6725,86 @@ app.get('/api/history', (req, res) => {
   res.json(tradeHistory);
 });
 
+/** GET /api/history/exit-quality — closed-trade TP1/TP2/TSL/donation summary for model review. */
+app.get('/api/history/exit-quality', (req, res) => {
+  const FULL = ['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit', 'signal_exit', 'tp1_then_sl', 'tp1_then_time'];
+  const closed = [];
+  const byStatus = {};
+  let tp1 = 0, tp2 = 0, tsl = 0, donSum = 0, donN = 0, beyond1 = 0, beyond1N = 0, beyond2 = 0, beyond2N = 0;
+  let win = 0, pnlSum = 0, avgWin = 0, avgLoss = 0, wN = 0, lN = 0;
+  for (const h of tradeHistory) {
+    if (!isHistoryBuySellRecord(h)) continue;
+    const hz = h.hz || 'short';
+    const st = h[hz + 'Status'] || h.status || 'open';
+    if (!FULL.includes(st)) continue;
+    const isSell = String(h.action || '').toLowerCase() === 'sell';
+    const pnl = h[hz + 'PnlDollar'];
+    const pn = (pnl != null && Number.isFinite(+pnl)) ? +pnl : null;
+    const hit1 = !!(h[hz + 'Tp1Hit'] || String(st).indexOf('tp1') === 0 || st === 'tp2_hit');
+    const hit2 = !!h[hz + 'Tp2Hit'];
+    const usedTsl = !!(h[hz + 'TslActivated'] || st === 'tp1_then_sl' || st === 'tp1_then_time');
+    const don = h[hz + 'DonationPct'];
+    const d1 = h[hz + 'Tp1DonationPct'];
+    const d2 = h[hz + 'Tp2DonationPct'];
+    byStatus[st] = (byStatus[st] || 0) + 1;
+    if (hit1) tp1++;
+    if (hit2) tp2++;
+    if (usedTsl) tsl++;
+    if (don != null && Number.isFinite(+don)) { donSum += +don; donN++; }
+    if (d1 != null && Number.isFinite(+d1) && +d1 > 0) { beyond1 += +d1; beyond1N++; }
+    if (d2 != null && Number.isFinite(+d2) && +d2 > 0) { beyond2 += +d2; beyond2N++; }
+    if (pn != null) {
+      pnlSum += pn;
+      if (pn >= 0) { win++; avgWin += pn; wN++; } else { avgLoss += Math.abs(pn); lN++; }
+    }
+    closed.push({
+      ticker: h.ticker,
+      hz,
+      action: isSell ? 'Sell' : 'Buy',
+      status: st,
+      exitReason: h[hz + 'ExitReason'] || '',
+      entry: h[hz + 'Entry'] || h.entry,
+      tp1: h[hz + 'Target1'] || h.target1,
+      tp2: h[hz + 'Target2'] || h.target2,
+      sl: h[hz + 'StopLoss'] || h.stopLoss,
+      exit: h[hz + 'ExitPrice'],
+      sharesTotal: h[hz + 'SharesTotal'],
+      sharesSoldTP1: h[hz + 'SharesSoldTP1'],
+      sharesRunner: h[hz + 'SharesRunner'],
+      tp1Hit: hit1,
+      tp2Hit: hit2,
+      tslActivated: usedTsl,
+      donationPct: don != null ? +don : null,
+      donationDollar: don != null && Number.isFinite(+don) ? +((+don / 100) * 10000).toFixed(2) : null,
+      beyondTp1Pct: d1 != null ? +d1 : null,
+      beyondTp2Pct: d2 != null ? +d2 : null,
+      tp2AltPnlPct: h[hz + 'Tp2AltPnlPct'] != null ? +h[hz + 'Tp2AltPnlPct'] : null,
+      favExtreme: h[hz + 'FavExtreme'] || null,
+      sectorTrend: h[hz + 'SectorTrend'] || h.sector || null,
+      pnlDollar: pn,
+      pnlPct: h[hz + 'PnlPct'] != null ? +h[hz + 'PnlPct'] : null,
+      entryDate: h.entryDate || h.timestamp,
+      exitTs: h[hz + 'ExitTs'] || null
+    });
+  }
+  const n = closed.length;
+  res.json({
+    closed: n,
+    byStatus,
+    tp1HitRate: n ? +(tp1 / n * 100).toFixed(1) : null,
+    tp2HitRate: n ? +(tp2 / n * 100).toFixed(1) : null,
+    tslRate: n ? +(tsl / n * 100).toFixed(1) : null,
+    avgDonationPct: donN ? +(donSum / donN).toFixed(2) : null,
+    avgBeyondTp1Pct: beyond1N ? +(beyond1 / beyond1N).toFixed(2) : null,
+    avgBeyondTp2Pct: beyond2N ? +(beyond2 / beyond2N).toFixed(2) : null,
+    winRate: n ? Math.round(win / n * 100) : null,
+    realisedPnl: +pnlSum.toFixed(2),
+    avgWin: wN ? +(avgWin / wN).toFixed(2) : null,
+    avgLoss: lN ? +(avgLoss / lN).toFixed(2) : null,
+    trades: closed
+  });
+});
+
 // Shared writer for both the client (/api/history/add) and the autonomous
 // server scan. Dedups by ticker|hz|day, enriches, caps, and persists.
 async function addTradesToHistory(trades) {
