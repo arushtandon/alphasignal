@@ -8763,19 +8763,20 @@ app.get('/api/earnings/:symbol', async (req, res) => {
 });
 
 async function pickDailyWeeklyForAnalyze(sym) {
-  /** Aligned with fetchOHLCV (≥15 bars); thin listings need longer ranges first */
+  /** Prefer 2y first (fast + enough for signals). Only escalate to 5y/max when thin. */
   const MIN = 15;
-  const ranges = ['5y', '2y', '12mo', 'max', '6mo', '3mo'];
+  const ranges = ['2y', '5y', '12mo', 'max', '6mo', '3mo'];
   let bestDaily = null;
   for (const range of ranges) {
     const daily = await fetchOHLCV(sym, range, '1d');
     if (daily && daily.length >= MIN && (!bestDaily || daily.length > bestDaily.length)) {
       bestDaily = daily;
-      if (daily.length >= 1000) break;
+      // 2y (~500 bars) is enough for indicators + a 1y walk-forward backtest.
+      if (daily.length >= 400) break;
     }
   }
   if (!bestDaily || bestDaily.length < MIN) return null;
-  const weekly = await fetchOHLCV(sym, '5y', '1wk').catch(() => dailyToWeeklyBars(bestDaily));
+  const weekly = dailyToWeeklyBars(bestDaily);
   return { daily: bestDaily, weekly };
 }
 
@@ -9678,16 +9679,21 @@ app.post('/api/analyze', async (req, res) => {
     const fund  = fundBySym[sym];
     const ohlcv = ohlcvBySym[sym];
     if (!tech) continue;
+    // Fast path: one short-horizon walk-forward on ~1y window. Full 3-horizon
+    // 5y backtests made single-ticker Analyze take tens of seconds.
     let btShort = null, btMedium = null, btLong = null;
     try {
-      btShort  = ohlcv ? await backtestSignal(ohlcv, 'short', weeklyBySym[sym])  : null;
-      btMedium = ohlcv ? await backtestSignal(ohlcv, 'medium', weeklyBySym[sym]) : null;
-      btLong   = ohlcv ? await backtestSignal(ohlcv, 'long', weeklyBySym[sym])   : null;
+      const btOpts = { windowBars: 252, entryStep: 3 };
+      btShort = ohlcv ? await backtestSignal(ohlcv, 'short', weeklyBySym[sym], fund, btOpts) : null;
+      // Medium/long reuse short stats as a hint when history is thin; full
+      // multi-horizon backtest stays on the dashboard / dedicated endpoint.
+      btMedium = btShort;
+      btLong = btShort;
     } catch (e) {
       console.warn('backtest failed for', sym, '-', e.message);
     }
     if (tech) {
-      tech._supertrendBacktestWR = btShort?.supertrendWinRate ?? btMedium?.supertrendWinRate ?? null;
+      tech._supertrendBacktestWR = btShort?.supertrendWinRate ?? null;
     }
     const sigShort  = computeQuantSignal(tech, fund, 'short');
     const sigMedium = computeQuantSignal(tech, fund, 'medium');
@@ -9714,11 +9720,69 @@ app.post('/api/analyze', async (req, res) => {
         },
         channelPos: tech.channelPos
       };
-      await applyMarketTierOverlays(sym, shell, { batchMode: false, fundPre: fund });
+      await applyMarketTierOverlays(sym, shell, { batchMode: true, fundPre: fund });
       if (shell.fmpScore) sig.fmpScore = shell.fmpScore;
       if (shell.danelfin) sig.danelfin = shell.danelfin;
     })
   );
+
+  // Fast default: skip Claude prose and build the card from quant signals.
+  // Pass { skipAi: false } to keep the old Haiku narrative path.
+  const skipAi = req.body?.skipAi !== false;
+  if (skipAi) {
+    const stocks = await Promise.all(requestedWithPrice.filter(s => signalBySym[s]).map(async sym => {
+      const pq = priceBySym[sym];
+      const tech = techBySym[sym];
+      const fund = fundBySym[sym] || null;
+      const sig = signalBySym[sym];
+      const cond = (sig.short.conditions || []).slice(0, 4).join('; ') || 'Quant signal';
+      let row = {
+        ticker: sym,
+        name: fund?.longName || fund?.shortName || sym,
+        sector: fund?.sector || fund?._fmpSector || '',
+        action: sig.short.action,
+        shortAnalysis: cond,
+        mediumAnalysis: (sig.medium.conditions || []).slice(0, 3).join('; ') || cond,
+        longAnalysis: (sig.long.conditions || []).slice(0, 3).join('; ') || cond,
+        sellReason: sig.short.action === 'Sell' || sig.short.action === 'Strong Sell' ? cond : '',
+        risks: [],
+        catalyst: '',
+        momentum: tech?.macd?.trend === 'bullish' ? 'Bullish' : tech?.macd?.trend === 'bearish' ? 'Bearish' : 'Neutral',
+        price: String(pq.price),
+        change: pq.change != null ? String(pq.change) : ''
+      };
+      row.shortScore = sig.short.buyScore;
+      row.mediumScore = sig.medium.buyScore;
+      row.longScore = sig.long.buyScore;
+      row.shortSellScore = sig.short.sellScore;
+      row.mediumSellScore = sig.medium.sellScore;
+      row.longSellScore = sig.long.sellScore;
+      row.shortRating = sig.short.rating;
+      row.mediumRating = sig.medium.rating;
+      row.longRating = sig.long.rating;
+      row.shortAction = sig.short.action;
+      row.mediumAction = sig.medium.action;
+      row.longAction = sig.long.action;
+      const btS = sig.short.backtest;
+      row.backtestedWinRate = btS ? btS.winRate : sig.short.winRateHint;
+      row.backtestTrades = btS?.trades ?? null;
+      row.backtestAvgReturn = btS?.avgReturnPct ?? null;
+      row.quantConditions = sig.short.conditions;
+      if (sig.fmpScore) row.fmpScore = sig.fmpScore;
+      if (sig.danelfin) {
+        row.danelfinAiScore = sig.danelfin.aiscore;
+        row.danelfinTechnical = sig.danelfin.technical;
+        row.danelfinFundamental = sig.danelfin.fundamental;
+        row.danelfinSentiment = sig.danelfin.sentiment;
+      }
+      row = applyServerPriceLevels(row, +pq.price, tech || null, fund || null);
+      mergeFundamentalsForUi(row, fund || null);
+      injectAnalyzeRowFromServerTech(row, tech || null);
+      return row;
+    }));
+    console.log(`Analyze FAST: ${stocks.length} tickers (skipAi)`);
+    return res.json({ stocks, fast: true });
+  }
 
   const tickerBlocksForClaude = clean.filter(s => priceBySym[s]).map(sym => {
     const p = priceBySym[sym];
@@ -10422,10 +10486,13 @@ function liveSignalFlipExit(ticker, hz, isSell, techMap) {
   return null;
 }
 
-// One-time-per-boot remediation flag: reopen rows that were soft-closed
-// (signal_exit / time_limit) by the old buggy logic so the corrected rules
-// (current-signal flips only + genuine time-limit) re-decide each position.
+// Soft-close remediation must run AT MOST ONCE across deploys. An in-memory flag
+// reset on every boot and reopened settled signal_exit / time_limit rows — which
+// flipped closed months (e.g. 2026-06) from realised PnL back to open/unrealised
+// and made Performance go negative. Persist the "already done" marker on disk.
+const SOFT_CLOSE_FLAG = path.join(path.dirname(HISTORY_FILE), 'soft_close_remediated.flag');
 let _softCloseRemediated = false;
+try { _softCloseRemediated = fs.existsSync(SOFT_CLOSE_FLAG); } catch (_) {}
 // (entry repair is now always-on per-trade via h.entryFinalized — no boot flag)
 // One-time-per-boot flag: re-floor still-OPEN trades to the v7.9.6 reward:risk model
 // (TP1 ≥ minRR × stop distance). Earlier picks used a 0.62× target that sat closer
@@ -10465,16 +10532,23 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
     for (const h of tradeHistory) {
       for (const hz of ['short', 'medium', 'long']) {
         const s = h[hz + 'Status'];
-        if (s === 'signal_exit' || s === 'time_limit') {
-          h[hz + 'Status'] = 'open';
-          h[hz + 'ExitPrice'] = undefined;
-          h[hz + 'ExitReason'] = '';
-          if ((h.hz || 'short') === hz) h.status = 'open';
-          reopened++;
-        }
+        // Only reopen soft-closes that look like the OLD bug: no ExitTs (never
+        // stamped by the hybrid path sim) and near-zero / missing PnL. Genuine
+        // settled exits keep their status so closed months stay frozen.
+        if (s !== 'signal_exit' && s !== 'time_limit') continue;
+        const hasExitTs = !!h[hz + 'ExitTs'];
+        const pnl = h[hz + 'PnlDollar'];
+        const nearZero = pnl == null || !Number.isFinite(+pnl) || Math.abs(+pnl) < 1;
+        if (hasExitTs && !nearZero) continue;
+        h[hz + 'Status'] = 'open';
+        h[hz + 'ExitPrice'] = undefined;
+        h[hz + 'ExitReason'] = '';
+        if ((h.hz || 'short') === hz) h.status = 'open';
+        reopened++;
       }
     }
     _softCloseRemediated = true;
+    try { fs.writeFileSync(SOFT_CLOSE_FLAG, new Date().toISOString()); } catch (_) {}
     if (reopened) saveHistoryFile(tradeHistory);
   }
 
@@ -10515,10 +10589,18 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
 
   const sinceMs = req.body?.since ? new Date(req.body.since).getTime() : 0;
 
-  // Only OPEN positions need a live price + fresh signal. Closed rows are frozen
-  // (the $0 backfill above already repaired their dollar figures). Scoping the
-  // heavy OHLCV/signal work to open trades stops the refresh from timing out on a
-  // multi-thousand-row history — which previously left flips/PnL never updated.
+  // Fetch OHLCV for open rows AND for closed rows that still need analytics
+  // backfill (donation / TP2 hit / sector / shares). Skipping closed tickers
+  // left Donation % and TP2 blank forever on settled trades.
+  const needsClosedBackfill = (h) => {
+    const hz = h.hz || 'short';
+    const s = h[hz + 'Status'] || h.status;
+    if (!['tp1_hit', 'tp2_hit', 'sl_hit', 'signal_exit', 'time_limit', 'tp1_then_sl', 'tp1_then_time'].includes(s)) return false;
+    return h[hz + 'DonationPct'] == null
+      || h[hz + 'Tp2Hit'] == null
+      || h[hz + 'SharesTotal'] == null
+      || !h[hz + 'SectorTrend'];
+  };
   const isOpenRow = (h) => {
     const hz = h.hz || 'short';
     const s = h[hz + 'Status'] || h.status;
@@ -10526,7 +10608,8 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
   };
   const tickers = [...new Set(
     tradeHistory
-      .filter(h => (h.action === 'Buy' || h.action === 'Sell') && isOpenRow(h)
+      .filter(h => (h.action === 'Buy' || h.action === 'Sell')
+        && (isOpenRow(h) || needsClosedBackfill(h))
         && (!sinceMs || new Date(h.entryDate || h.timestamp || 0).getTime() >= sinceMs))
       .map(h => h.ticker)
       .filter(Boolean)
@@ -10582,20 +10665,26 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
   for (const h of tradeHistory) {
     if (sinceMs && new Date(h.entryDate || h.timestamp || 0).getTime() < sinceMs) continue;
     const curr = priceMap[h.ticker];
-    if (!curr || !Number.isFinite(curr)) continue;
     const isSell = String(h.action || '').toLowerCase() === 'sell';
     const dir = isSell ? -1 : 1;
     const hzList = h.hz ? [h.hz] : ['short', 'medium', 'long'];
     let rowChanged = false;
+    const hzPrimary = h.hz || 'short';
+    const stPrimary = h[hzPrimary + 'Status'] || h.status;
+    const isClosedPrimary = ['tp1_hit', 'tp2_hit', 'sl_hit', 'signal_exit', 'time_limit', 'tp1_then_sl', 'tp1_then_time'].includes(stPrimary);
+    // Open rows need a live quote. Closed rows can still backfill donation/TP2/shares
+    // from OHLCV alone — don't skip them when Yahoo price is missing.
+    if ((!curr || !Number.isFinite(curr)) && !isClosedPrimary) continue;
 
     for (const hz of hzList) {
       const st = h[hz + 'Status'];
       const entryMs = new Date(h.entryDate || h.timestamp || 0).getTime();
       const bars = ohlcvMap[h.ticker];
       if (['tp1_hit', 'tp2_hit', 'sl_hit', 'signal_exit', 'time_limit', 'tp1_then_sl', 'tp1_then_time'].includes(st)) {
-        // CLOSED rows: one-time BACKFILL of fields added after they settled —
-        // whole-share TP1 split + giveback donation. PnL, status, levels and
-        // exit data on settled rows are NEVER touched here.
+        // CLOSED rows: backfill analytics only — never rewrite PnL / status / exit.
+        // Exception: legacy `tp1_hit` from the old full-exit-at-TP1 engine is
+        // remapped to `tp1_then_sl` semantics in the UI; here we stamp Tp1Hit and
+        // compute whether price later reached TP2 (reference) + giveback donation.
         const entryC = parseFloat(h[hz + 'Entry'] || h.entry || 0);
         if (entryC && (h[hz + 'SharesTotal'] === undefined || h[hz + 'SharesTotal'] === null)) {
           const spl = computeShareSplit(entryC);
@@ -10604,14 +10693,62 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
           h[hz + 'SharesRunner'] = spl.runner;
           rowChanged = true;
         }
-        if (h[hz + 'DonationPct'] == null && bars && bars.length && entryC) {
-          const exitPxC = parseFloat(h[hz + 'ExitPrice'] || 0) || null;
-          const gvC = exitPxC ? computeGivebackDonation(bars, entryMs, exitPxC, isSell, h[hz + 'ExitTs'] || null) : null;
-          if (gvC) {
-            h[hz + 'DonationPct'] = gvC.pct;
-            h[hz + 'FavExtreme'] = gvC.fav;
-            rowChanged = true;
+        // Ensure TP2 reference level exists for display (2× TP1 distance).
+        const tp1C = parseFloat(h[hz + 'Target1'] || h.target1 || 0);
+        let tp2C = parseFloat(h[hz + 'Target2'] || h.target2 || 0);
+        if (entryC && tp1C && (!tp2C || !Number.isFinite(tp2C))) {
+          const d1 = Math.abs(tp1C - entryC);
+          tp2C = isSell ? entryC - 2 * d1 : entryC + 2 * d1;
+          h[hz + 'Target2'] = roundPrice(tp2C);
+          if ((h.hz || 'short') === hz) h.target2 = h[hz + 'Target2'];
+          rowChanged = true;
+        }
+        if (st === 'tp1_hit' || st === 'tp1_then_sl' || st === 'tp1_then_time' || st === 'tp2_hit') {
+          if (!h[hz + 'Tp1Hit']) { h[hz + 'Tp1Hit'] = true; rowChanged = true; }
+        }
+        if (bars && bars.length && entryC) {
+          const tpDonation = computeTpDonationAnalytics(bars, entryMs, hz, h, isSell);
+          if (tpDonation) {
+            const pairs = [
+              ['Tp1Hit', tpDonation.tp1Hit || !!h[hz + 'Tp1Hit']],
+              ['Tp2Hit', tpDonation.tp2Hit],
+              ['Tp1DonationPct', tpDonation.tp1DonationPct],
+              ['Tp2DonationPct', tpDonation.tp2DonationPct],
+              ['Tp1BestPrice', tpDonation.tp1BestPrice],
+              ['Tp2BestPrice', tpDonation.tp2BestPrice]
+            ];
+            for (const [suffix, val] of pairs) {
+              if (h[hz + suffix] !== val) {
+                h[hz + suffix] = val;
+                rowChanged = true;
+              }
+            }
           }
+          if (h[hz + 'DonationPct'] == null) {
+            const exitPxC = parseFloat(h[hz + 'ExitPrice'] || 0) || null;
+            const gvC = exitPxC ? computeGivebackDonation(bars, entryMs, exitPxC, isSell, h[hz + 'ExitTs'] || null) : null;
+            if (gvC) {
+              h[hz + 'DonationPct'] = gvC.pct;
+              h[hz + 'FavExtreme'] = gvC.fav;
+              rowChanged = true;
+            }
+          }
+        }
+        // Sector trend for closed rows (was only computed on open path).
+        try {
+          const _secC = h.fundSnapshot?._fmpSector || h.sector || null;
+          if (_secC && !h[hz + 'SectorTrend']) {
+            const _stLabelC = await sectorTrendLabel(_secC);
+            if (_stLabelC) {
+              h[hz + 'SectorTrend'] = _stLabelC;
+              rowChanged = true;
+            }
+          }
+        } catch (_) {}
+        // Clarify legacy full-exit-at-TP1 reason text.
+        if (st === 'tp1_hit' && (!h[hz + 'ExitReason'] || h[hz + 'ExitReason'] === 'TP1 target hit')) {
+          h[hz + 'ExitReason'] = 'Legacy full exit at TP1 (pre partial+TSL engine)';
+          rowChanged = true;
         }
         continue;
       }
@@ -10878,7 +11015,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         h.status = h[hz + 'Status'];
       }
     }
-    h.currentPrice = curr;
+    if (curr && Number.isFinite(curr)) h.currentPrice = curr;
     if (rowChanged) updated++;
   }
 

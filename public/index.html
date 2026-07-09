@@ -5146,9 +5146,10 @@ function renderHist() {
         ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(245,200,66,0.15);color:#F5C842;font-family:DM Mono,monospace">⏳ Pending open</span>'
         : effectiveStatus==='time_limit' ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(180,180,180,0.15);color:#aaa;font-family:DM Mono,monospace">⏱ Time limit</span>'
         : effectiveIsSignalExit ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(120,170,255,0.18);color:#7aaaff;font-family:DM Mono,monospace">⇄ Signal exit</span>'
-        : effectiveIsTp2 ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.2);color:var(--buy);font-family:DM Mono,monospace">✓ TP2 Hit</span>'
-        : effectiveIsRunner ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.25);color:var(--buy);font-family:DM Mono,monospace" title="TP1 hit — 50% banked, remaining 50% riding the trailing stop">✓ TP1 · Runner LIVE</span>'
-        : effectiveIsTp1 ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.15);color:var(--buy);font-family:DM Mono,monospace">✓ TP1 Hit</span>'
+        : effectiveIsTp2 ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.2);color:var(--buy);font-family:DM Mono,monospace">✓ TP2 Hit (legacy)</span>'
+        : effectiveIsRunner ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.25);color:var(--buy);font-family:DM Mono,monospace" title="TP1 hit — ~half banked, remaining rides the trailing stop">✓ TP1 · Runner LIVE</span>'
+        : effectiveStatus === 'tp1_hit' ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(245,200,66,0.2);color:#F5C842;font-family:DM Mono,monospace" title="Legacy: old engine closed 100% at TP1. New engine uses partial + TSL.">LEGACY TP1 exit</span>'
+        : effectiveIsTp1 ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.15);color:var(--buy);font-family:DM Mono,monospace">✓ TP1 + TSL done</span>'
         : effectiveIsSl  ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(244,108,108,0.2);color:var(--sell);font-family:DM Mono,monospace">✗ SL Hit</span>'
         : '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(245,200,66,0.2);color:#F5C842;font-family:DM Mono,monospace">● Open</span>';
 
@@ -5195,33 +5196,42 @@ function renderHist() {
         +td(pnlDisplay,'right')
         +td((function(){
           var base = '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--buy)">'+tp+'</span>';
-          // Whole-share TP1 split on $10k notional. Odd counts sell the SMALLER
-          // half (floor) at TP1; the larger half rides. Server stamps the fields;
-          // fall back to a client-side compute for rows not yet refreshed.
+          // Position size on $10k notional — always show original share count.
           var stot = h[rh+'SharesTotal'];
           var sold = h[rh+'SharesSoldTP1'];
+          var runr = h[rh+'SharesRunner'];
           if (stot == null) {
             var _eS = parseFloat(h[rh+'Entry']||h.entry||0);
             stot = _eS > 0 ? Math.floor(10000/_eS) : null;
             if (!(stot >= 1)) stot = null;
             sold = stot != null ? Math.floor(stot/2) : null;
+            runr = stot != null && sold != null ? (stot - sold) : null;
           }
-          if (stot == null) return base; // price > notional → fractional 50/50, no share line
-          if (sold == null) sold = Math.floor(stot/2);
-          var run = stot - sold;
+          if (sold == null && stot != null) sold = Math.floor(stot/2);
+          if (runr == null && stot != null && sold != null) runr = stot - sold;
           var stt2 = effectiveStatus;
           var tp1Done = h[rh+'Tp1Hit'] || effectiveIsRunner || stt2==='tp1_then_sl' || stt2==='tp1_then_time' || stt2==='tp1_hit' || stt2==='tp2_hit';
-          var sub;
-          if (stt2==='tp1_hit' || stt2==='tp2_hit') sub = stot+' sh · legacy full exit';
-          else if (tp1Done) sub = 'sold '+sold+'/'+stot+' sh · '+run+(isClosed?' closed':' run');
-          else sub = stot+' sh · '+sold+' @ TP1';
-          return base+'<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--m1);margin-top:1px" title="Whole-share TP1 split on $10k notional — odd counts sell the smaller half (floor) at TP1, larger half rides the ratchet TSL">'+sub+'</div>';
+          var sizeLine;
+          if (stot == null) {
+            // Price > $10k notional → fractional 1.0 unit position
+            sizeLine = 'Pos: $10k (frac)';
+          } else if (stt2==='tp1_hit') {
+            sizeLine = 'Pos: '+stot+' sh · legacy full @ TP1';
+          } else if (tp1Done) {
+            sizeLine = 'Pos: '+stot+' sh · sold '+sold+' @ TP1 · '+runr+(isClosed?' closed':' run');
+          } else {
+            sizeLine = 'Pos: '+stot+' sh · plan '+sold+' @ TP1 / '+runr+' run';
+          }
+          return base+'<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--m1);margin-top:1px" title="$10k notional position. Whole-share TP1 split: floor(shares/2) banked at TP1, remainder rides TSL.">'+sizeLine+'</div>';
         })())
         +td((function(){
           var tp2v = h[rh+'Target2'] || h.target2 || '';
-          var hit = h[rh+'Tp2Hit'] ? ' <span style="color:var(--buy)">hit</span>' : '';
+          var hit = h[rh+'Tp2Hit'] ? ' <span style="color:var(--buy)">✓ hit</span>' : '';
+          var beyond = h[rh+'Tp2DonationPct'];
+          var beyondTxt = (h[rh+'Tp2Hit'] && beyond != null && isFinite(beyond) && beyond > 0.05)
+            ? '<div style="font-size:8px;color:var(--m1)">+' + Number(beyond).toFixed(1) + '% beyond</div>' : '';
           return tp2v && tp2v !== 'unavailable'
-            ? '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--m2)" title="TP2 — reference level for exit analysis (not an exit)">'+tp2v+hit+'</span>'
+            ? '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--m2)" title="TP2 is a REFERENCE level only — never an automatic exit. Hit = price reached TP2 while the runner was live.">'+tp2v+hit+'</span>'+beyondTxt
             : '<span style="color:var(--m1)">—</span>';
         })())
         +td((function(){
@@ -5238,8 +5248,12 @@ function renderHist() {
             var diffTxt = diff != null ? (diff >= 0 ? ' <span style="color:var(--buy)">(+'+diff.toFixed(1)+' running)</span>' : ' <span style="color:var(--sell)">('+diff.toFixed(1)+' running)</span>') : '';
             bits.push('<span title="Hypothetical full exit at TP2 vs actual trailing-runner result">TP2-exit '+Number(alt).toFixed(1)+'% vs '+actP+diffTxt+'</span>');
           }
-          var sec = h[rh+'SectorTrend'];
-          if (sec) bits.push('<span title="Sector trend via sector-ETF proxy">'+sec+'</span>');
+          var sec = h[rh+'SectorTrend'] || h.sectorTrend || '';
+          if (!sec && (h.sector || h.fundSnapshot)) {
+            var rawSec = h.fundSnapshot && h.fundSnapshot._fmpSector ? h.fundSnapshot._fmpSector : (h.sector || '');
+            if (rawSec) sec = String(rawSec);
+          }
+          if (sec) bits.push('<span title="Sector / sector-ETF trend">'+String(sec).replace(/</g,'').slice(0,40)+'</span>');
           if (bits.length) slHtml += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--m1);margin-top:1px">'+bits.join(' <span style="opacity:0.4">·</span> ')+'</div>';
           return slHtml;
         })())
@@ -5250,6 +5264,7 @@ function renderHist() {
           var entryPx = parseFloat(h[rh+'Entry']||h.entry||0)||null;
           var dirn = isSell ? -1 : 1;
           var runnerPct = (exitPx && entryPx) ? (dirn*(exitPx-entryPx)/entryPx*100) : null;
+          var storedReason = h[rh+'ExitReason'] || '';
           function mk(txt,col,tip){ return '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.06);color:'+col+';font-family:DM Mono,monospace;white-space:nowrap" title="'+String(tip||'').replace(/"/g,'&quot;')+'">'+txt+'</span>'; }
           if (stt==='tp1_then_sl') {
             var rp = runnerPct!=null ? (runnerPct>=0?'+':'')+runnerPct.toFixed(1)+'%' : '';
@@ -5260,15 +5275,16 @@ function renderHist() {
           if (stt==='tp1_then_time') return mk('TIME post-TP1','#F5C842','TP1 banked; horizon time limit closed the runner (TSL was active, never hit)');
           if (stt==='sl_hit') return mk('SL','var(--sell)','Original stop hit — TP1 never printed, so the SL was never converted to a TSL');
           if (stt==='time_limit') return mk('TIME','#aaa','Horizon time limit exit — neither TP1 nor SL was reached');
-          if (effectiveIsSignalExit) return mk('REVERSAL','#7aaaff','Closed by an opposite-side entry-grade signal (reversal-only exit policy)');
-          if (stt==='tp1_hit') return mk('TP1 FULL','var(--buy)','Legacy full exit at TP1 (recorded before the whole-share partial-split build)');
-          if (stt==='tp2_hit') return mk('TP2','var(--buy)','Legacy TP2 exit (recorded before TP2 became reference-only)');
+          if (effectiveIsSignalExit) return mk('REVERSAL','#7aaaff', storedReason || 'Closed by an opposite-side entry-grade signal (reversal-only exit policy)');
+          if (stt==='tp1_hit') return mk('LEGACY TP1','#F5C842','Old engine closed 100% at TP1 (before partial+TSL). New trades bank ~half at TP1 and trail the rest — they show as TSL / TIME post-TP1, never "TP1 FULL".');
+          if (stt==='tp2_hit') return mk('LEGACY TP2','var(--buy)','Old engine exited at TP2. TP2 is now reference-only (never an automatic exit).');
           if (effectiveIsRunner) return mk('TP1 ✓ runner live','var(--buy)','TP1 partial banked; runner riding the ratchet TSL');
+          if (storedReason) return mk(String(storedReason).slice(0,18), 'var(--m2)', storedReason);
           return '<span style="color:var(--m1)">—</span>';
         })())
         +td((function(){
-          // ── DON %: headline = giveback (favorable extreme since entry → exit/CMP),
-          //    sub-line = move beyond TP1/TP2 after those levels printed ──
+          // ── DON %: giveback (fav extreme → exit/CMP) + $ giveback on $10k
+          //    + move beyond TP1/TP2 after those levels printed ──
           var gd = h[rh+'DonationPct'];
           var d1 = h[rh+'Tp1DonationPct'];
           var d2 = h[rh+'Tp2DonationPct'];
@@ -5276,12 +5292,14 @@ function renderHist() {
           if (gd != null && isFinite(gd)) {
             var gcol = gd >= 5 ? 'var(--sell)' : gd >= 2 ? '#F5C842' : 'var(--m2)';
             var fx = h[rh+'FavExtreme'];
-            lines.push('<span style="color:'+gcol+'" title="Giveback: best price since entry'+(fx?' ('+fx+')':'')+' → '+(isClosed?'exit':'current price')+'">'+Number(gd).toFixed(1)+'%</span>');
+            var gDol = +(Number(gd) / 100 * 10000).toFixed(0);
+            lines.push('<span style="color:'+gcol+'" title="Giveback: best price since entry'+(fx?' ('+fx+')':'')+' → '+(isClosed?'exit':'current price')+'">'+Number(gd).toFixed(1)+'% · $'+gDol+'</span>');
           }
           var tpParts = [];
-          if (d1 != null && isFinite(d1) && d1 > 0.05) tpParts.push('TP1 '+Number(d1).toFixed(1)+'%');
-          if (d2 != null && isFinite(d2) && d2 > 0.05) tpParts.push('TP2 '+Number(d2).toFixed(1)+'%');
-          if (tpParts.length) lines.push('<span style="font-size:8px;color:var(--m1)" title="Move beyond the TP level after it printed — were TP1/TP2 set too early?">'+tpParts.join(' · ')+'</span>');
+          if (d1 != null && isFinite(d1) && d1 > 0.05) tpParts.push('TP1 +'+Number(d1).toFixed(1)+'%');
+          if (d2 != null && isFinite(d2) && d2 > 0.05) tpParts.push('TP2 +'+Number(d2).toFixed(1)+'%');
+          if (tpParts.length) lines.push('<span style="font-size:8px;color:var(--m1)" title="How far price ran beyond TP after it printed — were targets too early?">'+tpParts.join(' · ')+'</span>');
+          if (h[rh+'Tp2Hit']) lines.push('<span style="font-size:8px;color:var(--buy)" title="Price reached the TP2 reference level">TP2 reached</span>');
           if (!lines.length) return '<span style="color:var(--m1)">—</span>';
           return '<span style="font-family:DM Mono,monospace;font-size:10px">'+lines.join('<br>')+'</span>';
         })())
