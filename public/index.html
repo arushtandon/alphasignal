@@ -1726,17 +1726,19 @@ const DASH_HORIZON_MIN_PCT = {
 };
 /** Legacy mid-range fallback (unused when channel math runs) */
 const DASH_HORIZON_PCT = {
+  /* MUST mirror server HORIZON_MIN_PCT floors (sl 3/8/16%, tp1 6/15/30%, tp2 10/23/45%).
+     The old 1.5%/4% values here were the source of noise-tight stops on no-tech picks. */
   short: {
-    buy: { tp1: 0.025, tp2: 0.045, sl: -0.015 },
-    sell: { tp1: -0.025, tp2: -0.045, sl: 0.015 }
+    buy: { tp1: 0.06, tp2: 0.10, sl: -0.030 },
+    sell: { tp1: -0.06, tp2: -0.10, sl: 0.030 }
   },
   medium: {
-    buy: { tp1: 0.07, tp2: 0.13, sl: -0.04 },
-    sell: { tp1: -0.07, tp2: -0.13, sl: 0.04 }
+    buy: { tp1: 0.15, tp2: 0.23, sl: -0.08 },
+    sell: { tp1: -0.15, tp2: -0.23, sl: 0.08 }
   },
   long: {
-    buy: { tp1: 0.18, tp2: 0.35, sl: -0.10 },
-    sell: { tp1: -0.18, tp2: -0.35, sl: 0.10 }
+    buy: { tp1: 0.30, tp2: 0.45, sl: -0.16 },
+    sell: { tp1: -0.30, tp2: -0.45, sl: 0.16 }
   }
 };
 function roundDashPrice(x) {
@@ -2052,6 +2054,12 @@ function enrichDashPickLevels(s) {
       tp1 = roundDashPrice(e * (1 + p.tp1));
       tp2 = roundDashPrice(e * (1 + p.tp2));
       sl = roundDashPrice(e * (1 + p.sl));
+      // No-tech fallback MUST still respect horizon floors + min reward:risk —
+      // this branch was displaying raw 1.5%/4% stops for international names.
+      var fbNT = applyHorizonMinPctFloorsDash(e, tp1, tp2, sl, sell, hz);
+      tp1 = roundDashPrice(fbNT.tp1);
+      tp2 = roundDashPrice(fbNT.tp2);
+      sl = roundDashPrice(fbNT.sl);
     }
     s[hz + 'Entry'] = String(roundDashPrice(e));
     s[hz + 'Target1'] = String(tp1);
@@ -3067,9 +3075,10 @@ async function saveDashPicksToHistory(data) {
       sl = L.sl;
     } else {
       const MKRECORD_PCTS = {
-        short:  { tp1: 0.025, tp2: 0.045, sl: -0.015 },
-        medium: { tp1: 0.07, tp2: 0.13, sl: -0.04 },
-        long:   { tp1: 0.18, tp2: 0.35, sl: -0.10 }
+        /* mirrors server HORIZON_MIN_PCT floors — never tighter */
+        short:  { tp1: 0.06, tp2: 0.10, sl: -0.030 },
+        medium: { tp1: 0.15, tp2: 0.23, sl: -0.08 },
+        long:   { tp1: 0.30, tp2: 0.45, sl: -0.16 }
       };
       const dir = isSell ? -1 : 1;
       const p = MKRECORD_PCTS[hz];
@@ -5184,7 +5193,30 @@ function renderHist() {
         +td('<span style="font-family:DM Mono,monospace;font-size:11px" title="'+((h.entrySource||'pre-fix entry').replace(/"/g,'&quot;'))+'">'+ep+'</span>','right')
         +td('<span style="font-family:DM Mono,monospace;font-size:11px">'+livePrice+'</span>','right')
         +td(pnlDisplay,'right')
-        +td('<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--buy)">'+tp+'</span>')
+        +td((function(){
+          var base = '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--buy)">'+tp+'</span>';
+          // Whole-share TP1 split on $10k notional. Odd counts sell the SMALLER
+          // half (floor) at TP1; the larger half rides. Server stamps the fields;
+          // fall back to a client-side compute for rows not yet refreshed.
+          var stot = h[rh+'SharesTotal'];
+          var sold = h[rh+'SharesSoldTP1'];
+          if (stot == null) {
+            var _eS = parseFloat(h[rh+'Entry']||h.entry||0);
+            stot = _eS > 0 ? Math.floor(10000/_eS) : null;
+            if (!(stot >= 1)) stot = null;
+            sold = stot != null ? Math.floor(stot/2) : null;
+          }
+          if (stot == null) return base; // price > notional → fractional 50/50, no share line
+          if (sold == null) sold = Math.floor(stot/2);
+          var run = stot - sold;
+          var stt2 = effectiveStatus;
+          var tp1Done = h[rh+'Tp1Hit'] || effectiveIsRunner || stt2==='tp1_then_sl' || stt2==='tp1_then_time' || stt2==='tp1_hit' || stt2==='tp2_hit';
+          var sub;
+          if (stt2==='tp1_hit' || stt2==='tp2_hit') sub = stot+' sh · legacy full exit';
+          else if (tp1Done) sub = 'sold '+sold+'/'+stot+' sh · '+run+(isClosed?' closed':' run');
+          else sub = stot+' sh · '+sold+' @ TP1';
+          return base+'<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--m1);margin-top:1px" title="Whole-share TP1 split on $10k notional — odd counts sell the smaller half (floor) at TP1, larger half rides the ratchet TSL">'+sub+'</div>';
+        })())
         +td((function(){
           var tp2v = h[rh+'Target2'] || h.target2 || '';
           var hit = h[rh+'Tp2Hit'] ? ' <span style="color:var(--buy)">hit</span>' : '';
@@ -5206,23 +5238,52 @@ function renderHist() {
             var diffTxt = diff != null ? (diff >= 0 ? ' <span style="color:var(--buy)">(+'+diff.toFixed(1)+' running)</span>' : ' <span style="color:var(--sell)">('+diff.toFixed(1)+' running)</span>') : '';
             bits.push('<span title="Hypothetical full exit at TP2 vs actual trailing-runner result">TP2-exit '+Number(alt).toFixed(1)+'% vs '+actP+diffTxt+'</span>');
           }
-          var reason = h[rh+'ExitReason'];
-          if (reason && isClosed) bits.push('<span title="Closure reason">'+String(reason).replace(/</g,'').slice(0,80)+'</span>');
           var sec = h[rh+'SectorTrend'];
           if (sec) bits.push('<span title="Sector trend via sector-ETF proxy">'+sec+'</span>');
           if (bits.length) slHtml += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--m1);margin-top:1px">'+bits.join(' <span style="opacity:0.4">·</span> ')+'</div>';
           return slHtml;
         })())
         +td((function(){
+          // ── REASON column: why the trade closed / where it stands ──
+          var stt = effectiveStatus;
+          var exitPx = parseFloat(h[rh+'ExitPrice']||0)||null;
+          var entryPx = parseFloat(h[rh+'Entry']||h.entry||0)||null;
+          var dirn = isSell ? -1 : 1;
+          var runnerPct = (exitPx && entryPx) ? (dirn*(exitPx-entryPx)/entryPx*100) : null;
+          function mk(txt,col,tip){ return '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.06);color:'+col+';font-family:DM Mono,monospace;white-space:nowrap" title="'+String(tip||'').replace(/"/g,'&quot;')+'">'+txt+'</span>'; }
+          if (stt==='tp1_then_sl') {
+            var rp = runnerPct!=null ? (runnerPct>=0?'+':'')+runnerPct.toFixed(1)+'%' : '';
+            var cc = (runnerPct!=null && runnerPct<0) ? '#F5C842' : 'var(--buy)';
+            var soldN = h[rh+'SharesSoldTP1'];
+            return mk('TSL '+rp, cc, 'TP1 banked '+(soldN!=null?soldN+' sh':'50%')+' → SL converted to ratchet TSL (breakeven floor) → runner leg exited'+(exitPx?' @ '+exitPx:'')+' at '+rp+' vs entry');
+          }
+          if (stt==='tp1_then_time') return mk('TIME post-TP1','#F5C842','TP1 banked; horizon time limit closed the runner (TSL was active, never hit)');
+          if (stt==='sl_hit') return mk('SL','var(--sell)','Original stop hit — TP1 never printed, so the SL was never converted to a TSL');
+          if (stt==='time_limit') return mk('TIME','#aaa','Horizon time limit exit — neither TP1 nor SL was reached');
+          if (effectiveIsSignalExit) return mk('REVERSAL','#7aaaff','Closed by an opposite-side entry-grade signal (reversal-only exit policy)');
+          if (stt==='tp1_hit') return mk('TP1 FULL','var(--buy)','Legacy full exit at TP1 (recorded before the whole-share partial-split build)');
+          if (stt==='tp2_hit') return mk('TP2','var(--buy)','Legacy TP2 exit (recorded before TP2 became reference-only)');
+          if (effectiveIsRunner) return mk('TP1 ✓ runner live','var(--buy)','TP1 partial banked; runner riding the ratchet TSL');
+          return '<span style="color:var(--m1)">—</span>';
+        })())
+        +td((function(){
+          // ── DON %: headline = giveback (favorable extreme since entry → exit/CMP),
+          //    sub-line = move beyond TP1/TP2 after those levels printed ──
+          var gd = h[rh+'DonationPct'];
           var d1 = h[rh+'Tp1DonationPct'];
           var d2 = h[rh+'Tp2DonationPct'];
-          if ((d1 == null || !isFinite(d1) || d1 <= 0.05) && (d2 == null || !isFinite(d2) || d2 <= 0.05)) return '<span style="color:var(--m1)">—</span>';
-          var parts = [];
-          if (d1 != null && isFinite(d1) && d1 > 0.05) parts.push('TP1 '+Number(d1).toFixed(1)+'%');
-          if (d2 != null && isFinite(d2) && d2 > 0.05) parts.push('TP2 '+Number(d2).toFixed(1)+'%');
-          var mx = Math.max(Number(d1)||0, Number(d2)||0);
-          var col = mx >= 5 ? 'var(--sell)' : mx >= 2 ? '#F5C842' : 'var(--m2)';
-          return '<span style="font-family:DM Mono,monospace;font-size:10px;color:'+col+'" title="Donation = market move beyond TP level after TP printed. Used to judge if TP1/TP2 were too early.">'+parts.join('<br>')+'</span>';
+          var lines = [];
+          if (gd != null && isFinite(gd)) {
+            var gcol = gd >= 5 ? 'var(--sell)' : gd >= 2 ? '#F5C842' : 'var(--m2)';
+            var fx = h[rh+'FavExtreme'];
+            lines.push('<span style="color:'+gcol+'" title="Giveback: best price since entry'+(fx?' ('+fx+')':'')+' → '+(isClosed?'exit':'current price')+'">'+Number(gd).toFixed(1)+'%</span>');
+          }
+          var tpParts = [];
+          if (d1 != null && isFinite(d1) && d1 > 0.05) tpParts.push('TP1 '+Number(d1).toFixed(1)+'%');
+          if (d2 != null && isFinite(d2) && d2 > 0.05) tpParts.push('TP2 '+Number(d2).toFixed(1)+'%');
+          if (tpParts.length) lines.push('<span style="font-size:8px;color:var(--m1)" title="Move beyond the TP level after it printed — were TP1/TP2 set too early?">'+tpParts.join(' · ')+'</span>');
+          if (!lines.length) return '<span style="color:var(--m1)">—</span>';
+          return '<span style="font-family:DM Mono,monospace;font-size:10px">'+lines.join('<br>')+'</span>';
         })())
         +td((function(){
           var ex = h[rh+'Exhaustion'];
@@ -5248,7 +5309,8 @@ function renderHist() {
       +'<th style="text-align:left;'+th+'">TP1</th>'
       +'<th style="text-align:left;'+th+'">TP2</th>'
       +'<th style="text-align:left;'+th+'">SL / TSL</th>'
-      +'<th style="text-align:left;'+th+'" title="Donation: market move beyond TP1/TP2 after the TP level printed">Don %</th>'
+      +'<th style="text-align:left;'+th+'" title="Why the trade closed — SL (no TP1), TSL (post-TP1 ratchet, with runner-leg result), TIME, or REVERSAL">Reason</th>'
+      +'<th style="text-align:left;'+th+'" title="Giveback: favorable extreme since entry → exit/CMP. Sub-line: move beyond TP1/TP2 after they printed">Don %</th>'
       +'<th style="text-align:left;'+th+'" title="Move exhaustion — Yes = RSI extreme / stretched vs MA20 / long one-way run">Exh</th>'
       +'<th style="text-align:left;'+th+'"></th>'
       +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';

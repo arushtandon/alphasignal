@@ -1071,7 +1071,41 @@ function computeMeanReversionLevels(tech, entry, isSell) {
 /** Short-horizon MEAN-REVERSION exit: bank the bounce at the channel mean/resistance
  *  (or when the fast oscillator normalises), with a fixed stop beyond the band. No
  *  trend trailing — this is a range/swing exit suited to choppy markets. */
-async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund = null, markPrice = null, liveMark = false) {
+/** ── $10k-notional WHOLE-SHARE split for the TP1 partial ─────────────────────
+ *  User rule: sell HALF the shares at TP1; when the count is odd, sell the
+ *  nearest whole number BELOW half (floor) and let the larger half ride.
+ *  Names quoted above the notional (can't fill even 1 share, e.g. ¥-quoted
+ *  large prices) → null counts + fractional 0.5 fallback so PnL math is
+ *  unchanged for them. frac = sold/total feeds the exit sim's TP1 partial. */
+function computeShareSplit(entry) {
+  const NOTIONAL = 10000;
+  const e = parseFloat(entry);
+  if (!e || !Number.isFinite(e) || e <= 0) return { total: null, sold: null, runner: null, frac: 0.5 };
+  const total = Math.floor(NOTIONAL / e);
+  if (total < 1) return { total: null, sold: null, runner: null, frac: 0.5 };
+  const sold = Math.floor(total / 2); // odd count → the SMALLER half is banked at TP1
+  return { total, sold, runner: total - sold, frac: sold / total };
+}
+
+/** ── GIVEBACK DONATION: favorable extreme since entry → exit (or CMP) ────────
+ *  Defined for EVERY trade that has bars: how much of the best price the trade
+ *  ever saw was handed back by exit time (or by now, if still open). exitMs
+ *  bounds the scan so post-exit market moves never count as giveback. */
+function computeGivebackDonation(bars, entryMs, refPx, isSell, exitMs = null) {
+  if (!Array.isArray(bars) || !bars.length || !(refPx > 0)) return null;
+  let fav = null;
+  for (const b of bars) {
+    const bt = (b.t || 0) * 1000;
+    if (bt < entryMs) continue;
+    if (exitMs && bt > exitMs) break;
+    fav = isSell ? (fav == null ? b.l : Math.min(fav, b.l)) : (fav == null ? b.h : Math.max(fav, b.h));
+  }
+  if (!(fav > 0)) return null;
+  const d = isSell ? (refPx - fav) / fav : (fav - refPx) / fav;
+  return { pct: +(Math.max(0, d) * 100).toFixed(2), fav: roundPrice(fav) };
+}
+
+async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund = null, markPrice = null, liveMark = false, partialFrac = 0.5) {
   const holdDays = Math.min(15, horizonHoldDaysServer('short')); // banks quickly
   const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
   const lastIdx = data.length - 1;
@@ -1084,37 +1118,84 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
   const markAt = (idx, fallback) => (markPrice && idx >= lastIdx) ? markPrice : fallback;
   const eTech = techAtBoundedIndex(data, weeklyAll, entryIdx);
   const lv = computeMeanReversionLevels(eTech, entry, isSell) || {};
-  const target = lv.target, stop = lv.stop;
-  const ret = px => (isSell ? (entry - px) : (px - entry)) / entry;
-  const finish = (status, exitIdx, px) => ({ ret: ret(px), status, exitIdx, tp1Hit: status === 'tp1_hit', stopLoss: stop, exitPrice: px });
-  let _yc = 0;
+  const target = lv.target;
+  let trailingSl = lv.stop;
+  // CANONICAL EXIT SPEC (applies to ALL horizons, short included): TP1 books the
+  // PARTIAL (whole-share split when supplied), the remainder rides the daily-%-move
+  // ratchet TSL (tightens only, breakeven floor post-TP1). TP2 = REFERENCE ONLY
+  // (2× TP1 distance, horizon-floored) for exit-quality analysis — never an exit.
+  const PARTIAL = (Number.isFinite(partialFrac) && partialFrac >= 0 && partialFrac < 1) ? partialFrac : 0.5;
+  let tp2 = null;
+  if (target != null && Number.isFinite(+target)) {
+    const _d1s = Math.abs(+target - entry);
+    tp2 = isSell ? entry - 2 * _d1s : entry + 2 * _d1s;
+    const _f2s = (HORIZON_MIN_PCT.short || {}).tp2 || 0.10;
+    const _floor2s = isSell ? entry * (1 - _f2s) : entry * (1 + _f2s);
+    tp2 = isSell ? Math.min(tp2, _floor2s) : Math.max(tp2, _floor2s);
+  }
+  let tp1Hit = false, realized = 0, remaining = 1.0, _yc = 0;
+  let tp2AltRet = null; // hypothetical full exit at TP2 — ANALYSIS ONLY, never an exit
+  const longRet  = px => (px - entry) / entry;
+  const shortRet = px => (entry - px) / entry;
+  const ret = px => isSell ? shortRet(px) : longRet(px);
+  const finish = (status, exitIdx, px) => ({ ret: realized + remaining * ret(px), status, exitIdx, tp1Hit, stopLoss: trailingSl, exitPrice: px, tp2Ref: tp2 != null ? tp2 : null, tp2AltRet });
   for (let j = entryIdx + 1; j <= maxJ; j++) {
     if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r));
     const bar = data[j];
-    if (!isSell) {
-      if (stop && bar.l <= stop) return finish('sl_hit', j, stop);
-      if (target && bar.h >= target) return finish('tp1_hit', j, target); // reverted to mean — banked
+    if (!tp1Hit) {
+      // Conservative intrabar precedence preserved: stop is checked BEFORE target.
+      if (!isSell && trailingSl && bar.l <= trailingSl) return finish('sl_hit', j, trailingSl);
+      if (isSell && trailingSl && bar.h >= trailingSl) return finish('sl_hit', j, trailingSl);
+      if (target && ((!isSell && bar.h >= target) || (isSell && bar.l <= target))) {
+        // TP1: book the partial, convert the stop to the breakeven-floored ratchet
+        realized += PARTIAL * ret(target);
+        remaining -= PARTIAL;
+        tp1Hit = true;
+        trailingSl = trailingSl == null ? entry : (isSell ? Math.min(trailingSl, entry) : Math.max(trailingSl, entry));
+      } else {
+        // Oscillator-normalised bank (reversion complete, in profit) — PRE-TP1 full exit only
+        const bt = techAtBoundedIndex(data, weeklyAll, j);
+        const r2 = bt.rsi2, rr = bt.rsi;
+        if (!liveMark && !isSell && bar.c > entry && ((r2 != null && r2 > 70) || rr >= 58)) return finish('signal_exit', j, bar.c);
+        if (!liveMark && isSell && bar.c < entry && ((r2 != null && r2 < 30) || rr <= 42)) return finish('signal_exit', j, bar.c);
+      }
     } else {
-      if (stop && bar.h >= stop) return finish('sl_hit', j, stop);
-      if (target && bar.l <= target) return finish('tp1_hit', j, target);
+      // TP2 reference print → freeze the hypothetical full-exit outcome (analysis only)
+      if (tp2 != null && tp2AltRet == null) {
+        if (!isSell && bar.h >= tp2) tp2AltRet = realized + remaining * longRet(tp2);
+        else if (isSell && bar.l <= tp2) tp2AltRet = realized + remaining * shortRet(tp2);
+      }
+      // POST-TP1 DAILY-%-MOVE RATCHET — identical to medium/long: favorable-day %
+      // moves the stop the same %, adverse days leave it unchanged, breakeven floor.
+      const prevClose = data[j - 1] ? data[j - 1].c : entry;
+      const dayMovePct = prevClose > 0 ? (bar.c - prevClose) / prevClose : 0;
+      if (!isSell) {
+        if (dayMovePct > 0 && trailingSl != null) trailingSl = Math.max(trailingSl, trailingSl * (1 + dayMovePct));
+        if (trailingSl == null) trailingSl = entry;
+        trailingSl = Math.max(trailingSl, entry); // never below breakeven post-TP1
+        if (bar.l <= trailingSl) return finish('tp1_then_sl', j, trailingSl);
+      } else {
+        if (dayMovePct < 0 && trailingSl != null) trailingSl = Math.min(trailingSl, trailingSl * (1 + dayMovePct));
+        if (trailingSl == null) trailingSl = entry;
+        trailingSl = Math.min(trailingSl, entry); // never above breakeven post-TP1
+        if (bar.h >= trailingSl) return finish('tp1_then_sl', j, trailingSl);
+      }
     }
-    // Oscillator-normalised exit: reversion complete, bank at close if in profit
-    const bt = techAtBoundedIndex(data, weeklyAll, j);
-    const r2 = bt.rsi2, rr = bt.rsi;
-    if (!liveMark && !isSell && bar.c > entry && ((r2 != null && r2 > 70) || rr >= 58)) return finish('signal_exit', j, bar.c);
-    if (!liveMark && isSell && bar.c < entry && ((r2 != null && r2 < 30) || rr <= 42)) return finish('signal_exit', j, bar.c);
-    if (j === maxJ) return finish(heldFull ? 'time_limit' : 'open', j, markAt(j, bar.c));
+    if (j === maxJ) {
+      const st = tp1Hit ? (heldFull ? 'tp1_then_time' : 'tp1_open') : (heldFull ? 'time_limit' : 'open');
+      return finish(st, j, markAt(j, bar.c));
+    }
   }
-  return finish('open', maxJ, markAt(maxJ, data[maxJ].c));
+  return finish(tp1Hit ? 'tp1_open' : 'open', maxJ, markAt(maxJ, data[maxJ].c));
 }
 
 /** Unified HYBRID exit simulator used by BOTH the backtest and the history P&L
  *  refresh, so reported win rates match what the live rules would have done.
  *  SHORT horizon delegates to the mean-reversion exit; medium/long book a partial
  *  at TP1 (locks a win) and ride the remainder with a wide chandelier trail. */
-async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, fund = null, markPrice = null, liveMark = false) {
+async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, fund = null, markPrice = null, liveMark = false, partialFrac = 0.5) {
   if (!data || entryIdx == null || !(entry > 0)) return null;
-  if (hz === 'short') return simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund, markPrice, liveMark);
+  if (hz === 'short') return simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund, markPrice, liveMark, partialFrac);
   const holdDays = horizonHoldDaysServer(hz);
   const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
   const lastIdx = data.length - 1;
@@ -1135,7 +1216,7 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
     const _floor2 = isSell ? entry * (1 - _f2) : entry * (1 + _f2);
     tp2 = isSell ? Math.min(tp2, _floor2) : Math.max(tp2, _floor2);
   }
-  const PARTIAL = 0.5;
+  const PARTIAL = (Number.isFinite(partialFrac) && partialFrac >= 0 && partialFrac < 1) ? partialFrac : 0.5; // whole-share TP1 fraction (default fractional 50%)
   // Chandelier multiple for the post-TP1 runner — wide so winners can actually run.
   const runK = hz === 'short' ? 3.0 : hz === 'medium' ? 4.0 : 5.5;
   let tp1Hit = false, realized = 0, remaining = 1.0, _yc = 0;
@@ -9123,7 +9204,7 @@ function migrateLegacyTightStops() {
     const tp2 = parseFloat(h[hz + 'Target2'] || h.target2 || 0) || null;
     const fixed = applyHorizonMinPctFloors(entry, tp1, tp2, sl, isSell, hz);
     h[hz + 'Target1'] = fixed.tp1;
-    h[hz + 'Target2'] = fixed.tp2; // TP2 = runner full-exit target
+    h[hz + 'Target2'] = fixed.tp2; // TP2 = REFERENCE level only (exit-quality analysis) — never an exit
     h[hz + 'StopLoss'] = fixed.sl;
     if (h.hz === hz || !h.hz) {
       h.target1 = fixed.tp1;
@@ -10241,7 +10322,7 @@ function horizonTimeLimitExceededServer(hz, entryDateOrIso) {
  * hysteresis signal-flip), so live trade outcomes match the backtest exactly.
  * Returns canonical status + blended return + representative exit price.
  */
-async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markPrice = null, liveMark = false) {
+async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markPrice = null, liveMark = false, partialFrac = 0.5) {
   if (!Array.isArray(bars) || !bars.length || !entry) return null;
   const weeklyAll = dailyToWeeklyBars(bars);
   let startIdx = -1;
@@ -10249,7 +10330,7 @@ async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markP
     if ((bars[i].t || 0) * 1000 >= entryMs) { startIdx = i; break; }
   }
   if (startIdx < 0) return null;
-  const res = await simulateHybridExit(bars, startIdx, entry, hz, isSell, weeklyAll, null, markPrice, liveMark);
+  const res = await simulateHybridExit(bars, startIdx, entry, hz, isSell, weeklyAll, null, markPrice, liveMark, partialFrac);
   if (!res) return null;
   // Preserve the hybrid engine's native status. The UI needs to distinguish
   // TP1 runner-live, TP1-then-TSL, TP1-then-time, signal exits, and SL exits.
@@ -10418,12 +10499,13 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         const tp1 = parseFloat(h[hz + 'Target1'] || h.target1 || 0) || null;
         const sl  = parseFloat(h[hz + 'StopLoss'] || h.stopLoss || 0) || null;
         if (!tp1 && !sl) continue;
-        const fixed = applyHorizonMinPctFloors(entry, tp1, null, sl, isSell, hz);
+        const tp2Cur = parseFloat(h[hz + 'Target2'] || h.target2 || 0) || null;
+        const fixed = applyHorizonMinPctFloors(entry, tp1, tp2Cur, sl, isSell, hz);
         h[hz + 'Target1'] = fixed.tp1;
-        h[hz + 'Target2'] = '';
+        h[hz + 'Target2'] = fixed.tp2; // TP2 = REFERENCE level for exit-quality analysis — NEVER an exit, never blanked
         h[hz + 'StopLoss'] = fixed.sl;
-        if (isPrimary) { h.target1 = fixed.tp1; h.target2 = ''; h.stopLoss = fixed.sl; }
-        if (isSell) { h.sellTarget1 = fixed.tp1; h.sellTarget2 = ''; h.sellStopLoss = fixed.sl; }
+        if (isPrimary) { h.target1 = fixed.tp1; h.target2 = fixed.tp2; h.stopLoss = fixed.sl; }
+        if (isSell) { h.sellTarget1 = fixed.tp1; h.sellTarget2 = fixed.tp2; h.sellStopLoss = fixed.sl; }
         rrFixed++;
       }
     }
@@ -10508,9 +10590,31 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
 
     for (const hz of hzList) {
       const st = h[hz + 'Status'];
-      if (['tp1_hit', 'tp2_hit', 'sl_hit', 'signal_exit', 'time_limit', 'tp1_then_sl', 'tp1_then_time'].includes(st)) continue;
       const entryMs = new Date(h.entryDate || h.timestamp || 0).getTime();
       const bars = ohlcvMap[h.ticker];
+      if (['tp1_hit', 'tp2_hit', 'sl_hit', 'signal_exit', 'time_limit', 'tp1_then_sl', 'tp1_then_time'].includes(st)) {
+        // CLOSED rows: one-time BACKFILL of fields added after they settled —
+        // whole-share TP1 split + giveback donation. PnL, status, levels and
+        // exit data on settled rows are NEVER touched here.
+        const entryC = parseFloat(h[hz + 'Entry'] || h.entry || 0);
+        if (entryC && (h[hz + 'SharesTotal'] === undefined || h[hz + 'SharesTotal'] === null)) {
+          const spl = computeShareSplit(entryC);
+          h[hz + 'SharesTotal'] = spl.total;
+          h[hz + 'SharesSoldTP1'] = spl.sold;
+          h[hz + 'SharesRunner'] = spl.runner;
+          rowChanged = true;
+        }
+        if (h[hz + 'DonationPct'] == null && bars && bars.length && entryC) {
+          const exitPxC = parseFloat(h[hz + 'ExitPrice'] || 0) || null;
+          const gvC = exitPxC ? computeGivebackDonation(bars, entryMs, exitPxC, isSell, h[hz + 'ExitTs'] || null) : null;
+          if (gvC) {
+            h[hz + 'DonationPct'] = gvC.pct;
+            h[hz + 'FavExtreme'] = gvC.fav;
+            rowChanged = true;
+          }
+        }
+        continue;
+      }
       // A trade entered today keeps its scan-time entry (that IS the correct entry);
       // only older rows need the historical-close repair / are eligible to flip.
       const enteredToday = new Date(entryMs).toDateString() === new Date().toDateString();
@@ -10682,7 +10786,17 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
       // flip closing for a live OPEN trade is decided above by liveSignalFlipExit on
       // the CURRENT signal, never by replaying noisy fund-less historical signals
       // (which was retroactively closing trades that are still rated Buy today).
-      const pathExit = (bars && entry) ? await simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, curr, true) : null;
+      // Whole-share TP1 split — drives BOTH the History display and the exact
+      // partial fraction the exit sim books at TP1 (floor(total/2) sold at TP1,
+      // the larger half rides the ratchet — user rule for odd counts).
+      const shareSplit = computeShareSplit(entry);
+      if (h[hz + 'SharesTotal'] !== shareSplit.total || h[hz + 'SharesSoldTP1'] !== shareSplit.sold) {
+        h[hz + 'SharesTotal'] = shareSplit.total;
+        h[hz + 'SharesSoldTP1'] = shareSplit.sold;
+        h[hz + 'SharesRunner'] = shareSplit.runner;
+        rowChanged = true;
+      }
+      const pathExit = (bars && entry) ? await simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, curr, true, shareSplit.frac) : null;
 
       // Fixed $10k notional for the $ figure. Sizing by floor(10000/entry) shares
       // collapses to 0 shares for high-priced names (e.g. ¥-denominated stocks),
@@ -10741,6 +10855,19 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         h[hz + 'Status'] = 'open';
         h[hz + 'TslActivated'] = false;
         rowChanged = true;
+      }
+      // GIVEBACK DONATION — defined for EVERY row with bars: favorable extreme
+      // since entry → exit price (if this pass closed it) or CMP (still open).
+      // A closed trade can therefore never show a blank donation again.
+      if (bars && bars.length && entry) {
+        const _closedNow = pathExit && !pathExit.open && pathExit.exit != null;
+        const _refPx = _closedNow ? pathExit.exit : curr;
+        const _gv = computeGivebackDonation(bars, entryMs, _refPx, isSell, _closedNow ? (h[hz + 'ExitTs'] || null) : null);
+        if (_gv && (h[hz + 'DonationPct'] !== _gv.pct || h[hz + 'FavExtreme'] !== _gv.fav)) {
+          h[hz + 'DonationPct'] = _gv.pct;
+          h[hz + 'FavExtreme'] = _gv.fav;
+          rowChanged = true;
+        }
       }
       h[hz + 'CurrentPrice'] = curr;
       // A row that is still genuinely open must not carry a stale exit note.
