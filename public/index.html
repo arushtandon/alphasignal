@@ -3529,8 +3529,8 @@ function renderExitQualityPerformance() {
     const label = ({
       tp1_then_sl: 'TSL after TP1',
       tp1_then_time: 'Time after TP1',
-      tp1_hit: 'Legacy full TP1',
-      tp2_hit: 'Legacy TP2',
+      tp1_hit: 'TP1 exit (re-deciding)',
+      tp2_hit: 'TP2 exit (re-deciding)',
       sl_hit: 'Stop loss',
       signal_exit: 'Signal reversal',
       time_limit: 'Time limit'
@@ -3577,7 +3577,6 @@ function renderExitQualityPerformance() {
   if (s.tp2Rate != null && s.tp2Rate < 10 && s.tp1Rate >= 40) insight.push('TP2 rarely reached ('+s.tp2Rate+'%) after TP1 — runners are stopping out before 2R; review TSL ratchet tightness.');
   if (s.avgDonation != null && s.avgDonation >= 4) insight.push('Avg giveback '+s.avgDonation+'% is high — exits may be late relative to the favorable extreme.');
   if (s.avgWin != null && s.avgLoss != null && s.avgWin < s.avgLoss) insight.push('Avg win $'+s.avgWin+' < avg loss $'+s.avgLoss+' — R:R / trail not protecting expectancy.');
-  if (s.byStatus.tp1_hit && s.byStatus.tp1_hit > s.closed * 0.25) insight.push((s.byStatus.tp1_hit)+' legacy full-TP1 exits still in history — new engine uses partial+TSL; compare cohorts separately.');
 
   el.innerHTML = '<div style="margin-bottom:12px">'
     +'<div style="font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;margin-bottom:6px">Exit quality — closed trades (model review)</div>'
@@ -5420,9 +5419,9 @@ function renderHist() {
         ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(245,200,66,0.15);color:#F5C842;font-family:DM Mono,monospace">⏳ Pending open</span>'
         : effectiveStatus==='time_limit' ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(180,180,180,0.15);color:#aaa;font-family:DM Mono,monospace">⏱ Time limit</span>'
         : effectiveIsSignalExit ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(120,170,255,0.18);color:#7aaaff;font-family:DM Mono,monospace">⇄ Signal exit</span>'
-        : effectiveIsTp2 ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.2);color:var(--buy);font-family:DM Mono,monospace">✓ TP2 Hit (legacy)</span>'
+        : effectiveIsTp2 ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.2);color:var(--buy);font-family:DM Mono,monospace" title="Re-decided under partial+TSL on the next History refresh">✓ TP2 exit</span>'
         : effectiveIsRunner ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.25);color:var(--buy);font-family:DM Mono,monospace" title="TP1 hit — ~half banked, remaining rides the trailing stop">✓ TP1 · Runner LIVE</span>'
-        : effectiveStatus === 'tp1_hit' ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(245,200,66,0.2);color:#F5C842;font-family:DM Mono,monospace" title="Legacy: old engine closed 100% at TP1. New engine uses partial + TSL.">LEGACY TP1 exit</span>'
+        : effectiveStatus === 'tp1_hit' ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(245,200,66,0.2);color:#F5C842;font-family:DM Mono,monospace" title="Re-decided under partial+TSL on the next History refresh">✓ TP1 exit</span>'
         : effectiveIsTp1 ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.15);color:var(--buy);font-family:DM Mono,monospace">✓ TP1 + TSL done</span>'
         : effectiveIsSl  ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(244,108,108,0.2);color:var(--sell);font-family:DM Mono,monospace">✗ SL Hit</span>'
         : '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(245,200,66,0.2);color:#F5C842;font-family:DM Mono,monospace">● Open</span>';
@@ -5489,8 +5488,6 @@ function renderHist() {
           if (stot == null) {
             // Price > $10k notional → fractional 1.0 unit position
             sizeLine = 'Pos: $10k (frac)';
-          } else if (stt2==='tp1_hit') {
-            sizeLine = 'Pos: '+stot+' sh · legacy full @ TP1';
           } else if (tp1Done) {
             sizeLine = 'Pos: '+stot+' sh · sold '+sold+' @ TP1 · '+runr+(isClosed?' closed':' run');
           } else {
@@ -5550,15 +5547,16 @@ function renderHist() {
           if (stt==='sl_hit') return mk('SL','var(--sell)','Original stop hit — TP1 never printed, so the SL was never converted to a TSL');
           if (stt==='time_limit') return mk('TIME','#aaa','Horizon time limit exit — neither TP1 nor SL was reached');
           if (effectiveIsSignalExit) return mk('REVERSAL','#7aaaff', storedReason || 'Closed by an opposite-side entry-grade signal (reversal-only exit policy)');
-          if (stt==='tp1_hit') return mk('LEGACY TP1','#F5C842','Old engine closed 100% at TP1 (before partial+TSL). New trades bank ~half at TP1 and trail the rest — they show as TSL / TIME post-TP1, never "TP1 FULL".');
-          if (stt==='tp2_hit') return mk('LEGACY TP2','var(--buy)','Old engine exited at TP2. TP2 is now reference-only (never an automatic exit).');
+          if (stt==='tp1_hit') return mk('TP1 exit','#F5C842','Re-decided under partial+TSL on the next History refresh — all trades bank the partial at TP1 and trail the rest.');
+          if (stt==='tp2_hit') return mk('TP2 exit','var(--buy)','Re-decided under partial+TSL on the next History refresh — TP2 is reference-only, never an exit.');
           if (effectiveIsRunner) return mk('TP1 ✓ runner live','var(--buy)','TP1 partial banked; runner riding the ratchet TSL');
           if (storedReason) return mk(String(storedReason).slice(0,18), 'var(--m2)', storedReason);
           return '<span style="color:var(--m1)">—</span>';
         })())
         +td((function(){
-          // ── DON %: giveback (fav extreme → exit/CMP) + $ giveback on $10k
-          //    + move beyond TP1/TP2 after those levels printed ──
+          // ── DON %: giveback AFTER TP1 (clock starts at the TP1 print — v145
+          //    spec; '—' until TP1 prints) + $ giveback on $10k + move beyond
+          //    TP1/TP2 after those levels printed ──
           var gd = h[rh+'DonationPct'];
           var d1 = h[rh+'Tp1DonationPct'];
           var d2 = h[rh+'Tp2DonationPct'];
@@ -5567,7 +5565,7 @@ function renderHist() {
             var gcol = gd >= 5 ? 'var(--sell)' : gd >= 2 ? '#F5C842' : 'var(--m2)';
             var fx = h[rh+'FavExtreme'];
             var gDol = +(Number(gd) / 100 * 10000).toFixed(0);
-            lines.push('<span style="color:'+gcol+'" title="Giveback: best price since entry'+(fx?' ('+fx+')':'')+' → '+(isClosed?'exit':'current price')+'">'+Number(gd).toFixed(1)+'% · $'+gDol+'</span>');
+            lines.push('<span style="color:'+gcol+'" title="Giveback after TP1: best price since TP1 printed'+(fx?' ('+fx+')':'')+' → '+(isClosed?'exit':'current price')+'. Clock starts at the TP1 print — no donation before TP1.">'+Number(gd).toFixed(1)+'% · $'+gDol+'</span>');
           }
           var tpParts = [];
           if (d1 != null && isFinite(d1) && d1 > 0.05) tpParts.push('TP1 +'+Number(d1).toFixed(1)+'%');
@@ -5602,7 +5600,7 @@ function renderHist() {
       +'<th style="text-align:left;'+th+'">TP2</th>'
       +'<th style="text-align:left;'+th+'">SL / TSL</th>'
       +'<th style="text-align:left;'+th+'" title="Why the trade closed — SL (no TP1), TSL (post-TP1 ratchet, with runner-leg result), TIME, or REVERSAL">Reason</th>'
-      +'<th style="text-align:left;'+th+'" title="Giveback: favorable extreme since entry → exit/CMP. Sub-line: move beyond TP1/TP2 after they printed">Don %</th>'
+      +'<th style="text-align:left;'+th+'" title="Giveback after TP1: favorable extreme once TP1 printed → exit/CMP. Shows — until TP1 prints. Sub-line: move beyond TP1/TP2 after they printed">Don %</th>'
       +'<th style="text-align:left;'+th+'" title="Move exhaustion — Yes = RSI extreme / stretched vs MA20 / long one-way run">Exh</th>'
       +'<th style="text-align:left;'+th+'"></th>'
       +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
@@ -5825,7 +5823,7 @@ function renderBracketPerformance() {
     +'<th style="text-align:right;'+th+'" title="Trades that banked the TP1 partial">TP1 hit</th>'
     +'<th style="text-align:right;'+th+'" title="Price reached TP2 reference level">TP2 hit</th>'
     +'<th style="text-align:right;'+th+'" title="TP1 banked and runner still riding the trailing stop">Runner (TSL)</th>'
-    +'<th style="text-align:right;'+th+'" title="Average giveback donation % (fav extreme → exit/CMP)">Avg Don %</th>'
+    +'<th style="text-align:right;'+th+'" title="Average giveback donation % (post-TP1 fav extreme → exit/CMP; only trades where TP1 printed)">Avg Don %</th>'
     +'<th style="text-align:right;'+th+'" title="Trades currently flagged with move exhaustion">Exh</th>'
     +'</tr></thead><tbody>'+tr+'</tbody></table></div>';
 }
@@ -5842,7 +5840,7 @@ function renderPerformancePanel() {
       return '<tr>'
         +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;color:var(--m2)">'+r.key+'</td>'
         +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:var(--m1)">'+r.n+'</td>'
-        +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:'+c+'">'+(r.pnl>=0?'+':'')+'$'+Math.abs(r.pnl)+'</td>'
+        +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:'+c+'">'+(r.pnl>=0?'+':'-')+'$'+Math.abs(r.pnl)+'</td>'
         +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:var(--m2)">'+r.wr+'%</td>'
         +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:'+c+'">'+(r.ret>=0?'+':'')+r.ret+'%</td>'
         +'</tr>';

@@ -1087,22 +1087,36 @@ function computeShareSplit(entry) {
   return { total, sold, runner: total - sold, frac: sold / total };
 }
 
-/** ── GIVEBACK DONATION: favorable extreme since entry → exit (or CMP) ────────
- *  Defined for EVERY trade that has bars: how much of the best price the trade
- *  ever saw was handed back by exit time (or by now, if still open). exitMs
- *  bounds the scan so post-exit market moves never count as giveback. */
-function computeGivebackDonation(bars, entryMs, refPx, isSell, exitMs = null) {
+/** ── GIVEBACK DONATION: favorable extreme from startMs → exit (or CMP) ───────
+ *  USER SPEC (v145): the donation clock starts at the TP1 PRINT, not at entry —
+ *  pass the TP1-print epoch as startMs (see findTp1PrintMs). Rows where TP1
+ *  never printed have NO donation (null → UI shows —). exitMs bounds the scan
+ *  so post-exit market moves never count as giveback. */
+function computeGivebackDonation(bars, startMs, refPx, isSell, exitMs = null) {
   if (!Array.isArray(bars) || !bars.length || !(refPx > 0)) return null;
   let fav = null;
   for (const b of bars) {
     const bt = (b.t || 0) * 1000;
-    if (bt < entryMs) continue;
+    if (bt < startMs) continue;
     if (exitMs && bt > exitMs) break;
     fav = isSell ? (fav == null ? b.l : Math.min(fav, b.l)) : (fav == null ? b.h : Math.max(fav, b.h));
   }
   if (!(fav > 0)) return null;
   const d = isSell ? (refPx - fav) / fav : (fav - refPx) / fav;
   return { pct: +(Math.max(0, d) * 100).toFixed(2), fav: roundPrice(fav) };
+}
+
+/** First bar on/after entry that PRINTS the stored TP1 level → its epoch ms.
+ *  Null when TP1 never printed — in which case no donation clock exists. */
+function findTp1PrintMs(bars, entryMs, tp1, isSell) {
+  if (!Array.isArray(bars) || !bars.length || !(tp1 > 0)) return null;
+  for (const b of bars) {
+    const bt = (b.t || 0) * 1000;
+    if (bt < entryMs) continue;
+    if (!isSell && b.h >= tp1) return bt;
+    if (isSell && b.l <= tp1) return bt;
+  }
+  return null;
 }
 
 async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund = null, markPrice = null, liveMark = false, partialFrac = 0.5) {
@@ -8843,21 +8857,24 @@ app.get('/api/earnings/:symbol', async (req, res) => {
 });
 
 async function pickDailyWeeklyForAnalyze(sym) {
-  /** Prefer 2y first (fast + enough for signals). Only escalate to 5y/max when thin. */
+  /** Prefer 5y first so Analyze walk-forward matches the model's 5–6y backtest
+   *  window (BACKTEST_WINDOW_BARS = 1260). One primary round trip for most listings;
+   *  only if thin, probe remaining ranges IN PARALLEL (avoids the old serial 6-hop). */
   const MIN = 15;
-  const ranges = ['2y', '5y', '12mo', 'max', '6mo', '3mo'];
-  let bestDaily = null;
-  for (const range of ranges) {
-    const daily = await fetchOHLCV(sym, range, '1d');
-    if (daily && daily.length >= MIN && (!bestDaily || daily.length > bestDaily.length)) {
-      bestDaily = daily;
-      // 2y (~500 bars) is enough for indicators + a 1y walk-forward backtest.
-      if (daily.length >= 400) break;
-    }
+  const NEED = Math.min(BACKTEST_WINDOW_BARS, 1000); // enough for ~5y walk-forward
+  const primary = await fetchOHLCV(sym, '5y', '1d').catch(() => null);
+  if (primary && primary.length >= NEED) {
+    return { daily: primary, weekly: dailyToWeeklyBars(primary) };
+  }
+  let bestDaily = (primary && primary.length >= MIN) ? primary : null;
+  const rest = await Promise.all(
+    ['max', '2y', '12mo', '6mo', '3mo'].map(r => fetchOHLCV(sym, r, '1d').catch(() => null))
+  );
+  for (const d of rest) {
+    if (d && d.length >= MIN && (!bestDaily || d.length > bestDaily.length)) bestDaily = d;
   }
   if (!bestDaily || bestDaily.length < MIN) return null;
-  const weekly = dailyToWeeklyBars(bestDaily);
-  return { daily: bestDaily, weekly };
+  return { daily: bestDaily, weekly: dailyToWeeklyBars(bestDaily) };
 }
 
 // ── Single-ticker / batch analysis (Claude + server-computed levels) ───────
@@ -9759,14 +9776,13 @@ app.post('/api/analyze', async (req, res) => {
     const fund  = fundBySym[sym];
     const ohlcv = ohlcvBySym[sym];
     if (!tech) continue;
-    // Fast path: one short-horizon walk-forward on ~1y window. Full 3-horizon
-    // 5y backtests made single-ticker Analyze take tens of seconds.
+    // Walk-forward on the same ~5y window as production backtests
+    // (BACKTEST_WINDOW_BARS). One short-horizon pass with a modest entryStep
+    // keeps Analyze responsive; medium/long reuse those stats as a hint.
     let btShort = null, btMedium = null, btLong = null;
     try {
-      const btOpts = { windowBars: 252, entryStep: 3 };
+      const btOpts = { windowBars: BACKTEST_WINDOW_BARS, entryStep: 3 };
       btShort = ohlcv ? await backtestSignal(ohlcv, 'short', weeklyBySym[sym], fund, btOpts) : null;
-      // Medium/long reuse short stats as a hint when history is thin; full
-      // multi-horizon backtest stays on the dashboard / dedicated endpoint.
       btMedium = btShort;
       btLong = btShort;
     } catch (e) {
@@ -10574,10 +10590,20 @@ const SOFT_CLOSE_FLAG = path.join(path.dirname(HISTORY_FILE), 'soft_close_remedi
 let _softCloseRemediated = false;
 try { _softCloseRemediated = fs.existsSync(SOFT_CLOSE_FLAG); } catch (_) {}
 // (entry repair is now always-on per-trade via h.entryFinalized — no boot flag)
-// One-time-per-boot flag: re-floor still-OPEN trades to the v7.9.6 reward:risk model
-// (TP1 ≥ minRR × stop distance). Earlier picks used a 0.62× target that sat closer
-// than the stop; this widens TP1/SL on live positions so displayed levels match.
+// One-time re-floor of still-OPEN trades to the v7.9.6 reward:risk model
+// (TP1 ≥ minRR × stop distance). PERSISTED on the data disk like the soft-close
+// flag — the old per-boot boolean re-ran on every deploy and kept rewriting
+// live-row levels (and, before v144, kept re-blanking the TP2 reference).
+const RR_REFLOOR_FLAG = path.join(path.dirname(HISTORY_FILE), 'rr_refloor_v2.flag');
 let _rrRefloored = false;
+try { _rrRefloored = fs.existsSync(RR_REFLOOR_FLAG); } catch (_) {}
+
+// Persistent one-time flag: fold ALL old full-exit-at-TP1 / TP2-exit rows into
+// the canonical partial+TSL regime (reopened once inside refresh-pnl below,
+// then the sim re-decides them; the disk flag guarantees it never repeats).
+const TP1FULL_FLAG = path.join(path.dirname(HISTORY_FILE), 'tp1full_remediated.flag');
+let _tp1FullRemediated = false;
+try { _tp1FullRemediated = fs.existsSync(TP1FULL_FLAG); } catch (_) {}
 
 // POST /api/history/refresh-pnl — server-side trailing SL + signal-flip exit + PnL
 app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
@@ -10632,6 +10658,35 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
     if (reopened) saveHistoryFile(tradeHistory);
   }
 
+  // ONE-TIME (persistent): ALL history lives under the partial+TSL regime —
+  // there is no separate old-engine cohort. Rows the old engine closed 100% at
+  // TP1 (`tp1_hit`) or at TP2 (`tp2_hit`) are reopened exactly once so the
+  // canonical sim re-decides them (TP1 books the whole-share partial, the
+  // remainder rides the ratchet TSL). The disk flag makes this unrepeatable, so
+  // closed history is frozen again immediately after this single pass.
+  if (!_tp1FullRemediated) {
+    let tp1Reopened = 0;
+    for (const h of tradeHistory) {
+      if (!(h.action === 'Buy' || h.action === 'Sell')) continue;
+      const hzL = h.hz ? [h.hz] : ['short', 'medium', 'long'];
+      for (const hz of hzL) {
+        const s = h[hz + 'Status'];
+        if (s !== 'tp1_hit' && s !== 'tp2_hit') continue;
+        h[hz + 'Status'] = 'open';
+        h[hz + 'ExitPrice'] = undefined;
+        h[hz + 'ExitTs'] = undefined;
+        h[hz + 'ExitReason'] = '';
+        h[hz + 'TslActivated'] = false;
+        h[hz + 'DonationV'] = undefined; // donation re-stamps after re-decision
+        if ((h.hz || 'short') === hz) h.status = 'open';
+        tp1Reopened++;
+      }
+    }
+    _tp1FullRemediated = true;
+    try { fs.writeFileSync(TP1FULL_FLAG, new Date().toISOString()); } catch (_) {}
+    if (tp1Reopened) { saveHistoryFile(tradeHistory); console.log('Partial+TSL fold-in: reopened', tp1Reopened, 'full-TP1/TP2 rows for re-decision'); }
+  }
+
   // One-time R:R re-floor (v7.9.6): widen TP1/SL on still-OPEN trades to the new
   // reward:risk discipline. Entry is NEVER changed (frozen); closed/settled rows
   // keep their historical levels. Fixes legacy picks whose stop met the floor but
@@ -10664,6 +10719,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
       }
     }
     _rrRefloored = true;
+    try { fs.writeFileSync(RR_REFLOOR_FLAG, new Date().toISOString()); } catch (_) {}
     if (rrFixed) { saveHistoryFile(tradeHistory); console.log('R:R re-floor (v7.9.6): adjusted', rrFixed, 'open rows'); }
   }
 
@@ -10676,7 +10732,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
     const hz = h.hz || 'short';
     const s = h[hz + 'Status'] || h.status;
     if (!['tp1_hit', 'tp2_hit', 'sl_hit', 'signal_exit', 'time_limit', 'tp1_then_sl', 'tp1_then_time'].includes(s)) return false;
-    return h[hz + 'DonationPct'] == null
+    return h[hz + 'DonationV'] !== 2 // v145 TP1-clock donation not yet stamped
       || h[hz + 'Tp2Hit'] == null
       || h[hz + 'SharesTotal'] == null
       || !h[hz + 'SectorTrend'];
@@ -10804,14 +10860,18 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
               }
             }
           }
-          if (h[hz + 'DonationPct'] == null) {
+          if (h[hz + 'DonationV'] !== 2) {
+            // v145: donation clock starts at the TP1 PRINT (user spec). This also
+            // RE-stamps rows the v144 build measured from entry — the version
+            // marker forces exactly one recompute, then the value is frozen.
             const exitPxC = parseFloat(h[hz + 'ExitPrice'] || 0) || null;
-            const gvC = exitPxC ? computeGivebackDonation(bars, entryMs, exitPxC, isSell, h[hz + 'ExitTs'] || null) : null;
-            if (gvC) {
-              h[hz + 'DonationPct'] = gvC.pct;
-              h[hz + 'FavExtreme'] = gvC.fav;
-              rowChanged = true;
-            }
+            const tp1LvC = parseFloat(h[hz + 'Target1'] || h.target1 || 0) || null;
+            const tp1MsC = tp1LvC ? findTp1PrintMs(bars, entryMs, tp1LvC, isSell) : null;
+            const gvC = (exitPxC && tp1MsC) ? computeGivebackDonation(bars, tp1MsC, exitPxC, isSell, h[hz + 'ExitTs'] || null) : null;
+            h[hz + 'DonationPct'] = gvC ? gvC.pct : null; // null = TP1 never printed → no donation concept
+            h[hz + 'FavExtreme'] = gvC ? gvC.fav : null;
+            h[hz + 'DonationV'] = 2;
+            rowChanged = true;
           }
         }
         // Sector trend for closed rows (was only computed on open path).
@@ -10825,11 +10885,6 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
             }
           }
         } catch (_) {}
-        // Clarify legacy full-exit-at-TP1 reason text.
-        if (st === 'tp1_hit' && (!h[hz + 'ExitReason'] || h[hz + 'ExitReason'] === 'TP1 target hit')) {
-          h[hz + 'ExitReason'] = 'Legacy full exit at TP1 (pre partial+TSL engine)';
-          rowChanged = true;
-        }
         continue;
       }
       // A trade entered today keeps its scan-time entry (that IS the correct entry);
@@ -11073,16 +11128,21 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         h[hz + 'TslActivated'] = false;
         rowChanged = true;
       }
-      // GIVEBACK DONATION — defined for EVERY row with bars: favorable extreme
-      // since entry → exit price (if this pass closed it) or CMP (still open).
-      // A closed trade can therefore never show a blank donation again.
+      // GIVEBACK DONATION — v145 spec: the clock starts at the TP1 PRINT.
+      // Favorable extreme AFTER TP1 printed → exit price (if this pass closed it)
+      // or CMP (still open). Rows where TP1 never printed carry null (UI: —).
       if (bars && bars.length && entry) {
+        const _tp1Lv = parseFloat(h[hz + 'Target1'] || h.target1 || 0) || null;
+        const _tp1Ms = _tp1Lv ? findTp1PrintMs(bars, entryMs, _tp1Lv, isSell) : null;
         const _closedNow = pathExit && !pathExit.open && pathExit.exit != null;
         const _refPx = _closedNow ? pathExit.exit : curr;
-        const _gv = computeGivebackDonation(bars, entryMs, _refPx, isSell, _closedNow ? (h[hz + 'ExitTs'] || null) : null);
-        if (_gv && (h[hz + 'DonationPct'] !== _gv.pct || h[hz + 'FavExtreme'] !== _gv.fav)) {
-          h[hz + 'DonationPct'] = _gv.pct;
-          h[hz + 'FavExtreme'] = _gv.fav;
+        const _gv = _tp1Ms ? computeGivebackDonation(bars, _tp1Ms, _refPx, isSell, _closedNow ? (h[hz + 'ExitTs'] || null) : null) : null;
+        const _pct = _gv ? _gv.pct : null;
+        const _fav = _gv ? _gv.fav : null;
+        if (h[hz + 'DonationPct'] !== _pct || h[hz + 'FavExtreme'] !== _fav || h[hz + 'DonationV'] !== 2) {
+          h[hz + 'DonationPct'] = _pct;
+          h[hz + 'FavExtreme'] = _fav;
+          h[hz + 'DonationV'] = 2;
           rowChanged = true;
         }
       }
