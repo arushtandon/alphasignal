@@ -6825,6 +6825,11 @@ async function addTradesToHistory(trades) {
   if (!Array.isArray(trades) || !trades.length) {
     return { accepted: 0, skipped: 0, total: tradeHistory.length };
   }
+  // Boundary guard: browsers can re-upload PRE-fold-in localStorage rows after a
+  // deploy — sanitize extinct full-TP1/TP2 statuses on ingest so they can never
+  // re-enter as closed rows (they reopen and the sim re-decides them).
+  const foldedIn = normalizeExtinctStatuses(trades);
+  if (foldedIn) console.log('History ingest: folded', foldedIn, 'stale full-TP1/TP2 rows into partial+TSL');
   const todayStr = new Date().toDateString();
   const keyOf = (t) => {
     const hz = t.hz || 'short';
@@ -6918,7 +6923,8 @@ app.post('/api/history/update-pnl', express.json(), (req, res) => {
       ['short','medium','long'].forEach(hz => {
         if(u[hz+'PnlDollar'] !== undefined) h[hz+'PnlDollar'] = u[hz+'PnlDollar'];
         if(u[hz+'PnlPct']    !== undefined) h[hz+'PnlPct']    = u[hz+'PnlPct'];
-        if(u[hz+'Status']    !== undefined) h[hz+'Status']     = u[hz+'Status'];
+        // Extinct statuses (old full-exit engine) are never accepted from clients.
+        if(u[hz+'Status']    !== undefined && u[hz+'Status'] !== 'tp1_hit' && u[hz+'Status'] !== 'tp2_hit') h[hz+'Status'] = u[hz+'Status'];
         if (u[hz + 'Status'] === 'sl_hit') setSLCooldown(h.ticker, hz);
       });
       if(u.currentPrice !== undefined) h.currentPrice = u.currentPrice;
@@ -9776,13 +9782,15 @@ app.post('/api/analyze', async (req, res) => {
     const fund  = fundBySym[sym];
     const ohlcv = ohlcvBySym[sym];
     if (!tech) continue;
-    // Walk-forward on the same ~5y window as production backtests
+    // Fast path: one short-horizon walk-forward on the ~5y window
     // (BACKTEST_WINDOW_BARS). One short-horizon pass with a modest entryStep
-    // keeps Analyze responsive; medium/long reuse those stats as a hint.
+    // keeps Analyze responsive; full 3-horizon stays on the dashboard path.
     let btShort = null, btMedium = null, btLong = null;
     try {
       const btOpts = { windowBars: BACKTEST_WINDOW_BARS, entryStep: 3 };
       btShort = ohlcv ? await backtestSignal(ohlcv, 'short', weeklyBySym[sym], fund, btOpts) : null;
+      // Medium/long reuse short stats as a hint when history is thin; full
+      // multi-horizon backtest stays on the dashboard / dedicated endpoint.
       btMedium = btShort;
       btLong = btShort;
     } catch (e) {
@@ -10598,12 +10606,35 @@ const RR_REFLOOR_FLAG = path.join(path.dirname(HISTORY_FILE), 'rr_refloor_v2.fla
 let _rrRefloored = false;
 try { _rrRefloored = fs.existsSync(RR_REFLOOR_FLAG); } catch (_) {}
 
-// Persistent one-time flag: fold ALL old full-exit-at-TP1 / TP2-exit rows into
-// the canonical partial+TSL regime (reopened once inside refresh-pnl below,
-// then the sim re-decides them; the disk flag guarantees it never repeats).
-const TP1FULL_FLAG = path.join(path.dirname(HISTORY_FILE), 'tp1full_remediated.flag');
-let _tp1FullRemediated = false;
-try { _tp1FullRemediated = fs.existsSync(TP1FULL_FLAG); } catch (_) {}
+/** tp1_hit / tp2_hit are EXTINCT statuses — the engine can no longer produce
+ *  them (ALL trades live under the partial+TSL regime). Any appearance means
+ *  STALE data: typically a browser re-uploading pre-fold-in localStorage rows
+ *  via /api/history/add after a deploy. A one-time disk flag CANNOT hold this
+ *  invariant (the stale rows arrive AFTER the flag burns and then stick — they
+ *  showed in Realised with a live runner missing from Live, and were wrongly
+ *  counted as closed wins). So the fold-in is enforced at EVERY boundary:
+ *  ingest, update-pnl and each refresh pass. Legitimate closed rows are never
+ *  touched — the sim simply cannot emit these two statuses anymore. */
+function normalizeExtinctStatuses(rows) {
+  let n = 0;
+  for (const h of rows || []) {
+    if (!h || !(h.action === 'Buy' || h.action === 'Sell')) continue;
+    const hzL = h.hz ? [h.hz] : ['short', 'medium', 'long'];
+    for (const hz of hzL) {
+      const s = h[hz + 'Status'];
+      if (s !== 'tp1_hit' && s !== 'tp2_hit') continue;
+      h[hz + 'Status'] = 'open';
+      h[hz + 'ExitPrice'] = undefined;
+      h[hz + 'ExitTs'] = undefined;
+      h[hz + 'ExitReason'] = '';
+      h[hz + 'TslActivated'] = false;
+      h[hz + 'DonationV'] = undefined; // donation re-stamps after re-decision
+      if ((h.hz || 'short') === hz) h.status = 'open';
+      n++;
+    }
+  }
+  return n;
+}
 
 // POST /api/history/refresh-pnl — server-side trailing SL + signal-flip exit + PnL
 app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
@@ -10658,33 +10689,12 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
     if (reopened) saveHistoryFile(tradeHistory);
   }
 
-  // ONE-TIME (persistent): ALL history lives under the partial+TSL regime —
-  // there is no separate old-engine cohort. Rows the old engine closed 100% at
-  // TP1 (`tp1_hit`) or at TP2 (`tp2_hit`) are reopened exactly once so the
-  // canonical sim re-decides them (TP1 books the whole-share partial, the
-  // remainder rides the ratchet TSL). The disk flag makes this unrepeatable, so
-  // closed history is frozen again immediately after this single pass.
-  if (!_tp1FullRemediated) {
-    let tp1Reopened = 0;
-    for (const h of tradeHistory) {
-      if (!(h.action === 'Buy' || h.action === 'Sell')) continue;
-      const hzL = h.hz ? [h.hz] : ['short', 'medium', 'long'];
-      for (const hz of hzL) {
-        const s = h[hz + 'Status'];
-        if (s !== 'tp1_hit' && s !== 'tp2_hit') continue;
-        h[hz + 'Status'] = 'open';
-        h[hz + 'ExitPrice'] = undefined;
-        h[hz + 'ExitTs'] = undefined;
-        h[hz + 'ExitReason'] = '';
-        h[hz + 'TslActivated'] = false;
-        h[hz + 'DonationV'] = undefined; // donation re-stamps after re-decision
-        if ((h.hz || 'short') === hz) h.status = 'open';
-        tp1Reopened++;
-      }
-    }
-    _tp1FullRemediated = true;
-    try { fs.writeFileSync(TP1FULL_FLAG, new Date().toISOString()); } catch (_) {}
-    if (tp1Reopened) { saveHistoryFile(tradeHistory); console.log('Partial+TSL fold-in: reopened', tp1Reopened, 'full-TP1/TP2 rows for re-decision'); }
+  // ALWAYS-ON: fold any extinct tp1_hit/tp2_hit rows back into partial+TSL so
+  // the sim re-decides them this pass. Idempotent — legitimate rows can never
+  // carry these statuses, so a clean history is a no-op here.
+  {
+    const foldN = normalizeExtinctStatuses(tradeHistory);
+    if (foldN) { saveHistoryFile(tradeHistory); console.log('Partial+TSL fold-in: reopened', foldN, 'stale full-TP1/TP2 rows'); }
   }
 
   // One-time R:R re-floor (v7.9.6): widen TP1/SL on still-OPEN trades to the new
@@ -11101,7 +11111,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
           time_limit: 'Horizon time limit exit'
         };
         h[hz + 'ExitReason'] = exitReasonMap[pathExit.status] || pathExit.status || '';
-        if (!pathExit.open && pathExit.exit != null) h[hz + 'ExitPrice'] = pathExit.exit;
+        if (!pathExit.open && pathExit.exit != null) h[hz + 'ExitPrice'] = roundPrice(pathExit.exit);
         // Exit timestamp = the exit BAR's session (drives weekly/monthly performance)
         const _fullExit = ['tp1_then_sl','tp1_then_time','sl_hit','time_limit','signal_exit','tp2_hit','tp1_hit'].includes(pathExit.status);
         if (_fullExit && !h[hz + 'ExitTs']) {
