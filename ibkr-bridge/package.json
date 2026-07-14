@@ -1,0 +1,17 @@
+{
+  "name": "alphasignal-ibkr-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Polls AlphaSignal trade events and places IBKR paper bracket orders via IB Gateway / TWS",
+  "main": "bridge.js",
+  "scripts": {
+    "start": "node bridge.js",
+    "dry-run": "IBKR_DRY_RUN=1 node bridge.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@stoqey/ib": "^1.5.5"
+  }
+}

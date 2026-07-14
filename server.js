@@ -6361,10 +6361,10 @@ async function generateServerPicksFromShortlist(opts = {}) {
       const alreadyLong  = hasOpenTradeInDirection(r.ticker, false);
       const alreadyShort = hasOpenTradeInDirection(r.ticker, true);
       for (const hz of HZS) {
-        const buyOk = r[hz + 'Action'] === 'Buy' && (r[hz + 'Score'] || 0) >= 62
+        const buyOk = bracketEnabled('buy', hz) && r[hz + 'Action'] === 'Buy' && (r[hz + 'Score'] || 0) >= 62
           && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r, hz) && !alreadyLong;
         if (buyOk && (r[hz + 'Score'] || 0) > bBuyScore) { bBuyScore = r[hz + 'Score'] || 0; bBuyHz = hz; }
-        const sellOk = SELL_PICKS_ENABLED && r[hz + 'Action'] === 'Sell' && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r, hz) && !alreadyShort;
+        const sellOk = bracketEnabled('sell', hz) && SELL_PICKS_ENABLED && r[hz + 'Action'] === 'Sell' && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r, hz) && !alreadyShort;
         if (sellOk && (r[hz + 'SellScore'] || 0) > bSellScore) { bSellScore = r[hz + 'SellScore'] || 0; bSellHz = hz; }
       }
       if (bBuyHz) buyAssign[bBuyHz].push(r);
@@ -6908,6 +6908,10 @@ async function addTradesToHistory(trades) {
       }
     }
     accepted.push(trade);
+    // IBKR feed: brand-new entries only (not re-records of open rows)
+    if (!prev) {
+      try { emitTradeEvent('entry', tradeEventSnapshot(trade, hz)); } catch (_) {}
+    }
   }
 
   tradeHistory.unshift(...accepted);
@@ -9033,6 +9037,22 @@ const HORIZON_PCT = {
 // the fade path; acceptance = WR ≥55% or avg ≥+0.30%/trade with PF ≥1.5.
 const SELL_PICKS_ENABLED = process.env.SELL_PICKS_ENABLED !== '0'; // default ON — sell side redesigned (fade shorts + bear-regime breakdowns); set 0 to disable
 
+// Bracket acceptance gates (v143). Latest run (2026-07-14, 30 liquid US, window=252):
+//   PASS: sell:short, buy:medium, buy:long
+//   FAIL: sell:medium, sell:long, buy:short
+// Override with DISABLED_BRACKETS= (empty) to re-enable all, or a custom comma list.
+const DISABLED_BRACKETS = new Set(
+  String(process.env.DISABLED_BRACKETS != null
+    ? process.env.DISABLED_BRACKETS
+    : 'sell:medium,sell:long,buy:short')
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean)
+);
+function bracketEnabled(side, hz) {
+  return !DISABLED_BRACKETS.has(`${String(side).toLowerCase()}:${String(hz).toLowerCase()}`);
+}
+
 const HORIZON_MIN_PCT = {
   short:  { sl: 0.030, tp1: 0.060, tp2: 0.100, minRR: 1.8 },
   medium: { sl: 0.080, tp1: 0.150, tp2: 0.230, minRR: 1.85 },
@@ -10738,6 +10758,114 @@ function auditLog(event, details) {
     fs.appendFileSync(AUDIT_LOG_FILE, JSON.stringify({ t: new Date().toISOString(), event, ...(details || {}) }) + '\n');
   } catch (_) {}
 }
+
+// ── IBKR PAPER BRIDGE: TRADE EVENT FEED ──────────────────────────────────────
+// AlphaSignal stays the signal engine. A small bridge next to IB Gateway / TWS
+// polls GET /api/ibkr/events and places native bracket orders. Events are
+// append-only on the data disk so deploys don't lose the cursor.
+const TRADE_EVENTS_FILE = path.join(path.dirname(HISTORY_FILE), 'trade_events.jsonl');
+let _tradeEventSeq = 0;
+try {
+  if (fs.existsSync(TRADE_EVENTS_FILE)) {
+    const lines = fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean);
+    if (lines.length) {
+      try { _tradeEventSeq = Number(JSON.parse(lines[lines.length - 1]).seq) || lines.length; }
+      catch (_) { _tradeEventSeq = lines.length; }
+    }
+  }
+} catch (_) {}
+
+function tradeEventSnapshot(h, hz, extra) {
+  const keyDay = new Date(h.entryDate || h.timestamp || Date.now()).toDateString();
+  return {
+    ticker: h.ticker,
+    name: h.name || h.ticker,
+    hz: hz || h.hz || 'short',
+    side: String(h.action || '').toLowerCase() === 'sell' ? 'sell' : 'buy',
+    entry: parseFloat(h[(hz || h.hz || 'short') + 'Entry'] || h.entry) || null,
+    tp1: parseFloat(h[(hz || h.hz || 'short') + 'Target1'] || h.target1) || null,
+    tp2: parseFloat(h[(hz || h.hz || 'short') + 'Target2'] || h.target2) || null,
+    sl: parseFloat(h[(hz || h.hz || 'short') + 'StopLoss'] || h.stopLoss) || null,
+    trailSl: h[(hz || h.hz || 'short') + 'LiveTrailSL'] != null
+      ? parseFloat(h[(hz || h.hz || 'short') + 'LiveTrailSL']) : null,
+    sharesTotal: h[(hz || h.hz || 'short') + 'SharesTotal'] ?? null,
+    sharesSoldTp1: h[(hz || h.hz || 'short') + 'SharesSoldTP1'] ?? null,
+    sharesRunner: h[(hz || h.hz || 'short') + 'SharesRunner'] ?? null,
+    status: h[(hz || h.hz || 'short') + 'Status'] || h.status || null,
+    exitPrice: h[(hz || h.hz || 'short') + 'ExitPrice'] != null
+      ? parseFloat(h[(hz || h.hz || 'short') + 'ExitPrice']) : null,
+    pnlDollar: h[(hz || h.hz || 'short') + 'PnlDollar'] ?? null,
+    entryDate: h.entryDate || h.timestamp || null,
+    key: `${h.ticker}|${hz || h.hz || 'short'}|${keyDay}`,
+    ...(extra || {})
+  };
+}
+
+function emitTradeEvent(type, payload) {
+  if (process.env.IBKR_EVENTS_ENABLED === '0') return null;
+  _tradeEventSeq += 1;
+  const evt = { seq: _tradeEventSeq, t: new Date().toISOString(), type, ...(payload || {}) };
+  try {
+    fs.appendFileSync(TRADE_EVENTS_FILE, JSON.stringify(evt) + '\n');
+  } catch (e) {
+    console.warn('trade event write failed:', e.message);
+  }
+  auditLog('trade_event', { type, seq: evt.seq, ticker: payload && payload.ticker, hz: payload && payload.hz });
+  return evt;
+}
+
+function readTradeEvents(sinceSeq, limit) {
+  const since = Math.max(0, Number(sinceSeq) || 0);
+  const lim = Math.min(Math.max(1, Number(limit) || 200), 2000);
+  try {
+    const lines = fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean);
+    const out = [];
+    for (const line of lines) {
+      try {
+        const e = JSON.parse(line);
+        if ((e.seq || 0) > since) out.push(e);
+      } catch (_) { /* skip */ }
+    }
+    return out.slice(0, lim);
+  } catch (_) {
+    return [];
+  }
+}
+
+function ibkrEventsAuthorized(req) {
+  const want = process.env.IBKR_EVENTS_TOKEN || '';
+  if (!want) return true; // open when no token configured (paper/dev)
+  const got = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+    || String(req.query.token || '');
+  return got && got === want;
+}
+
+app.get('/api/ibkr/events', (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const since = parseInt(req.query.since, 10) || 0;
+  const limit = parseInt(req.query.limit, 10) || 200;
+  const events = readTradeEvents(since, limit);
+  res.json({
+    ok: true,
+    latestSeq: _tradeEventSeq,
+    since,
+    count: events.length,
+    events,
+    note: 'Poll with since=<last seq>. Types: entry, entry_finalized, tp1_partial, tsl_update, exit'
+  });
+});
+
+app.get('/api/ibkr/status', (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  res.json({
+    ok: true,
+    latestSeq: _tradeEventSeq,
+    eventsEnabled: process.env.IBKR_EVENTS_ENABLED !== '0',
+    tokenRequired: !!process.env.IBKR_EVENTS_TOKEN,
+    paperPorts: { tws: 7497, gateway: 4002 }
+  });
+});
+
 app.get('/api/history/audit', (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 200, 1000);
@@ -11250,6 +11378,12 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         h[hz + 'ExitPrice'] = curr;
         h[hz + 'ExitReason'] = 'Signal → ' + flip.reason;
         h[hz + 'TslActivated'] = false;
+        if (!h[hz + 'ExitTs']) h[hz + 'ExitTs'] = Date.now();
+        if (!h[hz + 'SettledTs']) {
+          h[hz + 'SettledTs'] = Date.now();
+          auditLog('trade_settled', { ticker: h.ticker, hz, status: 'signal_exit', pnl: h[hz + 'PnlDollar'], exit: curr });
+          try { emitTradeEvent('exit', tradeEventSnapshot(h, hz, { exitReason: h[hz + 'ExitReason'] })); } catch (_) {}
+        }
         rowChanged = true;
         signalExits++;
         continue;
@@ -11276,6 +11410,9 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
       // which made the $ PnL show $0 even when the % was non-zero.
       const NOTIONAL = 10000;
       if (pathExit) {
+        const prevTp1 = !!h[hz + 'Tp1Hit'];
+        const prevTsl = h[hz + 'LiveTrailSL'];
+        const prevSettled = !!h[hz + 'SettledTs'];
         // res.ret is already directional (profit>0 for both long & short) and
         // already blends the TP1 partial — use it directly, don't re-apply `dir`.
         h[hz + 'PnlPct'] = +(pathExit.ret * 100).toFixed(2);
@@ -11320,6 +11457,18 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         }
         if (pathExit.stopLoss) h[hz + 'StopLoss'] = pathExit.stopLoss;
         if (pathExit.status === 'sl_hit') setSLCooldown(h.ticker, hz);
+        // IBKR lifecycle edges (once each)
+        try {
+          if (!prevTp1 && pathExit.tp1Hit) {
+            emitTradeEvent('tp1_partial', tradeEventSnapshot(h, hz));
+          }
+          if (h[hz + 'LiveTrailSL'] != null && h[hz + 'LiveTrailSL'] !== prevTsl) {
+            emitTradeEvent('tsl_update', tradeEventSnapshot(h, hz, { prevTrailSl: prevTsl }));
+          }
+          if (_fullExit && !prevSettled) {
+            emitTradeEvent('exit', tradeEventSnapshot(h, hz, { exitReason: h[hz + 'ExitReason'] }));
+          }
+        } catch (_) {}
         rowChanged = true;
       } else if (horizonTimeLimitExceededServer(hz, h.entryDate || h.timestamp)) {
         const pct = ((curr - entry) / entry) * dir;
@@ -11333,6 +11482,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         if (!h[hz + 'SettledTs']) {
           h[hz + 'SettledTs'] = Date.now();
           auditLog('trade_settled', { ticker: h.ticker, hz, status: 'time_limit', pnl: h[hz + 'PnlDollar'], exit: curr });
+          try { emitTradeEvent('exit', tradeEventSnapshot(h, hz, { exitReason: 'Horizon time limit exit' })); } catch (_) {}
         }
         rowChanged = true;
       } else if (st !== 'time_limit' && st !== 'sl_hit') {
@@ -11443,48 +11593,122 @@ app.get('/api/institutional-flow/:symbol', async (req, res) => {
 });
 
 
-// GET /api/backtest/medium-sell?tickers=A,B,C&window=180&side=sell&hz=medium
-// Replays the CURRENT signal logic (incl. the new timing/exhaustion guards) over
-// recent history and reports per-ticker + aggregate stats. Defaults to the sell
-// side on the medium horizon across the scan shortlist (capped for runtime).
+// GET /api/backtest/medium-sell?tickers=A,B,C&window=252&side=sell&hz=medium
+// Replays CURRENT signal + hybrid exit. Acceptance (v143):
+//   WR ≥55% OR avg ≥+0.30%/trade, AND PF ≥1.5. Failing brackets should be gated.
+const ACCEPTANCE_DEFAULT_TICKERS = [
+  'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'JPM', 'V', 'MA',
+  'JNJ', 'UNH', 'PG', 'HD', 'AVGO', 'LLY', 'XOM', 'CVX', 'KO', 'PEP',
+  'COST', 'WMT', 'NFLX', 'AMD', 'CRM', 'ORCL', 'IBM', 'GS', 'BAC', 'MCD',
+  'INTC', 'QCOM', 'TXN', 'AMAT', 'CAT', 'BA', 'GE', 'DIS', 'NKE', 'SBUX'
+];
+
+function evaluateAcceptance(agg) {
+  const wr = agg && agg.winRate != null ? Number(agg.winRate) : null;
+  const avg = agg && agg.avgReturnPct != null ? Number(agg.avgReturnPct) : null;
+  const pf = agg && agg.meanProfitFactor != null ? Number(agg.meanProfitFactor) : null;
+  const wrOk = wr != null && wr >= 55;
+  const avgOk = avg != null && avg >= 0.30;
+  const pfOk = pf != null && pf >= 1.5;
+  const pass = (wrOk || avgOk) && pfOk;
+  return {
+    pass,
+    criteria: 'WR≥55% OR avg≥+0.30%/trade, AND PF≥1.5',
+    checks: { wrOk, avgOk, pfOk, wr, avgReturnPct: avg, meanProfitFactor: pf }
+  };
+}
+
+async function runBracketAcceptance(opts = {}) {
+  const hz = ['short', 'medium', 'long'].includes(opts.hz) ? opts.hz : 'medium';
+  const side = ['buy', 'sell'].includes(opts.side) ? opts.side : 'sell';
+  const windowBars = Math.min(1260, Math.max(60, parseInt(opts.window, 10) || 252));
+  let tickers = Array.isArray(opts.tickers) ? opts.tickers.map(t => String(t).trim().toUpperCase()).filter(Boolean) : [];
+  if (!tickers.length) tickers = universeShortlistTickers().slice(0, 40);
+  if (!tickers.length) tickers = ACCEPTANCE_DEFAULT_TICKERS.slice();
+  tickers = tickers.slice(0, Math.min(60, opts.maxTickers || 40));
+
+  // Always pull enough history for BACKTEST_WARMUP (~220) + windowBars.
+  // window=252 means "last year of walk-forward", NOT "fetch only 1y".
+  const range = windowBars >= 1000 ? '5y' : '2y';
+  const perTicker = [];
+  let tTrades = 0, tWins = 0, tRet = 0, gW = 0, gL = 0;
+  for (const sym of tickers) {
+    try {
+      const daily = await fetchOHLCV(sym, range, '1d').catch(() => null);
+      if (!daily || daily.length < 150) { perTicker.push({ ticker: sym, skipped: 'insufficient data' }); continue; }
+      const weekly = dailyToWeeklyBars(daily);
+      const fe = fundCache.get(sym);
+      const fund = fe && Date.now() - fe.ts < TECH_TTL * 4 ? fe.data : null;
+      const bt = await backtestSignal(daily, hz, weekly, fund, { windowBars, side, entryStep: opts.entryStep || 2 });
+      if (!bt || !bt.trades) { perTicker.push({ ticker: sym, trades: 0 }); continue; }
+      perTicker.push({ ticker: sym, trades: bt.trades, winRate: bt.winRate, avgReturnPct: bt.avgReturnPct, profitFactor: bt.profitFactor });
+      tTrades += bt.trades;
+      tWins += Math.round(bt.winRate / 100 * bt.trades);
+      tRet += bt.avgReturnPct * bt.trades;
+      if (bt.profitFactor && bt.profitFactor < 99) { gW += bt.profitFactor; gL += 1; }
+    } catch (e) { perTicker.push({ ticker: sym, error: e.message }); }
+  }
+  const aggregate = {
+    totalTrades: tTrades,
+    winRate: tTrades ? Math.round(tWins / tTrades * 100) : null,
+    avgReturnPct: tTrades ? +(tRet / tTrades).toFixed(2) : null,
+    meanProfitFactor: gL ? +(gW / gL).toFixed(2) : null
+  };
+  const acceptance = evaluateAcceptance(aggregate);
+  return {
+    hz, side, windowBars, range, tickersTested: tickers.length,
+    aggregate, acceptance,
+    note: 'Replays CURRENT signal + hybrid exit. Entry = next-bar open.',
+    perTicker: perTicker.sort((a, b) => (b.trades || 0) - (a.trades || 0))
+  };
+}
+
 app.get('/api/backtest/medium-sell', async (req, res) => {
   try {
-    const hz = ['short','medium','long'].includes(req.query.hz) ? req.query.hz : 'medium';
-    const side = ['buy','sell'].includes(req.query.side) ? req.query.side : 'sell';
-    const windowBars = Math.min(360, Math.max(60, parseInt(req.query.window, 10) || 180));
     let tickers = String(req.query.tickers || '').split(',').map(t => t.trim().toUpperCase()).filter(Boolean);
-    if (!tickers.length) tickers = universeShortlistTickers().slice(0, 40);
-    if (!tickers.length) return res.json({ error: 'no tickers — run a universe scan first or pass ?tickers=' });
-    tickers = tickers.slice(0, 60); // runtime cap
+    const out = await runBracketAcceptance({
+      hz: req.query.hz,
+      side: req.query.side,
+      window: req.query.window,
+      tickers,
+      maxTickers: 60,
+      entryStep: parseInt(req.query.entryStep, 10) || 2
+    });
+    res.json(out);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
-    const perTicker = [];
-    let tTrades = 0, tWins = 0, tRet = 0, gW = 0, gL = 0;
-    for (const sym of tickers) {
-      try {
-        const daily = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
-        if (!daily || daily.length < 150) { perTicker.push({ ticker: sym, skipped: 'insufficient data' }); continue; }
-        const weekly = await fetchOHLCV(sym, '2y', '1wk').catch(() => null);
-        const fe = fundCache.get(sym);
-        const fund = fe && Date.now() - fe.ts < TECH_TTL * 4 ? fe.data : null;
-        const bt = await backtestSignal(daily, hz, weekly, fund, { windowBars, side });
-        if (!bt || !bt.trades) { perTicker.push({ ticker: sym, trades: 0 }); continue; }
-        perTicker.push({ ticker: sym, trades: bt.trades, winRate: bt.winRate, avgReturnPct: bt.avgReturnPct, profitFactor: bt.profitFactor });
-        tTrades += bt.trades;
-        tWins += Math.round(bt.winRate / 100 * bt.trades);
-        tRet += bt.avgReturnPct * bt.trades;
-        if (bt.profitFactor && bt.profitFactor < 99) { gW += bt.profitFactor; gL += 1; }
-      } catch (e) { perTicker.push({ ticker: sym, error: e.message }); }
+app.get('/api/backtest/acceptance', async (req, res) => {
+  try {
+    const windowBars = parseInt(req.query.window, 10) || 252;
+    const sides = String(req.query.sides || 'sell,buy').split(',').map(s => s.trim()).filter(s => s === 'buy' || s === 'sell');
+    const horizons = String(req.query.hz || 'short,medium,long').split(',').map(s => s.trim()).filter(s => ['short', 'medium', 'long'].includes(s));
+    let tickers = String(req.query.tickers || '').split(',').map(t => t.trim().toUpperCase()).filter(Boolean);
+    const brackets = [];
+    for (const side of sides) {
+      for (const hz of horizons) {
+        console.log(`Acceptance bracket: ${side}/${hz} window=${windowBars}…`);
+        const r = await runBracketAcceptance({ hz, side, window: windowBars, tickers, maxTickers: 40, entryStep: 3 });
+        brackets.push({
+          key: `${side}:${hz}`,
+          hz: r.hz,
+          side: r.side,
+          windowBars: r.windowBars,
+          aggregate: r.aggregate,
+          acceptance: r.acceptance,
+          tickersTested: r.tickersTested
+        });
+      }
     }
     res.json({
-      hz, side, windowBars, tickersTested: tickers.length,
-      aggregate: {
-        totalTrades: tTrades,
-        winRate: tTrades ? Math.round(tWins / tTrades * 100) : null,
-        avgReturnPct: tTrades ? +(tRet / tTrades).toFixed(2) : null,
-        meanProfitFactor: gL ? +(gW / gL).toFixed(2) : null
-      },
-      note: 'Replays CURRENT signal logic (new guards included). Entry = next-bar open, exits per live hybrid rules.',
-      perTicker: perTicker.sort((a, b) => (b.trades || 0) - (a.trades || 0))
+      windowBars,
+      criteria: 'WR≥55% OR avg≥+0.30%/trade, AND PF≥1.5',
+      disabledBrackets: [...DISABLED_BRACKETS],
+      passed: brackets.filter(b => b.acceptance.pass).map(b => b.key),
+      failed: brackets.filter(b => !b.acceptance.pass).map(b => b.key),
+      brackets
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -11496,26 +11720,28 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-app.listen(PORT, () => {
-  console.log('AlphaSignal on port', PORT);
-  console.log('Anthropic API key set:', !!anthropicApiKey());
-  const likelyRender =
-    String(process.env.RENDER || '').toLowerCase() === 'true' ||
-    /\bonrender\.com\b/i.test(
-      String(process.env.RENDER_EXTERNAL_URL || process.env.RENDER_EXTERNAL_HOSTNAME || '')
-    );
-  if (likelyRender && bloombergBridgeUrlIsUnreachableFromInternet()) {
-    console.warn(
-      '→ BLOOMBERG_BRIDGE_URL is private/localhost — this host cannot reach your Bloomberg PC on the LAN.'
-    );
-    console.warn('  Use Cloudflare Tunnel / ngrok to expose the bridge HTTPS URL, or self-host API on-premises.');
-  }
-  // Test price fetch on startup
-  fetchSinglePrice('AAPL').then(p => {
-    if (p) console.log('✓ Yahoo Finance working - AAPL:', p.price, p.currency);
-    else console.warn('✗ Yahoo Finance not working - prices will be unavailable');
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log('AlphaSignal on port', PORT);
+    console.log('Anthropic API key set:', !!anthropicApiKey());
+    const likelyRender =
+      String(process.env.RENDER || '').toLowerCase() === 'true' ||
+      /\bonrender\.com\b/i.test(
+        String(process.env.RENDER_EXTERNAL_URL || process.env.RENDER_EXTERNAL_HOSTNAME || '')
+      );
+    if (likelyRender && bloombergBridgeUrlIsUnreachableFromInternet()) {
+      console.warn(
+        '→ BLOOMBERG_BRIDGE_URL is private/localhost — this host cannot reach your Bloomberg PC on the LAN.'
+      );
+      console.warn('  Use Cloudflare Tunnel / ngrok to expose the bridge HTTPS URL, or self-host API on-premises.');
+    }
+    // Test price fetch on startup
+    fetchSinglePrice('AAPL').then(p => {
+      if (p) console.log('✓ Yahoo Finance working - AAPL:', p.price, p.currency);
+      else console.warn('✗ Yahoo Finance not working - prices will be unavailable');
+    });
   });
-});
+}
 
 module.exports = {
   backtestSignal,
@@ -11529,5 +11755,10 @@ module.exports = {
   fundCache,
   simulateHybridExit,
   TECH_TTL,
-  techAtBoundedIndex
+  techAtBoundedIndex,
+  evaluateAcceptance,
+  ACCEPTANCE_DEFAULT_TICKERS,
+  runBracketAcceptance,
+  emitTradeEvent,
+  app
 };

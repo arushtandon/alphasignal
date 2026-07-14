@@ -1,0 +1,205 @@
+{
+  "ranAt": "2026-07-14T09:34:32.118Z",
+  "windowBars": 252,
+  "criteria": "WR≥55% OR avg≥+0.30%/trade, AND PF≥1.5",
+  "tickers": [
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "TSLA",
+    "JPM",
+    "V",
+    "MA",
+    "JNJ",
+    "UNH",
+    "PG",
+    "HD",
+    "AVGO",
+    "LLY",
+    "XOM",
+    "CVX",
+    "KO",
+    "PEP",
+    "COST",
+    "WMT",
+    "NFLX",
+    "AMD",
+    "CRM",
+    "ORCL",
+    "IBM",
+    "GS",
+    "BAC",
+    "MCD"
+  ],
+  "passed": [
+    "sell:short",
+    "buy:medium",
+    "buy:long"
+  ],
+  "failed": [
+    "sell:medium",
+    "sell:long",
+    "buy:short"
+  ],
+  "brackets": [
+    {
+      "key": "sell:short",
+      "hz": "short",
+      "side": "sell",
+      "windowBars": 252,
+      "range": "2y",
+      "aggregate": {
+        "totalTrades": 5,
+        "winRate": 80,
+        "avgReturnPct": 1.77,
+        "meanProfitFactor": 3.03
+      },
+      "acceptance": {
+        "pass": true,
+        "criteria": "WR≥55% OR avg≥+0.30%/trade, AND PF≥1.5",
+        "checks": {
+          "wrOk": true,
+          "avgOk": true,
+          "pfOk": true,
+          "wr": 80,
+          "avgReturnPct": 1.77,
+          "meanProfitFactor": 3.03
+        }
+      },
+      "tickersTested": 30
+    },
+    {
+      "key": "sell:medium",
+      "hz": "medium",
+      "side": "sell",
+      "windowBars": 252,
+      "range": "2y",
+      "aggregate": {
+        "totalTrades": 56,
+        "winRate": 38,
+        "avgReturnPct": -0.22,
+        "meanProfitFactor": 1.23
+      },
+      "acceptance": {
+        "pass": false,
+        "criteria": "WR≥55% OR avg≥+0.30%/trade, AND PF≥1.5",
+        "checks": {
+          "wrOk": false,
+          "avgOk": false,
+          "pfOk": false,
+          "wr": 38,
+          "avgReturnPct": -0.22,
+          "meanProfitFactor": 1.23
+        }
+      },
+      "tickersTested": 30
+    },
+    {
+      "key": "sell:long",
+      "hz": "long",
+      "side": "sell",
+      "windowBars": 252,
+      "range": "2y",
+      "aggregate": {
+        "totalTrades": 81,
+        "winRate": 47,
+        "avgReturnPct": 0.14,
+        "meanProfitFactor": 1.42
+      },
+      "acceptance": {
+        "pass": false,
+        "criteria": "WR≥55% OR avg≥+0.30%/trade, AND PF≥1.5",
+        "checks": {
+          "wrOk": false,
+          "avgOk": false,
+          "pfOk": false,
+          "wr": 47,
+          "avgReturnPct": 0.14,
+          "meanProfitFactor": 1.42
+        }
+      },
+      "tickersTested": 30
+    },
+    {
+      "key": "buy:short",
+      "hz": "short",
+      "side": "buy",
+      "windowBars": 252,
+      "range": "2y",
+      "aggregate": {
+        "totalTrades": 313,
+        "winRate": 66,
+        "avgReturnPct": -0.09,
+        "meanProfitFactor": 1.32
+      },
+      "acceptance": {
+        "pass": false,
+        "criteria": "WR≥55% OR avg≥+0.30%/trade, AND PF≥1.5",
+        "checks": {
+          "wrOk": true,
+          "avgOk": false,
+          "pfOk": false,
+          "wr": 66,
+          "avgReturnPct": -0.09,
+          "meanProfitFactor": 1.32
+        }
+      },
+      "tickersTested": 30
+    },
+    {
+      "key": "buy:medium",
+      "hz": "medium",
+      "side": "buy",
+      "windowBars": 252,
+      "range": "2y",
+      "aggregate": {
+        "totalTrades": 134,
+        "winRate": 55,
+        "avgReturnPct": 0.88,
+        "meanProfitFactor": 1.89
+      },
+      "acceptance": {
+        "pass": true,
+        "criteria": "WR≥55% OR avg≥+0.30%/trade, AND PF≥1.5",
+        "checks": {
+          "wrOk": true,
+          "avgOk": true,
+          "pfOk": true,
+          "wr": 55,
+          "avgReturnPct": 0.88,
+          "meanProfitFactor": 1.89
+        }
+      },
+      "tickersTested": 30
+    },
+    {
+      "key": "buy:long",
+      "hz": "long",
+      "side": "buy",
+      "windowBars": 252,
+      "range": "2y",
+      "aggregate": {
+        "totalTrades": 191,
+        "winRate": 58,
+        "avgReturnPct": 0.71,
+        "meanProfitFactor": 2.07
+      },
+      "acceptance": {
+        "pass": true,
+        "criteria": "WR≥55% OR avg≥+0.30%/trade, AND PF≥1.5",
+        "checks": {
+          "wrOk": true,
+          "avgOk": true,
+          "pfOk": true,
+          "wr": 58,
+          "avgReturnPct": 0.71,
+          "meanProfitFactor": 2.07
+        }
+      },
+      "tickersTested": 30
+    }
+  ]
+}
