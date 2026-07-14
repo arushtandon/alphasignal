@@ -3282,6 +3282,41 @@ function _num(v) {
 }
 const _HZ_LABEL = { short: 'Short (1d–1mo)', medium: 'Medium (1–3mo)', long: 'Long (4–12mo)' };
 
+/** Trade-specific buy/sell reason with concrete Entry/TP1/TP2/SL (+% and R:R). */
+function formatRecommendedReason(s, hz, isSell, entry, tp1, tp2, sl) {
+  const e = parseFloat(entry), t1 = parseFloat(tp1), t2 = parseFloat(tp2), stop = parseFloat(sl);
+  const pct = function(from, to) {
+    if (!(from > 0) || !(to > 0)) return '';
+    const p = ((to - from) / from) * 100;
+    return ' (' + (p >= 0 ? '+' : '−') + Math.abs(p).toFixed(1) + '%)';
+  };
+  const levels = [];
+  if (e > 0) levels.push((isSell ? 'Sell' : 'Buy') + ' @ ' + roundDashPrice(e));
+  if (t1 > 0) levels.push('TP1 ' + roundDashPrice(t1) + pct(e, t1));
+  if (t2 > 0) levels.push('TP2 ' + roundDashPrice(t2) + pct(e, t2));
+  if (stop > 0) {
+    levels.push('SL ' + roundDashPrice(stop) + pct(e, stop));
+    const risk = Math.abs(e - stop);
+    const reward = t1 > 0 ? Math.abs(t1 - e) : 0;
+    if (risk > 0 && reward > 0) levels.push('R:R ' + (reward / risk).toFixed(1) + 'x');
+  }
+  const levelsTxt = levels.join(' · ');
+  let why = isSell
+    ? (s[hz + 'SellAnalysis'] || s.sellReason || s[hz + 'Analysis'] || s.reason || '')
+    : (s[hz + 'Analysis'] || s.reason || s.shortAnalysis || s.mediumAnalysis || s.longAnalysis || '');
+  why = String(why || '').trim();
+  if (/^quant signal$/i.test(why) || /^setup note$/i.test(why)) why = '';
+  // If why already contains a full levels stamp, prefer it.
+  if (why && why.indexOf('TP1 ') >= 0 && why.indexOf('SL ') >= 0) return why;
+  if (levelsTxt && why && why.indexOf(levelsTxt) !== 0) return levelsTxt + ' | ' + why;
+  if (levelsTxt) {
+    const rating = s[hz + 'Rating'] || s.rating || (isSell ? 'Sell' : 'Buy');
+    const score = isSell ? (s[hz + 'SellScore'] || s.sellScore) : (s[hz + 'Score'] || s.buyScore);
+    return levelsTxt + ' | ' + rating + (score != null ? ' (' + score + '/100)' : '') + ' — levels locked at signal.';
+  }
+  return why;
+}
+
 function exportRecommendedTrades() {
   const dd = ST.dashData;
   if (!dd) { alert('No recommended picks loaded yet — open the Dashboard first.'); return; }
@@ -3309,7 +3344,7 @@ function exportRecommendedTrades() {
         _HZ_LABEL[p.hz], p.side, s.ticker || '', s.name || s.ticker || '', s.market || '',
         s[p.hz + 'Rating'] || s.rating || p.side, _num(score),
         _num(entry), _num(tp1), _num(tp2), _num(sl),
-        isSell ? (s.sellReason || s.reason || '') : (s.reason || '')
+        formatRecommendedReason(s, p.hz, isSell, entry, tp1, tp2, sl)
       ]);
     }
   }
@@ -3556,6 +3591,16 @@ function renderExitQualityPerformance() {
       reason: h[hz+'ExitReason'] || ''
     };
   }).filter(function(r){ return r.don != null || r.d1 != null || r.d2 != null; })
+    .filter(function(r){
+      // Dedupe identical trade signatures — duplicate history rows (re-records
+      // on different days at the same frozen entry/exit) were repeating the same
+      // instrument+PnL several times in this panel.
+      if (!this._seen) this._seen = {};
+      var sig = r.ticker+'|'+r.hz+'|'+r.side+'|'+r.status+'|'+r.pnl+'|'+r.don;
+      if (this._seen[sig]) return false;
+      this._seen[sig] = true;
+      return true;
+    }, {})
     .sort(function(a,b){ return (Number(b.don)||0) - (Number(a.don)||0); })
     .slice(0, 12);
 
@@ -3808,7 +3853,10 @@ async function fixHistoryPrices(silent) {
   if(fixed===0) { if(!silent) alert('No incorrect entries found.'); return; }
   ss();
   try {
-    await fetch('/api/history',{method:'DELETE'});
+    // NEVER DELETE here: wiping server history and re-uploading the browser copy
+    // let a stale localStorage snapshot shrink/rewrite the durable record.
+    // /api/history/add replaces matching open rows and the server keeps settled
+    // rows verbatim — that is the only safe sync.
     await fetch('/api/history/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ST.history)});
   } catch(e){ console.warn('Server fix failed:',e); }
   console.log('Fixed',fixed,'trades');
@@ -3910,7 +3958,7 @@ function renderPicksPane(elId,picks,hz,side){
     const tp1 = lv.tp1;
     const tp2 = lv.tp2;
     const sl = lv.sl;
-    const reason=isSell?s.sellReason:s.reason;
+    const reason=formatRecommendedReason(s, hz, action==='Sell', entryP, tp1, tp2, sl);
     const pnl=calcPnl(entryP,tp1,sl,action);
     const ratingLabel=s[ratingKey]||action;
     return `<div class="pick-card ${ac}" onclick="loadPickDetail('${s.ticker}','${hz}')">
@@ -5236,7 +5284,7 @@ function renderWl(){
 // ══════════════════════════════════════════════
 function clearHistoryAll() {
   if (!confirm('Clear ALL history?\nThis cannot be undone.')) return;
-  fetch('/api/history', { method: 'DELETE' })
+  fetch('/api/history?confirm=all', { method: 'DELETE' })
     .then(() => { ST.history = []; renderHist(); })
     .catch(e => alert('Failed: ' + e.message));
 }
@@ -5246,8 +5294,33 @@ window.setHistView = function (v) {
   try { renderHist(); } catch (e) { console.error('setHistView render:', e); }
 };
 
+window._riskState = window._riskState || null;
+function pollRiskStatus() {
+  fetch('/api/risk-status').then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(s){ if (s) { window._riskState = s; } }).catch(function(){});
+}
+pollRiskStatus();
+setInterval(pollRiskStatus, 300000); // 5 min
+
 function renderHist() {
   const el = document.getElementById('histContent');
+  // Portfolio risk-off banner (fund-style −15% drawdown guardrail)
+  (function(){
+    var host = document.querySelector('#pane-history');
+    if (!host) return;
+    var b = document.getElementById('riskOffBanner');
+    var rs = window._riskState;
+    if (rs && rs.riskOff) {
+      var msg = '⛔ PORTFOLIO RISK-OFF — drawdown '+(rs.drawdownPct!=null?rs.drawdownPct+'%':'≥15%')+' from peak. New entries are paused; open positions continue managing exits normally.';
+      if (!b) {
+        b = document.createElement('div');
+        b.id = 'riskOffBanner';
+        b.style.cssText = 'background:rgba(255,60,60,0.12);border:1px solid rgba(255,60,60,0.4);color:#ff7b7b;border-radius:8px;padding:8px 12px;margin:0 0 10px;font-size:11px;font-family:DM Mono,monospace';
+        host.insertBefore(b, host.firstChild);
+      }
+      b.textContent = msg;
+    } else if (b) { b.remove(); }
+  })();
   const histPh = document.querySelector('#pane-history .ph');
   if (histPh && !histPh.querySelector('.hist-actions')) {
     const actDiv = document.createElement('div');
@@ -5728,7 +5801,9 @@ function calcPeriodPerformance() {
     const snap = histRowPnlSnapshot(t, hz);
     const pnl = (snap.pnl != null && Number.isFinite(Number(snap.pnl))) ? Number(snap.pnl) : null;
     if (pnl == null) return;
-    const ts = Number(t[hz+'ExitTs']) || new Date(t.entryDate||t.timestamp||0).getTime();
+    // Settlement-date accounting: the period a trade FIRST settled owns it
+    // forever — late re-decisions can never move an already-reported month.
+    const ts = Number(t[hz+'SettledTs']) || Number(t[hz+'ExitTs']) || new Date(t.entryDate||t.timestamp||0).getTime();
     if (!Number.isFinite(ts) || ts <= 0) return;
     const d = new Date(ts);
     const mKey = d.toISOString().slice(0,7); // YYYY-MM

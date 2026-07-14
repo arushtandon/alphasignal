@@ -6322,7 +6322,6 @@ async function generateServerPicksFromShortlist(opts = {}) {
         name: (fund && (fund.companyName || fund.name)) || t,
         market: UNIVERSE_MARKET_LABEL[marketOf[t]] || marketOf[t] || ''
       };
-      let worstSellConds = [];
       for (const hz of ['short', 'medium', 'long']) {
         const sig = qs[hz] || {};
         const buy = sig.buyScore || 0;
@@ -6335,11 +6334,13 @@ async function generateServerPicksFromShortlist(opts = {}) {
         row[hz + 'Action'] = cooled ? 'Hold' : (sig.action || 'Hold');
         row[hz + 'Rating'] = cooled ? 'SL cooldown' : (sig.rating || 'Hold');
         row[hz + 'Conf'] = sig.winRateHint || Math.max(buy, sell);
-        if (hz === 'short') row.reason = (sig.conditions || []).slice(0, 3).join('; ');
-        if (sell >= 62 && (sig.conditions || []).length) worstSellConds = sig.conditions;
+        const condTxt = (sig.conditions || []).slice(0, 4).join('; ');
+        row[hz + 'Analysis'] = condTxt;
+        row[hz + 'SellAnalysis'] = condTxt;
+        if (hz === 'short') row.reason = condTxt;
+        if (sell >= buy && sell >= 62) row.sellReason = condTxt;
       }
       row.action = row.shortAction;
-      row.sellReason = worstSellConds.slice(0, 3).join('; ');
       applyServerPriceLevels(row, tech.currentPrice, tech, fund);
       rows.push(row);
     }
@@ -6423,6 +6424,10 @@ async function generateServerPicksFromShortlist(opts = {}) {
         }
       }
     } catch (e) { console.warn('Live re-pricing of picks failed:', e.message); }
+
+    // Stamp each pane pick with a trade-specific reason that includes Entry/TP/SL.
+    // Generic/empty reason fields were leaving recommended CSV Reason blanks.
+    stampDashDataReasons(dashData);
 
     dashboardPicksCache = {
       version: DASHBOARD_PICKS_VERSION,
@@ -6828,7 +6833,7 @@ async function addTradesToHistory(trades) {
   // Boundary guard: browsers can re-upload PRE-fold-in localStorage rows after a
   // deploy — sanitize extinct full-TP1/TP2 statuses on ingest so they can never
   // re-enter as closed rows (they reopen and the sim re-decides them).
-  const foldedIn = normalizeExtinctStatuses(trades);
+  const foldedIn = normalizeExtinctStatuses(trades, 'ingest');
   if (foldedIn) console.log('History ingest: folded', foldedIn, 'stale full-TP1/TP2 rows into partial+TSL');
   const todayStr = new Date().toDateString();
   const keyOf = (t) => {
@@ -6870,6 +6875,23 @@ async function addTradesToHistory(trades) {
     // realised outcome. Entry is the price WHEN FIRST SIGNALLED — it must never
     // drift to the live price.
     const prev = existingByKey.get(keyOf(trade));
+    // SETTLED ROWS ARE IMMUTABLE: once a trade fully exited, no re-upload (scan
+    // re-record, localStorage recovery, stale browser copy) may replace it. The
+    // server row is kept VERBATIM — field-merging stale uploads was how settled
+    // trades kept getting clobbered, reopened and re-decided, which is what
+    // moved already-reported months. This closes that path for good.
+    const _SETTLED = ['tp1_then_sl', 'tp1_then_time', 'sl_hit', 'time_limit', 'signal_exit', 'tp1_hit', 'tp2_hit'];
+    if (prev && _SETTLED.includes(prev[hz + 'Status'])) {
+      accepted.push(prev);
+      auditLog('ingest_keep_settled', { ticker: trade.ticker, hz, status: prev[hz + 'Status'] });
+      continue;
+    }
+    // PORTFOLIO RISK-OFF: pause brand-new entries while drawdown ≥15% from peak.
+    if (!prev && isToday && riskState.riskOff) {
+      console.log('History add skipped (portfolio risk-off):', trade.ticker, hz);
+      auditLog('entry_blocked_risk_off', { ticker: trade.ticker, hz });
+      continue;
+    }
     if (prev) {
       const origEntry = prev.entry != null ? prev.entry : prev[hz + 'Entry'];
       if (origEntry != null) { trade.entry = origEntry; trade[hz + 'Entry'] = origEntry; }
@@ -6879,7 +6901,7 @@ async function addTradesToHistory(trades) {
         'target1', 'target2', 'stopLoss', 'sellEntry', 'sellTarget1', 'sellTarget2', 'sellStopLoss',
         hz + 'Target1', hz + 'Target2', hz + 'StopLoss', hz + 'TrailingSL',
         hz + 'Status', hz + 'PnlDollar', hz + 'PnlPct', hz + 'ExitPrice', hz + 'ExitReason',
-        hz + 'Tp1Hit', hz + 'ExitTs', hz + 'CurrentPrice', 'status', 'pnlDollar', 'pnlPct', 'currentPrice',
+        hz + 'Tp1Hit', hz + 'ExitTs', hz + 'SettledTs', hz + 'CurrentPrice', 'status', 'pnlDollar', 'pnlPct', 'currentPrice',
         'entryPending', 'entryFinalized' // entry-finalisation state must survive re-records
       ]) {
         if (prev[f] !== undefined) trade[f] = prev[f];
@@ -6951,6 +6973,12 @@ app.post('/api/history/clear-today', express.json(), (req, res) => {
 
 // DELETE clear history
 app.delete('/api/history', (req, res) => {
+  // Destructive: requires explicit confirmation. An automated or accidental call
+  // (this endpoint used to be hit by a client-side "fix entries" routine before a
+  // full re-upload of whatever the BROWSER happened to hold — a stale copy could
+  // silently shrink the durable history) must never wipe the server's record.
+  if (req.query.confirm !== 'all') return res.status(400).json({ error: 'Pass ?confirm=all to clear history' });
+  auditLog('history_cleared', { rows: tradeHistory.length });
   tradeHistory = [];
   saveHistoryFile(tradeHistory);
   res.json({ ok: true });
@@ -9498,6 +9526,89 @@ function roundPrice(x) {
   return +x.toFixed(d);
 }
 
+/** Concrete Entry / TP1 / TP2 / SL clause for recommended-trade reasons. */
+function formatLevelsReasonClause(side, entry, tp1, tp2, sl) {
+  const e = parseFloat(entry), t1 = parseFloat(tp1), t2 = parseFloat(tp2), s = parseFloat(sl);
+  if (!(e > 0)) return '';
+  const pct = (from, to) => {
+    if (!(to > 0)) return '';
+    const p = ((to - from) / from) * 100;
+    const sign = p >= 0 ? '+' : '−';
+    return ` (${sign}${Math.abs(p).toFixed(1)}%)`;
+  };
+  const isSell = String(side || '').toLowerCase() === 'sell';
+  const parts = [`${isSell ? 'Sell' : 'Buy'} @ ${roundPrice(e)}`];
+  if (t1 > 0) parts.push(`TP1 ${roundPrice(t1)}${pct(e, t1)}`);
+  if (t2 > 0) parts.push(`TP2 ${roundPrice(t2)}${pct(e, t2)}`);
+  if (s > 0) {
+    parts.push(`SL ${roundPrice(s)}${pct(e, s)}`);
+    const risk = Math.abs(e - s);
+    const reward = t1 > 0 ? Math.abs(t1 - e) : 0;
+    if (risk > 0 && reward > 0) parts.push(`R:R ${(reward / risk).toFixed(1)}x`);
+  }
+  return parts.join(' · ');
+}
+
+function buildTradeSpecificReason(row, hz, isSell) {
+  const entry = isSell
+    ? (row.sellEntry || row[hz + 'Entry'] || row.entry)
+    : (row[hz + 'Entry'] || row.entry);
+  const tp1 = isSell
+    ? (row.sellTarget1 || row[hz + 'Target1'] || row.target1)
+    : (row[hz + 'Target1'] || row.target1);
+  const tp2 = isSell
+    ? (row.sellTarget2 || row[hz + 'Target2'] || row.target2)
+    : (row[hz + 'Target2'] || row.target2);
+  const sl = isSell
+    ? (row.sellStopLoss || row[hz + 'StopLoss'] || row.stopLoss)
+    : (row[hz + 'StopLoss'] || row.stopLoss);
+  const levels = formatLevelsReasonClause(isSell ? 'Sell' : 'Buy', entry, tp1, tp2, sl);
+  const whyRaw = isSell
+    ? (row[hz + 'SellAnalysis'] || row.sellReason || row[hz + 'Analysis'] || row.reason || '')
+    : (row[hz + 'Analysis'] || row.reason || row.shortAnalysis || row.mediumAnalysis || row.longAnalysis || '');
+  // Drop generic placeholders; keep concrete condition text.
+  let why = String(whyRaw || '').trim();
+  if (/^quant signal$/i.test(why) || /^setup note$/i.test(why)) why = '';
+  // Avoid duplicating the levels line if a prior stamp already embedded it.
+  if (levels && why && why.indexOf(levels) === 0) return why;
+  if (levels && why && why.indexOf('TP1 ') >= 0 && why.indexOf('SL ') >= 0) {
+    // Already levels-specific from a previous pass — keep as-is.
+    return why;
+  }
+  if (levels && why) return levels + ' | ' + why;
+  if (levels) {
+    const rating = row[hz + 'Rating'] || row.rating || (isSell ? 'Sell' : 'Buy');
+    const score = isSell ? (row[hz + 'SellScore'] || row.sellScore) : (row[hz + 'Score'] || row.buyScore);
+    return levels + ' | ' + rating + (score != null ? ` (${score}/100)` : '') + ' — levels locked at signal.';
+  }
+  return why || '';
+}
+
+function stampDashDataReasons(dashData) {
+  if (!dashData) return;
+  const panes = [
+    { key: 'short', hz: 'short', sell: false },
+    { key: 'medium', hz: 'medium', sell: false },
+    { key: 'long', hz: 'long', sell: false },
+    { key: 'shortSell', hz: 'short', sell: true },
+    { key: 'medSell', hz: 'medium', sell: true },
+    { key: 'longSell', hz: 'long', sell: true }
+  ];
+  for (const p of panes) {
+    for (const r of dashData[p.key] || []) {
+      const text = buildTradeSpecificReason(r, p.hz, p.sell);
+      if (!text) continue;
+      if (p.sell) {
+        r.sellReason = text;
+        r[p.hz + 'SellAnalysis'] = text;
+      } else {
+        r.reason = text;
+        r[p.hz + 'Analysis'] = text;
+      }
+    }
+  }
+}
+
 /** Ensure reward >= risk — widens TP when channel/S/R levels are too tight. */
 function enforceMinRiskReward(e, tp1, tp2, sl, isSell, minRR = 1.5) {
   if (!e || !Number.isFinite(+e)) return { tp1, tp2, sl };
@@ -9882,6 +9993,17 @@ app.post('/api/analyze', async (req, res) => {
       row = applyServerPriceLevels(row, +pq.price, tech || null, fund || null);
       mergeFundamentalsForUi(row, fund || null);
       injectAnalyzeRowFromServerTech(row, tech || null);
+      // Always attach a levels-specific reason so recommended/export views never blank.
+      const act = String(row.shortAction || row.action || '').toLowerCase();
+      const isSellRow = act === 'sell' || act === 'strong sell';
+      const stamped = buildTradeSpecificReason(row, 'short', isSellRow);
+      if (stamped) {
+        row.reason = stamped;
+        if (isSellRow) row.sellReason = stamped;
+        row.shortAnalysis = stamped;
+        if (row.mediumAnalysis) row.mediumAnalysis = buildTradeSpecificReason(row, 'medium', String(row.mediumAction || '').toLowerCase().includes('sell')) || row.mediumAnalysis;
+        if (row.longAnalysis) row.longAnalysis = buildTradeSpecificReason(row, 'long', String(row.longAction || '').toLowerCase().includes('sell')) || row.longAnalysis;
+      }
       return row;
     }));
     console.log(`Analyze FAST: ${stocks.length} tickers (skipAi)`);
@@ -10606,6 +10728,57 @@ const RR_REFLOOR_FLAG = path.join(path.dirname(HISTORY_FILE), 'rr_refloor_v2.fla
 let _rrRefloored = false;
 try { _rrRefloored = fs.existsSync(RR_REFLOOR_FLAG); } catch (_) {}
 
+// ── APPEND-ONLY HISTORY AUDIT LOG ────────────────────────────────────────────
+// Every event that can change a trade's status or the history's composition is
+// journalled to the data disk, so "why did this number move?" always has a
+// concrete answer. Read back via GET /api/history/audit?limit=200.
+const AUDIT_LOG_FILE = path.join(path.dirname(HISTORY_FILE), 'history_audit.log');
+function auditLog(event, details) {
+  try {
+    fs.appendFileSync(AUDIT_LOG_FILE, JSON.stringify({ t: new Date().toISOString(), event, ...(details || {}) }) + '\n');
+  } catch (_) {}
+}
+app.get('/api/history/audit', (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 200, 1000);
+    const lines = fs.readFileSync(AUDIT_LOG_FILE, 'utf8').trim().split('\n');
+    res.json(lines.slice(-limit).map(l => { try { return JSON.parse(l); } catch (_) { return { raw: l }; } }));
+  } catch (_) { res.json([]); }
+});
+
+// ── PORTFOLIO RISK-OFF SWITCH ────────────────────────────────────────────────
+// Fund-style guardrail: if portfolio equity draws down ≥15% from its persisted
+// peak (on the $700k notional pool), NEW entries pause. Existing positions keep
+// managing their exits normally — this throttles fresh risk, it never touches
+// open trades. State survives deploys on /var/data.
+const RISK_STATE_FILE = path.join(path.dirname(HISTORY_FILE), 'risk_state.json');
+const RISK_POOL = 700000;
+const RISK_MAX_DD = 0.15;
+let riskState = { peakEquity: 0, equity: 0, drawdownPct: 0, riskOff: false, updated: null };
+try { riskState = { ...riskState, ...JSON.parse(fs.readFileSync(RISK_STATE_FILE, 'utf8')) }; } catch (_) {}
+function updateRiskState() {
+  let eq = 0;
+  for (const h of tradeHistory) {
+    if (!(h.action === 'Buy' || h.action === 'Sell')) continue;
+    const hzL = h.hz ? [h.hz] : ['short', 'medium', 'long'];
+    for (const hz of hzL) {
+      const v = Number(h[hz + 'PnlDollar']);
+      if (Number.isFinite(v)) eq += v;
+    }
+  }
+  riskState.equity = Math.round(eq);
+  if (eq > riskState.peakEquity) riskState.peakEquity = Math.round(eq);
+  const dd = (riskState.peakEquity - eq) / RISK_POOL;
+  const wasOff = riskState.riskOff;
+  riskState.riskOff = dd >= RISK_MAX_DD;
+  riskState.drawdownPct = +(dd * 100).toFixed(2);
+  riskState.updated = new Date().toISOString();
+  if (riskState.riskOff !== wasOff) auditLog(riskState.riskOff ? 'risk_off_engaged' : 'risk_off_cleared', { equity: riskState.equity, peak: riskState.peakEquity, ddPct: riskState.drawdownPct });
+  try { fs.writeFileSync(RISK_STATE_FILE, JSON.stringify(riskState)); } catch (_) {}
+  return riskState;
+}
+app.get('/api/risk-status', (req, res) => res.json(riskState));
+
 /** tp1_hit / tp2_hit are EXTINCT statuses — the engine can no longer produce
  *  them (ALL trades live under the partial+TSL regime). Any appearance means
  *  STALE data: typically a browser re-uploading pre-fold-in localStorage rows
@@ -10615,7 +10788,7 @@ try { _rrRefloored = fs.existsSync(RR_REFLOOR_FLAG); } catch (_) {}
  *  counted as closed wins). So the fold-in is enforced at EVERY boundary:
  *  ingest, update-pnl and each refresh pass. Legitimate closed rows are never
  *  touched — the sim simply cannot emit these two statuses anymore. */
-function normalizeExtinctStatuses(rows) {
+function normalizeExtinctStatuses(rows, source) {
   let n = 0;
   for (const h of rows || []) {
     if (!h || !(h.action === 'Buy' || h.action === 'Sell')) continue;
@@ -10623,6 +10796,7 @@ function normalizeExtinctStatuses(rows) {
     for (const hz of hzL) {
       const s = h[hz + 'Status'];
       if (s !== 'tp1_hit' && s !== 'tp2_hit') continue;
+      auditLog('foldin_reopen', { ticker: h.ticker, hz, from: s, source: source || 'refresh' });
       h[hz + 'Status'] = 'open';
       h[hz + 'ExitPrice'] = undefined;
       h[hz + 'ExitTs'] = undefined;
@@ -10693,8 +10867,25 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
   // the sim re-decides them this pass. Idempotent — legitimate rows can never
   // carry these statuses, so a clean history is a no-op here.
   {
-    const foldN = normalizeExtinctStatuses(tradeHistory);
+    const foldN = normalizeExtinctStatuses(tradeHistory, 'refresh');
     if (foldN) { saveHistoryFile(tradeHistory); console.log('Partial+TSL fold-in: reopened', foldN, 'stale full-TP1/TP2 rows'); }
+  }
+
+  // GRANDFATHER: rows settled before settlement-date accounting existed keep the
+  // period they were already reported in (their exit-bar session). Stamped once.
+  {
+    const _SET = ['tp1_then_sl', 'tp1_then_time', 'sl_hit', 'time_limit', 'signal_exit'];
+    let gf = 0;
+    for (const h of tradeHistory) {
+      if (!(h.action === 'Buy' || h.action === 'Sell')) continue;
+      const hzL = h.hz ? [h.hz] : ['short', 'medium', 'long'];
+      for (const hz of hzL) {
+        if (!_SET.includes(h[hz + 'Status']) || h[hz + 'SettledTs']) continue;
+        h[hz + 'SettledTs'] = Number(h[hz + 'ExitTs']) || new Date(h.entryDate || h.timestamp || 0).getTime() || Date.now();
+        gf++;
+      }
+    }
+    if (gf) saveHistoryFile(tradeHistory);
   }
 
   // One-time R:R re-floor (v7.9.6): widen TP1/SL on still-OPEN trades to the new
@@ -11118,6 +11309,15 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
           const _xb = bars && pathExit.exitIdx != null ? bars[pathExit.exitIdx] : null;
           h[hz + 'ExitTs'] = _xb && _xb.t ? _xb.t * 1000 : Date.now();
         }
+        // SETTLEMENT-DATE ACCOUNTING: a trade reports in the period it FIRST
+        // settled — stamped once, never rewritten. ExitTs stays the truthful
+        // exit-bar session, but monthly/weekly performance buckets by SettledTs,
+        // so a late re-decision exiting on a historical bar lands in the CURRENT
+        // period instead of mutating an already-reported month.
+        if (_fullExit && !h[hz + 'SettledTs']) {
+          h[hz + 'SettledTs'] = Date.now();
+          auditLog('trade_settled', { ticker: h.ticker, hz, status: pathExit.status, pnl: h[hz + 'PnlDollar'], exit: h[hz + 'ExitPrice'] || null });
+        }
         if (pathExit.stopLoss) h[hz + 'StopLoss'] = pathExit.stopLoss;
         if (pathExit.status === 'sl_hit') setSLCooldown(h.ticker, hz);
         rowChanged = true;
@@ -11129,6 +11329,11 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         h[hz + 'ExitPrice'] = curr;
         h[hz + 'ExitReason'] = 'Horizon time limit exit';
         h[hz + 'TslActivated'] = false;
+        if (!h[hz + 'ExitTs']) h[hz + 'ExitTs'] = Date.now();
+        if (!h[hz + 'SettledTs']) {
+          h[hz + 'SettledTs'] = Date.now();
+          auditLog('trade_settled', { ticker: h.ticker, hz, status: 'time_limit', pnl: h[hz + 'PnlDollar'], exit: curr });
+        }
         rowChanged = true;
       } else if (st !== 'time_limit' && st !== 'sl_hit') {
         const pct = ((curr - entry) / entry) * dir;
@@ -11172,12 +11377,14 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
   // Mark the one-time entry repair done once we've made a real pass over the data.
   // entry finalisation is per-trade (h.entryFinalized) — no global flag to set
   saveHistoryFile(tradeHistory);
+  const _risk = updateRiskState();
   res.json({
     ok: true,
     updated,
     legacyReflored: legacyFix.refloored,
     legacyReopened: legacyFix.reopened,
     pricesFetched: Object.keys(priceMap).length,
+    risk: { riskOff: _risk.riskOff, drawdownPct: _risk.drawdownPct, equity: _risk.equity, peakEquity: _risk.peakEquity },
     since: req.body?.since || null
   });
 });
