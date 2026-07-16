@@ -5479,10 +5479,46 @@ window.setHistView = function (v) {
 window._riskState = window._riskState || null;
 function pollRiskStatus() {
   fetch('/api/risk-status').then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(s){ if (s) { window._riskState = s; } }).catch(function(){});
+    .then(function(s){
+      if (!s) return;
+      window._riskState = s;
+      try {
+        var pane = document.getElementById('pane-history');
+        if (pane && pane.classList.contains('on')) renderHist();
+      } catch (e) {}
+    }).catch(function(){});
 }
 pollRiskStatus();
 setInterval(pollRiskStatus, 300000); // 5 min
+
+function resetRiskGuardUi() {
+  var btn = document.getElementById('riskResetBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Resetting…'; }
+  fetch('/api/risk-status/reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}'
+  })
+    .then(function(r){
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(s){
+      if (!s || s.ok === false) throw new Error((s && s.error) || 'reset failed');
+      window._riskState = s;
+      try { renderHist(); } catch (e) {}
+      if (s.riskOff) {
+        alert('Reset saved but risk-off is still on (drawdown ' + s.drawdownPct + '%). Hard-refresh the page.');
+      }
+    })
+    .catch(function(e){
+      alert('Reset failed: ' + (e.message || e) + '\n\nIf this persists, hard-refresh after the latest deploy.');
+    })
+    .finally(function(){
+      var b2 = document.getElementById('riskResetBtn');
+      if (b2) { b2.disabled = false; b2.textContent = 'Reset risk guard'; }
+    });
+}
 
 function renderHist() {
   const el = document.getElementById('histContent');
@@ -5498,27 +5534,29 @@ function renderHist() {
         + (rs.peakEquity ? ' ($' + Number(rs.peakEquity).toLocaleString() + ')' : '')
         + '. New entries are paused; open positions continue managing exits normally.';
       if (Number(rs.drawdownPct) > 100) {
-        msg = '⛔ PORTFOLIO RISK-OFF — drawdown figure looks corrupt (>' + ddTxt + '). Click Reset risk guard, then refresh.';
+        msg = '⛔ PORTFOLIO RISK-OFF — drawdown figure looks corrupt (' + ddTxt + '). Click Reset risk guard.';
       }
       if (!b) {
         b = document.createElement('div');
         b.id = 'riskOffBanner';
-        b.style.cssText = 'background:rgba(255,60,60,0.12);border:1px solid rgba(255,60,60,0.4);color:#ff7b7b;border-radius:8px;padding:8px 12px;margin:0 0 10px;font-size:11px;font-family:DM Mono,monospace';
+        b.style.cssText = 'background:rgba(255,60,60,0.12);border:1px solid rgba(255,60,60,0.4);color:#ff7b7b;border-radius:8px;padding:8px 12px;margin:0 0 10px;font-size:11px;font-family:DM Mono,monospace;display:flex;align-items:center;flex-wrap:wrap;gap:8px';
         host.insertBefore(b, host.firstChild);
       }
-      b.textContent = msg;
-      if (!document.getElementById('riskResetBtn')) {
-        var btn = document.createElement('button');
+      var msgEl = document.getElementById('riskOffMsg');
+      if (!msgEl) {
+        msgEl = document.createElement('span');
+        msgEl.id = 'riskOffMsg';
+        b.appendChild(msgEl);
+      }
+      msgEl.textContent = msg;
+      var btn = document.getElementById('riskResetBtn');
+      if (!btn) {
+        btn = document.createElement('button');
         btn.id = 'riskResetBtn';
         btn.type = 'button';
         btn.textContent = 'Reset risk guard';
-        btn.style.cssText = 'margin-left:10px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,120,120,0.45);color:#ffb0b0;border-radius:5px;padding:3px 8px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer';
-        btn.onclick = function(){
-          fetch('/api/risk-status/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
-            .then(function(r){ return r.json(); })
-            .then(function(s){ window._riskState = s; try { renderHist(); } catch(e){} })
-            .catch(function(e){ alert('Reset failed: ' + (e.message || e)); });
-        };
+        btn.style.cssText = 'background:rgba(255,255,255,0.08);border:1px solid rgba(255,120,120,0.45);color:#ffb0b0;border-radius:5px;padding:3px 8px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer;white-space:nowrap';
+        btn.onclick = resetRiskGuardUi;
         b.appendChild(btn);
       }
     } else if (b) { b.remove(); }

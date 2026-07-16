@@ -11424,75 +11424,99 @@ try {
   const loaded = JSON.parse(fs.readFileSync(RISK_STATE_FILE, 'utf8'));
   riskState = { ...riskState, ...loaded };
 } catch (_) {}
-function updateRiskState() {
+
+/** Marked PnL once per trade (primary horizon only — never sum short+medium+long). */
+function portfolioMarkedPnl() {
   let pnl = 0;
   for (const h of tradeHistory) {
     if (!(h.action === 'Buy' || h.action === 'Sell')) continue;
-    const hzL = h.hz ? [h.hz] : ['short', 'medium', 'long'];
-    for (const hz of hzL) {
-      const v = Number(h[hz + 'PnlDollar']);
-      if (Number.isFinite(v)) pnl += v;
-    }
+    const hz = h.hz || 'short';
+    let v = Number(h[hz + 'PnlDollar']);
+    if (!Number.isFinite(v)) v = Number(h.pnlDollar);
+    if (Number.isFinite(v)) pnl += v;
   }
-  // Equity = starting pool + marked PnL. Peak must bootstrap to RISK_POOL so a
-  // never-positive PnL path cannot leave peak at 0 and report 100%+ "drawdown".
+  return pnl;
+}
+
+function persistRiskState() {
+  try { fs.writeFileSync(RISK_STATE_FILE, JSON.stringify(riskState)); } catch (_) {}
+}
+
+function updateRiskState() {
+  const pnl = portfolioMarkedPnl();
   const equity = RISK_POOL + pnl;
   riskState.equity = Math.round(equity);
-  if (!(riskState.peakEquity > 0) || riskState.peakEquity < RISK_POOL * 0.5) {
+  riskState.pnl = Math.round(pnl);
+  // Bootstrap peak only when missing/corrupt — never yank a rebased peak back to RISK_POOL.
+  if (!(Number(riskState.peakEquity) > 0)) {
     riskState.peakEquity = Math.max(RISK_POOL, Math.round(equity));
   }
   if (equity > riskState.peakEquity) riskState.peakEquity = Math.round(equity);
-  const dd = riskState.peakEquity > 0
-    ? Math.max(0, (riskState.peakEquity - equity) / riskState.peakEquity)
-    : 0;
-  const wasOff = riskState.riskOff;
+  const peak = Number(riskState.peakEquity) || RISK_POOL;
+  const dd = peak > 0 ? Math.max(0, (peak - equity) / peak) : 0;
+  const wasOff = !!riskState.riskOff;
   riskState.riskOff = dd >= RISK_MAX_DD;
   riskState.drawdownPct = +(dd * 100).toFixed(2);
-  riskState.pnl = Math.round(pnl);
   riskState.updated = new Date().toISOString();
   if (riskState.riskOff !== wasOff) {
     auditLog(riskState.riskOff ? 'risk_off_engaged' : 'risk_off_cleared', {
       equity: riskState.equity, peak: riskState.peakEquity, ddPct: riskState.drawdownPct, pnl
     });
   }
-  try { fs.writeFileSync(RISK_STATE_FILE, JSON.stringify(riskState)); } catch (_) {}
+  persistRiskState();
   return riskState;
 }
+
+/** Rebase peak to current equity → drawdown 0, risk-off cleared. */
+function resetRiskGuard(reason) {
+  const pnl = portfolioMarkedPnl();
+  const equity = RISK_POOL + pnl;
+  // Peak = current equity so DD is exactly 0 after reset (user intent).
+  const peak = Math.max(1, Math.round(equity));
+  riskState = {
+    peakEquity: peak,
+    equity: Math.round(equity),
+    pnl: Math.round(pnl),
+    drawdownPct: 0,
+    riskOff: false,
+    updated: new Date().toISOString(),
+    resetAt: new Date().toISOString(),
+    resetReason: reason || 'manual'
+  };
+  persistRiskState();
+  auditLog('risk_state_reset', { equity: riskState.equity, peak: riskState.peakEquity, pnl, reason: riskState.resetReason });
+  return riskState;
+}
+
 // Heal a corrupt risk_state left by the old "peak=0 + equity=pnl" formula.
 (function healRiskStateOnBoot() {
   try {
     const peak = Number(riskState.peakEquity) || 0;
     const eq = Number(riskState.equity) || 0;
-    const bogus = peak <= 0 || riskState.drawdownPct > 100 || eq < 0 || peak < RISK_POOL * 0.5;
+    const dd = Number(riskState.drawdownPct) || 0;
+    const bogus = peak <= 0 || dd > 100 || eq < 0 || (riskState.riskOff && dd > 50);
     if (bogus) {
-      console.warn('Risk state heal: resetting peak/equity (was peak=', peak, 'equity=', eq, 'dd=', riskState.drawdownPct, ')');
-      riskState.peakEquity = RISK_POOL;
-      riskState.equity = RISK_POOL;
-      riskState.drawdownPct = 0;
-      riskState.riskOff = false;
-      riskState.healedAt = new Date().toISOString();
-      try { fs.writeFileSync(RISK_STATE_FILE, JSON.stringify(riskState)); } catch (_) {}
+      console.warn('Risk state heal: rebasing peak (was peak=', peak, 'equity=', eq, 'dd=', dd, ')');
+      resetRiskGuard('boot_heal');
+    } else {
+      updateRiskState();
     }
-    updateRiskState();
   } catch (_) {}
 })();
+
 app.get('/api/risk-status', (req, res) => {
   try { updateRiskState(); } catch (_) {}
   res.json(riskState);
 });
+
 app.post('/api/risk-status/reset', express.json(), (req, res) => {
-  riskState = {
-    peakEquity: RISK_POOL,
-    equity: RISK_POOL,
-    drawdownPct: 0,
-    riskOff: false,
-    updated: new Date().toISOString(),
-    resetAt: new Date().toISOString()
-  };
-  try { fs.writeFileSync(RISK_STATE_FILE, JSON.stringify(riskState)); } catch (_) {}
-  auditLog('risk_state_reset', {});
-  try { updateRiskState(); } catch (_) {}
-  res.json({ ok: true, ...riskState });
+  try {
+    const state = resetRiskGuard('manual_ui');
+    // Do NOT call updateRiskState() here — it used to re-raise peak / re-trip risk-off.
+    res.json({ ok: true, ...state });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 /** tp1_hit / tp2_hit are EXTINCT statuses — the engine can no longer produce
