@@ -9456,8 +9456,8 @@ function bracketEnabled(side, hz) {
 
 const HORIZON_MIN_PCT = {
   // SL: noise floors only (ATR / structure still drive the actual stop).
-  // TP: NO %-of-price floors and NO invent-from-stop RR — targets come from ATR + momentum + S/R.
-  // minRR kept for display/analytics only (applyHorizonMinPctFloors no longer rewrites TP1).
+  // TP: ATR + momentum + S/R first; minRR 1.0 only lifts TP1 when ATR would be < 1:1.
+  // Wider ATR targets are kept (RR can only be ≥ 1:1 — never invent 1.8–2× from the stop).
   short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.0 },
   medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.0 },
   long:   { sl: 0.080, tp1: 0, tp2: 0, minRR: 1.0 }
@@ -10125,25 +10125,39 @@ function stampDashDataReasons(dashData) {
   }
 }
 
-/** Ensure TP2 sits beyond TP1. Does NOT invent TP1 from stop distance (ATR owns targets). */
+/** Floor: reward ≥ risk (default 1:1). ATR/structure targets that are ALREADY
+ *  wider than 1:1 are left untouched — we only lift TP1 up to 1× stop distance
+ *  when ATR would otherwise undershoot. Never invents 1.8–2× from the stop. */
 function enforceMinRiskReward(e, tp1, tp2, sl, isSell, minRR = 1.0) {
   if (!e || !Number.isFinite(+e)) return { tp1, tp2, sl };
   e = +e;
   tp1 = tp1 != null ? +tp1 : null;
   tp2 = tp2 != null ? +tp2 : null;
   sl = sl != null ? +sl : null;
-  if (!Number.isFinite(tp1)) return { tp1, tp2, sl };
-  // minRR is ignored for inventing targets — kept only for API compat.
-  // Callers that care about expectancy should skip low-RR setups, not rewrite ATR levels.
+  if (!Number.isFinite(tp1) || !Number.isFinite(sl)) return { tp1, tp2, sl };
+  minRR = minRR != null ? +minRR : 1.0;
+  if (!(minRR > 0)) minRR = 1.0;
+
   if (isSell) {
+    let risk = sl - e;
+    let reward = e - tp1;
+    if (!Number.isFinite(risk) || risk <= 0) risk = e * 0.02;
+    // Only lift TP1 when ATR undershoots the floor — never pull a wider ATR target down.
+    if (!Number.isFinite(reward) || reward < risk * minRR) {
+      tp1 = roundPrice(e - risk * minRR);
+    }
     if (!Number.isFinite(tp2) || tp2 >= tp1) {
-      const step = Math.max(e * 0.004, Math.abs(e - tp1) * 0.35);
-      tp2 = roundPrice(tp1 - step);
+      tp2 = roundPrice(tp1 - Math.max(e * 0.004, Math.abs(e - tp1) * 0.35));
     }
   } else {
+    let risk = e - sl;
+    let reward = tp1 - e;
+    if (!Number.isFinite(risk) || risk <= 0) risk = e * 0.02;
+    if (!Number.isFinite(reward) || reward < risk * minRR) {
+      tp1 = roundPrice(e + risk * minRR);
+    }
     if (!Number.isFinite(tp2) || tp2 <= tp1) {
-      const step = Math.max(e * 0.004, Math.abs(tp1 - e) * 0.35);
-      tp2 = roundPrice(tp1 + step);
+      tp2 = roundPrice(tp1 + Math.max(e * 0.004, Math.abs(tp1 - e) * 0.35));
     }
   }
   return { tp1, tp2, sl };
@@ -10264,7 +10278,7 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
     }
     const isSell = act === 'sell';
     // All horizons: TP1/TP2 from ATR + momentum + nearby structure.
-    // Stop from structure/ATR trail helper. Never invent TP as stop×fixed RR.
+    // Stop from structure/ATR trail. Then lift TP1 to ≥1:1 if ATR undershoots — never invent 1.8×.
     const sl = hz === 'short'
       ? (computeMeanReversionLevels(tech, e, isSell) || {}).stop
       : computeTrailingStopFromTech(tech, e, hz, isSell, fund);

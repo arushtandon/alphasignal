@@ -1734,7 +1734,7 @@ function fmtPct(n){
   return (n>=0?'+':'')+n.toFixed(1)+'%';
 }
 
-/** Same SL noise floors as server.js — TP stays ATR-driven (never invent from stop). */
+/** Same SL noise floors as server.js — ATR TPs with 1:1 minimum (can only be higher). */
 const DASH_HORIZON_MIN_PCT = {
   short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.0 },
   medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.0 },
@@ -1762,19 +1762,34 @@ function roundDashPrice(x) {
   return +Number(x).toFixed(d);
 }
 
-/** Keep TP2 beyond TP1 only — never invent TP1 as a fixed multiple of stop distance. */
+/** Floor reward ≥ risk (1:1). Keeps wider ATR targets; only lifts TP1 when undershooting. */
 function enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, minRR) {
+  minRR = minRR == null ? 1.0 : minRR;
+  if (!(minRR > 0)) minRR = 1.0;
   if (!e || !Number.isFinite(+e)) return { tp1: tp1, tp2: tp2, sl: sl };
   e = +e;
   tp1 = tp1 != null ? +tp1 : null;
   tp2 = tp2 != null ? +tp2 : null;
   sl = sl != null ? +sl : null;
-  if (!Number.isFinite(tp1)) return { tp1: tp1, tp2: tp2, sl: sl };
+  if (!Number.isFinite(tp1) || !Number.isFinite(sl)) return { tp1: tp1, tp2: tp2, sl: sl };
+
   if (isSell) {
+    var risk = sl - e;
+    var reward = e - tp1;
+    if (!Number.isFinite(risk) || risk <= 0) risk = e * 0.02;
+    if (!Number.isFinite(reward) || reward < risk * minRR) {
+      tp1 = roundDashPrice(e - risk * minRR);
+    }
     if (!Number.isFinite(tp2) || tp2 >= tp1) {
       tp2 = roundDashPrice(tp1 - Math.max(e * 0.004, Math.abs(e - tp1) * 0.35));
     }
   } else {
+    risk = e - sl;
+    reward = tp1 - e;
+    if (!Number.isFinite(risk) || risk <= 0) risk = e * 0.02;
+    if (!Number.isFinite(reward) || reward < risk * minRR) {
+      tp1 = roundDashPrice(e + risk * minRR);
+    }
     if (!Number.isFinite(tp2) || tp2 <= tp1) {
       tp2 = roundDashPrice(tp1 + Math.max(e * 0.004, Math.abs(tp1 - e) * 0.35));
     }
@@ -2079,6 +2094,7 @@ function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
     if (_atrTg.tp1 != null) tp1 = _atrTg.tp1;
     if (_atrTg.tp2 != null) tp2 = _atrTg.tp2;
   }
+  // ≥1:1 floor — lifts only when ATR undershoots; wider ATR RR is kept as-is.
   var rr = applyHorizonMinPctFloorsDash(e, tp1, tp2, sl, isSell, hz);
   return { tp1: rr.tp1, tp2: rr.tp2, sl: rr.sl };
 }
