@@ -6577,6 +6577,10 @@ async function generateServerPicksFromShortlist(opts = {}) {
       }
     } catch (e) { console.warn('Live re-pricing of picks failed:', e.message); }
 
+    // Drop any pane row whose ATR/structure levels fail the minimum R:R gate.
+    // Never invent TP to pass — undersized reward setups are simply not recommended.
+    dashData = filterDashDataByMinRR(dashData);
+
     // Stamp each pane pick with a trade-specific reason that includes Entry/TP/SL.
     // Generic/empty reason fields were leaving recommended CSV Reason blanks.
     stampDashDataReasons(dashData);
@@ -7048,6 +7052,19 @@ async function addTradesToHistory(trades) {
     if (!isSell && isToday && isSLCooldownActive(trade.ticker, hz)) {
       console.log('History add skipped (SL cooldown):', trade.ticker, hz);
       continue;
+    }
+    // New recommendations must clear the min R:R gate — never record a pick that
+    // risks more than it can make at TP1 (imported CSV / settled recovery exempt).
+    if (!prev && isToday && !trade._fromRecommendedCsv && !trade.legacyRecord) {
+      const e = parseFloat(trade[hz + 'Entry'] || trade.entry);
+      const tp1 = parseFloat(trade[hz + 'Target1'] || trade.target1);
+      const sl = parseFloat(trade[hz + 'StopLoss'] || trade.stopLoss);
+      if (!levelsMeetMinRR(e, tp1, sl, isSell, PICKS_MIN_RR)) {
+        const rr = rewardRiskRatio(e, tp1, sl, isSell);
+        console.log('History add skipped (RR <', PICKS_MIN_RR + '):', trade.ticker, hz, 'RR=', rr != null ? rr.toFixed(2) : 'n/a');
+        auditLog('entry_blocked_min_rr', { ticker: trade.ticker, hz, rr });
+        continue;
+      }
     }
     if (!trade.revalidatedAt || !trade.fmpScore || !trade.fundSnapshot) {
       await enrichHistoryTradeRecord(trade, caches).catch(() => null);
@@ -9456,12 +9473,30 @@ function bracketEnabled(side, hz) {
 
 const HORIZON_MIN_PCT = {
   // SL: noise floors only (ATR / structure still drive the actual stop).
-  // TP: ATR + momentum + S/R first; minRR 1.0 only lifts TP1 when ATR would be < 1:1.
-  // Wider ATR targets are kept (RR can only be ≥ 1:1 — never invent 1.8–2× from the stop).
-  short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.0 },
-  medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.0 },
-  long:   { sl: 0.080, tp1: 0, tp2: 0, minRR: 1.0 }
+  // TP: ATR + momentum + S/R. minRR is a GATE for recommendations (see PICKS_MIN_RR) —
+  // we do NOT invent TP from the stop; setups below the floor are dropped.
+  short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.1 },
+  medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.1 },
+  long:   { sl: 0.080, tp1: 0, tp2: 0, minRR: 1.1 }
 };
+
+/** Minimum reward:risk for a setup to appear on the dashboard / enter history as a new pick.
+ *  ATR may produce higher RR; anything below this is rejected (never invent TP to pass). */
+const PICKS_MIN_RR = Math.max(1.0, parseFloat(process.env.PICKS_MIN_RR || '1.1') || 1.1);
+
+function rewardRiskRatio(entry, tp1, sl, isSell) {
+  const e = parseFloat(entry), t = parseFloat(tp1), s = parseFloat(sl);
+  if (!(e > 0) || !(t > 0) || !(s > 0)) return null;
+  const risk = isSell ? (s - e) : (e - s);
+  const reward = isSell ? (e - t) : (t - e);
+  if (!(risk > 0) || !(reward > 0)) return null;
+  return reward / risk;
+}
+
+function levelsMeetMinRR(entry, tp1, sl, isSell, minRR = PICKS_MIN_RR) {
+  const rr = rewardRiskRatio(entry, tp1, sl, isSell);
+  return rr != null && rr >= minRR;
+}
 
 // ── Sector trend (hold/exit context) ─────────────────────────────────────────
 // Maps a stock's sector to its SPDR sector ETF as a trend proxy (used globally —
@@ -9651,11 +9686,40 @@ function filterDashDataBySLCooldown(dashData) {
         if (isSLCooldownActive(pick.ticker, hz)) return false;
         if (/SL cooldown/i.test(rating)) return false;
         // Only genuine Buy setups with a passing score belong in a buy pane.
-        return action === 'Buy' && (pick[hz + 'Score'] || 0) >= 62;
+        if (!(action === 'Buy' && (pick[hz + 'Score'] || 0) >= 62)) return false;
+      } else if (!(action === 'Sell' && (pick[hz + 'SellScore'] || 0) >= 62)) {
+        return false;
       }
-      return action === 'Sell' && (pick[hz + 'SellScore'] || 0) >= 62;
+      const isSell = side === 'sell';
+      const entry = parseFloat(pick[hz + 'Entry'] || pick.entry);
+      const tp1 = parseFloat(pick[hz + 'Target1'] || pick.target1);
+      const sl = parseFloat(pick[hz + 'StopLoss'] || pick.stopLoss);
+      return levelsMeetMinRR(entry, tp1, sl, isSell, PICKS_MIN_RR);
     });
   }
+  return out;
+}
+
+function filterDashDataByMinRR(dashData, minRR = PICKS_MIN_RR) {
+  if (!dashData || typeof dashData !== 'object') return dashData;
+  const out = {};
+  let dropped = 0;
+  for (const [pane, { hz, side }] of Object.entries(DASH_PANE_MAP)) {
+    const isSell = side === 'sell';
+    out[pane] = (dashData[pane] || []).filter(pick => {
+      const entry = parseFloat(pick[hz + 'Entry'] || pick.entry);
+      const tp1 = parseFloat(pick[hz + 'Target1'] || (isSell ? pick.sellTarget1 : pick.target1));
+      const sl = parseFloat(pick[hz + 'StopLoss'] || (isSell ? pick.sellStopLoss : pick.stopLoss));
+      const ok = levelsMeetMinRR(entry, tp1, sl, isSell, minRR);
+      if (!ok) {
+        dropped++;
+        const rr = rewardRiskRatio(entry, tp1, sl, isSell);
+        console.log('Pick dropped (RR <', minRR + '):', pick.ticker, hz, side, 'RR=', rr != null ? rr.toFixed(2) : 'n/a');
+      }
+      return ok;
+    });
+  }
+  if (dropped) console.log('filterDashDataByMinRR dropped', dropped, 'rows (minRR', minRR + ')');
   return out;
 }
 
@@ -10125,37 +10189,20 @@ function stampDashDataReasons(dashData) {
   }
 }
 
-/** Floor: reward ≥ risk (default 1:1). ATR/structure targets that are ALREADY
- *  wider than 1:1 are left untouched — we only lift TP1 up to 1× stop distance
- *  when ATR would otherwise undershoot. Never invents 1.8–2× from the stop. */
-function enforceMinRiskReward(e, tp1, tp2, sl, isSell, minRR = 1.0) {
+/** Keep TP2 beyond TP1. Does NOT invent TP1 from stop distance — low-RR setups
+ *  are rejected by levelsMeetMinRR / filterDashDataByMinRR instead. */
+function enforceMinRiskReward(e, tp1, tp2, sl, isSell, minRR = PICKS_MIN_RR) {
   if (!e || !Number.isFinite(+e)) return { tp1, tp2, sl };
   e = +e;
   tp1 = tp1 != null ? +tp1 : null;
   tp2 = tp2 != null ? +tp2 : null;
   sl = sl != null ? +sl : null;
-  if (!Number.isFinite(tp1) || !Number.isFinite(sl)) return { tp1, tp2, sl };
-  minRR = minRR != null ? +minRR : 1.0;
-  if (!(minRR > 0)) minRR = 1.0;
-
+  if (!Number.isFinite(tp1)) return { tp1, tp2, sl };
   if (isSell) {
-    let risk = sl - e;
-    let reward = e - tp1;
-    if (!Number.isFinite(risk) || risk <= 0) risk = e * 0.02;
-    // Only lift TP1 when ATR undershoots the floor — never pull a wider ATR target down.
-    if (!Number.isFinite(reward) || reward < risk * minRR) {
-      tp1 = roundPrice(e - risk * minRR);
-    }
     if (!Number.isFinite(tp2) || tp2 >= tp1) {
       tp2 = roundPrice(tp1 - Math.max(e * 0.004, Math.abs(e - tp1) * 0.35));
     }
   } else {
-    let risk = e - sl;
-    let reward = tp1 - e;
-    if (!Number.isFinite(risk) || risk <= 0) risk = e * 0.02;
-    if (!Number.isFinite(reward) || reward < risk * minRR) {
-      tp1 = roundPrice(e + risk * minRR);
-    }
     if (!Number.isFinite(tp2) || tp2 <= tp1) {
       tp2 = roundPrice(tp1 + Math.max(e * 0.004, Math.abs(tp1 - e) * 0.35));
     }
@@ -11372,30 +11419,81 @@ app.get('/api/history/audit', (req, res) => {
 const RISK_STATE_FILE = path.join(path.dirname(HISTORY_FILE), 'risk_state.json');
 const RISK_POOL = 700000;
 const RISK_MAX_DD = 0.15;
-let riskState = { peakEquity: 0, equity: 0, drawdownPct: 0, riskOff: false, updated: null };
-try { riskState = { ...riskState, ...JSON.parse(fs.readFileSync(RISK_STATE_FILE, 'utf8')) }; } catch (_) {}
+let riskState = { peakEquity: RISK_POOL, equity: RISK_POOL, drawdownPct: 0, riskOff: false, updated: null };
+try {
+  const loaded = JSON.parse(fs.readFileSync(RISK_STATE_FILE, 'utf8'));
+  riskState = { ...riskState, ...loaded };
+} catch (_) {}
 function updateRiskState() {
-  let eq = 0;
+  let pnl = 0;
   for (const h of tradeHistory) {
     if (!(h.action === 'Buy' || h.action === 'Sell')) continue;
     const hzL = h.hz ? [h.hz] : ['short', 'medium', 'long'];
     for (const hz of hzL) {
       const v = Number(h[hz + 'PnlDollar']);
-      if (Number.isFinite(v)) eq += v;
+      if (Number.isFinite(v)) pnl += v;
     }
   }
-  riskState.equity = Math.round(eq);
-  if (eq > riskState.peakEquity) riskState.peakEquity = Math.round(eq);
-  const dd = (riskState.peakEquity - eq) / RISK_POOL;
+  // Equity = starting pool + marked PnL. Peak must bootstrap to RISK_POOL so a
+  // never-positive PnL path cannot leave peak at 0 and report 100%+ "drawdown".
+  const equity = RISK_POOL + pnl;
+  riskState.equity = Math.round(equity);
+  if (!(riskState.peakEquity > 0) || riskState.peakEquity < RISK_POOL * 0.5) {
+    riskState.peakEquity = Math.max(RISK_POOL, Math.round(equity));
+  }
+  if (equity > riskState.peakEquity) riskState.peakEquity = Math.round(equity);
+  const dd = riskState.peakEquity > 0
+    ? Math.max(0, (riskState.peakEquity - equity) / riskState.peakEquity)
+    : 0;
   const wasOff = riskState.riskOff;
   riskState.riskOff = dd >= RISK_MAX_DD;
   riskState.drawdownPct = +(dd * 100).toFixed(2);
+  riskState.pnl = Math.round(pnl);
   riskState.updated = new Date().toISOString();
-  if (riskState.riskOff !== wasOff) auditLog(riskState.riskOff ? 'risk_off_engaged' : 'risk_off_cleared', { equity: riskState.equity, peak: riskState.peakEquity, ddPct: riskState.drawdownPct });
+  if (riskState.riskOff !== wasOff) {
+    auditLog(riskState.riskOff ? 'risk_off_engaged' : 'risk_off_cleared', {
+      equity: riskState.equity, peak: riskState.peakEquity, ddPct: riskState.drawdownPct, pnl
+    });
+  }
   try { fs.writeFileSync(RISK_STATE_FILE, JSON.stringify(riskState)); } catch (_) {}
   return riskState;
 }
-app.get('/api/risk-status', (req, res) => res.json(riskState));
+// Heal a corrupt risk_state left by the old "peak=0 + equity=pnl" formula.
+(function healRiskStateOnBoot() {
+  try {
+    const peak = Number(riskState.peakEquity) || 0;
+    const eq = Number(riskState.equity) || 0;
+    const bogus = peak <= 0 || riskState.drawdownPct > 100 || eq < 0 || peak < RISK_POOL * 0.5;
+    if (bogus) {
+      console.warn('Risk state heal: resetting peak/equity (was peak=', peak, 'equity=', eq, 'dd=', riskState.drawdownPct, ')');
+      riskState.peakEquity = RISK_POOL;
+      riskState.equity = RISK_POOL;
+      riskState.drawdownPct = 0;
+      riskState.riskOff = false;
+      riskState.healedAt = new Date().toISOString();
+      try { fs.writeFileSync(RISK_STATE_FILE, JSON.stringify(riskState)); } catch (_) {}
+    }
+    updateRiskState();
+  } catch (_) {}
+})();
+app.get('/api/risk-status', (req, res) => {
+  try { updateRiskState(); } catch (_) {}
+  res.json(riskState);
+});
+app.post('/api/risk-status/reset', express.json(), (req, res) => {
+  riskState = {
+    peakEquity: RISK_POOL,
+    equity: RISK_POOL,
+    drawdownPct: 0,
+    riskOff: false,
+    updated: new Date().toISOString(),
+    resetAt: new Date().toISOString()
+  };
+  try { fs.writeFileSync(RISK_STATE_FILE, JSON.stringify(riskState)); } catch (_) {}
+  auditLog('risk_state_reset', {});
+  try { updateRiskState(); } catch (_) {}
+  res.json({ ok: true, ...riskState });
+});
 
 /** tp1_hit / tp2_hit are EXTINCT statuses — the engine can no longer produce
  *  them (ALL trades live under the partial+TSL regime). Any appearance means
