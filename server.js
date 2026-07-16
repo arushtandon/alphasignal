@@ -5750,18 +5750,62 @@ async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
 // A name that's already an open Buy should not be re-recommended as a Buy; only a
 // DIRECTION CHANGE (Buy↔Sell) makes it eligible again. Looks across all horizons —
 // once a trader holds a direction on a name, we don't spam the same call daily.
+const LIVE_STATUSES = new Set(['open', 'tp1_open', 'n/a', '']);
 function hasOpenTradeInDirection(ticker, wantSell) {
   if (!Array.isArray(tradeHistory) || !ticker) return false;
   const tk = String(ticker).toUpperCase();
   for (const h of tradeHistory) {
     if (!h || String(h.ticker || '').toUpperCase() !== tk) continue;
     const hz = h.hz || 'short';
-    const status = h[hz + 'Status'] || h.status || 'open';
-    if (status !== 'open') continue;
+    const status = String(h[hz + 'Status'] || h.status || 'open');
+    if (!LIVE_STATUSES.has(status)) continue; // fully closed — eligible again
     const isSell = String(h.action || '').toLowerCase() === 'sell';
-    if (isSell === !!wantSell) return true; // same direction already open
+    if (isSell === !!wantSell) return true; // same direction already live
   }
   return false;
+}
+
+/** Tickers currently shown on the dashboard board (any pane). */
+function collectDashTickers(dashData) {
+  const out = new Set();
+  if (!dashData || typeof dashData !== 'object') return out;
+  for (const k of ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell']) {
+    for (const s of dashData[k] || []) {
+      if (s && s.ticker) out.add(String(s.ticker).toUpperCase());
+    }
+  }
+  return out;
+}
+
+// Don't re-surface the SAME board names on the next morning regen — medium/long
+// quant scores stick for days, which made "Refresh" look broken. Cooldown hours
+// from the prior board snapshot (default 36h ≈ skip one trading session).
+const PICKS_ROTATION_HOURS = Math.max(0, parseInt(process.env.PICKS_ROTATION_HOURS || '36', 10) || 36);
+function priorBoardCooldownSet(opts = {}) {
+  const allowRepeat = opts.allowRepeat === true || PICKS_ROTATION_HOURS <= 0;
+  if (allowRepeat) return new Set();
+  const prev = dashboardPicksCache && Array.isArray(dashboardPicksCache.priorPickTickers)
+    ? dashboardPicksCache.priorPickTickers
+    : [...collectDashTickers(dashboardPicksCache && dashboardPicksCache.dashData)];
+  const prevTs = Number(dashboardPicksCache && (dashboardPicksCache.priorPickTs || dashboardPicksCache.dashTs)) || 0;
+  if (!prev.length || !prevTs) return new Set();
+  if (Date.now() - prevTs > PICKS_ROTATION_HOURS * 3600000) return new Set();
+  return new Set(prev.map(t => String(t).toUpperCase()));
+}
+
+function topNRotating(arr, key, cooldownSet, n = 5) {
+  const sorted = (arr || []).slice().sort((a, b) => (b[key] || 0) - (a[key] || 0));
+  const cool = cooldownSet || new Set();
+  const fresh = sorted.filter(r => !cool.has(String(r.ticker || '').toUpperCase()));
+  const out = fresh.slice(0, n);
+  // Soft fill if cooldown wiped the pane — prefer empty-ish over identical board.
+  if (out.length < Math.min(3, n)) {
+    for (const r of sorted) {
+      if (out.length >= n) break;
+      if (!out.some(x => String(x.ticker).toUpperCase() === String(r.ticker).toUpperCase())) out.push(r);
+    }
+  }
+  return out.map(r => ({ ...r }));
 }
 
 function isHistoryBuySellRecord(h) {
@@ -6431,6 +6475,11 @@ async function generateServerPicksFromShortlist(opts = {}) {
     const buyAssign = { short: [], medium: [], long: [] };
     const sellAssign = { short: [], medium: [], long: [] };
 
+    const cooldown = priorBoardCooldownSet(opts);
+    const prevSummary = dashboardPicksCache && dashboardPicksCache.dashData
+      ? dashboardPicksSummary(dashboardPicksCache.dashData) : '';
+    const priorTickers = [...collectDashTickers(dashboardPicksCache && dashboardPicksCache.dashData)];
+
     for (const r of rows) {
       let bBuyHz = null, bBuyScore = -1;
       let bSellHz = null, bSellScore = -1;
@@ -6448,14 +6497,13 @@ async function generateServerPicksFromShortlist(opts = {}) {
       else if (bSellHz) sellAssign[bSellHz].push(r); // a name is buy XOR sell, never both
     }
 
-    const topN = (arr, key) => arr.slice().sort((a, b) => (b[key] || 0) - (a[key] || 0)).slice(0, 5).map(r => ({ ...r }));
     const dashData = {
-      short: topN(buyAssign.short, 'shortScore'),
-      medium: topN(buyAssign.medium, 'mediumScore'),
-      long: topN(buyAssign.long, 'longScore'),
-      shortSell: topN(sellAssign.short, 'shortSellScore'),
-      medSell: topN(sellAssign.medium, 'mediumSellScore'),
-      longSell: topN(sellAssign.long, 'longSellScore')
+      short: topNRotating(buyAssign.short, 'shortScore', cooldown, 5),
+      medium: topNRotating(buyAssign.medium, 'mediumScore', cooldown, 5),
+      long: topNRotating(buyAssign.long, 'longScore', cooldown, 5),
+      shortSell: topNRotating(sellAssign.short, 'shortSellScore', cooldown, 5),
+      medSell: topNRotating(sellAssign.medium, 'mediumSellScore', cooldown, 5),
+      longSell: topNRotating(sellAssign.long, 'longSellScore', cooldown, 5)
     };
 
     // Re-price the FINAL picks with LIVE quotes so the recorded entry (and the
@@ -6510,10 +6558,17 @@ async function generateServerPicksFromShortlist(opts = {}) {
       version: DASHBOARD_PICKS_VERSION,
       schemaVersion: 1,
       dashTs: Date.now(),
-      dashData: sanitizeDashDataForServer(dashData)
+      dashData: sanitizeDashDataForServer(dashData),
+      // Next regen skips these names for PICKS_ROTATION_HOURS so the board rotates.
+      priorPickTickers: priorTickers,
+      priorPickTs: Date.now(),
+      prevSummary: prevSummary || ''
     };
     saveDashboardPicksFile(dashboardPicksCache);
-    console.log('Server picks generated →', dashboardPicksSummary(dashData));
+    const summary = dashboardPicksSummary(dashData);
+    const rotatedOff = [...cooldown].filter(t => ![...collectDashTickers(dashData)].includes(t));
+    console.log('Server picks generated →', summary,
+      cooldown.size ? `(rotated off ${rotatedOff.slice(0, 12).join(',') || (cooldown.size + ' prior')})` : '');
 
     // Record the picks into history autonomously (no browser needed). The shared
     // writer dedups per ticker/hz/day, so re-running the daily scan just refreshes
@@ -6527,7 +6582,14 @@ async function generateServerPicksFromShortlist(opts = {}) {
     } catch (e) {
       console.warn('Server history record failed:', e.message);
     }
-    return { ok: true, summary: dashboardPicksSummary(dashData) };
+    return {
+      ok: true,
+      summary,
+      prevSummary: prevSummary || '',
+      rotatedOff: rotatedOff.slice(0, 40),
+      cooldownSize: cooldown.size,
+      dashTs: dashboardPicksCache.dashTs
+    };
   } catch (e) {
     console.warn('generateServerPicksFromShortlist error:', e.message);
     return { ok: false, error: e.message };
@@ -9576,10 +9638,18 @@ async function scanSchedulerTick(boot = false) {
       // board updates even while the heavy universe scan is running.
     }
 
-    // Morning (or overdue) picks regeneration — only mark the day done on SUCCESS.
     const pastRefreshHour = hour >= PICKS_REFRESH_HOUR_SGT;
     const newSgtDay = _lastPicksDateKey !== todayKey;
     const overdue = picksAge > PICKS_MAX_AGE_MS;
+
+    // Morning (or overdue): always refresh the universe pool on a new SGT day so
+    // we are not re-ranking yesterday's shortlist into the same top-5 forever.
+    if (pastRefreshHour && newSgtDay && !shortlistStale && !universeScanState.running) {
+      console.log('Scheduler: new SGT morning → universe rescan for fresh candidates');
+      runUniverseScan({ reason: 'morning' });
+    }
+
+    // Morning (or overdue) picks regeneration — only mark the day done on SUCCESS.
     if ((pastRefreshHour && newSgtDay) || overdue) {
       console.log(
         'Scheduler: regenerating picks',
@@ -9589,13 +9659,14 @@ async function scanSchedulerTick(boot = false) {
           lastKey: _lastPicksDateKey,
           picksAgeH: Number.isFinite(picksAge) ? +(picksAge / 3600000).toFixed(1) : null,
           overdue,
-          boot
+          boot,
+          rotationH: PICKS_ROTATION_HOURS
         })
       );
       const r = await generateServerPicksFromShortlist().catch(e => ({ ok: false, error: e.message }));
       if (r && r.ok) {
         _lastPicksDateKey = todayKey;
-        console.log('Scheduler: picks regenerated OK →', r.summary);
+        console.log('Scheduler: picks regenerated OK →', r.summary, r.prevSummary ? `| was: ${r.prevSummary}` : '');
       } else {
         console.warn('Scheduler: picks regen failed — will retry next tick:', r && (r.error || r.reason));
       }
@@ -9609,25 +9680,37 @@ setTimeout(() => scanSchedulerTick(true), 30000);
 setInterval(() => scanSchedulerTick(false), 15 * 60 * 1000);
 
 // Manual / client-triggered picks regeneration (does not wait for the clock).
-app.post('/api/dashboard/picks/regen', async (req, res) => {
+app.post('/api/dashboard/picks/regen', express.json({ limit: '32kb' }), async (req, res) => {
   try {
     if (serverPicksGenerating) {
       return res.json({ ok: false, reason: 'already generating', dashTs: dashboardPicksCache && dashboardPicksCache.dashTs });
+    }
+    const body = req.body || {};
+    const forceUniverse = body.forceUniverse === true || req.query.forceUniverse === '1';
+    if (forceUniverse && !universeScanState.running) {
+      runUniverseScan({ reason: 'manual-regen' });
     }
     if (!universeShortlistTickers().length && !universeScanState.running) {
       runUniverseScan({ reason: 'regen-no-shortlist' });
       return res.json({ ok: false, reason: 'no shortlist — universe scan started', scan: universeScanState });
     }
-    const r = await generateServerPicksFromShortlist({ maxMs: 240000 });
+    const r = await generateServerPicksFromShortlist({
+      maxMs: 240000,
+      allowRepeat: body.allowRepeat === true
+    });
     if (r && r.ok) _lastPicksDateKey = singaporeDateKey();
     const d = dashboardPicksCache;
     res.json({
       ok: !!(r && r.ok),
       reason: r && (r.reason || r.error) || null,
       summary: r && r.summary || null,
-      dashTs: d && d.dashTs || null,
+      prevSummary: r && r.prevSummary || null,
+      rotatedOff: r && r.rotatedOff || [],
+      cooldownSize: r && r.cooldownSize || 0,
+      dashTs: (r && r.dashTs) || (d && d.dashTs) || null,
       sgtDay: singaporeDateKey(),
-      lastPicksDateKey: _lastPicksDateKey
+      lastPicksDateKey: _lastPicksDateKey,
+      universeScanStarted: forceUniverse || false
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

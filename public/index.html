@@ -2312,12 +2312,17 @@ async function loadDashboard(force=false){
   await runDashScan(force);
 }
 
-/** Force the server to rebuild picks (fresh OHLCV), then reload the board. */
+/** Force the server to rebuild picks (fresh OHLCV + rotate off prior board), then reload. */
 async function forceRefreshPicks(){
   const dashTsEl=document.getElementById('dashTs');
-  if(dashTsEl) dashTsEl.textContent='Regenerating server picks…';
+  if(dashTsEl) dashTsEl.textContent='Regenerating server picks (rotating off prior board)…';
   try{
-    const r=await fetch('/api/dashboard/picks/regen',{method:'POST',cache:'no-store'}).then(x=>x.json()).catch(()=>null);
+    const r=await fetch('/api/dashboard/picks/regen',{
+      method:'POST',
+      cache:'no-store',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ forceUniverse:true })
+    }).then(x=>x.json()).catch(()=>null);
     if(r && r.ok===false && r.reason==='no shortlist — universe scan started'){
       if(dashTsEl) dashTsEl.textContent='No shortlist yet — universe scan started. This can take 5–15 min…';
       pollUniverseScan();
@@ -2325,6 +2330,14 @@ async function forceRefreshPicks(){
     }
     if(r && r.ok===false && r.reason==='already generating'){
       if(dashTsEl) dashTsEl.textContent='Picks already regenerating — retry in a minute…';
+    }
+    if(r && r.ok && dashTsEl){
+      const rotated = (r.rotatedOff && r.rotatedOff.length) ? (' · rotated off '+r.rotatedOff.slice(0,8).join(',')) : '';
+      dashTsEl.textContent='Picks regenerated · '+new Date(r.dashTs||Date.now()).toLocaleString()+rotated;
+    }
+    if(r && r.universeScanStarted){
+      // Universe still refreshing in background — poll so board updates again when done
+      pollUniverseScan();
     }
   }catch(e){ console.warn('forceRefreshPicks', e.message||e); }
   ST.dashData=null; ST.dashTs=null;
