@@ -995,33 +995,117 @@ function computeTrailingStopFromTech(tech, entry, hz, isSell, fund = null) {
   return sl ? roundPrice(sl) : null;
 }
 
-/** First profit target (TP1) — deliberately set CLOSER than the stop so it is hit
- *  more often than not; once hit we book a partial AND move the remainder's stop to
- *  breakeven, so a TP1 trade can no longer become a loss. This (plus entry quality)
- *  is what lifts the win rate while the trailed remainder still rides big moves.
- *  TP1 distance = ratio × stop distance (ratio<1 ⇒ P(TP1 first) > P(stop first)). */
-function computeFirstTargetFromTech(tech, entry, hz, isSell, stopLevel = null) {
-  if (!tech || !entry || entry <= 0) return null;
-  const atr = tech.atr || entry * 0.02;
-  // TP1 must REWARD MORE than it RISKS. The old ratio (0.62) set the target closer
-  // than the stop, which is negative-expectancy by construction: a 62% hit rate only
-  // breaks even and brokerage turns it negative. We now make TP1 a MULTIPLE of the
-  // stop distance (reward ≥ minRR × risk), so even a sub-60% hit rate is profitable.
-  const mins = (typeof HORIZON_MIN_PCT !== 'undefined' && HORIZON_MIN_PCT[hz]) ? HORIZON_MIN_PCT[hz] : null;
-  const ratio = mins ? mins.minRR : (hz === 'long' ? 1.9 : 1.8);
-  const floorPct = mins ? mins.tp1 : (hz === 'short' ? 0.045 : hz === 'medium' ? 0.09 : 0.15);
-  const capPct   = hz === 'short' ? 0.10 : hz === 'medium' ? 0.20 : 0.40;
-  if (!isSell) {
-    const stopDist = stopLevel && stopLevel < entry ? (entry - stopLevel) : (hz === 'short' ? 2.0 : hz === 'medium' ? 3.0 : 5.0) * atr;
-    let tp = entry + ratio * stopDist;
-    tp = Math.min(Math.max(tp, entry * (1 + floorPct)), entry * (1 + capPct));
-    return roundPrice(tp);
-  } else {
-    const stopDist = stopLevel && stopLevel > entry ? (stopLevel - entry) : (hz === 'short' ? 2.0 : hz === 'medium' ? 3.0 : 5.0) * atr;
-    let tp = entry - ratio * stopDist;
-    tp = Math.max(Math.min(tp, entry * (1 - floorPct)), entry * (1 - capPct));
-    return roundPrice(tp);
+/** ATR×momentum multiples for TP1 / TP2 — NOT a multiple of stop distance.
+ *  Strong ADX / aligned MACD+trend stretches targets; chop pulls them in. */
+function atrMomentumMultiples(tech, hz) {
+  const base = {
+    short:  { tp1: 1.6, tp2: 2.8 },
+    medium: { tp1: 2.8, tp2: 5.0 },
+    long:   { tp1: 4.5, tp2: 8.0 }
+  }[hz] || { tp1: 2.0, tp2: 3.5 };
+  const adx = Number(tech && tech.adx) || 20;
+  const macd = tech && tech.macd;
+  const hist = macd && macd.histogram;
+  const macdTrend = String((macd && macd.trend) || '').toLowerCase();
+  const trend = String((tech && (tech.trend20 || tech.trend)) || '').toLowerCase();
+  let scale = 1;
+  if (adx >= 28) scale += 0.15;
+  else if (adx < 16) scale -= 0.15;
+  const alignedBull = (trend === 'uptrend' || trend === 'bull') && (hist > 0 || macdTrend === 'bullish');
+  const alignedBear = (trend === 'downtrend' || trend === 'bear') && (hist < 0 || macdTrend === 'bearish');
+  if (alignedBull || alignedBear) scale += 0.10;
+  if (trend === 'sideways' || trend === 'ranging' || trend === 'neutral') scale -= 0.10;
+  scale = Math.max(0.70, Math.min(1.35, scale));
+  return { tp1: base.tp1 * scale, tp2: base.tp2 * scale, atrScale: scale };
+}
+
+/** Prefer a structural level near the ATR anchor (within 0.55×–1.55× ATR of it). */
+function pickStructureNearAtr(cands, atrAnchor, entry, isSell, atr) {
+  const band = Math.max(atr * 0.55, entry * 0.004);
+  let best = null, bestDist = Infinity;
+  for (const raw of cands || []) {
+    const v = parseFloat(raw);
+    if (!(v > 0)) continue;
+    if (!isSell && !(v > entry * 1.002)) continue;
+    if (isSell && !(v < entry * 0.998)) continue;
+    const d = Math.abs(v - atrAnchor);
+    if (d <= Math.abs(atrAnchor - entry) * 0.9 + band && d < bestDist) {
+      best = v; bestDist = d;
+    }
   }
+  return best;
+}
+
+/**
+ * TP1 / TP2 from ATR + momentum + nearby structure (channels / S/R).
+ * Stops stay independent — TPs are NOT "minRR × stop distance".
+ */
+function computeAtrMomentumTargets(tech, entry, hz, isSell) {
+  if (!tech || !entry || entry <= 0) return { tp1: null, tp2: null };
+  const atr = tech.atr || tech.atr14 || entry * 0.02;
+  const m = atrMomentumMultiples(tech, hz);
+  const atrTp1 = isSell ? entry - m.tp1 * atr : entry + m.tp1 * atr;
+  const atrTp2 = isSell ? entry - m.tp2 * atr : entry + m.tp2 * atr;
+  const chan = tech.channels || {};
+  const d20 = chan.daily20 || null;
+  const d50 = chan.daily50 || null;
+  const w20 = chan.weekly20 || null;
+  const w50 = chan.weekly50 || null;
+  let c1 = [], c2 = [];
+  if (!isSell) {
+    if (hz === 'short') {
+      c1 = [d20 && d20.mean, tech.resistance1, tech.ma20];
+      c2 = [d20 && d20.upper1, tech.resistance2, tech.resistance1, d20 && d20.upper2];
+    } else if (hz === 'medium') {
+      c1 = [w20 && w20.mean, d50 && d50.mean, tech.resistance1, tech.ma50];
+      c2 = [w20 && w20.upper1, d20 && d20.upper2, tech.resistance2, w20 && w20.upper2];
+    } else {
+      c1 = [w20 && w20.upper1, w50 && w50.mean, tech.resistance1, tech.ma200];
+      c2 = [w20 && w20.upper2, w50 && w50.upper1, tech.resistance2];
+    }
+  } else {
+    if (hz === 'short') {
+      c1 = [d20 && d20.mean, tech.support1, tech.ma20];
+      c2 = [d20 && d20.lower1, tech.support2, tech.support1, d20 && d20.lower2];
+    } else if (hz === 'medium') {
+      c1 = [w20 && w20.mean, d50 && d50.mean, tech.support1, tech.ma50];
+      c2 = [w20 && w20.lower1, d20 && d20.lower2, tech.support2, w20 && w20.lower2];
+    } else {
+      c1 = [w20 && w20.lower1, w50 && w50.mean, tech.support1, tech.ma200];
+      c2 = [w20 && w20.lower2, w50 && w50.lower1, tech.support2];
+    }
+  }
+  let tp1 = pickStructureNearAtr(c1, atrTp1, entry, isSell, atr) || atrTp1;
+  let tp2 = pickStructureNearAtr(c2, atrTp2, entry, isSell, atr) || atrTp2;
+  // Cap runaway structure (e.g. distant weekly band) at 1.75× the ATR anchor distance
+  const max1 = Math.abs(atrTp1 - entry) * 1.75;
+  const max2 = Math.abs(atrTp2 - entry) * 1.75;
+  if (!isSell) {
+    if (tp1 - entry > max1) tp1 = entry + max1;
+    if (tp2 - entry > max2) tp2 = entry + max2;
+    if (!(tp2 > tp1)) tp2 = Math.max(tp1 + 0.35 * atr, atrTp2);
+  } else {
+    if (entry - tp1 > max1) tp1 = entry - max1;
+    if (entry - tp2 > max2) tp2 = entry - max2;
+    if (!(tp2 < tp1)) tp2 = Math.min(tp1 - 0.35 * atr, atrTp2);
+  }
+  return { tp1: roundPrice(tp1), tp2: roundPrice(tp2), atrMult: m };
+}
+
+/** First profit target — ATR + momentum + structure (legacy name kept for callers). */
+function computeFirstTargetFromTech(tech, entry, hz, isSell, stopLevel = null) {
+  const t = computeAtrMomentumTargets(tech, entry, hz, isSell);
+  return t.tp1;
+}
+
+function computeSecondTargetFromTech(tech, entry, hz, isSell, tp1 = null) {
+  const t = computeAtrMomentumTargets(tech, entry, hz, isSell);
+  let tp2 = t.tp2;
+  if (tp1 != null && Number.isFinite(+tp1)) {
+    if (!isSell && !(tp2 > +tp1)) tp2 = roundPrice(+tp1 * 1.04);
+    if (isSell && !(tp2 < +tp1)) tp2 = roundPrice(+tp1 * 0.96);
+  }
+  return tp2;
 }
 
 /** Hysteresis signal-flip test — only exit when the picture TRULY reverses, not on
@@ -1134,19 +1218,10 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
   const lv = computeMeanReversionLevels(eTech, entry, isSell) || {};
   const target = lv.target;
   let trailingSl = lv.stop;
-  // CANONICAL EXIT SPEC (applies to ALL horizons, short included): TP1 books the
-  // PARTIAL (whole-share split when supplied), the remainder rides the daily-%-move
-  // ratchet TSL (tightens only, breakeven floor post-TP1). TP2 = REFERENCE ONLY
-  // (2× TP1 distance, horizon-floored) for exit-quality analysis — never an exit.
+  // CANONICAL EXIT SPEC: TP1 books the PARTIAL; remainder rides the ratchet TSL.
+  // TP2 = ATR+momentum REFERENCE only (never an exit / never 2×TP1 invent).
   const PARTIAL = (Number.isFinite(partialFrac) && partialFrac >= 0 && partialFrac < 1) ? partialFrac : 0.5;
-  let tp2 = null;
-  if (target != null && Number.isFinite(+target)) {
-    const _d1s = Math.abs(+target - entry);
-    tp2 = isSell ? entry - 2 * _d1s : entry + 2 * _d1s;
-    const _f2s = (HORIZON_MIN_PCT.short || {}).tp2 || 0.10;
-    const _floor2s = isSell ? entry * (1 - _f2s) : entry * (1 + _f2s);
-    tp2 = isSell ? Math.min(tp2, _floor2s) : Math.max(tp2, _floor2s);
-  }
+  let tp2 = computeSecondTargetFromTech(eTech, entry, 'short', isSell, target);
   let tp1Hit = false, realized = 0, remaining = 1.0, _yc = 0;
   let tp2AltRet = null; // hypothetical full exit at TP2 — ANALYSIS ONLY, never an exit
   const longRet  = px => (px - entry) / entry;
@@ -1220,16 +1295,8 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
   const atrEntry = entryTech.atr || entry * 0.02;
   let trailingSl = computeTrailingStopFromTech(entryTech, entry, hz, isSell, fund);
   const tp1 = computeFirstTargetFromTech(entryTech, entry, hz, isSell, trailingSl);
-  // TP2 = the runner's full-exit target (2× TP1 distance, horizon-floored) — must
-  // mirror applyServerPriceLevels so simulated exits match the displayed levels.
-  let tp2 = null;
-  if (tp1 != null && Number.isFinite(+tp1)) {
-    const _d1 = Math.abs(+tp1 - entry);
-    tp2 = isSell ? entry - 2 * _d1 : entry + 2 * _d1;
-    const _f2 = (HORIZON_MIN_PCT[hz] || HORIZON_MIN_PCT.short).tp2;
-    const _floor2 = isSell ? entry * (1 - _f2) : entry * (1 + _f2);
-    tp2 = isSell ? Math.min(tp2, _floor2) : Math.max(tp2, _floor2);
-  }
+  // TP2 reference = ATR + momentum + structure (same as displayed levels).
+  let tp2 = computeSecondTargetFromTech(entryTech, entry, hz, isSell, tp1);
   const PARTIAL = (Number.isFinite(partialFrac) && partialFrac >= 0 && partialFrac < 1) ? partialFrac : 0.5; // whole-share TP1 fraction (default fractional 50%)
   // Chandelier multiple for the post-TP1 runner — wide so winners can actually run.
   const runK = hz === 'short' ? 3.0 : hz === 'medium' ? 4.0 : 5.5;
@@ -9039,7 +9106,8 @@ const HORIZON_PCT = {
 // Stop/target floors SCALE WITH THE HOLDING PERIOD: a 1-day trade can use a tight
 // 3% stop, but a 4–12 month position must tolerate normal multi-month swings — a
 // 5% stop on a long-term hold just guarantees a noise stop-out. Targets scale with
-// the stop so reward:risk stays ~1.85 across all horizons.
+// Stop floors scale with horizon so longer holds tolerate normal swings.
+// Targets are ATR+momentum (minRR 1:1 only) — not fixed %-of-price or stop multiples.
 // ── SELL PICKS: redesigned two-path architecture ─────────────────────────────
 // Backtest history (30 liquid US names, 252d): the old single-path strict gate
 // demanded trend-short structure (below MA200 + bear regime) from EVERY sell —
@@ -9070,9 +9138,12 @@ function bracketEnabled(side, hz) {
 }
 
 const HORIZON_MIN_PCT = {
-  short:  { sl: 0.030, tp1: 0.060, tp2: 0.100, minRR: 1.8 },
-  medium: { sl: 0.080, tp1: 0.150, tp2: 0.230, minRR: 1.85 },
-  long:   { sl: 0.160, tp1: 0.300, tp2: 0.450, minRR: 1.85 }
+  // SL: noise floors only (ATR still drives the actual stop via structure).
+  // TP: NO %-of-price floors — targets come from ATR + momentum + S/R.
+  // minRR 1.0 = reward must at least match risk; never invent 1.8–2× RR from the stop.
+  short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.0 },
+  medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.0 },
+  long:   { sl: 0.080, tp1: 0, tp2: 0, minRR: 1.0 }
 };
 
 // ── Sector trend (hold/exit context) ─────────────────────────────────────────
@@ -9602,19 +9673,28 @@ function applyHorizonMinPctFloors(e, tp1, tp2, sl, isSell, hz) {
   if (isSell) {
     const minSl = e * (1 + f.sl);
     if (!Number.isFinite(sl) || sl < minSl) sl = roundPrice(minSl);
-    const maxTp1 = e * (1 - f.tp1);
-    if (!Number.isFinite(tp1) || tp1 > maxTp1) tp1 = roundPrice(maxTp1);
-    const maxTp2 = e * (1 - f.tp2);
-    if (!Number.isFinite(tp2) || tp2 > maxTp2) tp2 = roundPrice(maxTp2);
+    // TP %-floors removed (f.tp1/tp2 = 0) — ATR/momentum set the targets.
+    if (f.tp1 > 0) {
+      const maxTp1 = e * (1 - f.tp1);
+      if (!Number.isFinite(tp1) || tp1 > maxTp1) tp1 = roundPrice(maxTp1);
+    }
+    if (f.tp2 > 0) {
+      const maxTp2 = e * (1 - f.tp2);
+      if (!Number.isFinite(tp2) || tp2 > maxTp2) tp2 = roundPrice(maxTp2);
+    }
   } else {
     const maxSl = e * (1 - f.sl);
     if (!Number.isFinite(sl) || sl > maxSl) sl = roundPrice(maxSl);
-    const minTp1 = e * (1 + f.tp1);
-    if (!Number.isFinite(tp1) || tp1 < minTp1) tp1 = roundPrice(minTp1);
-    const minTp2 = e * (1 + f.tp2);
-    if (!Number.isFinite(tp2) || tp2 < minTp2) tp2 = roundPrice(minTp2);
+    if (f.tp1 > 0) {
+      const minTp1 = e * (1 + f.tp1);
+      if (!Number.isFinite(tp1) || tp1 < minTp1) tp1 = roundPrice(minTp1);
+    }
+    if (f.tp2 > 0) {
+      const minTp2 = e * (1 + f.tp2);
+      if (!Number.isFinite(tp2) || tp2 < minTp2) tp2 = roundPrice(minTp2);
+    }
   }
-  return enforceMinRiskReward(e, tp1, tp2, sl, isSell, f.minRR);
+  return enforceMinRiskReward(e, tp1, tp2, sl, isSell, f.minRR != null ? f.minRR : 1.0);
 }
 
 function roundPrice(x) {
@@ -9707,14 +9787,15 @@ function stampDashDataReasons(dashData) {
   }
 }
 
-/** Ensure reward >= risk — widens TP when channel/S/R levels are too tight. */
-function enforceMinRiskReward(e, tp1, tp2, sl, isSell, minRR = 1.5) {
+/** Ensure reward ≥ risk (default 1:1). Does NOT invent 1.8–2× targets from the stop. */
+function enforceMinRiskReward(e, tp1, tp2, sl, isSell, minRR = 1.0) {
   if (!e || !Number.isFinite(+e)) return { tp1, tp2, sl };
   e = +e;
   tp1 = tp1 != null ? +tp1 : null;
   tp2 = tp2 != null ? +tp2 : null;
   sl = sl != null ? +sl : null;
   if (!Number.isFinite(tp1) || !Number.isFinite(sl)) return { tp1, tp2, sl };
+  minRR = minRR != null ? +minRR : 1.0;
 
   if (isSell) {
     let risk = sl - e;
@@ -9723,7 +9804,7 @@ function enforceMinRiskReward(e, tp1, tp2, sl, isSell, minRR = 1.5) {
     if (!Number.isFinite(reward) || reward < risk * minRR) {
       tp1 = roundPrice(e - risk * minRR);
     }
-    if (!Number.isFinite(tp2) || tp2 >= tp1) tp2 = roundPrice(tp1 * 0.96);
+    if (!Number.isFinite(tp2) || tp2 >= tp1) tp2 = roundPrice(tp1 - Math.max(e * 0.004, Math.abs(e - tp1) * 0.25));
   } else {
     let risk = e - sl;
     let reward = tp1 - e;
@@ -9731,7 +9812,7 @@ function enforceMinRiskReward(e, tp1, tp2, sl, isSell, minRR = 1.5) {
     if (!Number.isFinite(reward) || reward < risk * minRR) {
       tp1 = roundPrice(e + risk * minRR);
     }
-    if (!Number.isFinite(tp2) || tp2 <= tp1) tp2 = roundPrice(tp1 * 1.04);
+    if (!Number.isFinite(tp2) || tp2 <= tp1) tp2 = roundPrice(tp1 + Math.max(e * 0.004, Math.abs(tp1 - e) * 0.25));
   }
   return { tp1, tp2, sl };
 }
@@ -9850,51 +9931,36 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
       continue;
     }
     const isSell = act === 'sell';
-    if (hz === 'short') {
-      // Short = mean-reversion: defined target at the channel mean/resistance, fixed
-      // stop beyond the band. (No trailing — bank the bounce in choppy markets.)
-      const lv = computeMeanReversionLevels(tech, e, isSell);
-      if (!lv) { row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = ''; continue; }
-      row[hz + 'Entry'] = String(roundPrice(e));
-      row[hz + 'Target1'] = String(lv.target);
-      // TP2 reference on SHORT too — same convention as med/long: 2× the TP1
-      // distance, floored by the horizon minimum. Analysis-only, never an exit.
-      {
-        const _d1s = Math.abs(parseFloat(lv.target) - e);
-        let _tp2s = isSell ? e - 2 * _d1s : e + 2 * _d1s;
-        const _f2s = (HORIZON_MIN_PCT.short || {}).tp2 || 0.075;
-        const _fl2s = isSell ? e * (1 - _f2s) : e * (1 + _f2s);
-        _tp2s = isSell ? Math.min(_tp2s, _fl2s) : Math.max(_tp2s, _fl2s);
-        row[hz + 'Target2'] = String(roundPrice(_tp2s));
+    // All horizons: TP1/TP2 from ATR + momentum + nearby structure.
+    // Stop from structure/ATR trail helper. Floor is 1:1 RR only — never 1.8× stop.
+    const sl = hz === 'short'
+      ? (computeMeanReversionLevels(tech, e, isSell) || {}).stop
+      : computeTrailingStopFromTech(tech, e, hz, isSell, fund);
+    const targets = computeAtrMomentumTargets(tech, e, hz, isSell);
+    if (!sl || !targets.tp1) {
+      // Short fallback: full mean-reversion package if ATR path missing tech
+      if (hz === 'short') {
+        const lv = computeMeanReversionLevels(tech, e, isSell);
+        if (!lv) { row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = ''; continue; }
+        const fl0 = applyHorizonMinPctFloors(e, lv.target, null, lv.stop, isSell, hz);
+        const tp2s = computeSecondTargetFromTech(tech, e, hz, isSell, fl0.tp1);
+        const fl = applyHorizonMinPctFloors(e, fl0.tp1, tp2s, fl0.sl, isSell, hz);
+        row[hz + 'Entry'] = String(roundPrice(e));
+        row[hz + 'Target1'] = fl.tp1 != null ? String(fl.tp1) : '';
+        row[hz + 'Target2'] = fl.tp2 != null ? String(fl.tp2) : '';
+        row[hz + 'StopLoss'] = fl.sl != null ? String(fl.sl) : '';
+        row[hz + 'TrailingSL'] = false;
+        continue;
       }
-      row[hz + 'StopLoss'] = String(lv.stop);
-      row[hz + 'TrailingSL'] = false;
-      continue;
-    }
-    const sl = computeTrailingStopFromTech(tech, e, hz, isSell, fund);
-    if (!sl) {
       row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = '';
       continue;
     }
-    // Hybrid exit: TP1 books a 50% partial (locks a win); the remainder rides the
-    // daily-%-ratchet trailing stop. TP2 = the runner's FULL-EXIT target: 2× the
-    // TP1 distance from entry, floored by the horizon minimum — hit it and the
-    // remaining half banks in full.
-    const tp1 = computeFirstTargetFromTech(tech, e, hz, isSell, sl);
-    const fl = applyHorizonMinPctFloors(e, tp1, null, sl, isSell, hz);
-    let tp2 = null;
-    if (fl.tp1 != null && Number.isFinite(+fl.tp1)) {
-      const _d1 = Math.abs(+fl.tp1 - e);
-      tp2 = isSell ? roundPrice(e - 2 * _d1) : roundPrice(e + 2 * _d1);
-      const _f2 = (HORIZON_MIN_PCT[hz] || HORIZON_MIN_PCT.short).tp2;
-      const _floor2 = isSell ? roundPrice(e * (1 - _f2)) : roundPrice(e * (1 + _f2));
-      tp2 = isSell ? Math.min(tp2, _floor2) : Math.max(tp2, _floor2);
-    }
+    const fl = applyHorizonMinPctFloors(e, targets.tp1, targets.tp2, sl, isSell, hz);
     row[hz + 'Entry'] = String(roundPrice(e));
     row[hz + 'Target1'] = fl.tp1 != null ? String(fl.tp1) : '';
-    row[hz + 'Target2'] = tp2 != null ? String(tp2) : '';
+    row[hz + 'Target2'] = fl.tp2 != null ? String(fl.tp2) : '';
     row[hz + 'StopLoss'] = fl.sl != null ? String(fl.sl) : '';
-    row[hz + 'TrailingSL'] = true;
+    row[hz + 'TrailingSL'] = hz !== 'short';
   }
 
   row.entry = row.shortEntry;
@@ -11236,12 +11302,30 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
           h[hz + 'SharesRunner'] = spl.runner;
           rowChanged = true;
         }
-        // Ensure TP2 reference level exists for display (2× TP1 distance).
+        // Ensure TP2 reference exists — ATR extension beyond TP1, not 2× invent.
         const tp1C = parseFloat(h[hz + 'Target1'] || h.target1 || 0);
         let tp2C = parseFloat(h[hz + 'Target2'] || h.target2 || 0);
         if (entryC && tp1C && (!tp2C || !Number.isFinite(tp2C))) {
-          const d1 = Math.abs(tp1C - entryC);
-          tp2C = isSell ? entryC - 2 * d1 : entryC + 2 * d1;
+          let atrEst = null;
+          if (bars && bars.length >= 15) {
+            let sum = 0, n = 0;
+            for (let i = Math.max(1, bars.length - 14); i < bars.length; i++) {
+              const b = bars[i], p = bars[i - 1];
+              if (!b || !p) continue;
+              const tr = Math.max(b.h - b.l, Math.abs(b.h - p.c), Math.abs(b.l - p.c));
+              if (Number.isFinite(tr)) { sum += tr; n++; }
+            }
+            if (n) atrEst = sum / n;
+          }
+          const mult = hz === 'short' ? 2.8 : hz === 'medium' ? 5.0 : 8.0;
+          if (atrEst > 0) {
+            tp2C = isSell ? entryC - mult * atrEst : entryC + mult * atrEst;
+          } else {
+            const d1 = Math.abs(tp1C - entryC);
+            tp2C = isSell ? tp1C - 0.75 * d1 : tp1C + 0.75 * d1;
+          }
+          if (!isSell && !(tp2C > tp1C)) tp2C = tp1C * 1.04;
+          if (isSell && !(tp2C < tp1C)) tp2C = tp1C * 0.96;
           h[hz + 'Target2'] = roundPrice(tp2C);
           if ((h.hz || 'short') === hz) h.target2 = h[hz + 'Target2'];
           rowChanged = true;

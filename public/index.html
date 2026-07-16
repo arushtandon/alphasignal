@@ -1732,27 +1732,25 @@ function fmtPct(n){
   return (n>=0?'+':'')+n.toFixed(1)+'%';
 }
 
-/** Same minimum % floors as server.js HORIZON_MIN_PCT */
+/** Same minimum floors as server.js HORIZON_MIN_PCT — SL noise only; TP from ATR. */
 const DASH_HORIZON_MIN_PCT = {
-  short:  { sl: 0.030, tp1: 0.060, tp2: 0.100, minRR: 1.8 },
-  medium: { sl: 0.080, tp1: 0.150, tp2: 0.230, minRR: 1.85 },
-  long:   { sl: 0.160, tp1: 0.300, tp2: 0.450, minRR: 1.85 }
+  short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.0 },
+  medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.0 },
+  long:   { sl: 0.080, tp1: 0, tp2: 0, minRR: 1.0 }
 };
-/** Legacy mid-range fallback (unused when channel math runs) */
+/** Legacy mid-range fallback (unused when channel/ATR math runs) */
 const DASH_HORIZON_PCT = {
-  /* MUST mirror server HORIZON_MIN_PCT floors (sl 3/8/16%, tp1 6/15/30%, tp2 10/23/45%).
-     The old 1.5%/4% values here were the source of noise-tight stops on no-tech picks. */
   short: {
-    buy: { tp1: 0.06, tp2: 0.10, sl: -0.030 },
-    sell: { tp1: -0.06, tp2: -0.10, sl: 0.030 }
+    buy: { tp1: 0.035, tp2: 0.06, sl: -0.025 },
+    sell: { tp1: -0.035, tp2: -0.06, sl: 0.025 }
   },
   medium: {
-    buy: { tp1: 0.15, tp2: 0.23, sl: -0.08 },
-    sell: { tp1: -0.15, tp2: -0.23, sl: 0.08 }
+    buy: { tp1: 0.07, tp2: 0.12, sl: -0.05 },
+    sell: { tp1: -0.07, tp2: -0.12, sl: 0.05 }
   },
   long: {
-    buy: { tp1: 0.30, tp2: 0.45, sl: -0.16 },
-    sell: { tp1: -0.30, tp2: -0.45, sl: 0.16 }
+    buy: { tp1: 0.12, tp2: 0.20, sl: -0.08 },
+    sell: { tp1: -0.12, tp2: -0.20, sl: 0.08 }
   }
 };
 function roundDashPrice(x) {
@@ -1762,9 +1760,9 @@ function roundDashPrice(x) {
   return +Number(x).toFixed(d);
 }
 
-/** Ensure reward >= risk — widens TP when channel/S/R levels are too tight. */
+/** Ensure reward ≥ risk (1:1 default) — never invent 1.8–2× TP from the stop. */
 function enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, minRR) {
-  minRR = minRR == null ? 1.5 : minRR;
+  minRR = minRR == null ? 1.0 : minRR;
   if (!e || !Number.isFinite(+e)) return { tp1: tp1, tp2: tp2, sl: sl };
   e = +e;
   tp1 = tp1 != null ? +tp1 : null;
@@ -1779,7 +1777,7 @@ function enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, minRR) {
     if (!Number.isFinite(reward) || reward < risk * minRR) {
       tp1 = roundDashPrice(e - risk * minRR);
     }
-    if (!Number.isFinite(tp2) || tp2 >= tp1) tp2 = roundDashPrice(tp1 * 0.96);
+    if (!Number.isFinite(tp2) || tp2 >= tp1) tp2 = roundDashPrice(tp1 - Math.max(e * 0.004, Math.abs(e - tp1) * 0.25));
   } else {
     risk = e - sl;
     reward = tp1 - e;
@@ -1787,7 +1785,7 @@ function enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, minRR) {
     if (!Number.isFinite(reward) || reward < risk * minRR) {
       tp1 = roundDashPrice(e + risk * minRR);
     }
-    if (!Number.isFinite(tp2) || tp2 <= tp1) tp2 = roundDashPrice(tp1 * 1.04);
+    if (!Number.isFinite(tp2) || tp2 <= tp1) tp2 = roundDashPrice(tp1 + Math.max(e * 0.004, Math.abs(tp1 - e) * 0.25));
   }
   return { tp1: tp1, tp2: tp2, sl: sl };
 }
@@ -1802,19 +1800,27 @@ function applyHorizonMinPctFloorsDash(e, tp1, tp2, sl, isSell, hz) {
   if (isSell) {
     var minSl = e * (1 + f.sl);
     if (!Number.isFinite(sl) || sl < minSl) sl = roundDashPrice(minSl);
-    var maxTp1 = e * (1 - f.tp1);
-    if (!Number.isFinite(tp1) || tp1 > maxTp1) tp1 = roundDashPrice(maxTp1);
-    var maxTp2 = e * (1 - f.tp2);
-    if (!Number.isFinite(tp2) || tp2 > maxTp2) tp2 = roundDashPrice(maxTp2);
+    if (f.tp1 > 0) {
+      var maxTp1 = e * (1 - f.tp1);
+      if (!Number.isFinite(tp1) || tp1 > maxTp1) tp1 = roundDashPrice(maxTp1);
+    }
+    if (f.tp2 > 0) {
+      var maxTp2 = e * (1 - f.tp2);
+      if (!Number.isFinite(tp2) || tp2 > maxTp2) tp2 = roundDashPrice(maxTp2);
+    }
   } else {
     var maxSlB = e * (1 - f.sl);
     if (!Number.isFinite(sl) || sl > maxSlB) sl = roundDashPrice(maxSlB);
-    var minTp1B = e * (1 + f.tp1);
-    if (!Number.isFinite(tp1) || tp1 < minTp1B) tp1 = roundDashPrice(minTp1B);
-    var minTp2B = e * (1 + f.tp2);
-    if (!Number.isFinite(tp2) || tp2 < minTp2B) tp2 = roundDashPrice(minTp2B);
+    if (f.tp1 > 0) {
+      var minTp1B = e * (1 + f.tp1);
+      if (!Number.isFinite(tp1) || tp1 < minTp1B) tp1 = roundDashPrice(minTp1B);
+    }
+    if (f.tp2 > 0) {
+      var minTp2B = e * (1 + f.tp2);
+      if (!Number.isFinite(tp2) || tp2 < minTp2B) tp2 = roundDashPrice(minTp2B);
+    }
   }
-  return enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, f.minRR);
+  return enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, f.minRR != null ? f.minRR : 1.0);
 }
 function ratingImpliesSellDash(rating) {
   return String(rating || '').toLowerCase().includes('sell');
@@ -1970,7 +1976,7 @@ function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
     }
   }
 
-  var _MIN_RR = 1.5;
+  var _MIN_RR = 1.0;
   // Sanity bounds SCALE WITH THE HORIZON: the max stop distance and the ATR fallback
   // both widen for longer holds, so a long-term stop is never clamped to a 2% noise
   // level (the old fixed e*0.92 cap reset every long stop back to ~2.5%).
