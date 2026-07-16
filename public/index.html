@@ -2153,7 +2153,8 @@ async function fetchServerDashPicks(){
     const d=await r.json();
     if(!d||!d.dashData)return null;
     if(window.ST)ST.sellPicksDisabled=!!d.sellPicksDisabled;
-    return{dashData:normalizeDashData(d.dashData),dashTs:d.dashTs||null,summary:d.summary||null};
+    if(Array.isArray(d.disabledBrackets)) window._disabledBrackets = d.disabledBrackets;
+    return{dashData:normalizeDashData(d.dashData),dashTs:d.dashTs||null,summary:d.summary||null,picksAgeHours:d.picksAgeHours};
   }catch(e){
     console.warn('fetchServerDashPicks',e.message||e);
     return null;
@@ -3965,6 +3966,9 @@ function renderPicksPane(elId,picks,hz,side){
   const el=document.getElementById(elId);
   if(!el){ console.warn('renderPicksPane: element not found:',elId); return; }
   const isSell=(side==='sell');
+  const gated = (typeof window !== 'undefined' && window._disabledBrackets)
+    ? window._disabledBrackets.indexOf((isSell?'sell':'buy')+':'+hz) >= 0
+    : false;
   // Final hard guard: a Buy pane may ONLY contain genuine Buy setups with valid pricing,
   // a Sell pane only genuine Sell setups. Never pad with Hold/empty-price cards.
   picks = (picks||[]).filter(function(s){
@@ -3979,9 +3983,13 @@ function renderPicksPane(elId,picks,hz,side){
     return action==='Buy' && (s[hz+'Score']||0)>=62 && hasPricing;
   });
   if(!picks||!picks.length){
+    var emptyMsg = gated
+      ? ((isSell?'Sell':'Buy')+' · '+hz+' is paused by DISABLED_BRACKETS on the server. Clear that env var (or switch timeframe) to see picks.')
+      : (isSell
+        ? ((window.ST&&ST.sellPicksDisabled)?'Sell picks are reference-only: backtests show no positive expectancy on short trades (buy brackets carry the edge). Sell scores remain visible in Analysis.':'No sell setups identified for this horizon. Try Medium/Long tabs, or click Refresh picks.')
+        : 'No buy setups identified for this horizon. Try Medium/Long tabs, or click Refresh picks.');
     el.innerHTML = '<div style="padding:.75rem 1rem;font-size:11px;color:var(--m1);font-family:DM Mono,monospace;border:1px dashed var(--b1);border-radius:8px;margin:.5rem 0">'
-      +(isSell?((window.ST&&ST.sellPicksDisabled)?'Sell picks are reference-only: backtests show no positive expectancy on short trades (buy brackets carry the edge). Sell scores remain visible in Analysis.':'No sell setups identified for this horizon. Conditions do not support a short trade.'):'No buy setups identified for this horizon. Conditions do not support a long trade.')
-      +'</div>';
+      + emptyMsg + '</div>';
     return;
   }
   const scoreKey=isSell?(hz+'SellScore'):(hz+'Score');

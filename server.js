@@ -5798,14 +5798,20 @@ function topNRotating(arr, key, cooldownSet, n = 5) {
   const cool = cooldownSet || new Set();
   const fresh = sorted.filter(r => !cool.has(String(r.ticker || '').toUpperCase()));
   const out = fresh.slice(0, n);
-  // Soft fill if cooldown wiped the pane — prefer empty-ish over identical board.
-  if (out.length < Math.min(3, n)) {
+  // Always soft-fill from the full ranked list — an empty pane is worse than a repeat.
+  if (out.length < n) {
     for (const r of sorted) {
       if (out.length >= n) break;
       if (!out.some(x => String(x.ticker).toUpperCase() === String(r.ticker).toUpperCase())) out.push(r);
     }
   }
   return out.map(r => ({ ...r }));
+}
+
+function countDashPicks(dashData) {
+  if (!dashData) return 0;
+  return ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell']
+    .reduce((n, k) => n + ((dashData[k] && dashData[k].length) || 0), 0);
 }
 
 function isHistoryBuySellRecord(h) {
@@ -6131,6 +6137,7 @@ app.get('/api/dashboard/picks', (req, res) => {
     lastPicksDateKey: typeof _lastPicksDateKey !== 'undefined' ? _lastPicksDateKey : null,
     summary: dashboardPicksSummary(dashData),
     sellPicksDisabled: !SELL_PICKS_ENABLED, // backtest: sells have no edge — reference-only
+    disabledBrackets: [...DISABLED_BRACKETS],
     dashData
   });
 });
@@ -6472,38 +6479,58 @@ async function generateServerPicksFromShortlist(opts = {}) {
     // every pane as full as the universe allows (slicing-then-deduping left gaps).
     const HZS = ['short', 'medium', 'long'];
     const hasPx = (r, hz) => r[hz + 'Entry'] && r[hz + 'StopLoss'];
-    const buyAssign = { short: [], medium: [], long: [] };
-    const sellAssign = { short: [], medium: [], long: [] };
-
     const cooldown = priorBoardCooldownSet(opts);
     const prevSummary = dashboardPicksCache && dashboardPicksCache.dashData
       ? dashboardPicksSummary(dashboardPicksCache.dashData) : '';
     const priorTickers = [...collectDashTickers(dashboardPicksCache && dashboardPicksCache.dashData)];
+    const prevDash = dashboardPicksCache && dashboardPicksCache.dashData
+      ? JSON.parse(JSON.stringify(dashboardPicksCache.dashData)) : null;
+    const prevCount = countDashPicks(prevDash);
+
+    // Build candidate pools. Prefer names that are NOT already live — but DO keep
+    // a fallback pool of live same-direction names so panes never go blank just
+    // because yesterday's board was written into history.
+    const buyAssign = { short: [], medium: [], long: [] };
+    const sellAssign = { short: [], medium: [], long: [] };
+    const buyFallback = { short: [], medium: [], long: [] };
+    const sellFallback = { short: [], medium: [], long: [] };
 
     for (const r of rows) {
       let bBuyHz = null, bBuyScore = -1;
       let bSellHz = null, bSellScore = -1;
-      // No-repeat: suppress a direction if the name is ALREADY open that way.
+      let fBuyHz = null, fBuyScore = -1;
+      let fSellHz = null, fSellScore = -1;
       const alreadyLong  = hasOpenTradeInDirection(r.ticker, false);
       const alreadyShort = hasOpenTradeInDirection(r.ticker, true);
       for (const hz of HZS) {
-        const buyOk = bracketEnabled('buy', hz) && r[hz + 'Action'] === 'Buy' && (r[hz + 'Score'] || 0) >= 62
-          && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r, hz) && !alreadyLong;
-        if (buyOk && (r[hz + 'Score'] || 0) > bBuyScore) { bBuyScore = r[hz + 'Score'] || 0; bBuyHz = hz; }
-        const sellOk = bracketEnabled('sell', hz) && SELL_PICKS_ENABLED && r[hz + 'Action'] === 'Sell' && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r, hz) && !alreadyShort;
-        if (sellOk && (r[hz + 'SellScore'] || 0) > bSellScore) { bSellScore = r[hz + 'SellScore'] || 0; bSellHz = hz; }
+        const buyBase = bracketEnabled('buy', hz) && r[hz + 'Action'] === 'Buy' && (r[hz + 'Score'] || 0) >= 62
+          && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r, hz);
+        if (buyBase && (r[hz + 'Score'] || 0) > fBuyScore) { fBuyScore = r[hz + 'Score'] || 0; fBuyHz = hz; }
+        if (buyBase && !alreadyLong && (r[hz + 'Score'] || 0) > bBuyScore) { bBuyScore = r[hz + 'Score'] || 0; bBuyHz = hz; }
+        const sellBase = bracketEnabled('sell', hz) && SELL_PICKS_ENABLED && r[hz + 'Action'] === 'Sell' && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r, hz);
+        if (sellBase && (r[hz + 'SellScore'] || 0) > fSellScore) { fSellScore = r[hz + 'SellScore'] || 0; fSellHz = hz; }
+        if (sellBase && !alreadyShort && (r[hz + 'SellScore'] || 0) > bSellScore) { bSellScore = r[hz + 'SellScore'] || 0; bSellHz = hz; }
       }
       if (bBuyHz) buyAssign[bBuyHz].push(r);
-      else if (bSellHz) sellAssign[bSellHz].push(r); // a name is buy XOR sell, never both
+      else if (bSellHz) sellAssign[bSellHz].push(r);
+      if (fBuyHz) buyFallback[fBuyHz].push(r);
+      else if (fSellHz) sellFallback[fSellHz].push(r);
     }
 
-    const dashData = {
-      short: topNRotating(buyAssign.short, 'shortScore', cooldown, 5),
-      medium: topNRotating(buyAssign.medium, 'mediumScore', cooldown, 5),
-      long: topNRotating(buyAssign.long, 'longScore', cooldown, 5),
-      shortSell: topNRotating(sellAssign.short, 'shortSellScore', cooldown, 5),
-      medSell: topNRotating(sellAssign.medium, 'mediumSellScore', cooldown, 5),
-      longSell: topNRotating(sellAssign.long, 'longSellScore', cooldown, 5)
+    function pane(primary, fallback, key) {
+      let list = topNRotating(primary, key, cooldown, 5);
+      if (list.length < 3) list = topNRotating(fallback, key, cooldown, 5);
+      if (list.length < 1) list = topNRotating(fallback, key, new Set(), 5); // last resort: allow repeats
+      return list;
+    }
+
+    let dashData = {
+      short: pane(buyAssign.short, buyFallback.short, 'shortScore'),
+      medium: pane(buyAssign.medium, buyFallback.medium, 'mediumScore'),
+      long: pane(buyAssign.long, buyFallback.long, 'longScore'),
+      shortSell: pane(sellAssign.short, sellFallback.short, 'shortSellScore'),
+      medSell: pane(sellAssign.medium, sellFallback.medium, 'mediumSellScore'),
+      longSell: pane(sellAssign.long, sellFallback.long, 'longSellScore')
     };
 
     // Re-price the FINAL picks with LIVE quotes so the recorded entry (and the
@@ -6553,6 +6580,20 @@ async function generateServerPicksFromShortlist(opts = {}) {
     // Stamp each pane pick with a trade-specific reason that includes Entry/TP/SL.
     // Generic/empty reason fields were leaving recommended CSV Reason blanks.
     stampDashDataReasons(dashData);
+
+    // Never clobber a good board with an empty one (open-trade + rotation race).
+    const newCount = countDashPicks(dashData);
+    if (newCount === 0 && prevCount > 0) {
+      console.warn('Server picks regen produced 0 rows — keeping previous board (', prevCount, 'picks)');
+      return {
+        ok: true,
+        keptPrevious: true,
+        summary: prevSummary,
+        prevSummary,
+        dashTs: dashboardPicksCache && dashboardPicksCache.dashTs,
+        cooldownSize: cooldown.size
+      };
+    }
 
     dashboardPicksCache = {
       version: DASHBOARD_PICKS_VERSION,
@@ -9183,14 +9224,11 @@ const HORIZON_PCT = {
 // the fade path; acceptance = WR ≥55% or avg ≥+0.30%/trade with PF ≥1.5.
 const SELL_PICKS_ENABLED = process.env.SELL_PICKS_ENABLED !== '0'; // default ON — sell side redesigned (fade shorts + bear-regime breakdowns); set 0 to disable
 
-// Bracket acceptance gates (v143). Latest run (2026-07-14, 30 liquid US, window=252):
-//   PASS: sell:short, buy:medium, buy:long
-//   FAIL: sell:medium, sell:long, buy:short
-// Override with DISABLED_BRACKETS= (empty) to re-enable all, or a custom comma list.
+// Bracket acceptance gates (v143). Opt-in via env — default OFF so the dashboard
+// never goes blank. Set e.g. DISABLED_BRACKETS=sell:medium,sell:long,buy:short
+// after you've reviewed acceptance results and still want those panes suppressed.
 const DISABLED_BRACKETS = new Set(
-  String(process.env.DISABLED_BRACKETS != null
-    ? process.env.DISABLED_BRACKETS
-    : 'sell:medium,sell:long,buy:short')
+  String(process.env.DISABLED_BRACKETS || '')
     .split(',')
     .map(s => s.trim().toLowerCase())
     .filter(Boolean)
