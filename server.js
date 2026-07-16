@@ -6012,6 +6012,12 @@ app.get('/api/dashboard/picks', (req, res) => {
     version: dashboardPicksCache.version,
     schemaVersion: dashboardPicksCache.schemaVersion || 1,
     dashTs: dashboardPicksCache.dashTs,
+    filteredAt: dashboardPicksCache.filteredAt || null,
+    picksAgeHours: dashboardPicksCache.dashTs
+      ? +((Date.now() - Number(dashboardPicksCache.dashTs)) / 3600000).toFixed(2)
+      : null,
+    sgtDay: singaporeDateKey(),
+    lastPicksDateKey: typeof _lastPicksDateKey !== 'undefined' ? _lastPicksDateKey : null,
     summary: dashboardPicksSummary(dashData),
     sellPicksDisabled: !SELL_PICKS_ENABLED, // backtest: sells have no edge — reference-only
     dashData
@@ -6217,7 +6223,11 @@ async function runUniverseScan(opts = {}) {
       console.log(`Universe scan DONE: scored ${rows.length}/${universe.length}, shortlist ${shortlist.length} →`, JSON.stringify(byMarket));
       // Immediately regenerate the final picks server-side so clients read finished
       // picks without needing the page open.
-      await generateServerPicksFromShortlist().catch(e => console.warn('post-scan picks:', e.message));
+      const picksResult = await generateServerPicksFromShortlist().catch(e => {
+        console.warn('post-scan picks:', e.message);
+        return { ok: false, error: e.message };
+      });
+      if (picksResult && picksResult.ok) _lastPicksDateKey = singaporeDateKey();
     } catch (e) {
       universeScanState.lastError = e.message;
       console.warn('Universe scan error:', e.message);
@@ -6717,9 +6727,15 @@ app.get('/api/health', async (req, res) => {
     historyCount: tradeHistory.length,
     dashboard_picks: (() => {
       const d = loadDashboardPicksFile() || dashboardPicksCache;
+      const ageH = d?.dashTs ? +((Date.now() - Number(d.dashTs)) / 3600000).toFixed(2) : null;
       return {
         file: DASHBOARD_PICKS_FILE,
         dashTs: d?.dashTs || null,
+        filteredAt: d?.filteredAt || null,
+        picksAgeHours: ageH,
+        sgtDay: typeof singaporeDateKey === 'function' ? singaporeDateKey() : null,
+        lastPicksDateKey: typeof _lastPicksDateKey !== 'undefined' ? _lastPicksDateKey : null,
+        refreshHourSgt: typeof PICKS_REFRESH_HOUR_SGT !== 'undefined' ? PICKS_REFRESH_HOUR_SGT : 6,
         summary: d?.dashData ? dashboardPicksSummary(d.dashData) : ''
       };
     })()
@@ -9429,14 +9445,18 @@ setTimeout(async function bootDashHistorySync() {
         const techMap = await getTechnicalsMapForSymbols(tickers, { maxMs: 45000 });
         dd = filterDashDataByQuantTechMap(dd, techMap);
       }
+      // CRITICAL: do NOT stamp dashTs=Date.now() here. That made yesterday's
+      // tickers look "fresh" after every deploy/restart and tricked operators
+      // (and previously the scheduler) into thinking the morning regen had run.
       dashboardPicksCache = {
         version: DASHBOARD_PICKS_VERSION,
         schemaVersion: cached.schemaVersion || 1,
-        dashTs: Date.now(),
+        dashTs: cached.dashTs || null,
+        filteredAt: Date.now(),
         dashData: sanitizeDashDataForServer(dd)
       };
       saveDashboardPicksFile(dashboardPicksCache);
-      console.log('Boot: dashboard picks filtered →', dashboardPicksSummary(dd));
+      console.log('Boot: dashboard picks filtered (dashTs preserved', dashboardPicksCache.dashTs, ') →', dashboardPicksSummary(dd));
     }
     purgeOpenCooldownBuysFromHistory();
   } catch (e) {
@@ -9445,45 +9465,103 @@ setTimeout(async function bootDashHistorySync() {
 }, 4000);
 
 // ── Pick / universe scan scheduler ───────────────────────────────────────────
-// Two cadences, decoupled:
-//   • DAILY  — regenerate the dashboard picks from the existing shortlist using
-//              fresh OHLCV/signals, so new recommendations appear every morning
-//              WITHOUT needing a manual redeploy. Triggered when the UTC calendar
-//              day rolls over (≈ 08:00 for a UTC+8 user — i.e. the morning).
-//   • WEEKLY — rebuild the full-universe shortlist (heavy, ~5–15 min), which then
-//              regenerates picks when it finishes.
-const UNIVERSE_RESCAN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const _utcDateKey = (ms) => new Date(ms || Date.now()).toISOString().slice(0, 10);
-// Seed "last generated" from whatever picks already exist so we don't regenerate
-// on every process restart — only when a genuinely new day has begun.
+// Cadence (Asia/Singapore — user local morning):
+//   • DAILY ≥06:00 SGT — regenerate picks from the shortlist with fresh OHLCV.
+//   • Also force-regen if picks are >20h old (catches missed ticks / failed runs).
+//   • SHORTLIST — rebuild when older than UNIVERSE_SHORTLIST_TTL (20h).
+// Singapore is always UTC+8 (no DST).
+const PICKS_REFRESH_HOUR_SGT = Math.max(0, Math.min(23, parseInt(process.env.PICKS_REFRESH_HOUR_SGT || '6', 10) || 6));
+const PICKS_MAX_AGE_MS = Math.max(6, parseInt(process.env.PICKS_MAX_AGE_HOURS || '20', 10) || 20) * 60 * 60 * 1000;
+const SGT_OFFSET_MS = 8 * 60 * 60 * 1000;
+function singaporeParts(ms = Date.now()) {
+  const sgt = new Date(ms + SGT_OFFSET_MS);
+  return {
+    key: sgt.toISOString().slice(0, 10), // YYYY-MM-DD in SGT
+    hour: sgt.getUTCHours(),
+    minute: sgt.getUTCMinutes()
+  };
+}
+function singaporeDateKey(ms = Date.now()) { return singaporeParts(ms).key; }
+
+// Seed from last REAL generation time (not boot filter stamps).
 let _lastPicksDateKey = (dashboardPicksCache && dashboardPicksCache.dashTs)
-  ? _utcDateKey(dashboardPicksCache.dashTs) : null;
+  ? singaporeDateKey(dashboardPicksCache.dashTs) : null;
 
 async function scanSchedulerTick(boot = false) {
   try {
     if (universeScanState.running || serverPicksGenerating) return;
+    const now = Date.now();
+    const { key: todayKey, hour } = singaporeParts(now);
+    const picksTs = dashboardPicksCache && dashboardPicksCache.dashTs ? Number(dashboardPicksCache.dashTs) : 0;
+    const picksAge = picksTs > 0 ? (now - picksTs) : Infinity;
     const shortlistStale = !universeShortlist
-      || (Date.now() - (universeShortlist.ts || 0)) > UNIVERSE_RESCAN_TTL_MS;
-    // Weekly (or first-ever) full rescan — this regenerates picks on completion.
+      || (now - (universeShortlist.ts || 0)) > UNIVERSE_SHORTLIST_TTL_MS;
+
+    // Refresh the candidate universe ~daily (was 7d — left shortlist stale for a week).
     if (shortlistStale) {
-      console.log('Scheduler: universe shortlist stale → full rescan');
-      runUniverseScan({ reason: boot ? 'boot' : 'weekly' });
-      _lastPicksDateKey = _utcDateKey();
-      return;
+      console.log('Scheduler: universe shortlist stale → rescan (reason=', boot ? 'boot' : 'daily-shortlist', ')');
+      runUniverseScan({ reason: boot ? 'boot' : 'daily-shortlist' });
+      // Fall through: still regen picks from the current shortlist so the morning
+      // board updates even while the heavy universe scan is running.
     }
-    // Daily picks regeneration when the calendar day rolls over.
-    const todayKey = _utcDateKey();
-    if (_lastPicksDateKey !== todayKey) {
-      _lastPicksDateKey = todayKey;
-      console.log('Scheduler: new day → regenerating picks from shortlist');
-      await generateServerPicksFromShortlist().catch(e => console.warn('daily picks:', e.message));
+
+    // Morning (or overdue) picks regeneration — only mark the day done on SUCCESS.
+    const pastRefreshHour = hour >= PICKS_REFRESH_HOUR_SGT;
+    const newSgtDay = _lastPicksDateKey !== todayKey;
+    const overdue = picksAge > PICKS_MAX_AGE_MS;
+    if ((pastRefreshHour && newSgtDay) || overdue) {
+      console.log(
+        'Scheduler: regenerating picks',
+        JSON.stringify({
+          sgtDay: todayKey,
+          sgtHour: hour,
+          lastKey: _lastPicksDateKey,
+          picksAgeH: Number.isFinite(picksAge) ? +(picksAge / 3600000).toFixed(1) : null,
+          overdue,
+          boot
+        })
+      );
+      const r = await generateServerPicksFromShortlist().catch(e => ({ ok: false, error: e.message }));
+      if (r && r.ok) {
+        _lastPicksDateKey = todayKey;
+        console.log('Scheduler: picks regenerated OK →', r.summary);
+      } else {
+        console.warn('Scheduler: picks regen failed — will retry next tick:', r && (r.error || r.reason));
+      }
     }
   } catch (e) { console.warn('scanSchedulerTick:', e.message); }
 }
 
-// Initial kick once the heavier boot sync has settled, then poll every 30 min.
+// Initial kick once the heavier boot sync has settled, then poll every 15 min
+// (was 30) so a failed 6am attempt retries before the cash open.
 setTimeout(() => scanSchedulerTick(true), 30000);
-setInterval(() => scanSchedulerTick(false), 30 * 60 * 1000);
+setInterval(() => scanSchedulerTick(false), 15 * 60 * 1000);
+
+// Manual / client-triggered picks regeneration (does not wait for the clock).
+app.post('/api/dashboard/picks/regen', async (req, res) => {
+  try {
+    if (serverPicksGenerating) {
+      return res.json({ ok: false, reason: 'already generating', dashTs: dashboardPicksCache && dashboardPicksCache.dashTs });
+    }
+    if (!universeShortlistTickers().length && !universeScanState.running) {
+      runUniverseScan({ reason: 'regen-no-shortlist' });
+      return res.json({ ok: false, reason: 'no shortlist — universe scan started', scan: universeScanState });
+    }
+    const r = await generateServerPicksFromShortlist({ maxMs: 240000 });
+    if (r && r.ok) _lastPicksDateKey = singaporeDateKey();
+    const d = dashboardPicksCache;
+    res.json({
+      ok: !!(r && r.ok),
+      reason: r && (r.reason || r.error) || null,
+      summary: r && r.summary || null,
+      dashTs: d && d.dashTs || null,
+      sgtDay: singaporeDateKey(),
+      lastPicksDateKey: _lastPicksDateKey
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 
 function countConsecutiveLowerCloses(daily) {
   if (!daily || daily.length < 2) return 0;

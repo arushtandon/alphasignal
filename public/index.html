@@ -526,7 +526,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
         <div class="ht" id="ht-medium" onclick="switchHz('medium')">Medium · 1–3mo</div>
         <div class="ht" id="ht-long" onclick="switchHz('long')">Long · 4–12mo</div>
         <div style="flex:1"></div>
-        <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px" onclick="ST.dashData=null;ST.dashTs=null;loadDashboard(false)" title="Pull the latest server-generated picks (instant — scan runs on the server)">↻ Refresh picks</button>
+        <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px" onclick="forceRefreshPicks()" title="Ask the server to regenerate picks from fresh prices, then reload">↻ Refresh picks</button>
         <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px;margin-left:6px" onclick="rescanUniverse()" title="Re-rank the entire index-member universe + regenerate picks on the server (runs in the background, ~5-15 min — you can close the page)">⟳ Rescan universe</button>
         <button class="btn" style="font-size:10px;padding:4px 10px;margin-bottom:1px;margin-left:6px" onclick="exportRecommendedTrades()" title="Download all recommended Buy/Sell picks across every timeframe (entry, TP1/TP2, stop-loss, score) as an Excel-ready CSV">⬇ Export Excel</button>
       </div>
@@ -2216,7 +2216,9 @@ async function applyServerDashPicks(server){
   const dashTsEl=document.getElementById('dashTs');
   if(dashTsEl){
     const sum=ST.dashSummary?(' · '+ST.dashSummary):'';
-    dashTsEl.textContent='Updated · '+new Date(ST.dashTs).toLocaleString()+sum;
+    const age = server.picksAgeHours != null ? (' · age '+server.picksAgeHours+'h') : '';
+    const stale = server.picksAgeHours != null && server.picksAgeHours > 20 ? ' ⚠ stale — click Refresh picks' : '';
+    dashTsEl.textContent='Updated · '+new Date(ST.dashTs).toLocaleString()+age+stale+sum;
   }
   await renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true});
 }
@@ -2302,6 +2304,25 @@ async function loadDashboard(force=false){
     if(dashTsEl)dashTsEl.textContent='No server picks yet — starting scan…';
   }
   await runDashScan(force);
+}
+
+/** Force the server to rebuild picks (fresh OHLCV), then reload the board. */
+async function forceRefreshPicks(){
+  const dashTsEl=document.getElementById('dashTs');
+  if(dashTsEl) dashTsEl.textContent='Regenerating server picks…';
+  try{
+    const r=await fetch('/api/dashboard/picks/regen',{method:'POST',cache:'no-store'}).then(x=>x.json()).catch(()=>null);
+    if(r && r.ok===false && r.reason==='no shortlist — universe scan started'){
+      if(dashTsEl) dashTsEl.textContent='No shortlist yet — universe scan started. This can take 5–15 min…';
+      pollUniverseScan();
+      return;
+    }
+    if(r && r.ok===false && r.reason==='already generating'){
+      if(dashTsEl) dashTsEl.textContent='Picks already regenerating — retry in a minute…';
+    }
+  }catch(e){ console.warn('forceRefreshPicks', e.message||e); }
+  ST.dashData=null; ST.dashTs=null;
+  await loadDashboard(false);
 }
 
 async function rescanUniverse(){
@@ -6326,18 +6347,24 @@ function openEarningsWidget() {
   if(chev) chev.style.transform = 'rotate(90deg)';
 }
 function scheduleDailyRefresh() {
-  const now = new Date();
-  const sgtOffset = 8 * 3600000;
-  const sgtNow = new Date(now.getTime() + sgtOffset);
-  const next5am = new Date(sgtNow);
-  next5am.setHours(5, 0, 0, 0);
-  if(sgtNow.getHours() >= 5) next5am.setDate(next5am.getDate() + 1);
-  const msUntil = next5am.getTime() - sgtNow.getTime();
-  console.log('Next auto-refresh in', Math.round(msUntil/3600000*10)/10, 'h (5am SGT)');
+  // Fire at next 06:00 Asia/Singapore (UTC+8, no DST). Always ask the SERVER
+  // to regenerate — the old path only re-fetched cached picks, so a closed tab
+  // (or a stale dashTs) left yesterday's board on screen.
+  const SGT = 8 * 3600000;
+  const now = Date.now();
+  const sgt = new Date(now + SGT);
+  const y = sgt.getUTCFullYear(), m = sgt.getUTCMonth(), d = sgt.getUTCDate();
+  let next = Date.UTC(y, m, d, 6, 0, 0) - SGT;
+  if (next <= now) next += 86400000;
+  const msUntil = next - now;
+  console.log('Next auto-refresh in', Math.round(msUntil / 3600000 * 10) / 10, 'h (6am SGT)');
   setTimeout(async () => {
-    console.log("Auto-refresh: 5am SGT scan");
+    console.log('Auto-refresh: 6am SGT — requesting server picks regen');
+    try {
+      await fetch('/api/dashboard/picks/regen', { method: 'POST', cache: 'no-store' });
+    } catch (e) { console.warn('morning regen', e.message || e); }
     ST.dashData = null; ST.dashTs = null; ss();
-    await loadDashboard(true);
+    await loadDashboard(false);
     scheduleDailyRefresh();
   }, msUntil);
 }
@@ -6555,6 +6582,7 @@ async function startApp() {
   syncHistoryInBackground().catch(function (e) {
     console.warn('Background history sync:', e.message || e);
   });
+  try { scheduleDailyRefresh(); } catch (e) { console.warn('scheduleDailyRefresh', e.message || e); }
 }
 
 function skipApiModal() {
