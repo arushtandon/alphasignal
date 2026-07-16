@@ -1734,7 +1734,7 @@ function fmtPct(n){
   return (n>=0?'+':'')+n.toFixed(1)+'%';
 }
 
-/** Same minimum floors as server.js HORIZON_MIN_PCT — SL noise only; TP from ATR. */
+/** Same SL noise floors as server.js — TP stays ATR-driven (never invent from stop). */
 const DASH_HORIZON_MIN_PCT = {
   short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.0 },
   medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.0 },
@@ -1762,32 +1762,22 @@ function roundDashPrice(x) {
   return +Number(x).toFixed(d);
 }
 
-/** Ensure reward ≥ risk (1:1 default) — never invent 1.8–2× TP from the stop. */
+/** Keep TP2 beyond TP1 only — never invent TP1 as a fixed multiple of stop distance. */
 function enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, minRR) {
-  minRR = minRR == null ? 1.0 : minRR;
   if (!e || !Number.isFinite(+e)) return { tp1: tp1, tp2: tp2, sl: sl };
   e = +e;
   tp1 = tp1 != null ? +tp1 : null;
   tp2 = tp2 != null ? +tp2 : null;
   sl = sl != null ? +sl : null;
-  if (!Number.isFinite(tp1) || !Number.isFinite(sl)) return { tp1: tp1, tp2: tp2, sl: sl };
-
+  if (!Number.isFinite(tp1)) return { tp1: tp1, tp2: tp2, sl: sl };
   if (isSell) {
-    var risk = sl - e;
-    var reward = e - tp1;
-    if (!Number.isFinite(risk) || risk <= 0) risk = e * 0.02;
-    if (!Number.isFinite(reward) || reward < risk * minRR) {
-      tp1 = roundDashPrice(e - risk * minRR);
+    if (!Number.isFinite(tp2) || tp2 >= tp1) {
+      tp2 = roundDashPrice(tp1 - Math.max(e * 0.004, Math.abs(e - tp1) * 0.35));
     }
-    if (!Number.isFinite(tp2) || tp2 >= tp1) tp2 = roundDashPrice(tp1 - Math.max(e * 0.004, Math.abs(e - tp1) * 0.25));
   } else {
-    risk = e - sl;
-    reward = tp1 - e;
-    if (!Number.isFinite(risk) || risk <= 0) risk = e * 0.02;
-    if (!Number.isFinite(reward) || reward < risk * minRR) {
-      tp1 = roundDashPrice(e + risk * minRR);
+    if (!Number.isFinite(tp2) || tp2 <= tp1) {
+      tp2 = roundDashPrice(tp1 + Math.max(e * 0.004, Math.abs(tp1 - e) * 0.35));
     }
-    if (!Number.isFinite(tp2) || tp2 <= tp1) tp2 = roundDashPrice(tp1 + Math.max(e * 0.004, Math.abs(tp1 - e) * 0.25));
   }
   return { tp1: tp1, tp2: tp2, sl: sl };
 }
@@ -1836,7 +1826,98 @@ function dashLivePx(ticker) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** Mirror server applyServerPriceLevels (channel + S/R) for dashboard UI + history rows. */
+/** Mirror server atrMomentumMultiples — TP distance in ATR units, scaled by ADX/MACD/trend. */
+function atrMomentumMultiplesDash(tech, hz) {
+  var base = ({
+    short:  { tp1: 1.6, tp2: 2.8 },
+    medium: { tp1: 2.8, tp2: 5.0 },
+    long:   { tp1: 4.5, tp2: 8.0 }
+  })[hz] || { tp1: 2.0, tp2: 3.5 };
+  var adx = Number(tech && tech.adx) || 20;
+  var macd = tech && tech.macd;
+  var hist = macd && macd.histogram;
+  var macdTrend = String((macd && macd.trend) || '').toLowerCase();
+  var trend = String((tech && (tech.trend20 || tech.trend)) || '').toLowerCase();
+  var scale = 1;
+  if (adx >= 28) scale += 0.15;
+  else if (adx < 16) scale -= 0.15;
+  var alignedBull = (trend === 'uptrend' || trend === 'bull') && (hist > 0 || macdTrend === 'bullish');
+  var alignedBear = (trend === 'downtrend' || trend === 'bear') && (hist < 0 || macdTrend === 'bearish');
+  if (alignedBull || alignedBear) scale += 0.10;
+  if (trend === 'sideways' || trend === 'ranging' || trend === 'neutral') scale -= 0.10;
+  scale = Math.max(0.70, Math.min(1.35, scale));
+  return { tp1: base.tp1 * scale, tp2: base.tp2 * scale, atrScale: scale };
+}
+
+function pickStructureNearAtrDash(cands, atrAnchor, entry, isSell, atr) {
+  var band = Math.max(atr * 0.55, entry * 0.004);
+  var best = null, bestDist = Infinity;
+  for (var i = 0; i < (cands || []).length; i++) {
+    var v = parseFloat(cands[i]);
+    if (!(v > 0)) continue;
+    if (!isSell && !(v > entry * 1.002)) continue;
+    if (isSell && !(v < entry * 0.998)) continue;
+    var d = Math.abs(v - atrAnchor);
+    if (d <= Math.abs(atrAnchor - entry) * 0.9 + band && d < bestDist) {
+      best = v; bestDist = d;
+    }
+  }
+  return best;
+}
+
+/** TP1/TP2 from ATR + momentum + nearby structure — same as server (NOT stop×RR). */
+function computeAtrMomentumTargetsDash(tech, entry, hz, isSell) {
+  if (!tech || !entry || entry <= 0) return { tp1: null, tp2: null };
+  var atr = tech.atr || tech.atr14 || entry * 0.02;
+  var m = atrMomentumMultiplesDash(tech, hz);
+  var atrTp1 = isSell ? entry - m.tp1 * atr : entry + m.tp1 * atr;
+  var atrTp2 = isSell ? entry - m.tp2 * atr : entry + m.tp2 * atr;
+  var chan = tech.channels || {};
+  var d20 = chan.daily20 || null;
+  var d50 = chan.daily50 || null;
+  var w20 = chan.weekly20 || null;
+  var w50 = chan.weekly50 || null;
+  var c1 = [], c2 = [];
+  if (!isSell) {
+    if (hz === 'short') {
+      c1 = [d20 && d20.mean, tech.resistance1, tech.ma20];
+      c2 = [d20 && d20.upper1, tech.resistance2, tech.resistance1, d20 && d20.upper2];
+    } else if (hz === 'medium') {
+      c1 = [w20 && w20.mean, d50 && d50.mean, tech.resistance1, tech.ma50];
+      c2 = [w20 && w20.upper1, d20 && d20.upper2, tech.resistance2, w20 && w20.upper2];
+    } else {
+      c1 = [w20 && w20.upper1, w50 && w50.mean, tech.resistance1, tech.ma200];
+      c2 = [w20 && w20.upper2, w50 && w50.upper1, tech.resistance2];
+    }
+  } else {
+    if (hz === 'short') {
+      c1 = [d20 && d20.mean, tech.support1, tech.ma20];
+      c2 = [d20 && d20.lower1, tech.support2, tech.support1, d20 && d20.lower2];
+    } else if (hz === 'medium') {
+      c1 = [w20 && w20.mean, d50 && d50.mean, tech.support1, tech.ma50];
+      c2 = [w20 && w20.lower1, d20 && d20.lower2, tech.support2, w20 && w20.lower2];
+    } else {
+      c1 = [w20 && w20.lower1, w50 && w50.mean, tech.support1, tech.ma200];
+      c2 = [w20 && w20.lower2, w50 && w50.lower1, tech.support2];
+    }
+  }
+  var tp1 = pickStructureNearAtrDash(c1, atrTp1, entry, isSell, atr) || atrTp1;
+  var tp2 = pickStructureNearAtrDash(c2, atrTp2, entry, isSell, atr) || atrTp2;
+  var max1 = Math.abs(atrTp1 - entry) * 1.75;
+  var max2 = Math.abs(atrTp2 - entry) * 1.75;
+  if (!isSell) {
+    if (tp1 - entry > max1) tp1 = entry + max1;
+    if (tp2 - entry > max2) tp2 = entry + max2;
+    if (!(tp2 > tp1)) tp2 = Math.max(tp1 + 0.35 * atr, atrTp2);
+  } else {
+    if (entry - tp1 > max1) tp1 = entry - max1;
+    if (entry - tp2 > max2) tp2 = entry - max2;
+    if (!(tp2 < tp1)) tp2 = Math.min(tp1 - 0.35 * atr, atrTp2);
+  }
+  return { tp1: roundDashPrice(tp1), tp2: roundDashPrice(tp2), atrMult: m };
+}
+
+/** Mirror server applyServerPriceLevels — ATR TPs + structure/ATR stops (no fixed RR invent). */
 function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
   fund = fund || {};
   if (!e || e <= 0) return { tp1: null, tp2: null, sl: null };
@@ -1978,10 +2059,7 @@ function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
     }
   }
 
-  var _MIN_RR = 1.0;
-  // Sanity bounds SCALE WITH THE HORIZON: the max stop distance and the ATR fallback
-  // both widen for longer holds, so a long-term stop is never clamped to a 2% noise
-  // level (the old fixed e*0.92 cap reset every long stop back to ~2.5%).
+  // Sanity bounds for stops only — NEVER invent TP1 as stop×fixed RR (ATR owns targets).
   var _maxSlDist = hz === 'short' ? 0.06 : hz === 'medium' ? 0.13 : 0.26;
   var _atrMult   = hz === 'short' ? 2.0 : hz === 'medium' ? 4.0 : 6.5;
   var _dfltSlPct = hz === 'short' ? 0.030 : hz === 'medium' ? 0.080 : 0.160;
@@ -1989,15 +2067,17 @@ function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
   if (!isSell) {
     if (sl >= e || sl < e * (1 - _maxSlDist)) sl = roundDashPrice(e - _dfltSlDist);
     if (tp1 <= e) tp1 = atr ? roundDashPrice(e + 2.5 * atr) : roundDashPrice(e * 1.035);
-    var _riskB = Math.abs(e - sl);
-    if (_riskB > 0 && (tp1 - e) < _riskB * _MIN_RR) tp1 = roundDashPrice(e + _riskB * _MIN_RR);
-    if (tp2 <= tp1) tp2 = roundDashPrice(tp1 * 1.04);
+    if (tp2 <= tp1) tp2 = atr ? roundDashPrice(tp1 + 0.35 * atr) : roundDashPrice(tp1 * 1.04);
   } else {
     if (sl <= e || sl > e * (1 + _maxSlDist)) sl = roundDashPrice(e + _dfltSlDist);
     if (tp1 >= e) tp1 = atr ? roundDashPrice(e - 2.5 * atr) : roundDashPrice(e * 0.965);
-    var _riskS = Math.abs(sl - e);
-    if (_riskS > 0 && (e - tp1) < _riskS * _MIN_RR) tp1 = roundDashPrice(e - _riskS * _MIN_RR);
-    if (tp2 >= tp1) tp2 = roundDashPrice(tp1 * 0.96);
+    if (tp2 >= tp1) tp2 = atr ? roundDashPrice(tp1 - 0.35 * atr) : roundDashPrice(tp1 * 0.96);
+  }
+  // Prefer ATR×momentum targets when tech is available (overrides channel-first legacy path).
+  if (tech && (tech.atr || tech.atr14)) {
+    var _atrTg = computeAtrMomentumTargetsDash(tech, e, hz, isSell);
+    if (_atrTg.tp1 != null) tp1 = _atrTg.tp1;
+    if (_atrTg.tp2 != null) tp2 = _atrTg.tp2;
   }
   var rr = applyHorizonMinPctFloorsDash(e, tp1, tp2, sl, isSell, hz);
   return { tp1: rr.tp1, tp2: rr.tp2, sl: rr.sl };
