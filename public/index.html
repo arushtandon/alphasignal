@@ -592,9 +592,11 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
     <div id="pane-history" class="pane">
       <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div class="pt">Recommendation history</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
           <button class="btn" style="font-size:10px;padding:4px 10px" onclick="exportHistoryTrades()" title="Download every trade with TP1/TP2/TSL/donation/shares for model review">⬇ Export Excel</button>
           <button class="btn" style="font-size:10px;padding:4px 10px" onclick="exportClosedExitQuality()" title="Closed trades only — exit quality CSV for TP/TSL/donation analysis">⬇ Closed exit quality</button>
+          <button class="btn" style="font-size:10px;padding:4px 10px" onclick="document.getElementById('importRecCsv').click()" title="Re-import a dashboard recommended CSV (e.g. alphasignal-recommended-2026-07-15.csv) into history">⬆ Import recommended CSV</button>
+          <input type="file" id="importRecCsv" accept=".csv,text/csv" style="display:none" onchange="importRecommendedCsvFile(this)">
         </div>
       </div>
       <div id="histContent"></div>
@@ -3392,6 +3394,38 @@ function exportRecommendedTrades() {
   if (!rows.length) { alert('No recommended trades to export.'); return; }
   const stamp = new Date().toISOString().slice(0, 10);
   _downloadCsv('alphasignal-recommended-' + stamp + '.csv', headers, rows);
+}
+
+async function importRecommendedCsvFile(input) {
+  try {
+    const file = input && input.files && input.files[0];
+    if (!file) return;
+    const csv = await file.text();
+    if (!csv || csv.trim().length < 20) {
+      alert('That file looks empty.');
+      return;
+    }
+    const r = await fetch('/api/history/import-recommended', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ csv: csv, filename: file.name })
+    });
+    const d = await r.json().catch(function(){ return {}; });
+    if (!r.ok || !d.ok) {
+      alert('Import failed: ' + (d.error || r.statusText || 'unknown'));
+      return;
+    }
+    await loadHistoryFromServer();
+    try { renderHist(); } catch (e) {}
+    alert('Imported ' + (d.accepted || 0) + ' trades into history' +
+      (d.skipped ? (' (' + d.skipped + ' skipped)') : '') +
+      '. Total rows: ' + (d.total || '—') +
+      '.\n\nTip: switch Live / Realised tabs if a day looks empty.');
+  } catch (e) {
+    alert('Import failed: ' + (e.message || e));
+  } finally {
+    if (input) input.value = '';
+  }
 }
 
 function exportHistoryTrades() {

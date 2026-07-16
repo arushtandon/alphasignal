@@ -7110,6 +7110,205 @@ async function addTradesToHistory(trades) {
   return { accepted: accepted.length, skipped: trades.length - accepted.length, total: tradeHistory.length };
 }
 
+/** Parse a CSV line respecting double-quoted fields (Reason often has commas). */
+function parseCsvLine(line) {
+  const out = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else inQ = false;
+      } else cur += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === ',') { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+function parseRecommendedCsvText(csvText) {
+  const text = String(csvText || '').replace(/^\uFEFF/, '').trim();
+  if (!text) return [];
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+  const headers = parseCsvLine(lines[0]).map(h => h.trim().toLowerCase());
+  const idx = (name) => headers.indexOf(name.toLowerCase());
+  const iTf = idx('timeframe'), iSide = idx('side'), iTk = idx('ticker');
+  const iName = idx('name'), iMkt = idx('market'), iRating = idx('rating');
+  const iScore = idx('score'), iEntry = idx('entry');
+  const iTp1 = idx('target 1'), iTp2 = idx('target 2'), iSl = idx('stop loss');
+  const iReason = idx('reason');
+  if (iTf < 0 || iSide < 0 || iTk < 0 || iEntry < 0) return [];
+  const hzOf = (tf) => {
+    const s = String(tf || '').toLowerCase();
+    if (s.startsWith('long')) return 'long';
+    if (s.startsWith('medium') || s.startsWith('med')) return 'medium';
+    return 'short';
+  };
+  const rows = [];
+  for (let li = 1; li < lines.length; li++) {
+    const cols = parseCsvLine(lines[li]);
+    const ticker = String(cols[iTk] || '').trim().toUpperCase();
+    if (!ticker) continue;
+    const side = String(cols[iSide] || '').trim().toLowerCase() === 'sell' ? 'sell' : 'buy';
+    const hz = hzOf(cols[iTf]);
+    const entry = parseFloat(cols[iEntry]);
+    const tp1 = iTp1 >= 0 ? parseFloat(cols[iTp1]) : NaN;
+    const tp2 = iTp2 >= 0 ? parseFloat(cols[iTp2]) : NaN;
+    const sl = iSl >= 0 ? parseFloat(cols[iSl]) : NaN;
+    if (!Number.isFinite(entry) || entry <= 0) continue;
+    rows.push({
+      ticker,
+      name: (iName >= 0 ? cols[iName] : '') || ticker,
+      market: iMkt >= 0 ? (cols[iMkt] || '') : '',
+      hz,
+      side,
+      rating: iRating >= 0 ? (cols[iRating] || (side === 'sell' ? 'Sell' : 'Buy')) : (side === 'sell' ? 'Sell' : 'Buy'),
+      score: iScore >= 0 ? parseFloat(cols[iScore]) : null,
+      entry,
+      tp1: Number.isFinite(tp1) ? tp1 : null,
+      tp2: Number.isFinite(tp2) ? tp2 : null,
+      sl: Number.isFinite(sl) ? sl : null,
+      reason: iReason >= 0 ? (cols[iReason] || '') : ''
+    });
+  }
+  return rows;
+}
+
+/** Guess entry day from filename like alphasignal-recommended-2026-07-15.csv */
+function entryDateFromRecommendedFilename(name) {
+  const m = String(name || '').match(/(20\d{2})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  // Noon UTC ≈ evening SGT / morning US — stable calendar day in most TZs
+  return `${m[1]}-${m[2]}-${m[3]}T12:00:00.000Z`;
+}
+
+function recommendedRowsToHistoryRecords(rows, entryDateIso) {
+  const ts = entryDateIso || new Date().toISOString();
+  return (rows || []).map((r) => {
+    if (!r || !r.ticker) return null;
+    const hz = r.hz || 'short';
+    const isSell = r.side === 'sell' || String(r.action || '').toLowerCase() === 'sell';
+    const entry = Number(r.entry);
+    if (!Number.isFinite(entry) || entry <= 0) return null;
+    const tp1 = r.tp1 != null ? Number(r.tp1) : null;
+    const tp2 = r.tp2 != null ? Number(r.tp2) : null;
+    const sl = r.sl != null ? Number(r.sl) : null;
+    const score = r.score != null && Number.isFinite(Number(r.score)) ? Number(r.score) : null;
+    const rec = {
+      _v: 2,
+      ticker: String(r.ticker).toUpperCase(),
+      name: r.name || r.ticker,
+      market: r.market || '',
+      sector: r.sector || '',
+      hz,
+      action: isSell ? 'Sell' : 'Buy',
+      rating: r.rating || (isSell ? 'Sell' : 'Buy'),
+      conf: score || 0,
+      entryDate: ts,
+      timestamp: ts,
+      entry,
+      target1: tp1,
+      target2: tp2,
+      stopLoss: sl,
+      [hz + 'Entry']: entry,
+      [hz + 'Target1']: tp1,
+      [hz + 'Target2']: tp2,
+      [hz + 'StopLoss']: sl,
+      [hz + 'TrailingSL']: true,
+      sellEntry: entry,
+      sellTarget1: isSell ? tp1 : null,
+      sellTarget2: isSell ? tp2 : null,
+      sellStopLoss: isSell ? sl : null,
+      reason: r.reason || '',
+      shortScore: hz === 'short' && !isSell ? score : null,
+      mediumScore: hz === 'medium' && !isSell ? score : null,
+      longScore: hz === 'long' && !isSell ? score : null,
+      shortSellScore: hz === 'short' && isSell ? score : null,
+      mediumSellScore: hz === 'medium' && isSell ? score : null,
+      longSellScore: hz === 'long' && isSell ? score : null,
+      [hz + 'Status']: 'open',
+      [hz + 'PnlDollar']: null,
+      [hz + 'PnlPct']: null,
+      revalidatedAt: ts,
+      analyticsVersion: 2,
+      _fromRecommendedCsv: true
+    };
+    return rec;
+  }).filter(Boolean);
+}
+
+async function importRecommendedCsvText(csvText, opts = {}) {
+  const rows = parseRecommendedCsvText(csvText);
+  if (!rows.length) return { ok: false, error: 'no rows parsed', accepted: 0, skipped: 0, total: tradeHistory.length };
+  const entryDate = opts.entryDate || null;
+  const trades = recommendedRowsToHistoryRecords(rows, entryDate);
+  const r = await addTradesToHistory(trades);
+  auditLog('import_recommended_csv', {
+    rows: rows.length,
+    accepted: r.accepted,
+    skipped: r.skipped,
+    entryDate: entryDate || null,
+    source: opts.source || 'api'
+  });
+  return { ok: true, parsed: rows.length, ...r };
+}
+
+/** Drop CSVs into data/pending_history_import/ — imported once on boot, then moved to imported/. */
+async function importPendingRecommendedCsvs() {
+  const pendingDir = path.join(DATA_DIR, 'pending_history_import');
+  const doneDir = path.join(DATA_DIR, 'imported_history_csv');
+  try { fs.mkdirSync(pendingDir, { recursive: true }); } catch (_) {}
+  try { fs.mkdirSync(doneDir, { recursive: true }); } catch (_) {}
+  let files = [];
+  try { files = fs.readdirSync(pendingDir).filter(f => /\.csv$/i.test(f)); } catch (_) { return; }
+  for (const file of files) {
+    const src = path.join(pendingDir, file);
+    try {
+      const csv = fs.readFileSync(src, 'utf8');
+      const entryDate = entryDateFromRecommendedFilename(file) || new Date().toISOString();
+      const r = await importRecommendedCsvText(csv, { entryDate, source: 'pending:' + file });
+      console.log('Pending CSV import', file, '→', r.accepted, 'added,', r.skipped, 'skipped');
+      const dest = path.join(doneDir, file);
+      try { fs.renameSync(src, dest); }
+      catch (_) { try { fs.writeFileSync(dest, csv); fs.unlinkSync(src); } catch (__) {} }
+    } catch (e) {
+      console.warn('Pending CSV import failed for', file, e.message);
+    }
+  }
+}
+
+/**
+ * Seed CSVs shipped with the repo (seed/recommended/). Re-imports a day only
+ * when that calendar day is missing from history — recovers after ephemeral disk wipes.
+ */
+async function importSeedRecommendedCsvsIfMissing() {
+  const seedDir = path.join(__dirname, 'seed', 'recommended');
+  let files = [];
+  try { files = fs.readdirSync(seedDir).filter(f => /\.csv$/i.test(f)); } catch (_) { return; }
+  for (const file of files) {
+    const entryDate = entryDateFromRecommendedFilename(file);
+    if (!entryDate) continue;
+    const dayStr = new Date(entryDate).toDateString();
+    const have = tradeHistory.some(h => new Date(h.entryDate || h.timestamp).toDateString() === dayStr);
+    if (have) {
+      console.log('Seed CSV skip (day already in history):', file);
+      continue;
+    }
+    try {
+      const csv = fs.readFileSync(path.join(seedDir, file), 'utf8');
+      const r = await importRecommendedCsvText(csv, { entryDate, source: 'seed:' + file });
+      console.log('Seed CSV import', file, '→', r.accepted, 'added');
+    } catch (e) {
+      console.warn('Seed CSV import failed for', file, e.message);
+    }
+  }
+}
+
 // POST add trades (called when dashboard scan completes)
 app.post('/api/history/add', express.json(), async (req, res) => {
   const trades = req.body;
@@ -7117,6 +7316,24 @@ app.post('/api/history/add', express.json(), async (req, res) => {
   const r = await addTradesToHistory(trades);
   console.log('History: added', r.accepted, 'trades, total:', r.total);
   res.json({ ok: true, total: r.total, added: r.accepted, skipped: r.skipped });
+});
+
+// POST import a dashboard "Export Excel" recommended CSV back into durable history.
+// Body: { csv: "...", entryDate?: "2026-07-15T12:00:00.000Z", filename?: "alphasignal-recommended-2026-07-15.csv" }
+app.post('/api/history/import-recommended', express.json({ limit: '2mb' }), async (req, res) => {
+  const csv = req.body && req.body.csv;
+  if (!csv || typeof csv !== 'string') return res.status(400).json({ error: 'csv string required' });
+  const entryDate = (req.body.entryDate && String(req.body.entryDate))
+    || entryDateFromRecommendedFilename(req.body.filename)
+    || null;
+  try {
+    const r = await importRecommendedCsvText(csv, { entryDate, source: 'api' });
+    if (!r.ok) return res.status(400).json(r);
+    console.log('Recommended CSV import:', r.accepted, 'added, total', r.total);
+    res.json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 // POST update PnL for existing trades
@@ -12023,6 +12240,10 @@ if (require.main === module) {
       if (p) console.log('✓ Yahoo Finance working - AAPL:', p.price, p.currency);
       else console.warn('✗ Yahoo Finance not working - prices will be unavailable');
     });
+    // Restore any recommended CSVs dropped into data/pending_history_import/
+    importPendingRecommendedCsvs()
+      .then(() => importSeedRecommendedCsvsIfMissing())
+      .catch(e => console.warn('CSV history restore:', e.message));
   });
 }
 
