@@ -1714,12 +1714,95 @@ function calcADX(data, period = 14) {
 // reported win rate is always honest.
 // ══════════════════════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════════════════════
+// MARKET / INDEX MOMENTUM REGIME  (the "capture the tide" overlay)
+// ------------------------------------------------------------------------------
+// The per-stock signal has no awareness of the broad market. In a rising tape we
+// were fading strength and dip-buying pullbacks with no tailwind; in a falling
+// tape we were catching knives. This builds a risk-on / risk-off state from a
+// benchmark index (SPY by default) so longs only press when the market tide is
+// with them, and are throttled when it is against them. Keyed by trading day so
+// the backtest can look up the regime as of each historical bar.
+// ══════════════════════════════════════════════════════════════════════════════
+const MARKET_BENCHMARK = process.env.MARKET_BENCHMARK || 'SPY';
+const MARKET_OVERLAY_ENABLED = process.env.MARKET_OVERLAY !== '0'; // default ON
+
+function _sma(arr, i, n) {
+  if (i + 1 < n) return null;
+  let s = 0;
+  for (let k = i - n + 1; k <= i; k++) s += arr[k];
+  return s / n;
+}
+
+/** Build a Map<'YYYY-MM-DD', {riskOff,trend,aboveMa200,ma50Rising,score}> from
+ *  benchmark daily bars. trend: 'up' | 'down' | 'flat'. */
+function buildMarketRegime(bars) {
+  const map = new Map();
+  if (!Array.isArray(bars) || bars.length < 60) return map;
+  const closes = bars.map(b => +b.c).filter(Number.isFinite);
+  for (let i = 0; i < bars.length; i++) {
+    const c = +bars[i].c;
+    if (!Number.isFinite(c)) continue;
+    const ma50 = _sma(closes, i, 50);
+    const ma200 = _sma(closes, i, 200);
+    const ma50Prev = _sma(closes, i - 10 >= 0 ? i - 10 : 0, 50);
+    const aboveMa200 = ma200 != null ? c > ma200 : c >= closes[Math.max(0, i - 1)];
+    const aboveMa50 = ma50 != null ? c > ma50 : true;
+    const ma50Rising = ma50 != null && ma50Prev != null ? ma50 > ma50Prev : true;
+    const goldMa = ma50 != null && ma200 != null ? ma50 > ma200 : aboveMa50;
+    let trend = 'flat';
+    if (aboveMa200 && aboveMa50 && goldMa && ma50Rising) trend = 'up';
+    else if (!aboveMa200 && !ma50Rising) trend = 'down';
+    const riskOff = ma200 != null ? (!aboveMa200 && !ma50Rising) : false;
+    const score = (aboveMa200 ? 1 : 0) + (aboveMa50 ? 1 : 0) + (goldMa ? 1 : 0) + (ma50Rising ? 1 : 0);
+    const day = new Date(bars[i].t * 1000).toISOString().slice(0, 10);
+    map.set(day, { riskOff, trend, aboveMa200, aboveMa50, ma50Rising, score });
+  }
+  return map;
+}
+
+/** Look up market regime as of a bar timestamp (falls back to the latest known). */
+function marketRegimeAt(map, t, latest) {
+  if (!map || !map.size) return null;
+  const day = new Date(t * 1000).toISOString().slice(0, 10);
+  if (map.has(day)) return map.get(day);
+  return latest || null;
+}
+
+// Live market-regime cache. The backtest passes an explicit per-bar regime; live
+// signals fall back to this cached "current tide" so every pick is overlay-gated
+// without threading the param through every call site. Only refreshed in server
+// context (never during the acceptance script), so backtests stay deterministic.
+let _liveMarketRegime = null;
+let _liveMarketRegimeAt = 0;
+const MARKET_REGIME_TTL = 6 * 60 * 60 * 1000; // 6h
+async function refreshMarketRegime(force = false) {
+  if (!MARKET_OVERLAY_ENABLED) return null;
+  if (!force && _liveMarketRegime && Date.now() - _liveMarketRegimeAt < MARKET_REGIME_TTL) {
+    return _liveMarketRegime;
+  }
+  try {
+    const bars = await fetchOHLCV(MARKET_BENCHMARK, '2y', '1d').catch(() => null);
+    if (bars && bars.length >= 60) {
+      const map = buildMarketRegime(bars);
+      const lastDay = new Date(bars[bars.length - 1].t * 1000).toISOString().slice(0, 10);
+      _liveMarketRegime = map.get(lastDay) || [...map.values()].pop() || null;
+      _liveMarketRegimeAt = Date.now();
+      if (_liveMarketRegime) {
+        console.log(`Market regime (${MARKET_BENCHMARK}): trend=${_liveMarketRegime.trend} riskOff=${_liveMarketRegime.riskOff} score=${_liveMarketRegime.score}/4`);
+      }
+    }
+  } catch (e) { console.warn('refreshMarketRegime:', e.message); }
+  return _liveMarketRegime;
+}
+
 /**
  * Compute buy/sell scores deterministically from pre-computed indicators.
  * Returns { buyScore, sellScore, action, rating, conditions, winRateHint }
  * Scores 0-100. Mutual exclusivity enforced: both cannot exceed 55.
+ * @param {object|null} market  Optional index-momentum regime overlay (see buildMarketRegime).
  */
-function computeQuantSignal(tech, fund, hz) {
+function computeQuantSignal(tech, fund, hz, market = null) {
   if (!tech) return { buyScore:0, sellScore:0, action:'Hold', rating:'Hold',
     conditions:[], winRateHint:40, gatesMet:0, tier:0, tierLabel:'No data' };
 
@@ -2161,6 +2244,29 @@ function computeQuantSignal(tech, fund, hz) {
     }
   }
 
+  // ── MARKET / INDEX MOMENTUM OVERLAY ─────────────────────────────────────────
+  // Align every long with the broad-market tide and throttle counter-tide trades.
+  // This is the fix for "we can't capture index/market momentum": stop pressing
+  // longs into a falling market and stop fading a strong one.
+  if (MARKET_OVERLAY_ENABLED && !market) market = _liveMarketRegime; // live fallback
+  if (MARKET_OVERLAY_ENABLED && market) {
+    if (hz === 'short') {
+      // Short = mean-reversion dip-buying. Fine in up/flat tapes; a knife-catch in
+      // a risk-off market — throttle hard rather than buy the falling market.
+      if (market.riskOff)              { buy = Math.round(buy * 0.45); condBuy.push('Market risk-off — dip-buy throttled'); }
+      else if (market.trend === 'down') buy = Math.round(buy * 0.70);
+      else if (market.trend === 'up')   buy = Math.min(94, Math.round(buy * 1.05));
+    } else {
+      // Medium/long = trend-following. Only press longs with the market tide.
+      if (market.riskOff)               { buy = Math.round(buy * 0.30); condBuy.push('Market risk-off — trend-long suppressed'); }
+      else if (!market.aboveMa200)       buy = Math.round(buy * 0.60);
+      else if (market.trend === 'up' && market.ma50Rising) { buy = Math.min(95, Math.round(buy * 1.08)); condBuy.push('Market uptrend tailwind'); }
+    }
+    // Shorts (when enabled) only earn with the tide against the market.
+    if (market.riskOff)             sell = Math.min(94, Math.round(sell * 1.10));
+    else if (market.trend === 'up') sell = Math.round(sell * 0.45);
+  }
+
   // Clamp and mutual exclusivity
   buy  = Math.min(92,Math.max(0,Math.round(buy)));
   sell = Math.min(88,Math.max(0,Math.round(sell)));
@@ -2230,6 +2336,8 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
   const entryStep = Math.max(1, opts.entryStep || 2);
   const windowStart = Math.max(BACKTEST_WARMUP, data.length - windowBars);
   const weeklyAll = weeklyData || dailyToWeeklyBars(data);
+  const marketSeries = opts.marketSeries || null; // Map<'YYYY-MM-DD', regime>
+  let marketLatest = null;
 
   let wins = 0, losses = 0, trades = 0, totalReturn = 0, grossWin = 0, grossLoss = 0;
   let stWins = 0, stTrades = 0;
@@ -2240,7 +2348,12 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
     if (i < nextAllowed) continue;
     if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r));
     const tech = techAtBoundedIndex(data, weeklyAll, i);
-    const sig = computeQuantSignal(tech, fund, hz);
+    let market = null;
+    if (marketSeries) {
+      market = marketRegimeAt(marketSeries, data[i].t, marketLatest);
+      if (market) marketLatest = market;
+    }
+    const sig = computeQuantSignal(tech, fund, hz, market);
     const stHz = (tech.supertrendByHz && tech.supertrendByHz[hz]) || tech.supertrend;
 
     // Entry only on a real, dominant signal (same 62 threshold as live picks).
@@ -6433,6 +6546,7 @@ async function generateServerPicksFromShortlist(opts = {}) {
   if (!list.length) return { ok: false, reason: 'no shortlist' };
   serverPicksGenerating = true;
   try {
+    await refreshMarketRegime().catch(() => {}); // ensure signals below are tide-gated
     const marketOf = {};
     list.forEach(x => { marketOf[x.ticker] = x.market; });
     const tickers = list.map(x => x.ticker).slice(0, 120);
@@ -7045,6 +7159,11 @@ async function addTradesToHistory(trades) {
   for (const trade of trades) {
     const hz = trade.hz || 'short';
     const isSell = String(trade.action || '').toLowerCase() === 'sell';
+    // Look up any prior record for this ticker/hz/day up front — the RR gate and
+    // the freeze/settled logic below both need it (referencing it before this
+    // line threw "Cannot access 'prev' before initialization" on every fresh pick,
+    // silently blocking all new recommendations from being recorded).
+    const prev = existingByKey.get(keyOf(trade));
     // Only gate FRESH (today's) buy picks on SL cooldown. Historical re-uploads
     // (older entryDate, e.g. localStorage recovery after a deploy) must always be
     // preserved so durable history is never silently dropped.
@@ -7076,8 +7195,7 @@ async function addTradesToHistory(trades) {
     // FREEZE: if this pick was already recorded earlier (same ticker/hz/day),
     // carry over the first-seen entry, entry date, frozen TP/SL levels and any
     // realised outcome. Entry is the price WHEN FIRST SIGNALLED — it must never
-    // drift to the live price.
-    const prev = existingByKey.get(keyOf(trade));
+    // drift to the live price. (`prev` is resolved at the top of the loop.)
     // SETTLED ROWS ARE IMMUTABLE: once a trade fully exited, no re-upload (scan
     // re-record, localStorage recovery, stale browser copy) may replace it. The
     // server row is kept VERBATIM — field-merging stale uploads was how settled
@@ -9456,7 +9574,10 @@ const HORIZON_PCT = {
 //     by design fire rarely outside bear regimes (that rarity is correct).
 // Re-run /api/backtest/medium-sell?hz=short&side=sell after deploy to verify
 // the fade path; acceptance = WR ≥55% or avg ≥+0.30%/trade with PF ≥1.5.
-const SELL_PICKS_ENABLED = process.env.SELL_PICKS_ENABLED !== '0'; // default ON — sell side redesigned (fade shorts + bear-regime breakdowns); set 0 to disable
+// Default OFF — bracket acceptance (all windows) shows sell:short/medium/long with
+// negative or sub-1.5-PF expectancy across every horizon. Running them was the main
+// drag on live PnL. Reference-only unless explicitly re-enabled with SELL_PICKS_ENABLED=1.
+const SELL_PICKS_ENABLED = process.env.SELL_PICKS_ENABLED === '1';
 
 // Bracket acceptance gates (v143). Opt-in via env — default OFF so the dashboard
 // never goes blank. Set e.g. DISABLED_BRACKETS=sell:medium,sell:long,buy:short
@@ -11425,15 +11546,29 @@ try {
   riskState = { ...riskState, ...loaded };
 } catch (_) {}
 
-/** Marked PnL once per trade (primary horizon only — never sum short+medium+long). */
+/** Marked PnL once per trade (primary horizon only — never sum short+medium+long).
+ *  Hardened against corrupt history: de-dupes by trade key and clamps each trade's
+ *  contribution to ±NOTIONAL (a $10k-notional position cannot realistically lose or
+ *  gain more than its notional), so duplicated/garbage rows can no longer drive the
+ *  risk-guard equity to an impossible value (the 27,400,159% drawdown bug). */
+const RISK_NOTIONAL = 10000;
 function portfolioMarkedPnl() {
   let pnl = 0;
+  const seen = new Set();
   for (const h of tradeHistory) {
     if (!(h.action === 'Buy' || h.action === 'Sell')) continue;
     const hz = h.hz || 'short';
+    const key = [h.ticker || h.symbol || '', h.entryDate || h.date || h.ts || '', hz, h.action]
+      .join('|');
+    if (seen.has(key)) continue;       // ignore duplicate rows
+    seen.add(key);
     let v = Number(h[hz + 'PnlDollar']);
     if (!Number.isFinite(v)) v = Number(h.pnlDollar);
-    if (Number.isFinite(v)) pnl += v;
+    if (!Number.isFinite(v)) continue;
+    // A single $10k-notional trade cannot move the pool by more than its notional.
+    if (v > RISK_NOTIONAL) v = RISK_NOTIONAL;
+    else if (v < -RISK_NOTIONAL) v = -RISK_NOTIONAL;
+    pnl += v;
   }
   return pnl;
 }
@@ -11447,13 +11582,16 @@ function updateRiskState() {
   const equity = RISK_POOL + pnl;
   riskState.equity = Math.round(equity);
   riskState.pnl = Math.round(pnl);
-  // Bootstrap peak only when missing/corrupt — never yank a rebased peak back to RISK_POOL.
-  if (!(Number(riskState.peakEquity) > 0)) {
+  // Bootstrap / repair peak. A peak that has collapsed far below the pool is the
+  // fingerprint of the old peak=1 corruption — rebuild it. A legitimately rebased
+  // peak (e.g. after a manual reset to current equity) is left intact.
+  if (!(Number(riskState.peakEquity) > RISK_POOL * 0.5)) {
     riskState.peakEquity = Math.max(RISK_POOL, Math.round(equity));
   }
   if (equity > riskState.peakEquity) riskState.peakEquity = Math.round(equity);
   const peak = Number(riskState.peakEquity) || RISK_POOL;
-  const dd = peak > 0 ? Math.max(0, (peak - equity) / peak) : 0;
+  // Clamp to [0,1] so a data glitch can never render an absurd drawdown %.
+  const dd = peak > 0 ? Math.min(1, Math.max(0, (peak - equity) / peak)) : 0;
   const wasOff = !!riskState.riskOff;
   riskState.riskOff = dd >= RISK_MAX_DD;
   riskState.drawdownPct = +(dd * 100).toFixed(2);
@@ -11471,8 +11609,10 @@ function updateRiskState() {
 function resetRiskGuard(reason) {
   const pnl = portfolioMarkedPnl();
   const equity = RISK_POOL + pnl;
-  // Peak = current equity so DD is exactly 0 after reset (user intent).
-  const peak = Math.max(1, Math.round(equity));
+  // Peak = current equity so DD is exactly 0 after reset (user intent). Only fall
+  // back to the pool if equity is non-positive (corrupt), so reset can never
+  // re-collapse peak to 1 and instantly re-trip risk-off — it always clears.
+  const peak = equity > 0 ? Math.round(equity) : RISK_POOL;
   riskState = {
     peakEquity: peak,
     equity: Math.round(equity),
@@ -12260,6 +12400,13 @@ async function runBracketAcceptance(opts = {}) {
   // Always pull enough history for BACKTEST_WARMUP (~220) + windowBars.
   // window=252 means "last year of walk-forward", NOT "fetch only 1y".
   const range = windowBars >= 1000 ? '5y' : '2y';
+  // Build the market-momentum regime once from the benchmark index (SPY) so every
+  // ticker's replay is gated by the same tide the live overlay uses.
+  let marketSeries = null;
+  try {
+    const spy = await fetchOHLCV(MARKET_BENCHMARK, range, '1d').catch(() => null);
+    if (spy && spy.length >= 60) marketSeries = buildMarketRegime(spy);
+  } catch (_) {}
   const perTicker = [];
   let tTrades = 0, tWins = 0, tRet = 0, gW = 0, gL = 0;
   for (const sym of tickers) {
@@ -12269,7 +12416,7 @@ async function runBracketAcceptance(opts = {}) {
       const weekly = dailyToWeeklyBars(daily);
       const fe = fundCache.get(sym);
       const fund = fe && Date.now() - fe.ts < TECH_TTL * 4 ? fe.data : null;
-      const bt = await backtestSignal(daily, hz, weekly, fund, { windowBars, side, entryStep: opts.entryStep || 2 });
+      const bt = await backtestSignal(daily, hz, weekly, fund, { windowBars, side, entryStep: opts.entryStep || 2, marketSeries });
       if (!bt || !bt.trades) { perTicker.push({ ticker: sym, trades: 0 }); continue; }
       perTicker.push({ ticker: sym, trades: bt.trades, winRate: bt.winRate, avgReturnPct: bt.avgReturnPct, profitFactor: bt.profitFactor });
       tTrades += bt.trades;
@@ -12374,6 +12521,9 @@ if (require.main === module) {
     importPendingRecommendedCsvs()
       .then(() => importSeedRecommendedCsvsIfMissing())
       .catch(e => console.warn('CSV history restore:', e.message));
+    // Prime the market-momentum regime overlay and keep it fresh.
+    refreshMarketRegime(true).catch(() => {});
+    setInterval(() => refreshMarketRegime().catch(() => {}), MARKET_REGIME_TTL);
   });
 }
 
