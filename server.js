@@ -1799,101 +1799,210 @@ async function refreshMarketRegime(force = false) {
 // ══════════════════════════════════════════════════════════════════════════════
 // SECTOR-LEVEL MOMENTUM  (the tide that actually matters for each name)
 // ------------------------------------------------------------------------------
-// A chip/AI name should be gated by semiconductor momentum (SOXX), a bank by
-// financials (XLF), an oil name by energy (XLE), etc. — not by the broad index.
-// Each stock is mapped to its underlying sector ETF; that ETF's momentum regime
-// drives the overlay, falling back to the broad market (SPY) when the sector is
-// unknown. Sector ETFs are US-listed but represent GLOBAL sector cycles (SOXX
-// tracks the worldwide semi cycle that moves TSM, ASML, Tokyo Electron alike).
+// A stock is gated by its HOME-COUNTRY, SECTOR-SPECIFIC index — not a single
+// global ETF. An Indian bank (Kotak/ICICI) follows Bank Nifty (^NSEBANK); a
+// Japanese chipmaker (Tokyo Electron) follows the Japan semiconductor ETF
+// (2644.T); a US chip follows SOXX; a German industrial follows the DAX.
+// Resolution: home-country sector index → home-country broad index → global
+// sector cycle (semis→SOXX, gold→GDX) → SPY. Country is read from the Yahoo
+// ticker suffix (.NS→India, .T→Japan, .HK→HK, .DE→Germany, .KS→Korea, …).
 // ══════════════════════════════════════════════════════════════════════════════
 const SECTOR_OVERLAY_ENABLED = process.env.SECTOR_OVERLAY !== '0'; // default ON
 
-// Explicit ticker → sector-ETF overrides (highest priority). Covers the global
-// semiconductor/AI complex the user called out, across US/EU/JP/KR/TW/HK listings.
-const TICKER_SECTOR_ETF = {};
-(function seedTickerSectorEtf() {
-  const add = (etf, list) => list.forEach(t => { TICKER_SECTOR_ETF[t.toUpperCase()] = etf; });
-  // Semiconductors & AI hardware → SOXX
-  add('SOXX', ['NVDA', 'AMD', 'AVGO', 'INTC', 'QCOM', 'TXN', 'AMAT', 'MU', 'LRCX', 'KLAC',
+// ── COUNTRY detection from ticker suffix ────────────────────────────────────
+// Yahoo suffixes tell us the listing venue → the stock's home market.
+function countryOfSymbol(sym) {
+  const up = String(sym || '').toUpperCase();
+  const dot = up.lastIndexOf('.');
+  const suf = dot >= 0 ? up.slice(dot) : '';
+  switch (suf) {
+    case '.NS': case '.BO': return 'IN';
+    case '.T':  return 'JP';
+    case '.HK': return 'HK';
+    case '.DE': case '.F': case '.DU': case '.MU': case '.SG': case '.BE': return 'DE';
+    case '.PA': return 'FR';
+    case '.L':  return 'UK';
+    case '.KS': case '.KQ': return 'KR';
+    case '.TW': case '.TWO': return 'TW';
+    case '.AS': case '.BR': case '.MI': case '.MC': case '.SW': case '.LS':
+    case '.VI': case '.ST': case '.HE': case '.CO': case '.OL': case '.IR':
+      return 'EU';
+    default: return 'US';
+  }
+}
+
+// Broad home-market index per country (the country-wise "tide" fallback).
+const COUNTRY_INDEX = {
+  US: 'SPY', IN: '^NSEI', JP: '^N225', HK: '^HSI', DE: '^GDAXI',
+  FR: '^FCHI', UK: '^FTSE', KR: '^KS11', TW: '^TWII', EU: '^STOXX50E'
+};
+
+// Explicit ticker → canonical SECTOR KEY (highest priority). Covers the global
+// semiconductor/AI complex the user called out across US/EU/JP/KR/TW/HK listings.
+const TICKER_SECTOR_KEY = {};
+(function seedTickerSectorKey() {
+  const add = (key, list) => list.forEach(t => { TICKER_SECTOR_KEY[t.toUpperCase()] = key; });
+  add('semis', ['NVDA', 'AMD', 'AVGO', 'INTC', 'QCOM', 'TXN', 'AMAT', 'MU', 'LRCX', 'KLAC',
     'ADI', 'MRVL', 'NXPI', 'ON', 'MCHP', 'STM', 'TSM', 'ASML', 'ARM', 'SMCI', 'MPWR', 'TER',
     'ENTG', 'SWKS', 'QRVO', 'WOLF', 'ASML.AS', '2330.TW', '2454.TW', '000660.KS', '005930.KS',
     '8035.T', '6857.T', '6146.T', 'ASM.AS', 'BESI.AS', 'IFX.DE', 'STMPA.PA', 'AIXA.DE', '0981.HK']);
-  // Software / internet / AI-software → IGV
-  add('IGV', ['MSFT', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'PLTR', 'PANW', 'CRWD', 'FTNT',
+  add('software', ['MSFT', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'PLTR', 'PANW', 'CRWD', 'FTNT',
     'DDOG', 'NET', 'ZS', 'TEAM', 'WDAY', 'INTU', 'SAP', 'SAP.DE', 'DSY.PA']);
-  // Mega-cap internet / comms → XLC
-  add('XLC', ['GOOGL', 'GOOG', 'META', 'NFLX', 'DIS', 'T', 'VZ', 'CMCSA']);
+  add('comms', ['GOOGL', 'GOOG', 'META', 'NFLX', 'DIS', 'T', 'VZ', 'CMCSA']);
+  add('tech', ['AAPL', 'DELL', 'HPQ', 'ANET', 'CSCO', '6758.T', '6752.T', '6501.T', '6702.T', '6503.T',
+    'TCS.NS', 'INFY.NS', 'WIPRO.NS', 'HCLTECH.NS', 'TECHM.NS', 'LTIM.NS',
+    '0700.HK', '9988.HK', '3690.HK', '1810.HK', '9618.HK']);
+  // Banks / financials — incl. the user's Indian bank examples → Bank Nifty.
+  add('banks', ['JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'USB', 'PNC', 'TFC',
+    'ICICIBANK.NS', 'KOTAKBANK.NS', 'HDFCBANK.NS', 'SBIN.NS', 'AXISBANK.NS', 'INDUSINDBK.NS',
+    'BANKBARODA.NS', 'PNB.NS', 'FEDERALBNK.NS', 'IDFCFIRSTB.NS',
+    '8306.T', '8316.T', '8411.T', 'HSBA.L', 'BARC.L', 'LLOY.L', 'NWG.L', 'STAN.L',
+    'DBK.DE', 'CBK.DE', 'BNP.PA', 'GLE.PA', 'ACA.PA', '0005.HK', '1288.HK', '3988.HK', '939.HK']);
+  add('financials', ['BLK', 'SCHW', 'AXP', 'SPGI', 'CB', 'BAJFINANCE.NS', 'BAJAJFINSV.NS',
+    'SBILIFE.NS', 'HDFCLIFE.NS', '8591.T', '8604.T', '1299.HK', '2318.HK']);
+  // Energy / oil & gas
+  add('energy', ['XOM', 'CVX', 'COP', 'SLB', 'EOG', 'PSX', 'MPC', 'OXY',
+    'RELIANCE.NS', 'ONGC.NS', 'BPCL.NS', 'IOC.NS', 'GAIL.NS',
+    'SHEL.L', 'BP.L', 'TTE.PA', 'SHEL.AS', '0857.HK', '0386.HK', '883.HK']);
+  // Autos
+  add('auto', ['TSLA', 'F', 'GM',
+    'TATAMOTORS.NS', 'MARUTI.NS', 'M&M.NS', 'BAJAJ-AUTO.NS', 'EICHERMOT.NS', 'HEROMOTOCO.NS',
+    '7203.T', '7267.T', '7201.T', '7269.T', 'MBG.DE', 'BMW.DE', 'VOW3.DE', 'P911.DE', 'STLA.MI', 'RNO.PA']);
+  // Healthcare / pharma
+  add('health', ['JNJ', 'PFE', 'MRK', 'LLY', 'ABBV', 'UNH', 'TMO', 'ABT', 'BMY', 'AMGN', 'GILD',
+    'SUNPHARMA.NS', 'DRREDDY.NS', 'CIPLA.NS', 'DIVISLAB.NS', 'APOLLOHOSP.NS',
+    'AZN.L', 'GSK.L', 'SAN.PA', 'BAYN.DE', 'NOVN.SW', '4502.T', '4503.T', '4568.T']);
+  // Consumer staples
+  add('staples', ['PG', 'KO', 'PEP', 'WMT', 'COST', 'MDLZ', 'CL', 'MO', 'PM',
+    'HINDUNILVR.NS', 'ITC.NS', 'NESTLEIND.NS', 'BRITANNIA.NS', 'TATACONSUM.NS',
+    'ULVR.L', 'DGE.L', 'BATS.L', 'OR.PA', 'BN.PA', '2503.T', '2802.T', '2914.T']);
+  // Consumer discretionary / retail
+  add('discretionary', ['AMZN', 'HD', 'MCD', 'NKE', 'SBUX', 'LOW', 'TJX', 'BKNG',
+    'TITAN.NS', 'DMART.NS', 'TRENT.NS', 'MC.PA', 'RMS.PA', 'KER.PA', 'ADS.DE',
+    '9983.T', '9984.T', '1928.HK']);
+  // Industrials
+  add('industrials', ['CAT', 'BA', 'GE', 'HON', 'UPS', 'RTX', 'LMT', 'DE', 'MMM', 'UNP',
+    'LT.NS', 'ADANIPORTS.NS', 'SIEMENS.NS', 'SIE.DE', 'AIR.PA', 'SU.PA', '7011.T', '6301.T', '6367.T']);
+  // Materials / metals
+  add('materials', ['LIN', 'SHW', 'FCX', 'NEM', 'NUE',
+    'TATASTEEL.NS', 'HINDALCO.NS', 'JSWSTEEL.NS', 'COALINDIA.NS', 'ULTRACEMCO.NS', 'GRASIM.NS',
+    'BHP.L', 'RIO.L', 'GLEN.L', 'BAS.DE', 'AI.PA', '5401.T']);
+  // Utilities
+  add('utilities', ['NEE', 'DUK', 'SO', 'D', 'AEP',
+    'NTPC.NS', 'POWERGRID.NS', 'TATAPOWER.NS', 'NG.L', 'SSE.L', 'ENGI.PA', 'RWE.DE', '9501.T', '9531.T']);
+  // Real estate
+  add('realestate', ['PLD', 'AMT', 'EQIX', 'SPG', 'DLF.NS', 'LODHA.NS', 'LAND.L', '1109.HK', '0016.HK', '8801.T']);
 })();
 
-// Sector / industry keyword → sector-ETF (fallback when no explicit override).
-const SECTOR_KEYWORD_ETF = [
-  [/semiconduct|chip|foundr/i, 'SOXX'],
-  [/software|internet|application|cloud|cyber/i, 'IGV'],
-  [/technolog|hardware|electronic equipment|it services/i, 'XLK'],
-  [/communication|media|telecom|entertainment|interactive/i, 'XLC'],
-  [/bank|financ|insurance|capital market|asset manage|broker/i, 'XLF'],
-  [/oil|gas|energy|petroleum|coal|drilling/i, 'XLE'],
-  [/health|pharma|biotech|medical|life science|drug/i, 'XLV'],
-  [/gold|silver|precious|miner/i, 'GDX'],
-  [/material|chemical|metal|steel|mining|paper|packaging/i, 'XLB'],
-  [/retail|consumer discretion|auto|apparel|restaurant|hotel|leisure|luxury/i, 'XLY'],
-  [/consumer staple|food|beverage|household|tobacco|grocery/i, 'XLP'],
-  [/industrial|aerospace|defense|machinery|transport|airline|logistics|construction/i, 'XLI'],
-  [/utilit|electric|water|power/i, 'XLU'],
-  [/real estate|reit|property/i, 'XLRE']
+// Sector / industry keyword → canonical SECTOR KEY (when no explicit override).
+const SECTOR_KEYWORD_KEY = [
+  [/semiconduct|chip|foundr/i, 'semis'],
+  [/software|internet|application|cloud|cyber/i, 'software'],
+  [/communication|media|telecom|entertainment|interactive/i, 'comms'],
+  [/technolog|hardware|electronic|it services|information technolog/i, 'tech'],
+  [/bank/i, 'banks'],
+  [/financ|insurance|capital market|asset manage|broker/i, 'financials'],
+  [/oil|gas|energy|petroleum|coal|drilling/i, 'energy'],
+  [/gold|silver|precious|miner/i, 'gold'],
+  [/health|pharma|biotech|medical|life science|drug/i, 'health'],
+  [/material|chemical|metal|steel|mining|paper|packaging/i, 'materials'],
+  [/auto|vehicle/i, 'auto'],
+  [/retail|consumer discretion|apparel|restaurant|hotel|leisure|luxury/i, 'discretionary'],
+  [/consumer staple|food|beverage|household|tobacco|grocery/i, 'staples'],
+  [/industrial|aerospace|defense|machinery|transport|airline|logistics|construction/i, 'industrials'],
+  [/utilit|electric|water|power/i, 'utilities'],
+  [/real estate|reit|property/i, 'realestate']
 ];
 
-/** Resolve the sector ETF for a symbol: explicit override → fundamentals sector
- *  keyword → null (caller falls back to the broad market). */
-function sectorEtfForSymbol(sym) {
-  if (!sym) return null;
-  const up = String(sym).toUpperCase();
-  if (TICKER_SECTOR_ETF[up]) return TICKER_SECTOR_ETF[up];
+// (country → sector key → benchmark symbol). Only VERIFIED-fetchable symbols.
+const COUNTRY_SECTOR = {
+  US: { semis: 'SOXX', software: 'IGV', tech: 'XLK', comms: 'XLC', banks: 'XLF',
+    financials: 'XLF', energy: 'XLE', health: 'XLV', materials: 'XLB', gold: 'GDX',
+    discretionary: 'XLY', auto: 'XLY', staples: 'XLP', industrials: 'XLI',
+    utilities: 'XLU', realestate: 'XLRE' },
+  IN: { banks: '^NSEBANK', financials: '^NSEBANK', tech: '^CNXIT', software: '^CNXIT',
+    semis: '^CNXIT', comms: '^CNXIT', auto: '^CNXAUTO', discretionary: '^CNXAUTO',
+    health: '^CNXPHARMA', staples: '^CNXFMCG', materials: '^CNXMETAL', gold: '^CNXMETAL',
+    energy: '^CNXENERGY', utilities: '^CNXENERGY', realestate: '^CNXREALTY',
+    industrials: '^CNXINFRA' },
+  JP: { semis: '2644.T', tech: '1625.T', software: '1625.T', banks: '1631.T',
+    financials: '1631.T', health: '1621.T', staples: '1617.T', realestate: '1633.T' },
+  HK: { tech: '3067.HK', semis: '3067.HK', software: '3067.HK', comms: '3067.HK' }
+};
+
+// Genuinely global sector cycles — used only when the home country has no local
+// sector index for that sector (a Taiwanese/Korean chipmaker → global semis).
+const GLOBAL_SECTOR_FALLBACK = { semis: 'SOXX', gold: 'GDX' };
+
+/** Canonical sector key for a symbol: explicit override → fundamentals keyword. */
+function sectorKeyForSymbol(sym) {
+  const up = String(sym || '').toUpperCase();
+  if (TICKER_SECTOR_KEY[up]) return TICKER_SECTOR_KEY[up];
   const base = up.split('.')[0];
-  if (TICKER_SECTOR_ETF[base]) return TICKER_SECTOR_ETF[base];
+  if (TICKER_SECTOR_KEY[base]) return TICKER_SECTOR_KEY[base];
   const fe = fundCache.get(sym) || fundCache.get(base);
   const sect = fe && fe.data ? String(fe.data._fmpSector || fe.data._yahooSector || '') : '';
-  if (sect) {
-    for (const [re, etf] of SECTOR_KEYWORD_ETF) if (re.test(sect)) return etf;
-  }
+  if (sect) for (const [re, key] of SECTOR_KEYWORD_KEY) if (re.test(sect)) return key;
   return null;
 }
 
-// Live sector-regime cache: Map<ETF, regime>. Refreshed alongside the broad market.
+/** The right benchmark for a stock: home-country SECTOR index → home-country broad
+ *  index → global sector fallback → SPY. This is the country-wise, sector-wise
+ *  tide (India bank → ^NSEBANK, Japan chip → 2644.T, US chip → SOXX, etc.). */
+function sectorEtfForSymbol(sym) {
+  if (!sym) return 'SPY';
+  const country = countryOfSymbol(sym);
+  const key = sectorKeyForSymbol(sym);
+  if (key) {
+    const cs = COUNTRY_SECTOR[country];
+    if (cs && cs[key]) return cs[key];
+    if (GLOBAL_SECTOR_FALLBACK[key]) return GLOBAL_SECTOR_FALLBACK[key];
+  }
+  return COUNTRY_INDEX[country] || 'SPY';
+}
+
+// Full set of benchmark symbols we may need to keep regimes for.
+function allBenchmarkSymbols() {
+  const s = new Set(Object.values(COUNTRY_INDEX));
+  for (const cs of Object.values(COUNTRY_SECTOR)) for (const v of Object.values(cs)) s.add(v);
+  for (const v of Object.values(GLOBAL_SECTOR_FALLBACK)) s.add(v);
+  return [...s];
+}
+
+// Live benchmark-regime cache: Map<symbol, regime>. Refreshed with the market.
 const _sectorRegimeCache = new Map();
 let _sectorRegimeAt = 0;
 async function refreshSectorRegimes(force = false) {
   if (!(MARKET_OVERLAY_ENABLED && SECTOR_OVERLAY_ENABLED)) return;
   if (!force && _sectorRegimeCache.size && Date.now() - _sectorRegimeAt < MARKET_REGIME_TTL) return;
-  const etfs = [...new Set([...Object.values(TICKER_SECTOR_ETF), ...SECTOR_KEYWORD_ETF.map(x => x[1])])];
-  for (const etf of etfs) {
+  for (const sym of allBenchmarkSymbols()) {
     try {
-      const bars = await fetchOHLCV(etf, '2y', '1d').catch(() => null);
+      const bars = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
       if (bars && bars.length >= 60) {
         const map = buildMarketRegime(bars);
         const reg = map.get(new Date(bars[bars.length - 1].t * 1000).toISOString().slice(0, 10))
           || [...map.values()].pop() || null;
-        if (reg) _sectorRegimeCache.set(etf, reg);
+        if (reg) _sectorRegimeCache.set(sym, reg);
       }
     } catch (_) {}
   }
   _sectorRegimeAt = Date.now();
   if (_sectorRegimeCache.size) {
     const risky = [...(_sectorRegimeCache.entries())].filter(([, r]) => r.riskOff).map(([e]) => e);
-    console.log(`Sector regimes: ${_sectorRegimeCache.size} ETFs cached${risky.length ? ' | risk-off: ' + risky.join(',') : ''}`);
+    console.log(`Sector/country regimes: ${_sectorRegimeCache.size} benchmarks cached${risky.length ? ' | risk-off: ' + risky.join(',') : ''}`);
   }
 }
 
-/** Sector momentum regime for a symbol (live) → its sector ETF, else broad market. */
+/** Country+sector momentum regime for a symbol (live) → its benchmark, else market. */
 function sectorRegimeForSymbol(sym) {
   if (!(MARKET_OVERLAY_ENABLED && SECTOR_OVERLAY_ENABLED)) return _liveMarketRegime;
-  const etf = sectorEtfForSymbol(sym);
-  if (etf && _sectorRegimeCache.has(etf)) return _sectorRegimeCache.get(etf);
+  const bench = sectorEtfForSymbol(sym);
+  if (bench && _sectorRegimeCache.has(bench)) return _sectorRegimeCache.get(bench);
   return _liveMarketRegime;
 }
 
-// Backtest helper: per-ETF regime SERIES (Map<day,regime>) so the replay can gate
-// each ticker by its sector ETF's HISTORICAL momentum. Cached per (etf,range).
+// Backtest helper: per-benchmark regime SERIES (Map<day,regime>) so the replay can
+// gate each ticker by its home-sector index's HISTORICAL momentum. Cached per key.
 const _etfSeriesCache = new Map();
 async function getEtfRegimeSeries(etf, range) {
   if (!etf) return null;
@@ -12670,5 +12779,8 @@ module.exports = {
   ACCEPTANCE_DEFAULT_TICKERS,
   runBracketAcceptance,
   emitTradeEvent,
+  sectorEtfForSymbol,
+  countryOfSymbol,
+  sectorKeyForSymbol,
   app
 };
