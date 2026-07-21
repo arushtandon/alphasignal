@@ -1914,6 +1914,16 @@ const SECTOR_KEYWORD_KEY = [
   [/real estate|reit|property/i, 'realestate']
 ];
 
+// European sector benchmarks — iShares STOXX Europe 600 sector UCITS ETFs (Xetra).
+// The STOXX Europe 600 spans DE/FR/UK/NL/CH/etc., so these serve all European
+// listings. Only high-confidence, VERIFIED-fetchable tickers are mapped; sectors
+// without a confident mapping fall back to the home-country broad index.
+const EU_SECTOR = {
+  banks: 'EXV1.DE', financials: 'EXV5.DE', comms: 'EXV2.DE', tech: 'EXV3.DE',
+  software: 'EXV3.DE', semis: 'EXV3.DE', health: 'EXV4.DE', industrials: 'EXV6.DE',
+  energy: 'EXH1.DE', staples: 'EXH3.DE', utilities: 'EXH4.DE', materials: 'EXH8.DE'
+};
+
 // (country → sector key → benchmark symbol). Only VERIFIED-fetchable symbols.
 const COUNTRY_SECTOR = {
   US: { semis: 'SOXX', software: 'IGV', tech: 'XLK', comms: 'XLC', banks: 'XLF',
@@ -1927,7 +1937,17 @@ const COUNTRY_SECTOR = {
     industrials: '^CNXINFRA' },
   JP: { semis: '2644.T', tech: '1625.T', software: '1625.T', banks: '1631.T',
     financials: '1631.T', health: '1621.T', staples: '1617.T', realestate: '1633.T' },
-  HK: { tech: '3067.HK', semis: '3067.HK', software: '3067.HK', comms: '3067.HK' }
+  HK: { tech: '3067.HK', semis: '3067.HK', software: '3067.HK', comms: '3067.HK' },
+  DE: EU_SECTOR, FR: EU_SECTOR, UK: EU_SECTOR, EU: EU_SECTOR
+};
+
+// Commodity / crypto futures → their tracking ETF (or BTC as the crypto tide).
+// Gates each commodity by its own complex's momentum (energy→USO, precious→metal
+// ETF, base metal→copper, alt-coin→BTC), per the commodity-specific request.
+const COMMODITY_BENCHMARK = {
+  'GC=F': 'GLD', 'SI=F': 'SLV', 'PL=F': 'PPLT', 'PA=F': 'PALL',
+  'CL=F': 'USO', 'BZ=F': 'BNO', 'NG=F': 'UNG', 'HG=F': 'CPER',
+  'BTC-USD': 'BTC-USD', 'ETH-USD': 'BTC-USD'
 };
 
 // Genuinely global sector cycles — used only when the home country has no local
@@ -1951,6 +1971,8 @@ function sectorKeyForSymbol(sym) {
  *  tide (India bank → ^NSEBANK, Japan chip → 2644.T, US chip → SOXX, etc.). */
 function sectorEtfForSymbol(sym) {
   if (!sym) return 'SPY';
+  const up = String(sym).toUpperCase();
+  if (COMMODITY_BENCHMARK[up]) return COMMODITY_BENCHMARK[up]; // commodity/crypto
   const country = countryOfSymbol(sym);
   const key = sectorKeyForSymbol(sym);
   if (key) {
@@ -1966,6 +1988,7 @@ function allBenchmarkSymbols() {
   const s = new Set(Object.values(COUNTRY_INDEX));
   for (const cs of Object.values(COUNTRY_SECTOR)) for (const v of Object.values(cs)) s.add(v);
   for (const v of Object.values(GLOBAL_SECTOR_FALLBACK)) s.add(v);
+  for (const v of Object.values(COMMODITY_BENCHMARK)) s.add(v);
   return [...s];
 }
 
