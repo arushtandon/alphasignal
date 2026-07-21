@@ -7406,6 +7406,7 @@ async function addTradesToHistory(trades) {
   const caches = {};
   const accepted = [];
   for (const trade of trades) {
+   try {
     const hz = trade.hz || 'short';
     const isSell = String(trade.action || '').toLowerCase() === 'sell';
     // Look up any prior record for this ticker/hz/day up front — the RR gate and
@@ -7482,6 +7483,14 @@ async function addTradesToHistory(trades) {
     if (!prev) {
       try { emitTradeEvent('entry', tradeEventSnapshot(trade, hz)); } catch (_) {}
     }
+   } catch (err) {
+     // Never let one malformed pick abort the whole batch — a single uncaught
+     // exception here (e.g. the old `prev` TDZ) once silently blocked ALL
+     // recommendations from being recorded. Skip the bad row, keep the rest.
+     console.warn('History add skipped (record error):', (trade && trade.ticker) || '?', '-', err && err.message);
+     try { auditLog('entry_record_error', { ticker: trade && trade.ticker, hz: trade && trade.hz, error: err && err.message }); } catch (_) {}
+     continue;
+   }
   }
 
   tradeHistory.unshift(...accepted);
@@ -9845,14 +9854,14 @@ const HORIZON_MIN_PCT = {
   // SL: noise floors only (ATR / structure still drive the actual stop).
   // TP: ATR + momentum + S/R. minRR is a GATE for recommendations (see PICKS_MIN_RR) —
   // we do NOT invent TP from the stop; setups below the floor are dropped.
-  short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.1 },
-  medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.1 },
-  long:   { sl: 0.080, tp1: 0, tp2: 0, minRR: 1.1 }
+  short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.0 },
+  medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.0 },
+  long:   { sl: 0.080, tp1: 0, tp2: 0, minRR: 1.0 }
 };
 
 /** Minimum reward:risk for a setup to appear on the dashboard / enter history as a new pick.
  *  ATR may produce higher RR; anything below this is rejected (never invent TP to pass). */
-const PICKS_MIN_RR = Math.max(1.0, parseFloat(process.env.PICKS_MIN_RR || '1.1') || 1.1);
+const PICKS_MIN_RR = Math.max(1.0, parseFloat(process.env.PICKS_MIN_RR || '1.0') || 1.0);
 
 function rewardRiskRatio(entry, tp1, sl, isSell) {
   const e = parseFloat(entry), t = parseFloat(tp1), s = parseFloat(sl);
