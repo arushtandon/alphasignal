@@ -1796,6 +1796,118 @@ async function refreshMarketRegime(force = false) {
   return _liveMarketRegime;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// SECTOR-LEVEL MOMENTUM  (the tide that actually matters for each name)
+// ------------------------------------------------------------------------------
+// A chip/AI name should be gated by semiconductor momentum (SOXX), a bank by
+// financials (XLF), an oil name by energy (XLE), etc. — not by the broad index.
+// Each stock is mapped to its underlying sector ETF; that ETF's momentum regime
+// drives the overlay, falling back to the broad market (SPY) when the sector is
+// unknown. Sector ETFs are US-listed but represent GLOBAL sector cycles (SOXX
+// tracks the worldwide semi cycle that moves TSM, ASML, Tokyo Electron alike).
+// ══════════════════════════════════════════════════════════════════════════════
+const SECTOR_OVERLAY_ENABLED = process.env.SECTOR_OVERLAY !== '0'; // default ON
+
+// Explicit ticker → sector-ETF overrides (highest priority). Covers the global
+// semiconductor/AI complex the user called out, across US/EU/JP/KR/TW/HK listings.
+const TICKER_SECTOR_ETF = {};
+(function seedTickerSectorEtf() {
+  const add = (etf, list) => list.forEach(t => { TICKER_SECTOR_ETF[t.toUpperCase()] = etf; });
+  // Semiconductors & AI hardware → SOXX
+  add('SOXX', ['NVDA', 'AMD', 'AVGO', 'INTC', 'QCOM', 'TXN', 'AMAT', 'MU', 'LRCX', 'KLAC',
+    'ADI', 'MRVL', 'NXPI', 'ON', 'MCHP', 'STM', 'TSM', 'ASML', 'ARM', 'SMCI', 'MPWR', 'TER',
+    'ENTG', 'SWKS', 'QRVO', 'WOLF', 'ASML.AS', '2330.TW', '2454.TW', '000660.KS', '005930.KS',
+    '8035.T', '6857.T', '6146.T', 'ASM.AS', 'BESI.AS', 'IFX.DE', 'STMPA.PA', 'AIXA.DE', '0981.HK']);
+  // Software / internet / AI-software → IGV
+  add('IGV', ['MSFT', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'PLTR', 'PANW', 'CRWD', 'FTNT',
+    'DDOG', 'NET', 'ZS', 'TEAM', 'WDAY', 'INTU', 'SAP', 'SAP.DE', 'DSY.PA']);
+  // Mega-cap internet / comms → XLC
+  add('XLC', ['GOOGL', 'GOOG', 'META', 'NFLX', 'DIS', 'T', 'VZ', 'CMCSA']);
+})();
+
+// Sector / industry keyword → sector-ETF (fallback when no explicit override).
+const SECTOR_KEYWORD_ETF = [
+  [/semiconduct|chip|foundr/i, 'SOXX'],
+  [/software|internet|application|cloud|cyber/i, 'IGV'],
+  [/technolog|hardware|electronic equipment|it services/i, 'XLK'],
+  [/communication|media|telecom|entertainment|interactive/i, 'XLC'],
+  [/bank|financ|insurance|capital market|asset manage|broker/i, 'XLF'],
+  [/oil|gas|energy|petroleum|coal|drilling/i, 'XLE'],
+  [/health|pharma|biotech|medical|life science|drug/i, 'XLV'],
+  [/gold|silver|precious|miner/i, 'GDX'],
+  [/material|chemical|metal|steel|mining|paper|packaging/i, 'XLB'],
+  [/retail|consumer discretion|auto|apparel|restaurant|hotel|leisure|luxury/i, 'XLY'],
+  [/consumer staple|food|beverage|household|tobacco|grocery/i, 'XLP'],
+  [/industrial|aerospace|defense|machinery|transport|airline|logistics|construction/i, 'XLI'],
+  [/utilit|electric|water|power/i, 'XLU'],
+  [/real estate|reit|property/i, 'XLRE']
+];
+
+/** Resolve the sector ETF for a symbol: explicit override → fundamentals sector
+ *  keyword → null (caller falls back to the broad market). */
+function sectorEtfForSymbol(sym) {
+  if (!sym) return null;
+  const up = String(sym).toUpperCase();
+  if (TICKER_SECTOR_ETF[up]) return TICKER_SECTOR_ETF[up];
+  const base = up.split('.')[0];
+  if (TICKER_SECTOR_ETF[base]) return TICKER_SECTOR_ETF[base];
+  const fe = fundCache.get(sym) || fundCache.get(base);
+  const sect = fe && fe.data ? String(fe.data._fmpSector || fe.data._yahooSector || '') : '';
+  if (sect) {
+    for (const [re, etf] of SECTOR_KEYWORD_ETF) if (re.test(sect)) return etf;
+  }
+  return null;
+}
+
+// Live sector-regime cache: Map<ETF, regime>. Refreshed alongside the broad market.
+const _sectorRegimeCache = new Map();
+let _sectorRegimeAt = 0;
+async function refreshSectorRegimes(force = false) {
+  if (!(MARKET_OVERLAY_ENABLED && SECTOR_OVERLAY_ENABLED)) return;
+  if (!force && _sectorRegimeCache.size && Date.now() - _sectorRegimeAt < MARKET_REGIME_TTL) return;
+  const etfs = [...new Set([...Object.values(TICKER_SECTOR_ETF), ...SECTOR_KEYWORD_ETF.map(x => x[1])])];
+  for (const etf of etfs) {
+    try {
+      const bars = await fetchOHLCV(etf, '2y', '1d').catch(() => null);
+      if (bars && bars.length >= 60) {
+        const map = buildMarketRegime(bars);
+        const reg = map.get(new Date(bars[bars.length - 1].t * 1000).toISOString().slice(0, 10))
+          || [...map.values()].pop() || null;
+        if (reg) _sectorRegimeCache.set(etf, reg);
+      }
+    } catch (_) {}
+  }
+  _sectorRegimeAt = Date.now();
+  if (_sectorRegimeCache.size) {
+    const risky = [...(_sectorRegimeCache.entries())].filter(([, r]) => r.riskOff).map(([e]) => e);
+    console.log(`Sector regimes: ${_sectorRegimeCache.size} ETFs cached${risky.length ? ' | risk-off: ' + risky.join(',') : ''}`);
+  }
+}
+
+/** Sector momentum regime for a symbol (live) → its sector ETF, else broad market. */
+function sectorRegimeForSymbol(sym) {
+  if (!(MARKET_OVERLAY_ENABLED && SECTOR_OVERLAY_ENABLED)) return _liveMarketRegime;
+  const etf = sectorEtfForSymbol(sym);
+  if (etf && _sectorRegimeCache.has(etf)) return _sectorRegimeCache.get(etf);
+  return _liveMarketRegime;
+}
+
+// Backtest helper: per-ETF regime SERIES (Map<day,regime>) so the replay can gate
+// each ticker by its sector ETF's HISTORICAL momentum. Cached per (etf,range).
+const _etfSeriesCache = new Map();
+async function getEtfRegimeSeries(etf, range) {
+  if (!etf) return null;
+  const key = etf + '|' + range;
+  if (_etfSeriesCache.has(key)) return _etfSeriesCache.get(key);
+  let series = null;
+  try {
+    const bars = await fetchOHLCV(etf, range, '1d').catch(() => null);
+    if (bars && bars.length >= 60) series = buildMarketRegime(bars);
+  } catch (_) {}
+  _etfSeriesCache.set(key, series);
+  return series;
+}
+
 /**
  * Compute buy/sell scores deterministically from pre-computed indicators.
  * Returns { buyScore, sellScore, action, rating, conditions, winRateHint }
@@ -2248,7 +2360,8 @@ function computeQuantSignal(tech, fund, hz, market = null) {
   // Align every long with the broad-market tide and throttle counter-tide trades.
   // This is the fix for "we can't capture index/market momentum": stop pressing
   // longs into a falling market and stop fading a strong one.
-  if (MARKET_OVERLAY_ENABLED && !market) market = _liveMarketRegime; // live fallback
+  // Prefer the stock's SECTOR-level tide (attached to tech), then broad market.
+  if (MARKET_OVERLAY_ENABLED && !market) market = (tech && tech._sectorRegime) || _liveMarketRegime;
   if (MARKET_OVERLAY_ENABLED && market) {
     if (hz === 'short') {
       // Short = mean-reversion dip-buying. Fine in up/flat tapes; a knife-catch in
@@ -4923,6 +5036,7 @@ app.post('/api/technicals/batch', async (req, res) => {
       // 5-year backtest runs on-demand in /api/analyze (single ticker). The dashboard
       // shows the quant winRateHint as an estimate until the user opens full analysis.
       data.supertrend = calcSupertrend(daily);
+      data._sectorRegime = sectorRegimeForSymbol(sym); // sector-level momentum tide
       data.quantSignal = {
         short:  computeQuantSignal(data, _cachedFund, 'short'),
         medium: computeQuantSignal(data, _cachedFund, 'medium'),
@@ -6032,6 +6146,7 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
   const tech = caches.techMap[ticker];
   const fund = caches.fundMap[ticker];
   if (!tech) return { ok: false, trade, shell: null, reason: 'no tech data' };
+  if (tech._sectorRegime == null) tech._sectorRegime = sectorRegimeForSymbol(ticker);
 
   const quantSignal = {
     short: computeQuantSignal(tech, fund, 'short'),
@@ -6343,6 +6458,7 @@ async function scanSymbolQuant(sym) {
   const data = buildFullTechResult(sym, daily, weekly);
   const fundEntry = fundCache.get(sym);
   const fund = fundEntry && Date.now() - fundEntry.ts < TECH_TTL * 4 ? fundEntry.data : null;
+  data._sectorRegime = sectorRegimeForSymbol(sym); // sector-level momentum tide
   const qs = {
     short: computeQuantSignal(data, fund, 'short'),
     medium: computeQuantSignal(data, fund, 'medium'),
@@ -6547,6 +6663,7 @@ async function generateServerPicksFromShortlist(opts = {}) {
   serverPicksGenerating = true;
   try {
     await refreshMarketRegime().catch(() => {}); // ensure signals below are tide-gated
+    await refreshSectorRegimes().catch(() => {}); // sector-level tide per name
     const marketOf = {};
     list.forEach(x => { marketOf[x.ticker] = x.market; });
     const tickers = list.map(x => x.ticker).slice(0, 120);
@@ -9903,6 +10020,7 @@ async function getTechnicalsMapForSymbols(symbols, opts = {}) {
         const data = buildFullTechResult(sym, daily, weekly);
         const fundEntry = fundCache.get(sym);
         const fund = fundEntry && Date.now() - fundEntry.ts < TECH_TTL * 4 ? fundEntry.data : null;
+        data._sectorRegime = sectorRegimeForSymbol(sym); // sector-level momentum tide
         data.quantSignal = {
           short: computeQuantSignal(data, fund, 'short'),
           medium: computeQuantSignal(data, fund, 'medium'),
@@ -11866,6 +11984,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
             fund = await fetchFundamentals(sym).catch(() => null);
             if (fund) fundCache.set(sym, { ts: Date.now(), data: fund });
           }
+          if (tech._sectorRegime == null) tech._sectorRegime = sectorRegimeForSymbol(sym);
           tech.quantSignal = {
             short: computeQuantSignal(tech, fund, 'short'),
             medium: computeQuantSignal(tech, fund, 'medium'),
@@ -12402,11 +12521,12 @@ async function runBracketAcceptance(opts = {}) {
   const range = windowBars >= 1000 ? '5y' : '2y';
   // Build the market-momentum regime once from the benchmark index (SPY) so every
   // ticker's replay is gated by the same tide the live overlay uses.
-  let marketSeries = null;
+  let spySeries = null;
   try {
     const spy = await fetchOHLCV(MARKET_BENCHMARK, range, '1d').catch(() => null);
-    if (spy && spy.length >= 60) marketSeries = buildMarketRegime(spy);
+    if (spy && spy.length >= 60) spySeries = buildMarketRegime(spy);
   } catch (_) {}
+  const useSector = MARKET_OVERLAY_ENABLED && SECTOR_OVERLAY_ENABLED && opts.sector !== false;
   const perTicker = [];
   let tTrades = 0, tWins = 0, tRet = 0, gW = 0, gL = 0;
   for (const sym of tickers) {
@@ -12416,6 +12536,12 @@ async function runBracketAcceptance(opts = {}) {
       const weekly = dailyToWeeklyBars(daily);
       const fe = fundCache.get(sym);
       const fund = fe && Date.now() - fe.ts < TECH_TTL * 4 ? fe.data : null;
+      // Gate each ticker by its SECTOR ETF's historical momentum (SPY fallback).
+      let marketSeries = spySeries;
+      if (useSector) {
+        const etf = sectorEtfForSymbol(sym);
+        if (etf) marketSeries = (await getEtfRegimeSeries(etf, range)) || spySeries;
+      }
       const bt = await backtestSignal(daily, hz, weekly, fund, { windowBars, side, entryStep: opts.entryStep || 2, marketSeries });
       if (!bt || !bt.trades) { perTicker.push({ ticker: sym, trades: 0 }); continue; }
       perTicker.push({ ticker: sym, trades: bt.trades, winRate: bt.winRate, avgReturnPct: bt.avgReturnPct, profitFactor: bt.profitFactor });
@@ -12521,9 +12647,9 @@ if (require.main === module) {
     importPendingRecommendedCsvs()
       .then(() => importSeedRecommendedCsvsIfMissing())
       .catch(e => console.warn('CSV history restore:', e.message));
-    // Prime the market-momentum regime overlay and keep it fresh.
-    refreshMarketRegime(true).catch(() => {});
-    setInterval(() => refreshMarketRegime().catch(() => {}), MARKET_REGIME_TTL);
+    // Prime the market + sector momentum overlays and keep them fresh.
+    refreshMarketRegime(true).then(() => refreshSectorRegimes(true)).catch(() => {});
+    setInterval(() => refreshMarketRegime().then(() => refreshSectorRegimes()).catch(() => {}), MARKET_REGIME_TTL);
   });
 }
 
