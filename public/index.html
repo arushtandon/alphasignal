@@ -402,6 +402,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
     <button class="nb" id="nav-analysis" onclick="switchTab('analysis')">Analysis</button>
     <button class="nb" id="nav-history" onclick="switchTab('history')">History</button>
     <button class="nb" id="nav-performance" onclick="switchTab('performance')">Performance</button>
+    <button class="nb" id="nav-ibkr" onclick="switchTab('ibkr')">IBKR</button>
     <button class="nb" id="nav-watchlist" onclick="switchTab('watchlist')">Watchlist</button>
     <div class="key-indicator" id="keyIndicator" style="margin-left:6px;cursor:pointer" title="AI status · click for optional client key" onclick="openQuickStartModal()">
       <span class="key-dot" id="keyDot"></span><span id="keyLabel">Checking...</span>
@@ -616,6 +617,18 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
         <div id="histPerformance"></div>
         <div id="bracketPerformance"></div>
       </div>
+    </div>
+
+    <!-- IBKR TRADE ANALYSIS -->
+    <div id="pane-ibkr" class="pane">
+      <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div>
+          <div class="pt">IBKR trade analysis</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Paper account · real TWS fills reported by the local bridge · daily realised & unrealised PnL</div>
+        </div>
+        <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderIbkr(true)">↻ Refresh</button>
+      </div>
+      <div id="ibkrContent"><div class="emp"><div class="emp-a">α</div><p>Loading IBKR executions…</p></div></div>
     </div>
 
     <!-- WATCHLIST -->
@@ -1657,7 +1670,7 @@ function closeMobileSidebar(){
 // ══════════════════════════════════════════════
 function switchTab(t){
   closeMobileSidebar();
-  ['dashboard','analysis','history','performance','watchlist'].forEach(id=>{
+  ['dashboard','analysis','history','performance','ibkr','watchlist'].forEach(id=>{
     document.getElementById('nav-'+id).classList.toggle('act',id===t);
     document.getElementById('pane-'+id).classList.toggle('vis',id===t);
   });
@@ -1685,7 +1698,95 @@ function switchTab(t){
       return refreshHistoryPnl().catch(function(){});
     }).then(renderPerf).catch(function(e){ console.warn(e); renderPerf(); });
   }
+  if(t==='ibkr') renderIbkr();
   if(t==='watchlist') renderWl();
+}
+
+// ══════════════════════════════════════════════
+// IBKR TRADE ANALYSIS — real paper-account fills
+// ══════════════════════════════════════════════
+async function renderIbkr(force){
+  const el = document.getElementById('ibkrContent');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/ibkr/trades' + (force ? '?t=' + Date.now() : ''), { cache: 'no-store' });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'bad response');
+    if (!d.trades.length) {
+      el.innerHTML = '<div class="emp"><div class="emp-a">α</div><p>No IBKR executions reported yet.<br>'
+        + 'Fills appear here once the local bridge (ibkr-bridge) is running next to TWS/IB Gateway<br>'
+        + 'and orders start executing in the paper account.</p></div>';
+      return;
+    }
+    const fp = v => v==null ? '—' : (v>=0?'+':'-')+'$'+Math.abs(v).toFixed(0);
+    const pc = v => v==null ? 'var(--m1)' : v>=0 ? 'var(--buy)' : 'var(--sell)';
+    const tile = (l,v,sub,c) =>
+      '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-height:80px;flex:1;min-width:130px;display:flex;flex-direction:column;justify-content:center;gap:5px">'
+      +'<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace">'+l+'</div>'
+      +'<div style="font-size:21px;font-weight:600;font-family:DM Mono,monospace;color:'+(c||'var(--t1)')+'">'+v+'</div>'
+      +(sub?'<div style="font-size:10px;color:var(--m2)">'+sub+'</div>':'')
+      +'</div>';
+    const tt = d.totals;
+    const todayKey = new Date().toISOString().slice(0,10);
+    const todayRow = d.daily.find(x => x.date === todayKey);
+    const todayReal = todayRow ? todayRow.realizedUsd : 0;
+    const wrColor = tt.winRate==null?'var(--m1)':tt.winRate>=55?'var(--buy)':tt.winRate>=40?'#F5C842':'var(--sell)';
+    const cards = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
+      + tile('Today realised', fp(todayReal), todayKey, pc(todayReal))
+      + tile('Total realised', fp(tt.realizedUsd), tt.closedCount+' closed', pc(tt.realizedUsd))
+      + tile('Unrealised', fp(tt.unrealizedUsd), tt.openCount+' open', pc(tt.unrealizedUsd))
+      + tile('Net PnL', fp(tt.realizedUsd + tt.unrealizedUsd), 'realised + unrealised', pc(tt.realizedUsd + tt.unrealizedUsd))
+      + tile('Win rate', tt.winRate!=null?tt.winRate+'%':'—', tt.wins+'W / '+tt.losses+'L', wrColor)
+      + '</div>';
+
+    const th = s => '<th style="text-align:'+s+';padding:4px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;border-bottom:1px solid var(--b1)">';
+    const td = (s,c) => '<td style="text-align:'+s+';padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;color:'+(c||'var(--t1)')+'">';
+
+    // Daily realised PnL table
+    let dailyHtml = '';
+    if (d.daily.length) {
+      const rows = d.daily.slice().reverse().slice(0, 30).map(x =>
+        '<tr>'+td('left','var(--m2)')+x.date+'</td>'
+        +td('right',pc(x.realizedUsd))+fp(x.realizedUsd)+'</td>'
+        +td('right',pc(x.cumUsd))+fp(x.cumUsd)+'</td></tr>').join('');
+      dailyHtml = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:14px;max-width:420px">'
+        +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">Daily realised PnL (USD)</div>'
+        +'<table style="width:100%;border-collapse:collapse"><thead><tr>'
+        + th('left')+'Date</th>'+th('right')+'Realised</th>'+th('right')+'Cumulative</th>'
+        +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
+    }
+
+    // Trades table
+    const hzTag = h => h==='medium'?'MED':h==='long'?'LONG':'SHORT';
+    const tRows = d.trades.map(t => {
+      const dirC = t.side==='sell'?'var(--sell)':'var(--buy)';
+      const stC = t.status==='closed'?'var(--m1)':t.status==='partial'?'#F5C842':'var(--ac)';
+      const fmtPx = p => p==null?'—':(p>=1000?p.toFixed(0):p>=100?p.toFixed(1):p.toFixed(2));
+      return '<tr>'
+        + td('left') + '<span style="font-weight:600">'+t.ticker+'</span> <span style="font-size:8px;color:var(--m1)">'+hzTag(t.hz)+'</span></td>'
+        + td('left',dirC) + t.side.toUpperCase()+'</td>'
+        + td('right','var(--m2)') + String(t.entryTime).slice(0,10)+'</td>'
+        + td('right') + t.entryQty+'</td>'
+        + td('right') + fmtPx(t.avgEntry)+' <span style="font-size:8px;color:var(--m1)">'+t.currency+'</span></td>'
+        + td('right') + (t.openQty>0?t.openQty:'—')+'</td>'
+        + td('right') + fmtPx(t.mark)+'</td>'
+        + td('right',pc(t.realizedUsd)) + fp(t.realizedUsd)+'</td>'
+        + td('right',pc(t.unrealizedUsd)) + (t.openQty>0?fp(t.unrealizedUsd):'—')+'</td>'
+        + td('left',stC) + t.status+'</td>'
+        + '</tr>';
+    }).join('');
+    const tradesHtml = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;overflow-x:auto">'
+      +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">IBKR paper trades — from actual executions ('+d.fillCount+' fills)</div>'
+      +'<table style="width:100%;border-collapse:collapse;min-width:760px"><thead><tr>'
+      + th('left')+'Ticker</th>'+th('left')+'Side</th>'+th('right')+'Entry date</th>'+th('right')+'Qty</th>'
+      + th('right')+'Avg fill</th>'+th('right')+'Open qty</th>'+th('right')+'Mark</th>'
+      + th('right')+'Realised $</th>'+th('right')+'Unrealised $</th>'+th('left')+'Status</th>'
+      +'</tr></thead><tbody>'+tRows+'</tbody></table></div>';
+
+    el.innerHTML = cards + dailyHtml + tradesHtml;
+  } catch (e) {
+    el.innerHTML = '<div class="emp"><div class="emp-a">!</div><p>Could not load IBKR trades: '+e.message+'</p></div>';
+  }
 }
 
 // ══════════════════════════════════════════════

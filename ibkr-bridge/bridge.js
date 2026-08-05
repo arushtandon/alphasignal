@@ -86,6 +86,33 @@ function fetchJson(urlPath) {
   });
 }
 
+function postJson(urlPath, body) {
+  const u = new URL(BASE + urlPath);
+  if (TOKEN) u.searchParams.set('token', TOKEN);
+  const lib = u.protocol === 'https:' ? https : http;
+  const payload = JSON.stringify(body);
+  return new Promise((resolve, reject) => {
+    const req = lib.request(u, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {})
+      }
+    }, res => {
+      let raw = '';
+      res.on('data', c => { raw += c; });
+      res.on('end', () => {
+        try { resolve(JSON.parse(raw)); }
+        catch (e) { reject(new Error(`Bad JSON ${res.statusCode}: ${raw.slice(0, 200)}`)); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(20000, () => req.destroy(new Error('timeout')));
+    req.end(payload);
+  });
+}
+
 // ── Contract mapping ─────────────────────────────────────────────────────────
 /** Yahoo-style ticker → IB stock contract. Returns null for unsupported
  *  instruments (futures, crypto, NSE unless enabled) — those are LOGGED and
@@ -184,6 +211,32 @@ async function main() {
     ib.on(EventName.orderStatus, (orderId, status, filled) => {
       orderFills[orderId] = Number(filled) || 0;
       onOrderStatus(orderId, status, Number(filled) || 0);
+    });
+    // Real executions → queue a report for the AlphaSignal site (IBKR tab).
+    ib.on(EventName.execDetails, (reqId, contract, exec) => {
+      try {
+        const orderId = Number(exec.orderId);
+        for (const [key, row] of Object.entries(state.byKey)) {
+          let role = null;
+          if (row.parentId === orderId) role = 'entry';
+          else if (row.tp1Id === orderId) role = 'tp1';
+          else if (row.stopId === orderId) role = 'stop';
+          else if ((row.closeIds || []).includes(orderId)) role = 'flatten';
+          if (!role) continue;
+          state.pendingReports = state.pendingReports || [];
+          state.pendingReports.push({
+            kind: 'exec', execId: exec.execId, key,
+            ticker: row.ticker, hz: row.hz, side: row.side, role,
+            orderId, qty: Number(exec.shares), price: Number(exec.price),
+            currency: row.contract && row.contract.currency || 'USD',
+            ccyScale: row.contract && row.contract.penceQuoted ? 100 : 1,
+            time: new Date().toISOString()
+          });
+          saveState(state);
+          log('exec captured', role, key, exec.shares + '@' + exec.price);
+          break;
+        }
+      } catch (e) { log('execDetails error', e.message); }
     });
     await new Promise((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('IB connect timeout — is TWS/Gateway paper running with API enabled?')), 20000);
@@ -331,7 +384,10 @@ async function main() {
     const soldAtTp1 = row.tp1Done ? row.qtySold : (row.tp1Id != null ? (orderFills[row.tp1Id] || 0) : 0);
     const remaining = Math.max(0, parentFilled - soldAtTp1);
     if (remaining > 0) {
-      transmitOrder(nid(), row.contract, baseOrder({
+      const fid = nid();
+      row.closeIds = [...(row.closeIds || []), fid];
+      transmitOrder(fid, row.contract, baseOrder({
+        orderId: fid,
         action: row.side === 'sell' ? 'BUY' : 'SELL',
         orderType: 'MKT', totalQuantity: remaining, tif: 'DAY', transmit: true
       }), 'flatten @exit ' + key);
@@ -428,6 +484,22 @@ async function main() {
       if (evt.seq > state.since) state.since = evt.seq;
     }
     if (events.length) { saveState(state); log(`Processed ${events.length} event(s); since=${state.since}`); }
+    await flushReports();
+  }
+
+  // Push captured executions to AlphaSignal so the site's IBKR tab shows
+  // real paper-account PnL. Reports stay queued until the server confirms.
+  async function flushReports() {
+    const pending = state.pendingReports || [];
+    if (!pending.length) return;
+    try {
+      const resp = await postJson('/api/ibkr/report', { reports: pending });
+      if (resp && resp.ok) {
+        state.pendingReports = [];
+        saveState(state);
+        log(`Reported ${pending.length} execution(s) to AlphaSignal (stored=${resp.stored}, dup=${resp.skipped})`);
+      }
+    } catch (e) { log('report flush failed (will retry):', e.message); }
   }
 
   try {

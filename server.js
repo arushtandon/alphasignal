@@ -12066,6 +12066,168 @@ app.get('/api/ibkr/status', (req, res) => {
   });
 });
 
+// ── IBKR EXECUTION REPORTS ───────────────────────────────────────────────────
+// The local bridge posts real TWS executions here so the site can show actual
+// paper-account PnL (fills, not theoretical marks). Append-only JSONL on the
+// data disk, deduped by IB execId.
+const IBKR_FILLS_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_fills.jsonl');
+const _ibkrExecIds = new Set();
+try {
+  if (fs.existsSync(IBKR_FILLS_FILE)) {
+    for (const line of fs.readFileSync(IBKR_FILLS_FILE, 'utf8').trim().split('\n')) {
+      try { const r = JSON.parse(line); if (r.execId) _ibkrExecIds.add(r.execId); } catch (_) {}
+    }
+  }
+} catch (_) {}
+
+app.post('/api/ibkr/report', (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const reports = Array.isArray(req.body && req.body.reports) ? req.body.reports : [];
+  let stored = 0, skipped = 0;
+  for (const r of reports) {
+    if (!r || !r.execId || !r.key || !(Number(r.qty) > 0) || !(Number(r.price) > 0)) { skipped++; continue; }
+    if (_ibkrExecIds.has(r.execId)) { skipped++; continue; }
+    const row = {
+      execId: String(r.execId), key: String(r.key),
+      ticker: String(r.ticker || ''), hz: String(r.hz || 'short'),
+      side: r.side === 'sell' ? 'sell' : 'buy',
+      role: ['entry', 'tp1', 'stop', 'flatten'].includes(r.role) ? r.role : 'other',
+      qty: Number(r.qty), price: Number(r.price),
+      currency: String(r.currency || 'USD'), ccyScale: Number(r.ccyScale) || 1,
+      orderId: r.orderId ?? null,
+      time: r.time || new Date().toISOString()
+    };
+    try {
+      fs.appendFileSync(IBKR_FILLS_FILE, JSON.stringify(row) + '\n');
+      _ibkrExecIds.add(row.execId);
+      stored++;
+    } catch (e) { skipped++; }
+  }
+  if (stored) auditLog('ibkr_fills', { stored, skipped });
+  res.json({ ok: true, stored, skipped, totalExecs: _ibkrExecIds.size });
+});
+
+// USD conversion for fill PnL (fills arrive in the exchange currency).
+const _ibkrFx = { at: 0, rates: {} };
+async function ibkrUsdPerCcy(ccy) {
+  if (!ccy || ccy === 'USD') return 1;
+  if (Date.now() - _ibkrFx.at > 3600 * 1000) {
+    try {
+      const m = await fetchQuotesV7Bulk(['USDJPY=X', 'USDHKD=X', 'USDINR=X', 'EURUSD=X', 'GBPUSD=X']);
+      const px = {};
+      for (const [k, v] of Object.entries(m || {})) px[k] = Number(v && v.price) || null;
+      _ibkrFx.rates = px; _ibkrFx.at = Date.now();
+    } catch (_) {}
+  }
+  const r = _ibkrFx.rates || {};
+  switch (ccy) {
+    case 'JPY': return r['USDJPY=X'] ? 1 / r['USDJPY=X'] : 1 / 150;
+    case 'HKD': return r['USDHKD=X'] ? 1 / r['USDHKD=X'] : 1 / 7.8;
+    case 'INR': return r['USDINR=X'] ? 1 / r['USDINR=X'] : 1 / 84;
+    case 'EUR': return r['EURUSD=X'] || 1.08;
+    case 'GBP': return r['GBPUSD=X'] || 1.28;
+    default: return 1;
+  }
+}
+
+// Aggregated per-trade view of the paper account, built purely from real fills.
+app.get('/api/ibkr/trades', async (req, res) => {
+  try {
+    let rows = [];
+    try {
+      rows = fs.readFileSync(IBKR_FILLS_FILE, 'utf8').trim().split('\n')
+        .filter(Boolean).map(l => { try { return JSON.parse(l); } catch (_) { return null; } })
+        .filter(Boolean);
+    } catch (_) {}
+    const byKey = new Map();
+    for (const r of rows) {
+      if (!byKey.has(r.key)) byKey.set(r.key, []);
+      byKey.get(r.key).push(r);
+    }
+
+    // Marks for open positions (Yahoo quote is in the same unit as IB fills:
+    // pence for LSE, JPY for Tokyo, etc., so scales cancel out).
+    const trades = [];
+    const needMarks = [];
+    for (const [key, fills] of byKey) {
+      const f0 = fills[0];
+      const dir = f0.side === 'sell' ? -1 : 1;
+      const entries = fills.filter(f => f.role === 'entry');
+      const exits = fills.filter(f => f.role !== 'entry');
+      const entryQty = entries.reduce((s, f) => s + f.qty, 0);
+      const exitQty = exits.reduce((s, f) => s + f.qty, 0);
+      if (!entryQty) continue;
+      const scale = f0.ccyScale || 1;
+      const avgEntry = entries.reduce((s, f) => s + f.price * f.qty, 0) / entryQty;
+      const realizedLocal = exits.reduce((s, f) => s + (f.price - avgEntry) * f.qty * dir, 0) / scale;
+      const openQty = Math.max(0, entryQty - exitQty);
+      const t = {
+        key, ticker: f0.ticker, hz: f0.hz, side: f0.side,
+        currency: f0.currency, ccyScale: scale,
+        entryQty, exitQty, openQty, avgEntry,
+        realizedLocal,
+        fills: fills.map(f => ({ role: f.role, qty: f.qty, price: f.price, time: f.time })),
+        entryTime: entries[0] ? entries[0].time : f0.time,
+        lastTime: fills[fills.length - 1].time,
+        status: openQty > 0 ? (exitQty > 0 ? 'partial' : 'open') : 'closed'
+      };
+      trades.push(t);
+      if (openQty > 0 && f0.ticker) needMarks.push(f0.ticker);
+    }
+
+    let markMap = {};
+    if (needMarks.length) {
+      try { markMap = await fetchQuotesV7Bulk([...new Set(needMarks)]); } catch (_) {}
+    }
+
+    const daily = new Map();
+    let totRealUsd = 0, totUnrealUsd = 0, wins = 0, losses = 0, openCount = 0, closedCount = 0;
+    for (const t of trades) {
+      const fx = await ibkrUsdPerCcy(t.currency);
+      t.realizedUsd = +(t.realizedLocal * fx).toFixed(2);
+      totRealUsd += t.realizedUsd;
+      const dir = t.side === 'sell' ? -1 : 1;
+      const mark = markMap[t.ticker] && Number(markMap[t.ticker].price) > 0 ? Number(markMap[t.ticker].price) : null;
+      t.mark = mark;
+      t.unrealizedUsd = (t.openQty > 0 && mark != null)
+        ? +(((mark - t.avgEntry) * t.openQty * dir / (t.ccyScale || 1)) * fx).toFixed(2)
+        : (t.openQty > 0 ? null : 0);
+      if (t.unrealizedUsd != null) totUnrealUsd += t.unrealizedUsd;
+      if (t.status === 'closed') {
+        closedCount++;
+        if (t.realizedUsd > 0) wins++; else if (t.realizedUsd < 0) losses++;
+      } else openCount++;
+      // Daily realized: attribute each exit fill's PnL (vs avg entry) to its day.
+      for (const f of t.fills) {
+        if (f.role === 'entry') continue;
+        const day = String(f.time).slice(0, 10);
+        const pnlUsd = ((f.price - t.avgEntry) * f.qty * dir / (t.ccyScale || 1)) * fx;
+        daily.set(day, (daily.get(day) || 0) + pnlUsd);
+      }
+    }
+    const dailyArr = [...daily.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1)
+      .map(([date, pnl]) => ({ date, realizedUsd: +pnl.toFixed(2) }));
+    let cum = 0;
+    for (const d of dailyArr) { cum += d.realizedUsd; d.cumUsd = +cum.toFixed(2); }
+    trades.sort((a, b) => (a.entryTime < b.entryTime ? 1 : -1));
+
+    res.json({
+      ok: true,
+      trades,
+      daily: dailyArr,
+      totals: {
+        realizedUsd: +totRealUsd.toFixed(2),
+        unrealizedUsd: +totUnrealUsd.toFixed(2),
+        openCount, closedCount, wins, losses,
+        winRate: (wins + losses) ? Math.round(wins / (wins + losses) * 100) : null
+      },
+      fillCount: rows.length
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.get('/api/history/audit', (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 200, 1000);
