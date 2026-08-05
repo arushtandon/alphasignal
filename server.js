@@ -996,12 +996,17 @@ function computeTrailingStopFromTech(tech, entry, hz, isSell, fund = null) {
 }
 
 /** ATR×momentum multiples for TP1 / TP2 — NOT a multiple of stop distance.
- *  Strong ADX / aligned MACD+trend stretches targets; chop pulls them in. */
+ *  Strong ADX / aligned MACD+trend stretches targets; chop pulls them in.
+ *  Targets must be HORIZON-SIZED: the medium stop is 4×ATR and the long stop is
+ *  6.5×ATR, so TP1 below those multiples makes RR<1 by construction and the
+ *  min-RR gate then rejects nearly every medium/long setup (the few that passed
+ *  were marginal and skewed to SL hits — 68% SL-hit rate on closed medium buys).
+ *  A 1–3mo trend leg runs ~8–15%, not the 3–4% a short-term TP1 implies. */
 function atrMomentumMultiples(tech, hz) {
   const base = {
     short:  { tp1: 1.6, tp2: 2.8 },
-    medium: { tp1: 2.8, tp2: 5.0 },
-    long:   { tp1: 4.5, tp2: 8.0 }
+    medium: { tp1: 4.2, tp2: 7.0 },
+    long:   { tp1: 7.0, tp2: 11.0 }
   }[hz] || { tp1: 2.0, tp2: 3.5 };
   const adx = Number(tech && tech.adx) || 20;
   const macd = tech && tech.macd;
@@ -1110,8 +1115,20 @@ function computeSecondTargetFromTech(tech, entry, hz, isSell, tp1 = null) {
 
 /** Hysteresis signal-flip test — only exit when the picture TRULY reverses, not on
  *  a 1-point dip below the 62 entry threshold (that churn was destroying win rate). */
-function signalFlipped(sig, isSell) {
+function signalFlipped(sig, isSell, hz = 'short') {
   if (!sig) return false;
+  // Horizon-aware: the "conviction collapse" clause (score < 45) is right for
+  // short-term mean-reversion, but on a 1–3mo trend trade any healthy pullback
+  // drains the momentum gates below 45 and dumped the position at the low —
+  // signal_exit was 60% of long-horizon closes at −1.2% avg. Longer horizons
+  // demand a REAL reversal (opposing side takes over), not a mid-pullback wobble.
+  if (hz === 'medium') {
+    return isSell ? (sig.buyScore >= 62 || sig.sellScore < 35)
+                  : (sig.sellScore >= 62 || sig.buyScore < 35);
+  }
+  if (hz === 'long') {
+    return isSell ? (sig.buyScore >= 66) : (sig.sellScore >= 66);
+  }
   return isSell
     ? (sig.buyScore >= 62 || sig.sellScore < 45)   // short exits when longs take over or conviction collapses
     : (sig.sellScore >= 62 || sig.buyScore < 45);  // long exits when shorts take over or conviction collapses
@@ -1324,16 +1341,18 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
     }
 
     if (!tp1Hit) {
-      // ── PRE-TP1: tight, technicals-driven stop + hysteresis signal-flip exit ──
+      // ── PRE-TP1: entry-anchored stop + hysteresis signal-flip exit ──
+      // A medium/long TREND trade must be able to sit through ordinary pullbacks.
+      // Ratcheting the stop daily from each new high (chandelier) before TP1
+      // turned every ~4×ATR wiggle into an sl_hit — 68% of closed medium buys
+      // died at the stop while time-limit exits won 83%. So pre-TP1 the stop
+      // stays where it was set AT ENTRY (structure-based, horizon-wide); genuine
+      // trend deterioration is handled by the signal-flip exit at the close.
       const barTech = techAtBoundedIndex(data, weeklyAll, j);
       const barSig = computeQuantSignal(barTech, fund, hz);
-      const eodSl = computeTrailingStopFromTech(barTech, entry, hz, isSell, fund);
-      if (eodSl && Number.isFinite(eodSl)) {
-        trailingSl = trailingSl == null ? eodSl : (isSell ? Math.min(trailingSl, eodSl) : Math.max(trailingSl, eodSl));
-      }
       if (!isSell && trailingSl && bar.l <= trailingSl) return finish('sl_hit', j, trailingSl);
       if (isSell && trailingSl && bar.h >= trailingSl)  return finish('sl_hit', j, trailingSl);
-      if (!liveMark && signalFlipped(barSig, isSell)) return finish('signal_exit', j, bar.c);
+      if (!liveMark && signalFlipped(barSig, isSell, hz)) return finish('signal_exit', j, bar.c);
     } else {
       // TP2 is a REFERENCE level only — NEVER an actual exit. The first time it
       // prints we freeze the hypothetical "closed the runner at TP2" outcome so
@@ -2040,6 +2059,197 @@ async function getEtfRegimeSeries(etf, range) {
   return series;
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// QUARTERLY-RESULTS (EARNINGS) OVERLAY — peer-group contagion
+// When a sub-industry bellwether reports (NVDA beats → chip complex rallies),
+// the whole group re-rates. We track the top 5–6 leaders per sub-industry,
+// score their most recent reported quarters (EPS surprise), and blend that into
+// every group member's buy/sell decision. A stock in a group whose leaders just
+// beat gets a tailwind; one whose leaders missed gets throttled hard.
+// ════════════════════════════════════════════════════════════════════════════
+const EARNINGS_OVERLAY_ENABLED = process.env.EARNINGS_OVERLAY !== '0'; // default ON
+
+// Top 5–6 bellwethers per sub-industry whose quarterly results move the group.
+const EARNINGS_PEER_LEADERS = {
+  semis:         ['NVDA', 'TSM', 'AVGO', 'AMD', 'ASML', 'MU'],
+  software:      ['MSFT', 'ORCL', 'CRM', 'NOW', 'ADBE', 'SAP'],
+  comms:         ['GOOGL', 'META', 'NFLX', 'DIS', 'VZ'],
+  tech:          ['AAPL', 'MSFT', 'NVDA', 'CSCO', 'ANET'],
+  banks:         ['JPM', 'BAC', 'GS', 'MS', 'WFC', 'C'],
+  financials:    ['BLK', 'SCHW', 'AXP', 'SPGI', 'CB'],
+  energy:        ['XOM', 'CVX', 'SHEL.L', 'TTE.PA', 'COP'],
+  health:        ['LLY', 'UNH', 'JNJ', 'MRK', 'ABBV', 'AZN.L'],
+  staples:       ['PG', 'KO', 'PEP', 'WMT', 'COST', 'ULVR.L'],
+  discretionary: ['AMZN', 'HD', 'MCD', 'NKE', 'MC.PA', 'BKNG'],
+  auto:          ['TSLA', 'TM', 'MBG.DE', 'BMW.DE', 'GM', 'F'],
+  industrials:   ['CAT', 'GE', 'HON', 'SIE.DE', 'UNP', 'RTX'],
+  materials:     ['LIN', 'BHP.L', 'RIO.L', 'BAS.DE', 'FCX'],
+  utilities:     ['NEE', 'DUK', 'SO', 'IBE.MC', 'ENGI.PA'],
+  realestate:    ['PLD', 'AMT', 'EQIX', 'SPG'],
+  gold:          ['NEM', 'GOLD', 'AEM', 'FNV']
+};
+// Where the LOCAL reporting cycle dominates the global one (Indian banks trade
+// on HDFC/ICICI results, not JPM's; Japanese tech on Tokyo Electron/Advantest).
+const EARNINGS_PEER_LEADERS_CC = {
+  'IN|banks':      ['HDFCBANK.NS', 'ICICIBANK.NS', 'SBIN.NS', 'KOTAKBANK.NS', 'AXISBANK.NS'],
+  'IN|financials': ['BAJFINANCE.NS', 'HDFCBANK.NS', 'ICICIBANK.NS', 'SBILIFE.NS'],
+  'IN|tech':       ['TCS.NS', 'INFY.NS', 'HCLTECH.NS', 'WIPRO.NS', 'TECHM.NS'],
+  'IN|software':   ['TCS.NS', 'INFY.NS', 'HCLTECH.NS', 'WIPRO.NS', 'TECHM.NS'],
+  'IN|energy':     ['RELIANCE.NS', 'ONGC.NS', 'BPCL.NS', 'IOC.NS'],
+  'IN|auto':       ['MARUTI.NS', 'TATAMOTORS.NS', 'M&M.NS', 'BAJAJ-AUTO.NS'],
+  'IN|staples':    ['HINDUNILVR.NS', 'ITC.NS', 'NESTLEIND.NS', 'BRITANNIA.NS'],
+  'JP|tech':       ['8035.T', '6857.T', '6758.T', '6501.T', '6981.T'],
+  'JP|semis':      ['8035.T', '6857.T', '6146.T', '6963.T'],
+  'JP|banks':      ['8306.T', '8316.T', '8411.T'],
+  'JP|auto':       ['7203.T', '7267.T', '7269.T'],
+  'HK|tech':       ['0700.HK', '9988.HK', '3690.HK', '1810.HK', '9618.HK'],
+  'HK|banks':      ['0005.HK', '1288.HK', '3988.HK', '939.HK']
+};
+
+/** Earnings peer-group key for a symbol: country-specific list if one exists. */
+function earningsGroupKeyForSymbol(sym) {
+  const key = sectorKeyForSymbol(sym);
+  if (!key) return null;
+  const cc = countryOfSymbol(sym) + '|' + key;
+  if (EARNINGS_PEER_LEADERS_CC[cc]) return cc;
+  return EARNINGS_PEER_LEADERS[key] ? key : null;
+}
+function earningsLeadersForGroup(groupKey) {
+  return EARNINGS_PEER_LEADERS_CC[groupKey] || EARNINGS_PEER_LEADERS[groupKey] || [];
+}
+
+// Per-leader earnings cache: sym → { rows, nextDate, at }. Quarterly data — 12h TTL.
+const _earnLeaderCache = new Map();
+const EARNINGS_TTL_MS = 12 * 3600 * 1000;
+async function fetchLeaderEarnings(sym) {
+  const hit = _earnLeaderCache.get(sym);
+  if (hit && Date.now() - hit.at < EARNINGS_TTL_MS) return hit;
+  let rows = [], nextDate = null;
+  const todayISO = new Date().toISOString().slice(0, 10);
+  // Source cascade — same order of preference as /api/earnings/:symbol.
+  // 1) FMP stable earnings (the source that actually works from Render).
+  try {
+    const fmp = await fmpStableEarningsBundle(sym, todayISO);
+    if (fmp) {
+      if (Array.isArray(fmp.history) && fmp.history.length) rows = fmp.history;
+      if (fmp.next && fmp.next.date) nextDate = fmp.next.date;
+    }
+  } catch (_) {}
+  // 2) Yahoo quoteSummary (works when the IP passes Yahoo's crumb check).
+  if (!rows.length || !nextDate) {
+    try {
+      const qs = await quoteSummary(sym, 'earningsHistory,calendarEvents');
+      if (!rows.length) rows = earningsHistoryAllFromQuoteSummary(qs, 12) || [];
+      if (!nextDate) nextDate = (nextEarningsFromCalendar(qs, sym) || {}).nextDate || null;
+    } catch (_) {}
+  }
+  // 3) Alpha Vantage quarterly EPS history (if key present).
+  if (!rows.length) {
+    try { rows = (await alphaVantageEarningsHistory(sym, 8)) || []; } catch (_) {}
+  }
+  // 4) Yahoo chart events as a last resort for the next report date.
+  if (!nextDate) {
+    try {
+      const ce = await yahooNextEarningsFromChartEvents(sym);
+      if (ce && ce.date) nextDate = ce.date;
+    } catch (_) {}
+  }
+  const entry = { rows, nextDate, at: Date.now() };
+  _earnLeaderCache.set(sym, entry);
+  return entry;
+}
+
+/** Leaders' reported quarters → events [{date, score, sym, surp}] (score ∈ [-1,1]). */
+function groupEventsFromLeaderRows(leaderRows) {
+  const events = [];
+  for (const { sym, rows } of leaderRows) {
+    for (const r of rows || []) {
+      if (!r || !r.date) continue;
+      const surp = r.epsSurprise != null ? parseFloat(String(r.epsSurprise).replace('%', '')) : null;
+      if (surp == null || !Number.isFinite(surp)) continue;
+      events.push({ date: r.date, score: Math.max(-25, Math.min(25, surp)) / 25, sym, surp });
+    }
+  }
+  events.sort((a, b) => a.date.localeCompare(b.date));
+  return events;
+}
+
+/** Blend group events into a tide at time `atMs`: newest quarters dominate
+ *  (exp decay, ~45d half-life), reports older than ~120d have no say. */
+function earningsTideFromEvents(events, atMs) {
+  if (!events || !events.length) return null;
+  const at = typeof atMs === 'number' ? (atMs > 1e12 ? atMs : atMs * 1000) : Date.parse(atMs);
+  let wSum = 0, sSum = 0, n = 0, top = null, topW = 0;
+  for (const ev of events) {
+    const t = Date.parse(ev.date + 'T12:00:00Z');
+    const ageD = (at - t) / 86400000;
+    if (!(ageD >= 0 && ageD <= 120)) continue;
+    const w = Math.exp(-ageD / 45);
+    wSum += w; sSum += w * ev.score; n++;
+    if (Math.abs(w * ev.score) > topW) { topW = Math.abs(w * ev.score); top = ev; }
+  }
+  if (!n || wSum <= 0) return null;
+  return {
+    score: sSum / wSum,
+    n,
+    top: top ? `${top.sym} ${top.surp >= 0 ? '+' : ''}${top.surp.toFixed(0)}% EPS` : null
+  };
+}
+
+// Group tide cache: groupKey → { tide, events, at }.
+const _earnGroupCache = new Map();
+async function getGroupEarnings(groupKey, force = false) {
+  const hit = _earnGroupCache.get(groupKey);
+  if (!force && hit && Date.now() - hit.at < EARNINGS_TTL_MS) return hit;
+  const leaders = earningsLeadersForGroup(groupKey);
+  const leaderRows = [];
+  for (const sym of leaders) {
+    const e = await fetchLeaderEarnings(sym);
+    leaderRows.push({ sym, rows: e.rows });
+  }
+  const events = groupEventsFromLeaderRows(leaderRows);
+  const entry = { events, tide: earningsTideFromEvents(events, Date.now()), at: Date.now() };
+  _earnGroupCache.set(groupKey, entry);
+  return entry;
+}
+
+/** Live earnings tide for a symbol (cache-only — refreshed by scheduler). */
+function earningsTideForSymbol(sym) {
+  if (!EARNINGS_OVERLAY_ENABLED) return null;
+  const gk = earningsGroupKeyForSymbol(sym);
+  if (!gk) return null;
+  const hit = _earnGroupCache.get(gk);
+  return hit ? hit.tide : null;
+}
+
+/** Refresh all peer groups' earnings tides (boot + every 12h + before picks). */
+let _earnRefreshAt = 0;
+async function refreshEarningsTides(force = false) {
+  if (!EARNINGS_OVERLAY_ENABLED) return;
+  if (!force && _earnGroupCache.size && Date.now() - _earnRefreshAt < EARNINGS_TTL_MS) return;
+  const keys = [...new Set([...Object.keys(EARNINGS_PEER_LEADERS), ...Object.keys(EARNINGS_PEER_LEADERS_CC)])];
+  for (const gk of keys) {
+    try { await getGroupEarnings(gk, force); } catch (_) {}
+  }
+  _earnRefreshAt = Date.now();
+  const parts = [];
+  for (const [gk, v] of _earnGroupCache) {
+    if (v.tide && Math.abs(v.tide.score) >= 0.25) parts.push(`${gk} ${v.tide.score >= 0 ? '+' : ''}${v.tide.score.toFixed(2)}`);
+  }
+  console.log(`Earnings tides: ${_earnGroupCache.size} peer groups cached${parts.length ? ' | strong: ' + parts.join(', ') : ''}`);
+}
+
+/** Next earnings date within `days` calendar days for ANY symbol (cached fetch).
+ *  Used as an entry blackout: never open a brand-new position into a report. */
+async function nextEarningsWithinDays(sym, days = 5) {
+  try {
+    const e = await fetchLeaderEarnings(sym); // same cache works for non-leaders
+    if (!e.nextDate) return false;
+    const diffD = (Date.parse(e.nextDate + 'T12:00:00Z') - Date.now()) / 86400000;
+    return diffD >= -1 && diffD <= days;
+  } catch (_) { return false; }
+}
+
 /**
  * Compute buy/sell scores deterministically from pre-computed indicators.
  * Returns { buyScore, sellScore, action, rating, conditions, winRateHint }
@@ -2512,6 +2722,25 @@ function computeQuantSignal(tech, fund, hz, market = null) {
     else if (market.trend === 'up') sell = Math.round(sell * 0.45);
   }
 
+  // ── QUARTERLY-RESULTS (EARNINGS) OVERLAY ────────────────────────────────────
+  // Peer-group contagion: when the sub-industry's bellwethers (NVDA for chips,
+  // HDFC/ICICI for Indian banks, Tokyo Electron for JP tech) just delivered
+  // strong quarters, group members get a buy tailwind; after leader misses the
+  // group is throttled hard. Attached per-symbol as tech._earningsTide.
+  const _etide = EARNINGS_OVERLAY_ENABLED ? (tech && tech._earningsTide) : null;
+  if (_etide && _etide.score != null) {
+    const who = _etide.top ? ` (${_etide.top})` : '';
+    if (_etide.score >= 0.25) {
+      buy = Math.min(95, Math.round(buy * 1.08));
+      sell = Math.round(sell * 0.85);
+      condBuy.push('Peer quarterly beats — group re-rating tailwind' + who);
+    } else if (_etide.score <= -0.25) {
+      buy = Math.round(buy * 0.62);
+      sell = Math.min(94, Math.round(sell * 1.08));
+      condSell.push('Peer quarterly misses — group headwind' + who);
+    }
+  }
+
   // Clamp and mutual exclusivity
   buy  = Math.min(92,Math.max(0,Math.round(buy)));
   sell = Math.min(88,Math.max(0,Math.round(sell)));
@@ -2582,6 +2811,7 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
   const windowStart = Math.max(BACKTEST_WARMUP, data.length - windowBars);
   const weeklyAll = weeklyData || dailyToWeeklyBars(data);
   const marketSeries = opts.marketSeries || null; // Map<'YYYY-MM-DD', regime>
+  const earningsEvents = opts.earningsEvents || null; // [{date, score, sym, surp}]
   let marketLatest = null;
 
   let wins = 0, losses = 0, trades = 0, totalReturn = 0, grossWin = 0, grossLoss = 0;
@@ -2598,6 +2828,8 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
       market = marketRegimeAt(marketSeries, data[i].t, marketLatest);
       if (market) marketLatest = market;
     }
+    // Historical peer-earnings tide at this bar (same decay math as live).
+    if (earningsEvents) tech._earningsTide = earningsTideFromEvents(earningsEvents, data[i].t);
     const sig = computeQuantSignal(tech, fund, hz, market);
     const stHz = (tech.supertrendByHz && tech.supertrendByHz[hz]) || tech.supertrend;
 
@@ -2613,6 +2845,26 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
 
     const entry = data[i + 1]?.o ?? data[i].c;
     if (!entry || entry <= 0) continue;
+
+    // Same min-R:R gate the live pick pipeline applies to medium/long — the
+    // replay must only take trades we would actually recommend (a 12%-stop /
+    // 5%-target setup is rejected live, so counting it poisoned the stats).
+    // Short is left ungated here: its live RR check runs on the full pick-time
+    // tech (channels/S-R) which this lightweight per-bar replay understates.
+    // Long may also qualify via its TP2 runner target at a 1.6× premium (the
+    // wide long stop is paid for by the runner, not the first partial).
+    if (hz !== 'short') {
+      const gSl = computeTrailingStopFromTech(tech, entry, hz, isSell, fund);
+      const gTp = computeFirstTargetFromTech(tech, entry, hz, isSell, gSl);
+      if (gSl != null && gTp != null && !levelsMeetMinRR(entry, gTp, gSl, isSell, PICKS_MIN_RR)) {
+        let ok = false;
+        if (hz === 'long') {
+          const gTp2 = computeSecondTargetFromTech(tech, entry, hz, isSell, gTp);
+          ok = gTp2 != null && levelsMeetMinRR(entry, gTp2, gSl, isSell, PICKS_MIN_RR * 1.6);
+        }
+        if (!ok) continue;
+      }
+    }
 
     const res = await simulateHybridExit(data, i + 1, entry, hz, isSell, weeklyAll, fund);
     if (!res || res.exitIdx == null) continue;
@@ -5169,6 +5421,7 @@ app.post('/api/technicals/batch', async (req, res) => {
       // shows the quant winRateHint as an estimate until the user opens full analysis.
       data.supertrend = calcSupertrend(daily);
       data._sectorRegime = sectorRegimeForSymbol(sym); // sector-level momentum tide
+      data._earningsTide = earningsTideForSymbol(sym); // peer quarterly-results tide
       data.quantSignal = {
         short:  computeQuantSignal(data, _cachedFund, 'short'),
         medium: computeQuantSignal(data, _cachedFund, 'medium'),
@@ -6279,6 +6532,7 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
   const fund = caches.fundMap[ticker];
   if (!tech) return { ok: false, trade, shell: null, reason: 'no tech data' };
   if (tech._sectorRegime == null) tech._sectorRegime = sectorRegimeForSymbol(ticker);
+  if (tech._earningsTide == null) tech._earningsTide = earningsTideForSymbol(ticker);
 
   const quantSignal = {
     short: computeQuantSignal(tech, fund, 'short'),
@@ -6591,6 +6845,7 @@ async function scanSymbolQuant(sym) {
   const fundEntry = fundCache.get(sym);
   const fund = fundEntry && Date.now() - fundEntry.ts < TECH_TTL * 4 ? fundEntry.data : null;
   data._sectorRegime = sectorRegimeForSymbol(sym); // sector-level momentum tide
+  data._earningsTide = earningsTideForSymbol(sym); // peer quarterly-results tide
   const qs = {
     short: computeQuantSignal(data, fund, 'short'),
     medium: computeQuantSignal(data, fund, 'medium'),
@@ -6796,6 +7051,7 @@ async function generateServerPicksFromShortlist(opts = {}) {
   try {
     await refreshMarketRegime().catch(() => {}); // ensure signals below are tide-gated
     await refreshSectorRegimes().catch(() => {}); // sector-level tide per name
+    await refreshEarningsTides().catch(() => {}); // peer quarterly-results tide per group
     const marketOf = {};
     list.forEach(x => { marketOf[x.ticker] = x.market; });
     const tickers = list.map(x => x.ticker).slice(0, 120);
@@ -6943,6 +7199,25 @@ async function generateServerPicksFromShortlist(opts = {}) {
     // Drop any pane row whose ATR/structure levels fail the minimum R:R gate.
     // Never invent TP to pass — undersized reward setups are simply not recommended.
     dashData = filterDashDataByMinRR(dashData);
+
+    // EARNINGS BLACKOUT: never open a brand-new position within 5 days of the
+    // company's own quarterly report — a binary gap event no stop can protect
+    // against (this was a repeat SL-hit pattern in the trade history).
+    if (EARNINGS_OVERLAY_ENABLED) {
+      try {
+        for (const pane of ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell']) {
+          const arr = dashData[pane];
+          if (!Array.isArray(arr) || !arr.length) continue;
+          const keep = [];
+          for (const row of arr) {
+            const imminent = await nextEarningsWithinDays(row.ticker, 5).catch(() => false);
+            if (imminent) console.log('Pick dropped (earnings within 5d):', row.ticker, pane);
+            else keep.push(row);
+          }
+          dashData[pane] = keep;
+        }
+      } catch (e) { console.warn('Earnings blackout filter failed:', e.message); }
+    }
 
     // Stamp each pane pick with a trade-specific reason that includes Entry/TP/SL.
     // Generic/empty reason fields were leaving recommended CSV Reason blanks.
@@ -7432,6 +7707,13 @@ async function addTradesToHistory(trades) {
         const rr = rewardRiskRatio(e, tp1, sl, isSell);
         console.log('History add skipped (RR <', PICKS_MIN_RR + '):', trade.ticker, hz, 'RR=', rr != null ? rr.toFixed(2) : 'n/a');
         auditLog('entry_blocked_min_rr', { ticker: trade.ticker, hz, rr });
+        continue;
+      }
+      // Earnings blackout for brand-new entries: a quarterly report inside the
+      // next 5 days is a binary gap no stop protects against.
+      if (EARNINGS_OVERLAY_ENABLED && await nextEarningsWithinDays(trade.ticker, 5).catch(() => false)) {
+        console.log('History add skipped (earnings within 5d):', trade.ticker, hz);
+        auditLog('entry_blocked_earnings', { ticker: trade.ticker, hz });
         continue;
       }
     }
@@ -10162,6 +10444,7 @@ async function getTechnicalsMapForSymbols(symbols, opts = {}) {
         const fundEntry = fundCache.get(sym);
         const fund = fundEntry && Date.now() - fundEntry.ts < TECH_TTL * 4 ? fundEntry.data : null;
         data._sectorRegime = sectorRegimeForSymbol(sym); // sector-level momentum tide
+        data._earningsTide = earningsTideForSymbol(sym); // peer quarterly-results tide
         data.quantSignal = {
           short: computeQuantSignal(data, fund, 'short'),
           medium: computeQuantSignal(data, fund, 'medium'),
@@ -12126,6 +12409,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
             if (fund) fundCache.set(sym, { ts: Date.now(), data: fund });
           }
           if (tech._sectorRegime == null) tech._sectorRegime = sectorRegimeForSymbol(sym);
+          if (tech._earningsTide == null) tech._earningsTide = earningsTideForSymbol(sym);
           tech.quantSignal = {
             short: computeQuantSignal(tech, fund, 'short'),
             medium: computeQuantSignal(tech, fund, 'medium'),
@@ -12683,7 +12967,13 @@ async function runBracketAcceptance(opts = {}) {
         const etf = sectorEtfForSymbol(sym);
         if (etf) marketSeries = (await getEtfRegimeSeries(etf, range)) || spySeries;
       }
-      const bt = await backtestSignal(daily, hz, weekly, fund, { windowBars, side, entryStep: opts.entryStep || 2, marketSeries });
+      // Historical peer-earnings events for this ticker's sub-industry group.
+      let earningsEvents = null;
+      if (EARNINGS_OVERLAY_ENABLED && opts.earnings !== false) {
+        const gk = earningsGroupKeyForSymbol(sym);
+        if (gk) earningsEvents = ((await getGroupEarnings(gk).catch(() => null)) || {}).events || null;
+      }
+      const bt = await backtestSignal(daily, hz, weekly, fund, { windowBars, side, entryStep: opts.entryStep || 2, marketSeries, earningsEvents });
       if (!bt || !bt.trades) { perTicker.push({ ticker: sym, trades: 0 }); continue; }
       perTicker.push({ ticker: sym, trades: bt.trades, winRate: bt.winRate, avgReturnPct: bt.avgReturnPct, profitFactor: bt.profitFactor });
       tTrades += bt.trades;
@@ -12789,8 +13079,9 @@ if (require.main === module) {
       .then(() => importSeedRecommendedCsvsIfMissing())
       .catch(e => console.warn('CSV history restore:', e.message));
     // Prime the market + sector momentum overlays and keep them fresh.
-    refreshMarketRegime(true).then(() => refreshSectorRegimes(true)).catch(() => {});
+    refreshMarketRegime(true).then(() => refreshSectorRegimes(true)).then(() => refreshEarningsTides(true)).catch(() => {});
     setInterval(() => refreshMarketRegime().then(() => refreshSectorRegimes()).catch(() => {}), MARKET_REGIME_TTL);
+    setInterval(() => refreshEarningsTides().catch(() => {}), EARNINGS_TTL_MS);
   });
 }
 
@@ -12814,5 +13105,12 @@ module.exports = {
   sectorEtfForSymbol,
   countryOfSymbol,
   sectorKeyForSymbol,
+  earningsGroupKeyForSymbol,
+  earningsLeadersForGroup,
+  getGroupEarnings,
+  earningsTideFromEvents,
+  refreshEarningsTides,
+  nextEarningsWithinDays,
+  _earnGroupCache,
   app
 };
