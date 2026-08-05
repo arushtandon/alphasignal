@@ -90,7 +90,24 @@ exchanges for most non-India accounts).
 Entry events older than `IBKR_MAX_EVENT_AGE_H` (default 24h) are skipped so a
 fresh cursor never replays weeks of history as live orders.
 
-## 6. Sequencing recommendation
+## 6. Keeping it running 24/7 (Windows)
+
+**Bridge** — `run-forever.ps1` restarts it on any crash and logs to `logs\`.
+Register it to start at logon (run once in an elevated PowerShell):
+
+```powershell
+schtasks /Create /TN "AlphaSignal IBKR Bridge" /SC ONLOGON /RL HIGHEST `
+  /TR "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -File \"$PWD\run-forever.ps1\""
+```
+
+**IB Gateway** — in Configure → Settings → **Lock and Exit**:
+- choose **Auto restart** (not auto-logoff) and set a restart time,
+- IBKR still forces one full re-login per week (usually Sunday) — check it Monday mornings.
+
+**PC** — stop it sleeping: `powercfg /change standby-timeout-ac 0`
+and enable automatic Windows login if you want it to survive reboots unattended.
+
+## 7. Sequencing recommendation
 
 1. Run bracket acceptance (`npm run acceptance` in repo root) — gate failing sides/horizons.
 2. Wire paper in **dry-run** and confirm event flow.
