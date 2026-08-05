@@ -40,7 +40,10 @@ async function main() {
     ib.once(EventName.nextValidId, id => resolve(id));
     ib.reqIds();
   });
-  log('Connected. nextValidId=', nextOrderId);
+  // Keep ids clear of other sessions (see bridge.js): floor to seconds since
+  // 2025 minus a small offset so flatten ids never collide with the bridge's.
+  nextOrderId = Math.max(nextOrderId, Math.floor((Date.now() - Date.UTC(2025, 0, 1)) / 1000) - 500000);
+  log('Connected. starting orderId=', nextOrderId);
 
   // 1) Cancel every open order, across all API client ids and manual orders.
   if (DRY) log('DRY: would send global cancel for all open orders');

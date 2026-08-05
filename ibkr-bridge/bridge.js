@@ -194,7 +194,13 @@ async function main() {
       ib.once(EventName.nextValidId, id => { nextOrderId = id; resolve(); });
       ib.reqIds();
     });
-    log('Connected to IB paper. nextValidId=', nextOrderId);
+    // TWS's nextValidId can lag behind ids burned by other API clients in the
+    // same TWS session (e.g. flatten-all), causing "Duplicate order id" (103).
+    // Floor the counter to seconds-since-2025 so every run starts above any
+    // previous session's range.
+    const timeFloor = Math.floor((Date.now() - Date.UTC(2025, 0, 1)) / 1000);
+    nextOrderId = Math.max(nextOrderId, timeFloor);
+    log('Connected to IB paper. starting orderId=', nextOrderId);
   } else {
     log('DRY RUN — orders are logged only. Set IBKR_DRY_RUN=0 to place paper orders.');
   }
