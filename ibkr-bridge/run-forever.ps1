@@ -17,9 +17,10 @@ New-Item -ItemType Directory -Force -Path "$PSScriptRoot\logs" | Out-Null
 
 while ($true) {
   $log = "$PSScriptRoot\logs\bridge-$(Get-Date -Format 'yyyy-MM-dd').log"
-  "$(Get-Date -Format o) [run-forever] starting bridge" | Add-Content $log
-  # Run attached; when the process dies for any reason, wait and restart.
-  & node bridge.js 2>&1 | Add-Content $log
-  "$(Get-Date -Format o) [run-forever] bridge exited (code $LASTEXITCODE) - restarting in 30s" | Add-Content $log
+  Add-Content $log "$(Get-Date -Format o) [run-forever] starting bridge"
+  # cmd-style redirection keeps the log readable (shared-read) while running,
+  # so `Get-Content -Tail -Wait` works from another window.
+  cmd /c "node bridge.js >> `"$log`" 2>&1"
+  Add-Content $log "$(Get-Date -Format o) [run-forever] bridge exited (code $LASTEXITCODE) - restarting in 30s"
   Start-Sleep -Seconds 30
 }
