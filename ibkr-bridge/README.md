@@ -1,7 +1,7 @@
 # AlphaSignal → IBKR paper bridge
 
-AlphaSignal stays the **signal engine** (Render is fine).  
-IBKR’s TWS API needs a running **Trader Workstation** or **IB Gateway** on a machine you control — that process **cannot** run on Render.
+AlphaSignal stays the **signal engine** (Render is fine).
+IBKR's TWS API needs a running **Trader Workstation** or **IB Gateway** on a machine you control — that process **cannot** run on Render.
 
 ```
 AlphaSignal  ──JSONL events──►  ibkr-bridge (this folder)  ──socket──►  IB Gateway / TWS paper
@@ -22,7 +22,7 @@ Endpoints:
 - `GET /api/ibkr/status`
 - `GET /api/ibkr/events?since=0&limit=200`
 
-Event types: `entry`, `tp1_partial`, `tsl_update`, `exit` (also `entry_finalized` later).
+Event types: `entry`, `entry_finalized`, `tp1_partial`, `tsl_update`, `exit`.
 
 ## 2. Run IB Gateway / TWS (paper)
 
@@ -32,6 +32,7 @@ Event types: `entry`, `tp1_partial`, `tsl_update`, `exit` (also `entry_finalized
    - Enable ActiveX and Socket Clients
    - Socket port **4002** (Gateway paper) or **7497** (TWS paper)
    - Trusted IPs: `127.0.0.1`
+   - Untick "Read-Only API"
 4. Optional headless: Docker image `ghcr.io/gnzsnz/ib-gateway` (IBC).
 
 ## 3. Run the bridge (next to Gateway)
@@ -41,8 +42,8 @@ cd ibkr-bridge
 npm install
 
 # Always start in dry-run (no orders)
-$env:ALPHASIGNAL_URL = "https://YOUR-APP.onrender.com"
-$env:IBKR_EVENTS_TOKEN = "same-as-render"
+$env:ALPHASIGNAL_URL = "https://alphasignal-dvg5.onrender.com"
+$env:IBKR_EVENTS_TOKEN = "same-as-render"   # only if set on Render
 $env:IBKR_PORT = "7497"   # or 4002 for Gateway
 $env:IBKR_DRY_RUN = "1"
 npm start
@@ -60,17 +61,36 @@ State / cursor: `bridge-state.json` (gitignored locally — do not commit secret
 
 ## 4. What gets placed on `entry`
 
-For each new AlphaSignal signal:
+Position size = `IBKR_NOTIONAL` (default $10k) **converted to the local currency**
+(¥ / HK$ / € / £ / ₹) so every market gets a genuine ~$10k position, rounded to
+exchange lots (100 for SEHK/TSEJ).
 
-| Leg | IB order | Size |
-|-----|----------|------|
-| Parent | MKT | full `$10k` share count |
-| Child 1 | LMT at TP1 | floor(total/2) — banks the partial |
-| Child 2 | TRAIL | remainder — server-side trailing stop |
+| Leg | IB order | Size | Notes |
+|-----|----------|------|-------|
+| Parent | LMT @ recommended entry, `DAY` | full | `outsideRth` for US so the entry works pre-market / regular / post-market. Unfilled at session end → IB cancels parent **and** children (no orphans) |
+| Stop | STP @ SL, `GTC` | **full** | Pre-TP1 an SL hit exits the whole position — identical to the simulator |
+| TP1 | LMT @ TP1, `GTC` | half | Banks the partial |
 
-This mirrors AlphaSignal’s whole-share TP1 split + ratchet runner.
+## 5. Lifecycle after entry (mirror of the simulator)
 
-## 5. Sequencing recommendation
+- **TP1 fills** → the stop is resized to the runner half and raised to
+  breakeven (never lower).
+- **`tsl_update`** → the stop price is ratcheted in place. It is never loosened.
+- **Stop fills** → any still-open TP1 limit is cancelled.
+- **`exit` (signal / time-limit exit)** → all child orders are cancelled and any
+  remaining shares are flattened at market. An exited trade always ends with
+  zero open orders and zero position.
+- **Orphan sweep** every 5 minutes: any open IB order belonging to a closed
+  trade key is cancelled (belt and braces).
+
+Skipped instruments (logged, never half-placed): futures (`=F`), crypto
+(`-USD`), NSE/BSE stocks unless `IBKR_ALLOW_NSE=1` (IB restricts Indian
+exchanges for most non-India accounts).
+
+Entry events older than `IBKR_MAX_EVENT_AGE_H` (default 24h) are skipped so a
+fresh cursor never replays weeks of history as live orders.
+
+## 6. Sequencing recommendation
 
 1. Run bracket acceptance (`npm run acceptance` in repo root) — gate failing sides/horizons.
 2. Wire paper in **dry-run** and confirm event flow.
