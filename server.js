@@ -2602,7 +2602,16 @@ function computeQuantSignal(tech, fund, hz, market = null) {
       // Buying against the TIMEFRAME trend is capped for trend horizons (medium/long).
       // Short is mean-reversion: it intentionally buys dips below the fast Supertrend,
       // so we do NOT cap it here (the falling-knife filters handle genuine breakdowns).
-      if (!stHz.flippedBull) { buy = Math.min(buy, 58); condBuy.push(`Below ${hz} Supertrend — buy capped`); }
+      if (!stHz.flippedBull) {
+        // Structurally-intact pullback exception: above MA200 + golden cross +
+        // weekly uptrend means the ST bear leg is a dip inside a healthy trend,
+        // not a breakdown. Cap softer (66) so top-quality pullback entries can
+        // still clear the 62 pick threshold — a hard 58 cap was blanking the
+        // medium/long panes for weeks whenever growth sectors merely paused.
+        const structIntact = aboveMa200 === true && goldenCross === true && weeklyTrend === 'uptrend';
+        if (structIntact) { buy = Math.min(buy, 66); condBuy.push(`Below ${hz} Supertrend — pullback in intact uptrend (soft cap)`); }
+        else { buy = Math.min(buy, 58); condBuy.push(`Below ${hz} Supertrend — buy capped`); }
+      }
     }
     if (stHz.direction === 'bear') {
       if (stHz.flippedBear && sell >= 50) { sell = Math.min(92, sell + 12); condSell.unshift(`Supertrend ${hz} Strong Sell (fresh bear flip)`); }
