@@ -97,13 +97,15 @@ function toContract(ticker) {
     if (!ALLOW_NSE) return null;                                      // IB NSE restriction
     return { symbol: t.replace(/\.(NS|BO)$/, ''), secType: 'STK', exchange: 'NSE', currency: 'INR' };
   }
-  if (t.endsWith('.L'))  return { symbol: t.replace(/\.L$/, ''),  secType: 'STK', exchange: 'LSE',  currency: 'GBP', penceQuoted: true };
-  if (t.endsWith('.DE')) return { symbol: t.replace(/\.DE$/, ''), secType: 'STK', exchange: 'IBIS', currency: 'EUR' };
-  if (t.endsWith('.PA')) return { symbol: t.replace(/\.PA$/, ''), secType: 'STK', exchange: 'SBF',  currency: 'EUR' };
-  if (t.endsWith('.AS')) return { symbol: t.replace(/\.AS$/, ''), secType: 'STK', exchange: 'AEB',  currency: 'EUR' };
-  if (t.endsWith('.MI')) return { symbol: t.replace(/\.MI$/, ''), secType: 'STK', exchange: 'BVME', currency: 'EUR' };
-  if (t.endsWith('.HK')) return { symbol: String(parseInt(t.replace(/\.HK$/, ''), 10)), secType: 'STK', exchange: 'SEHK', currency: 'HKD', lotHint: 100 };
-  if (t.endsWith('.T'))  return { symbol: t.replace(/\.T$/, ''),  secType: 'STK', exchange: 'TSEJ', currency: 'JPY', lotHint: 100 };
+  // SMART routing everywhere (primaryExch pins the listing) — direct routing
+  // trips TWS's "higher trade fees" API precaution and orders get discarded.
+  if (t.endsWith('.L'))  return { symbol: t.replace(/\.L$/, ''),  secType: 'STK', exchange: 'SMART', primaryExch: 'LSE',  currency: 'GBP', penceQuoted: true };
+  if (t.endsWith('.DE')) return { symbol: t.replace(/\.DE$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'IBIS', currency: 'EUR' };
+  if (t.endsWith('.PA')) return { symbol: t.replace(/\.PA$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'SBF',  currency: 'EUR' };
+  if (t.endsWith('.AS')) return { symbol: t.replace(/\.AS$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'AEB',  currency: 'EUR' };
+  if (t.endsWith('.MI')) return { symbol: t.replace(/\.MI$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'BVME', currency: 'EUR' };
+  if (t.endsWith('.HK')) return { symbol: String(parseInt(t.replace(/\.HK$/, ''), 10)), secType: 'STK', exchange: 'SMART', primaryExch: 'SEHK', currency: 'HKD', lotHint: 100 };
+  if (t.endsWith('.T'))  return { symbol: t.replace(/\.T$/, ''),  secType: 'STK', exchange: 'SMART', primaryExch: 'TSEJ', currency: 'JPY', lotHint: 100 };
   if (t.includes('.'))   return null;                                 // unknown suffix
   const symbol = t === 'BRK.B' ? 'BRK B' : t;
   return { symbol, secType: 'STK', exchange: 'SMART', currency: 'USD', primaryExch: 'NASDAQ', usRth: true };

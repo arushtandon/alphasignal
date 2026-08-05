@@ -67,11 +67,13 @@ async function main() {
 
   for (const p of positions) {
     const c = p.contract;
+    // Always SMART-route: direct exchange routing trips TWS's "higher trade
+    // fees" API precaution and the close orders get discarded.
     const contract = {
       conId: c.conId,
       symbol: c.symbol,
       secType: c.secType || 'STK',
-      exchange: c.exchange || c.primaryExch || 'SMART',
+      exchange: 'SMART',
       currency: c.currency
     };
     const order = {
