@@ -1708,6 +1708,7 @@ function switchTab(t){
 // IBKR TRADE ANALYSIS — real paper-account fills
 // ══════════════════════════════════════════════
 let _ibkrMtmTimer = null;
+let _ibkrMtmBusy = false;
 function startIbkrMtm(){
   stopIbkrMtm();
   _ibkrMtmTimer = setInterval(function(){
@@ -1719,21 +1720,26 @@ function startIbkrMtm(){
 function stopIbkrMtm(){
   if (_ibkrMtmTimer) { clearInterval(_ibkrMtmTimer); _ibkrMtmTimer = null; }
 }
+function setIbkrMtmStamp(msg){
+  const stamp = document.getElementById('ibkrMtmStamp');
+  if (!stamp) return;
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2,'0');
+  const mm = String(now.getMinutes()).padStart(2,'0');
+  const ss = String(now.getSeconds()).padStart(2,'0');
+  stamp.textContent = (msg || ('MTM refreshed '+hh+':'+mm+':'+ss+' · auto every 60s'));
+}
 async function renderIbkr(force){
   const el = document.getElementById('ibkrContent');
   if (!el) return;
+  if (_ibkrMtmBusy) return;
+  _ibkrMtmBusy = true;
   try {
+    setIbkrMtmStamp('MTM refreshing…');
     const r = await fetch('/api/ibkr/trades?t=' + Date.now(), { cache: 'no-store' });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || 'bad response');
-    const stamp = document.getElementById('ibkrMtmStamp');
-    if (stamp) {
-      const now = new Date();
-      const hh = String(now.getHours()).padStart(2,'0');
-      const mm = String(now.getMinutes()).padStart(2,'0');
-      const ss = String(now.getSeconds()).padStart(2,'0');
-      stamp.textContent = 'MTM refreshed '+hh+':'+mm+':'+ss+' · auto every 60s';
-    }
+    setIbkrMtmStamp();
     if (!d.trades.length) {
       el.innerHTML = '<div class="emp"><div class="emp-a">α</div><p>No IBKR executions reported yet.<br>'
         + 'Fills appear here once the local bridge (ibkr-bridge) is running next to TWS/IB Gateway<br>'
@@ -1849,7 +1855,10 @@ async function renderIbkr(force){
 
     el.innerHTML = cards + analysisHtml + dailyHtml + tradesHtml;
   } catch (e) {
+    setIbkrMtmStamp('MTM error: '+e.message+' · retrying every 60s');
     el.innerHTML = '<div class="emp"><div class="emp-a">!</div><p>Could not load IBKR trades: '+e.message+'</p></div>';
+  } finally {
+    _ibkrMtmBusy = false;
   }
 }
 

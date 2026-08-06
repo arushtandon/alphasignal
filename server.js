@@ -12130,8 +12130,38 @@ app.post('/api/ibkr/report', (req, res) => {
 });
 
 // USD conversion for fill PnL (fills arrive in the exchange currency).
-const _ibkrMarkCache = new Map(); // sym -> { px, at } chart-close fallback marks
+const _ibkrMarkCache = new Map(); // sym -> { px, at, src }
 const _ibkrFx = { at: 0, rates: {} };
+
+/** Live last-trade for IBKR MTM. Prefers 1m/5m chart bars (update during the
+ *  session); daily close is last resort. No 15-bar floor — even 1 bar is enough. */
+async function fetchIbkrLastTrade(symbol) {
+  const variants = [symbol, String(symbol).replace(/\./g, '-')].filter((v, i, a) => a.indexOf(v) === i);
+  const attempts = [
+    { range: '1d', interval: '1m' },
+    { range: '5d', interval: '5m' },
+    { range: '5d', interval: '1d' }
+  ];
+  for (const { range, interval } of attempts) {
+    for (const sym of variants) {
+      for (const host of ['query1', 'query2']) {
+        const url = `https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=${range}&interval=${interval}&includePrePost=true`;
+        try {
+          const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(8000) });
+          if (!r.ok) continue;
+          const d = await r.json();
+          const res = d?.chart?.result?.[0];
+          const metaPx = Number(res?.meta?.regularMarketPrice || res?.meta?.postMarketPrice || res?.meta?.preMarketPrice);
+          if (metaPx > 0) return { price: metaPx, src: `meta:${interval}` };
+          const q = res?.indicators?.quote?.[0] || {};
+          const closes = (q.close || []).filter(c => c != null && Number(c) > 0);
+          if (closes.length) return { price: Number(closes[closes.length - 1]), src: `chart:${interval}` };
+        } catch (_) { /* try next */ }
+      }
+    }
+  }
+  return null;
+}
 async function ibkrUsdPerCcy(ccy) {
   if (!ccy || ccy === 'USD') return 1;
   if (Date.now() - _ibkrFx.at > 3600 * 1000) {
@@ -12201,19 +12231,30 @@ app.get('/api/ibkr/trades', async (req, res) => {
     let markMap = {};
     if (needMarks.length) {
       const uniq = [...new Set(needMarks)];
-      try { markMap = await fetchQuotesV7Bulk(uniq); } catch (_) {}
-      // Yahoo's v7 quote endpoint frequently 401s from datacenter IPs; the chart
-      // endpoint does not. Fall back to the latest daily close so open positions
-      // always get a mark (cached 5 min).
+      // Always refresh open marks via intraday chart/meta (v7 often 401s on Render
+      // and the old daily-close fallback never moved during the session).
       for (const sym of uniq) {
-        if (markMap[sym] && Number(markMap[sym].price) > 0) continue;
         const cached = _ibkrMarkCache.get(sym);
-        // 45s cache — IBKR tab auto-refreshes MTM every 60s
-        if (cached && Date.now() - cached.at < 45 * 1000) { markMap[sym] = { price: cached.px }; continue; }
+        if (cached && Date.now() - cached.at < 40 * 1000) {
+          markMap[sym] = { price: cached.px, src: cached.src };
+          continue;
+        }
         try {
-          const bars = await fetchOHLCV(sym, '1mo', '1d'); // needs ≥15 bars internally
-          const px = bars && bars.length ? Number(bars[bars.length - 1].c) : null;
-          if (px > 0) { markMap[sym] = { price: px }; _ibkrMarkCache.set(sym, { px, at: Date.now() }); }
+          const live = await fetchIbkrLastTrade(sym);
+          if (live && live.price > 0) {
+            markMap[sym] = { price: live.price, src: live.src };
+            _ibkrMarkCache.set(sym, { px: live.price, at: Date.now(), src: live.src });
+            continue;
+          }
+        } catch (_) {}
+        // Last resort: bulk v7 (may be previous close when markets are shut)
+        try {
+          const bulk = await fetchQuotesV7Bulk([sym]);
+          const px = bulk[sym] && Number(bulk[sym].price);
+          if (px > 0) {
+            markMap[sym] = { price: px, src: 'v7' };
+            _ibkrMarkCache.set(sym, { px, at: Date.now(), src: 'v7' });
+          }
         } catch (_) {}
       }
     }
