@@ -7770,8 +7770,10 @@ async function addTradesToHistory(trades) {
       }
     }
     accepted.push(trade);
-    // IBKR feed: brand-new entries only (not re-records of open rows)
-    if (!prev) {
+    // IBKR feed: brand-new TODAY entries only. Re-importing old history must
+    // never re-emit 'entry' (that caused the bridge to market-buy AZN.L / AAPL
+    // from a June 9 record when it was re-saved on Aug 6).
+    if (!prev && isToday) {
       try { emitTradeEvent('entry', tradeEventSnapshot(trade, hz)); } catch (_) {}
     }
    } catch (err) {
@@ -12093,7 +12095,7 @@ app.get('/api/ibkr/status', (req, res) => {
 // paper-account PnL (fills, not theoretical marks). Append-only JSONL on the
 // data disk, deduped by IB execId.
 const IBKR_FILLS_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_fills.jsonl');
-const _ibkrExecIds = new Set();
+let _ibkrExecIds = new Set();
 try {
   if (fs.existsSync(IBKR_FILLS_FILE)) {
     for (const line of fs.readFileSync(IBKR_FILLS_FILE, 'utf8').trim().split('\n')) {
@@ -12109,6 +12111,13 @@ app.post('/api/ibkr/report', (req, res) => {
   for (const r of reports) {
     if (!r || !r.execId || !r.key || !(Number(r.qty) > 0) || !(Number(r.price) > 0)) { skipped++; continue; }
     if (_ibkrExecIds.has(r.execId)) { skipped++; continue; }
+    // Reject fills for recommendations whose entry day is ancient vs the fill
+    // time (stale history re-emit → phantom paper trade).
+    if (isPhantomIbkrKey(r.key, r.time || new Date().toISOString())) {
+      skipped++;
+      auditLog('ibkr_fill_rejected_stale_key', { key: r.key, execId: r.execId });
+      continue;
+    }
     const row = {
       execId: String(r.execId), key: String(r.key),
       ticker: String(r.ticker || ''), hz: String(r.hz || 'short'),
@@ -12127,6 +12136,44 @@ app.post('/api/ibkr/report', (req, res) => {
   }
   if (stored) auditLog('ibkr_fills', { stored, skipped });
   res.json({ ok: true, stored, skipped, totalExecs: _ibkrExecIds.size });
+});
+
+/** True when the recommendation day in `key` is >3d before the fill — not a real AlphaSignal→IBKR trade. */
+function isPhantomIbkrKey(key, fillTime) {
+  const dayPart = String(key || '').split('|')[2];
+  const keyTs = Date.parse(dayPart || 0);
+  const fillTs = Date.parse(fillTime || 0) || Date.now();
+  if (!Number.isFinite(keyTs)) return false;
+  return (fillTs - keyTs) > 3 * 24 * 3600 * 1000;
+}
+
+function readIbkrFillRows() {
+  try {
+    return fs.readFileSync(IBKR_FILLS_FILE, 'utf8').trim().split('\n')
+      .filter(Boolean).map(l => { try { return JSON.parse(l); } catch (_) { return null; } })
+      .filter(Boolean);
+  } catch (_) { return []; }
+}
+
+function writeIbkrFillRows(rows) {
+  fs.writeFileSync(IBKR_FILLS_FILE, rows.map(r => JSON.stringify(r)).join('\n') + (rows.length ? '\n' : ''));
+  _ibkrExecIds = new Set(rows.map(r => r.execId).filter(Boolean));
+}
+
+/** Drop phantom/stale fills (and optional explicit keys) from the durable log. */
+app.post('/api/ibkr/purge', express.json({ limit: '32kb' }), (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const keys = new Set((req.body && req.body.keys) || []);
+  const dropStale = req.body && req.body.stale !== false; // default: purge phantoms
+  const before = readIbkrFillRows();
+  const after = before.filter(r => {
+    if (keys.has(r.key)) return false;
+    if (dropStale && isPhantomIbkrKey(r.key, r.time)) return false;
+    return true;
+  });
+  writeIbkrFillRows(after);
+  auditLog('ibkr_purge', { before: before.length, after: after.length, removed: before.length - after.length });
+  res.json({ ok: true, before: before.length, after: after.length, removed: before.length - after.length });
 });
 
 // USD conversion for fill PnL (fills arrive in the exchange currency).
@@ -12186,12 +12233,14 @@ async function ibkrUsdPerCcy(ccy) {
 // Aggregated per-trade view of the paper account, built purely from real fills.
 app.get('/api/ibkr/trades', async (req, res) => {
   try {
-    let rows = [];
-    try {
-      rows = fs.readFileSync(IBKR_FILLS_FILE, 'utf8').trim().split('\n')
-        .filter(Boolean).map(l => { try { return JSON.parse(l); } catch (_) { return null; } })
-        .filter(Boolean);
-    } catch (_) {}
+    let rows = readIbkrFillRows();
+    // Auto-drop phantom fills (stale recommendation key vs fill time) so the
+    // IBKR tab never shows error trades like the Jun-09 AZN.L re-emit.
+    const clean = rows.filter(r => !isPhantomIbkrKey(r.key, r.time));
+    if (clean.length !== rows.length) {
+      try { writeIbkrFillRows(clean); auditLog('ibkr_auto_purge_stale', { before: rows.length, after: clean.length }); } catch (_) {}
+      rows = clean;
+    }
     const byKey = new Map();
     for (const r of rows) {
       if (!byKey.has(r.key)) byKey.set(r.key, []);

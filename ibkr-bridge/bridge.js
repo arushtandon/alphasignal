@@ -530,8 +530,21 @@ async function main() {
     const key = evt.key || `${evt.ticker}|${evt.hz}|${evt.entryDate}`;
     if (evt.type === 'entry') {
       if (state.byKey[key] && state.byKey[key].parentId) { log('skip duplicate entry', key); return; }
-      const age = Date.now() - Date.parse(evt.t || evt.entryDate || 0);
-      if (Number.isFinite(age) && age > MAX_EVENT_AGE_MS) { log('skip stale entry', key, '(age h:', (age / 3600000).toFixed(1) + ')'); return; }
+      // Age gate on the TRADE's entry date (not the event emit time). A stale
+      // history re-save can emit a fresh evt.t for a months-old trade — that
+      // must NEVER place a live order (AZN.L Jun-09 incident).
+      const tradeTs = Date.parse(evt.entryDate || 0);
+      const emitTs = Date.parse(evt.t || 0);
+      const tradeAge = Date.now() - (Number.isFinite(tradeTs) ? tradeTs : emitTs);
+      if (Number.isFinite(tradeAge) && tradeAge > MAX_EVENT_AGE_MS) {
+        log('skip stale entry', key, '(trade age h:', (tradeAge / 3600000).toFixed(1) + ' — entryDate=', evt.entryDate || 'n/a', ')');
+        return;
+      }
+      const emitAge = Date.now() - (Number.isFinite(emitTs) ? emitTs : 0);
+      if (Number.isFinite(emitAge) && emitAge > MAX_EVENT_AGE_MS) {
+        log('skip stale entry', key, '(emit age h:', (emitAge / 3600000).toFixed(1) + ')');
+        return;
+      }
       const placed = await placeBracket(evt);
       if (placed) state.byKey[key] = placed;
       return;
@@ -636,6 +649,23 @@ async function main() {
         if (!c) continue;
         everTraded.add(posKeyOf(c));
         if (st === 'open') openTickers.add(posKeyOf(c));
+      }
+
+      // 0a. Cancel working orders for STALE keys still in state (e.g. AAPL Jun-09
+      // brackets queued for the next US open after a bad re-emit). Never let them fill.
+      for (const [key, row] of Object.entries(state.byKey)) {
+        if (row.closed || row.staleCancelled) continue;
+        const dayPart = key.split('|')[2];
+        const keyTs = Date.parse(dayPart || row.updated || 0);
+        if (!Number.isFinite(keyTs) || (Date.now() - keyTs) <= MAX_EVENT_AGE_MS) continue;
+        log('RECONCILE: cancelling STALE trade orders', key, '(key age h:', ((Date.now() - keyTs) / 3600000).toFixed(1) + ')');
+        cancelOrder(row.parentId, 'stale parent ' + key);
+        cancelOrder(row.stopId, 'stale stop ' + key);
+        if (row.tp1Id != null) cancelOrder(row.tp1Id, 'stale tp1 ' + key);
+        row.closed = true;
+        row.staleCancelled = true;
+        row.updated = new Date().toISOString();
+        saveState(state);
       }
 
       // 0. Upgrade legacy unfilled LMT parents to MOO/MKT — ONLY for same-session
