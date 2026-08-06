@@ -1699,7 +1699,7 @@ function switchTab(t){
       return refreshHistoryPnl().catch(function(){});
     }).then(renderPerf).catch(function(e){ console.warn(e); renderPerf(); });
   }
-  if(t==='ibkr') { renderIbkr(true); startIbkrMtm(); }
+  if(t==='ibkr') { startIbkrMtm(); }
   else stopIbkrMtm();
   if(t==='watchlist') renderWl();
 }
@@ -1709,12 +1709,16 @@ function switchTab(t){
 // ══════════════════════════════════════════════
 let _ibkrMtmTimer = null;
 let _ibkrMtmBusy = false;
+let _ibkrMtmQueued = false;
 function startIbkrMtm(){
   stopIbkrMtm();
+  // Fire immediately, then every 15s — do not require a manual Refresh click.
+  renderIbkr(true);
   _ibkrMtmTimer = setInterval(function(){
     const pane = document.getElementById('pane-ibkr');
-    if (pane && pane.classList.contains('vis')) renderIbkr(true);
-    else stopIbkrMtm();
+    if (!(pane && pane.classList.contains('vis'))) { stopIbkrMtm(); return; }
+    if (document.hidden) return; // pause while the browser tab is in the background
+    renderIbkr(true);
   }, 15000);
 }
 function stopIbkrMtm(){
@@ -1732,14 +1736,18 @@ function setIbkrMtmStamp(msg){
 async function renderIbkr(force){
   const el = document.getElementById('ibkrContent');
   if (!el) return;
-  if (_ibkrMtmBusy) return;
+  if (_ibkrMtmBusy) { _ibkrMtmQueued = true; return; }
   _ibkrMtmBusy = true;
   try {
     setIbkrMtmStamp('MTM refreshing…');
     const r = await fetch('/api/ibkr/trades?t=' + Date.now(), { cache: 'no-store' });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || 'bad response');
-    setIbkrMtmStamp();
+    const ibN = (d.trades || []).filter(t => t.openQty > 0 && t.markSrc === 'ibkr').length;
+    const openN = (d.trades || []).filter(t => t.openQty > 0).length;
+    setIbkrMtmStamp(null);
+    const stamp = document.getElementById('ibkrMtmStamp');
+    if (stamp) stamp.textContent += ' · ' + ibN + '/' + openN + ' marks from IB';
     if (!d.trades.length) {
       el.innerHTML = '<div class="emp"><div class="emp-a">α</div><p>No IBKR executions reported yet.<br>'
         + 'Fills appear here once the local bridge (ibkr-bridge) is running next to TWS/IB Gateway<br>'
@@ -1855,10 +1863,14 @@ async function renderIbkr(force){
 
     el.innerHTML = cards + analysisHtml + dailyHtml + tradesHtml;
   } catch (e) {
-    setIbkrMtmStamp('MTM error: '+e.message+' · retrying every 60s');
+    setIbkrMtmStamp('MTM error: '+e.message+' · retrying every 15s');
     el.innerHTML = '<div class="emp"><div class="emp-a">!</div><p>Could not load IBKR trades: '+e.message+'</p></div>';
   } finally {
     _ibkrMtmBusy = false;
+    if (_ibkrMtmQueued) {
+      _ibkrMtmQueued = false;
+      setTimeout(function(){ renderIbkr(true); }, 250);
+    }
   }
 }
 

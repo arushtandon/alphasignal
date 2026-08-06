@@ -361,6 +361,9 @@ async function main() {
     const timeFloor = Math.floor((Date.now() - Date.UTC(2025, 0, 1)) / 1000);
     nextOrderId = Math.max(nextOrderId, timeFloor);
     log('Connected to IB paper. starting orderId=', nextOrderId);
+    // Prefer delayed-frozen when live is unavailable (paper / competing TWS
+    // session → error 10197). Still receives US pre/post when IB has it.
+    try { ib.reqMarketDataType(4); log('marketDataType=4 (delayed-frozen)'); } catch (_) {}
     // Subscribe to positions — the source of truth for how many shares are
     // actually held (orderFills is in-memory only and dies with each restart).
     ib.on(EventName.position, (account, contract, pos) => {
@@ -370,15 +373,16 @@ async function main() {
     ib.on(EventName.positionEnd, () => { positionsReady = true; log('IB position snapshot ready —', posMap.size, 'symbol(s)'); });
     ib.reqPositions();
     // Streaming ticks → live MTM on the AlphaSignal IBKR tab.
+    // Also accept tick 66/67/68/75 (delayed last/bid/ask/close) for paper/RTH-off.
     ib.on(EventName.tickPrice, (tickerId, field, price) => {
       const row = mktById.get(Number(tickerId));
       if (!row || !(Number(price) > 0)) return;
       const px = Number(price);
-      // 1=bid 2=ask 4=last 6=high 7=low 9=close
-      if (field === 4) row.last = px;
-      else if (field === 1) row.bid = px;
-      else if (field === 2) row.ask = px;
-      else if (field === 9) row.close = px;
+      // Live: 1=bid 2=ask 4=last 9=close | Delayed: 66=last 67=bid 68=ask 75=close
+      if (field === 4 || field === 66) row.last = px;
+      else if (field === 1 || field === 67) row.bid = px;
+      else if (field === 2 || field === 68) row.ask = px;
+      else if (field === 9 || field === 75) row.close = px;
     });
   } else {
     log('DRY RUN — orders are logged only. Set IBKR_DRY_RUN=0 to place paper orders.');
@@ -417,7 +421,7 @@ async function main() {
     } catch (e) { log('mktData subscribe failed', ticker, e.message); }
   }
 
-  function syncMktSubscriptions() {
+  async function syncMktSubscriptions() {
     // Open AlphaSignal trades that have (or may have) a live position
     for (const row of Object.values(state.byKey)) {
       if (row.closed || !row.contract || !row.ticker) continue;
@@ -429,11 +433,21 @@ async function main() {
       const y = yahooFromContract(contract);
       if (y) ensureMktData(y, contract);
     }
+    // Also subscribe whatever the IBKR tab currently shows as open — keeps
+    // FANG/VTR marked even if bridge state was wrongly closed.
+    try {
+      const t = await fetchJson('/api/ibkr/trades');
+      for (const row of (t && t.trades) || []) {
+        if (!row || row.openQty <= 0 || !row.ticker) continue;
+        const c = toContract(row.ticker);
+        if (c) ensureMktData(row.ticker, c);
+      }
+    } catch (_) {}
   }
 
   async function flushMarks() {
     if (DRY) return;
-    syncMktSubscriptions();
+    await syncMktSubscriptions();
     const marks = [];
     for (const row of mktById.values()) {
       const mid = (row.bid > 0 && row.ask > 0) ? (row.bid + row.ask) / 2 : null;
@@ -734,20 +748,41 @@ async function main() {
         if (st === 'open') openTickers.add(posKeyOf(c));
       }
 
-      // 0a. Cancel working orders for STALE keys still in state (e.g. AAPL Jun-09
-      // brackets queued for the next US open after a bad re-emit). Never let them fill.
+      // 0a. Cancel working orders for ANCIENT keys only (e.g. Jun-09 re-emits).
+      // Do NOT use the 24h entry-event age here — open trades routinely live
+      // multi-day; a 24h cut wrongly closed VTR/FANG/9988 and dropped their
+      // market-data subscriptions. Only cancel if the key day is >7d old AND
+      // IB holds no position for that contract.
+      const STALE_ORDER_MS = 7 * 24 * 3600 * 1000;
       for (const [key, row] of Object.entries(state.byKey)) {
-        if (row.closed || row.staleCancelled) continue;
+        if (row.closed || row.staleCancelled || !row.contract) continue;
         const dayPart = key.split('|')[2];
-        const keyTs = Date.parse(dayPart || row.updated || 0);
-        if (!Number.isFinite(keyTs) || (Date.now() - keyTs) <= MAX_EVENT_AGE_MS) continue;
-        log('RECONCILE: cancelling STALE trade orders', key, '(key age h:', ((Date.now() - keyTs) / 3600000).toFixed(1) + ')');
+        const keyTs = Date.parse(dayPart || 0);
+        if (!Number.isFinite(keyTs) || (Date.now() - keyTs) <= STALE_ORDER_MS) continue;
+        const held = posMap.get(posKeyOf(row.contract));
+        const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+        if (posInDir > 0) continue; // still live at IB — leave alone
+        log('RECONCILE: cancelling ANCIENT trade orders', key, '(key age h:', ((Date.now() - keyTs) / 3600000).toFixed(1) + ')');
         cancelOrder(row.parentId, 'stale parent ' + key);
         cancelOrder(row.stopId, 'stale stop ' + key);
         if (row.tp1Id != null) cancelOrder(row.tp1Id, 'stale tp1 ' + key);
         row.closed = true;
         row.staleCancelled = true;
         row.updated = new Date().toISOString();
+        saveState(state);
+      }
+
+      // 0a2. Re-open rows wrongly marked closed while IB still holds the shares
+      // (recovery from the old 24h stale-cancel bug).
+      for (const [key, row] of Object.entries(state.byKey)) {
+        if (!row.closed || !row.staleCancelled || !row.contract) continue;
+        const held = posMap.get(posKeyOf(row.contract));
+        const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+        if (posInDir <= 0) continue;
+        row.closed = false;
+        row.staleCancelled = false;
+        row.entryFilled = true;
+        log('RECONCILE: re-opened', key, '— IB still holds', posInDir, 'shares');
         saveState(state);
       }
 
