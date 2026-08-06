@@ -318,12 +318,15 @@ async function main() {
 
   function nid() { return nextOrderId++; }
 
+  // Declared before IB error handler — early connect errors must not hit a TDZ.
+  let mdType = Math.max(1, Math.min(4, parseInt(process.env.IBKR_MARKET_DATA_TYPE || '3', 10) || 3));
+  let mdFellBack = false;
+  let mdCompeteLogged = false;
+
   if (!DRY) {
     const stoqey = require('@stoqey/ib');
     EventName = stoqey.EventName;
     ib = new stoqey.IBApi({ host: HOST, port: PORT, clientId: CLIENT_ID });
-    let mdFellBack = false;
-    let mdCompeteLogged = false;
     ib.on(EventName.error, (err, code, reqId) => {
       // 2104/2106/2158 are benign "market data farm OK" notices
       if ([2104, 2106, 2107, 2158].includes(Number(code))) return;
@@ -335,6 +338,7 @@ async function main() {
           mdFellBack = true;
           try {
             ib.reqMarketDataType(3);
+            mdType = 3;
             log('marketDataType switched to 3 (delayed) after error', code);
             resubscribeAllMkt('delayed-fallback');
           } catch (_) {}
@@ -396,7 +400,6 @@ async function main() {
     // Default DELAYED (3): wall-clock/TWS usually holds the single live MD
     // session → live (1) throws 10197 and freezes ticks. Set
     // IBKR_MARKET_DATA_TYPE=1 only when nothing else is using live data.
-    const mdType = Math.max(1, Math.min(4, parseInt(process.env.IBKR_MARKET_DATA_TYPE || '3', 10) || 3));
     try { ib.reqMarketDataType(mdType); log('marketDataType=' + mdType + (mdType === 1 ? ' (live)' : mdType === 3 ? ' (delayed)' : '')); } catch (_) {}
     // Subscribe to positions — the source of truth for how many shares are
     // actually held (orderFills is in-memory only and dies with each restart).
