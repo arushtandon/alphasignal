@@ -12190,14 +12190,15 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
     const price = Number(m && m.price);
     if (!ticker || !(price > 0)) continue;
     const prev = _ibkrLiveMarks[ticker];
-    // Freshness must follow the last IB tick, not the bridge POST time.
-    // Otherwise a frozen delayed print (competing live session) looks "live"
-    // forever because flushMarks posts every ~15s with the same price.
+    const prevPx = prev ? Number(prev.price) : NaN;
+    const priceChanged = !(prevPx > 0) || Math.abs(prevPx - price) / prevPx > 1e-9;
+    // Only advance lastTickAt when the IB print actually moves. Re-posting the
+    // same portfolio mark every 15s must not look "fresh" and block FMP.
     let lastTickAt = m.lastTickAt != null ? Number(m.lastTickAt) : NaN;
     if (!(lastTickAt > 0)) {
-      if (prev && Number(prev.price) === price && prev.lastTickAt > 0) lastTickAt = Number(prev.lastTickAt);
-      else if (prev && Number(prev.price) === price && prev.at > 0) lastTickAt = Number(prev.at);
-      else lastTickAt = now;
+      lastTickAt = priceChanged ? now : Number(prev && prev.lastTickAt) || now;
+    } else if (!priceChanged && prev && prev.lastTickAt > 0) {
+      lastTickAt = Math.min(lastTickAt, Number(prev.lastTickAt));
     }
     _ibkrLiveMarks[ticker] = {
       price,
@@ -12218,14 +12219,14 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
 const _ibkrMarkCache = new Map(); // sym -> { px, at, src }
 const _ibkrFx = { at: 0, rates: {} };
 
-/** FMP last price for IBKR MTM when live IB ticks are missing/stale.
- *  Keep this FAST — the IBKR tab polls every 5s and the bridge also hits
- *  /api/ibkr/trades. Do NOT call fmpAllSymbolVariants (exchange search). */
+/** FMP last price — primary live MTM for the IBKR tab (Ultimate quote feed).
+ *  Keep this FAST. Do NOT call fmpAllSymbolVariants (exchange search). */
 async function fetchFmpQuotePrice(symbol) {
   const k = fmpEnvKeyFund();
   if (!k || !symbol) return null;
   const cached = _ibkrMarkCache.get('fmp:' + symbol);
-  if (cached && Date.now() - cached.at < 10 * 1000 && cached.px > 0) {
+  // Short cache so the 5s IBKR tab poll can show tape movement.
+  if (cached && Date.now() - cached.at < 4000 && cached.px > 0) {
     return { price: cached.px, src: 'fmp' };
   }
   // Short static list only (Yahoo-style + bare). Try batch v3 first (fastest).
@@ -12392,46 +12393,36 @@ app.get('/api/ibkr/trades', async (req, res) => {
     let markMap = {};
     if (needMarks.length) {
       const uniq = [...new Set(needMarks)];
-      // Priority: fresh IB ticks → FMP quote → Yahoo last.
-      // Fresh = lastTickAt (when IB last printed), not bridge POST time.
-      const IB_FRESH_MS = 45 * 1000;
+      // Live MTM: FMP quote first (updates during the session), then IB only if
+      // the bridge print actually moved recently, then Yahoo. This stops the
+      // FMP↔IB tag flip caused by sticky IB portfolio marks re-posted every 15s.
+      const IB_MOVED_MS = 30 * 1000;
       await Promise.all(uniq.map(async (sym) => {
-        const resolved = _ibkrMarkCache.get('resolved:' + sym);
-        if (resolved && resolved.px > 0 && Date.now() - resolved.at < 5000) {
-          markMap[sym] = { price: resolved.px, src: resolved.src };
-          return;
-        }
-        const ibm = _ibkrLiveMarks[sym];
-        const tickAt = Number(ibm && (ibm.lastTickAt || ibm.at) || 0);
-        const ibFresh = ibm && Number(ibm.price) > 0 && tickAt > 0 && (Date.now() - tickAt) < IB_FRESH_MS;
         let picked = null;
-        if (ibFresh) {
-          picked = { price: Number(ibm.price), src: 'ibkr' };
-        } else {
+        try {
+          const fmp = await fetchFmpQuotePrice(sym);
+          if (fmp && fmp.price > 0) picked = { price: fmp.price, src: 'fmp' };
+        } catch (_) {}
+        if (!picked) {
+          const ibm = _ibkrLiveMarks[sym];
+          const tickAt = Number(ibm && ibm.lastTickAt || 0);
+          const ibMoved = ibm && Number(ibm.price) > 0 && tickAt > 0 && (Date.now() - tickAt) < IB_MOVED_MS;
+          if (ibMoved) picked = { price: Number(ibm.price), src: 'ibkr' };
+        }
+        if (!picked) {
           try {
-            const fmp = await fetchFmpQuotePrice(sym);
-            if (fmp && fmp.price > 0) picked = { price: fmp.price, src: 'fmp' };
+            const bulk = await fetchQuotesV7Bulk([sym]);
+            const px = bulk[sym] && Number(bulk[sym].price);
+            if (px > 0) picked = { price: px, src: 'yahoo:v7' };
           } catch (_) {}
-          // Prefer Yahoo v7 quote over 1m chart — 1m bars stay flat for ~60s and
-          // look "dead" on the IBKR tab even when the tape is moving.
-          if (!picked) {
-            try {
-              const bulk = await fetchQuotesV7Bulk([sym]);
-              const px = bulk[sym] && Number(bulk[sym].price);
-              if (px > 0) picked = { price: px, src: 'yahoo:v7' };
-            } catch (_) {}
-          }
-          if (!picked) {
-            try {
-              const yahoo = await fetchSessionAwareMark(sym);
-              if (yahoo && yahoo.price > 0) picked = { price: yahoo.price, src: yahoo.src || 'yahoo' };
-            } catch (_) {}
-          }
         }
-        if (picked) {
-          markMap[sym] = picked;
-          _ibkrMarkCache.set('resolved:' + sym, { px: picked.price, src: picked.src, at: Date.now() });
+        if (!picked) {
+          try {
+            const yahoo = await fetchSessionAwareMark(sym);
+            if (yahoo && yahoo.price > 0) picked = { price: yahoo.price, src: yahoo.src || 'yahoo' };
+          } catch (_) {}
         }
+        if (picked) markMap[sym] = picked;
       }));
     }
 

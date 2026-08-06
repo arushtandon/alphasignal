@@ -434,7 +434,13 @@ async function main() {
         aliases.add(String(contract.symbol) + '.DE');
         aliases.add(String(contract.symbol) + '.PA');
       }
-      for (const t of aliases) portfolioMarks.set(t, { price: px, at: now, contract });
+      for (const t of aliases) {
+        const prev = portfolioMarks.get(t);
+        // Only bump `at` when price moves — sticky portfolio reprints must not
+        // look like fresh ticks on the AlphaSignal server.
+        const moved = !prev || Math.abs(Number(prev.price) - px) > 1e-9;
+        portfolioMarks.set(t, { price: px, at: moved ? now : (prev.at || now), contract });
+      }
     });
     try {
       ib.reqAccountUpdates(true, ACCOUNT || '');
