@@ -12213,12 +12213,47 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
 const _ibkrMarkCache = new Map(); // sym -> { px, at, src }
 const _ibkrFx = { at: 0, rates: {} };
 
+/** Session-aware last trade for MTM (pre/post included). Prefer the latest
+ *  1m bar with includePrePost — IB delayed-frozen often sticks on a stale print
+ *  in US extended hours (e.g. FANG 194.6 vs live premarket ~186). */
+async function fetchSessionAwareMark(symbol) {
+  const variants = [symbol, String(symbol).replace(/\./g, '-')].filter((v, i, a) => a.indexOf(v) === i);
+  for (const sym of variants) {
+    for (const host of ['query1', 'query2']) {
+      const url = `https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=1d&interval=1m&includePrePost=true`;
+      try {
+        const r = await fetch(url, { headers: YF_HEADERS, signal: AbortSignal.timeout(8000) });
+        if (!r.ok) continue;
+        const d = await r.json();
+        const res = d?.chart?.result?.[0];
+        if (!res) continue;
+        const meta = res.meta || {};
+        const q = res.indicators?.quote?.[0] || {};
+        const closes = (q.close || []).filter(c => c != null && Number(c) > 0);
+        const lastBar = closes.length ? Number(closes[closes.length - 1]) : null;
+        const pre = Number(meta.preMarketPrice);
+        const post = Number(meta.postMarketPrice);
+        const reg = Number(meta.regularMarketPrice);
+        // Prefer the most recent extended-hours print, then regular.
+        let price = null, src = null;
+        if (lastBar > 0) { price = lastBar; src = 'yahoo:1m'; }
+        else if (pre > 0) { price = pre; src = 'yahoo:pre'; }
+        else if (post > 0) { price = post; src = 'yahoo:post'; }
+        else if (reg > 0) { price = reg; src = 'yahoo:reg'; }
+        if (price > 0) return { price, src, pre: pre || null, post: post || null, regular: reg || null };
+      } catch (_) { /* next */ }
+    }
+  }
+  return null;
+}
+
 /** Live last-trade for IBKR MTM. Prefers 1m/5m chart bars (update during the
  *  session); daily close is last resort. No 15-bar floor — even 1 bar is enough. */
 async function fetchIbkrLastTrade(symbol) {
+  const live = await fetchSessionAwareMark(symbol);
+  if (live) return live;
   const variants = [symbol, String(symbol).replace(/\./g, '-')].filter((v, i, a) => a.indexOf(v) === i);
   const attempts = [
-    { range: '1d', interval: '1m' },
     { range: '5d', interval: '5m' },
     { range: '5d', interval: '1d' }
   ];
@@ -12313,37 +12348,39 @@ app.get('/api/ibkr/trades', async (req, res) => {
     let markMap = {};
     if (needMarks.length) {
       const uniq = [...new Set(needMarks)];
-      const MARK_FRESH_MS = 90 * 1000; // bridge posts ~every 10s; accept up to 90s
-      for (const sym of uniq) {
-        // 1) Prefer live IBKR marks pushed by the local bridge (TWS/Gateway).
+      const IB_FRESH_MS = 90 * 1000;
+      // Wall-clock style: always pull a fresh session-aware Yahoo mark (includes
+      // US pre/post). Only keep an IB tick if it agrees within 1% — delayed IB
+      // paper data has been posting stale/wrong US prints (FANG 194 vs ~186).
+      await Promise.all(uniq.map(async (sym) => {
+        let yahoo = null;
+        try { yahoo = await fetchSessionAwareMark(sym); } catch (_) {}
         const ibm = _ibkrLiveMarks[sym];
-        if (ibm && Number(ibm.price) > 0 && (Date.now() - Number(ibm.at || 0)) < MARK_FRESH_MS) {
-          markMap[sym] = { price: Number(ibm.price), src: 'ibkr' };
-          continue;
-        }
-        // 2) Yahoo fallback only when the bridge has no fresh mark.
-        const cached = _ibkrMarkCache.get(sym);
-        if (cached && Date.now() - cached.at < 40 * 1000) {
-          markMap[sym] = { price: cached.px, src: cached.src || 'yahoo' };
-          continue;
-        }
-        try {
-          const live = await fetchIbkrLastTrade(sym);
-          if (live && live.price > 0) {
-            markMap[sym] = { price: live.price, src: live.src };
-            _ibkrMarkCache.set(sym, { px: live.price, at: Date.now(), src: live.src });
-            continue;
+        const ibFresh = ibm && Number(ibm.price) > 0 && (Date.now() - Number(ibm.at || 0)) < IB_FRESH_MS;
+        if (yahoo && yahoo.price > 0 && ibFresh) {
+          const drift = Math.abs(Number(ibm.price) - yahoo.price) / yahoo.price;
+          if (drift <= 0.01) {
+            markMap[sym] = { price: Number(ibm.price), src: 'ibkr' };
+            return;
           }
-        } catch (_) {}
+          // IB disagrees — trust Yahoo extended-hours
+          markMap[sym] = { price: yahoo.price, src: yahoo.src || 'yahoo' };
+          return;
+        }
+        if (yahoo && yahoo.price > 0) {
+          markMap[sym] = { price: yahoo.price, src: yahoo.src || 'yahoo' };
+          return;
+        }
+        if (ibFresh) {
+          markMap[sym] = { price: Number(ibm.price), src: 'ibkr' };
+          return;
+        }
         try {
           const bulk = await fetchQuotesV7Bulk([sym]);
           const px = bulk[sym] && Number(bulk[sym].price);
-          if (px > 0) {
-            markMap[sym] = { price: px, src: 'v7' };
-            _ibkrMarkCache.set(sym, { px, at: Date.now(), src: 'v7' });
-          }
+          if (px > 0) markMap[sym] = { price: px, src: 'v7' };
         } catch (_) {}
-      }
+      }));
     }
 
     // Join AlphaSignal's own lifecycle events so each IBKR trade carries the
