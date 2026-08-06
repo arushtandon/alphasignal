@@ -195,7 +195,12 @@ async function main() {
   let ib = null;
   let EventName = null;
   let nextOrderId = 1;
-  const orderFills = {}; // orderId -> filled qty (from orderStatus)
+  const orderFills = {}; // orderId -> filled qty (from orderStatus) — LOST on restart
+  // Live positions from IB (survives restarts, unlike orderFills). Keyed
+  // "SYMBOL|CCY" -> { pos, contract }. Populated by the reqPositions subscription.
+  const posMap = new Map();
+  let positionsReady = false; // set once IB's initial position snapshot lands
+  const posKeyOf = c => `${String(c.symbol).toUpperCase()}|${c.currency}`;
 
   function nid() { return nextOrderId++; }
 
@@ -254,6 +259,14 @@ async function main() {
     const timeFloor = Math.floor((Date.now() - Date.UTC(2025, 0, 1)) / 1000);
     nextOrderId = Math.max(nextOrderId, timeFloor);
     log('Connected to IB paper. starting orderId=', nextOrderId);
+    // Subscribe to positions — the source of truth for how many shares are
+    // actually held (orderFills is in-memory only and dies with each restart).
+    ib.on(EventName.position, (account, contract, pos) => {
+      if (ACCOUNT && account !== ACCOUNT) return;
+      posMap.set(posKeyOf(contract), { pos: Number(pos) || 0, contract });
+    });
+    ib.on(EventName.positionEnd, () => { positionsReady = true; log('IB position snapshot ready —', posMap.size, 'symbol(s)'); });
+    ib.reqPositions();
   } else {
     log('DRY RUN — orders are logged only. Set IBKR_DRY_RUN=0 to place paper orders.');
   }
@@ -379,10 +392,20 @@ async function main() {
     if (!row || row.closed) return;
     cancelOrder(row.stopId, 'stop @exit ' + key);
     if (row.tp1Id != null && !row.tp1Done) cancelOrder(row.tp1Id, 'tp1 @exit ' + key);
-    // Flatten whatever is still held: parent filled − TP1 sold (if TP1 ran).
-    const parentFilled = DRY ? row.qtyTotal : (orderFills[row.parentId] || 0);
-    const soldAtTp1 = row.tp1Done ? row.qtySold : (row.tp1Id != null ? (orderFills[row.tp1Id] || 0) : 0);
-    const remaining = Math.max(0, parentFilled - soldAtTp1);
+    // Flatten whatever is still held. Prefer the LIVE IB position (survives
+    // bridge restarts); orderFills is only a fallback for the first seconds
+    // before the position snapshot arrives. The old fills-only math flattened
+    // ZERO shares after a restart and left positions running forever.
+    const held = row.contract ? posMap.get(posKeyOf(row.contract)) : null;
+    let remaining;
+    if (!DRY && held) {
+      remaining = row.side === 'sell' ? Math.max(0, -held.pos) : Math.max(0, held.pos);
+      remaining = Math.min(remaining, row.qtyTotal); // never flatten more than this trade's size
+    } else {
+      const parentFilled = DRY ? row.qtyTotal : (orderFills[row.parentId] || 0);
+      const soldAtTp1 = row.tp1Done ? row.qtySold : (row.tp1Id != null ? (orderFills[row.tp1Id] || 0) : 0);
+      remaining = Math.max(0, parentFilled - soldAtTp1);
+    }
     if (remaining > 0) {
       const fid = nid();
       row.closeIds = [...(row.closeIds || []), fid];
@@ -476,6 +499,87 @@ async function main() {
     } catch (e) { log('sweep error', e.message); }
   }
 
+  // ── Position reconciliation ─────────────────────────────────────────────────
+  // The account is the source of truth for SHARES; AlphaSignal's event log is
+  // the source of truth for which trades should be open. Every sweep:
+  //   1. Any IB position in a ticker AlphaSignal has traded but no longer holds
+  //      open (entry followed by exit, or never tracked after a state reset)
+  //      is flattened at market. This catches positions orphaned by bridge
+  //      restarts, lost state files, and the old flatten-zero bug.
+  //   2. Any state row that is flat at IB with no working orders is marked
+  //      closed; if the server still counts an open quantity for it (its exit
+  //      filled while the bridge was down — e.g. a GTC stop), a synthetic
+  //      stop-price execution is reported so the IBKR tab closes the trade.
+  async function reconcilePositions() {
+    if (DRY || !ib) return;
+    if (!positionsReady) { log('reconcile skipped — waiting for IB position snapshot'); return; }
+    try {
+      const feed = await fetchJson('/api/ibkr/events?since=0&limit=1000');
+      const events = (feed && feed.events) || [];
+      if (!events.length) return;
+      const keyState = new Map(); // key -> 'open' | 'closed'
+      for (const e of events) {
+        if (!e.key) continue;
+        if (e.type === 'entry') { if (!keyState.has(e.key)) keyState.set(e.key, 'open'); }
+        else if (e.type === 'exit') keyState.set(e.key, 'closed');
+      }
+      const everTraded = new Set();   // "SYM|CCY" AlphaSignal ever traded
+      const openTickers = new Set();  // "SYM|CCY" with at least one open key
+      for (const [key, st] of keyState) {
+        const c = toContract(key.split('|')[0]);
+        if (!c) continue;
+        everTraded.add(posKeyOf(c));
+        if (st === 'open') openTickers.add(posKeyOf(c));
+      }
+
+      // 1. Orphan POSITIONS — held at IB, closed (or unknown) per AlphaSignal.
+      for (const [pk, { pos, contract }] of posMap) {
+        if (!pos || !everTraded.has(pk) || openTickers.has(pk)) continue;
+        const qty = Math.abs(pos);
+        const fid = nid();
+        log('RECONCILE: flattening orphan position', pk, 'pos=' + pos, '(AlphaSignal has no open trade for it)');
+        transmitOrder(fid, {
+          conId: contract.conId, symbol: contract.symbol,
+          secType: contract.secType || 'STK', exchange: 'SMART', currency: contract.currency
+        }, baseOrder({
+          orderId: fid, action: pos > 0 ? 'SELL' : 'BUY',
+          orderType: 'MKT', totalQuantity: qty, tif: 'DAY', transmit: true
+        }), 'reconcile-flatten ' + pk);
+        posMap.set(pk, { pos: 0, contract }); // don't re-fire before the fill updates
+      }
+
+      // 2. Rows flat at IB but never closed in state (exit filled while down).
+      let serverTrades = null;
+      for (const [key, row] of Object.entries(state.byKey)) {
+        if (row.closed || !row.contract) continue;
+        const held = posMap.get(posKeyOf(row.contract));
+        const flatAtIb = held ? held.pos === 0 : !posMap.has(posKeyOf(row.contract));
+        if (!flatAtIb) continue;
+        if (keyState.get(key) === 'open') continue; // model still open + flat = entry never filled yet
+        row.closed = true;
+        row.updated = new Date().toISOString();
+        log('RECONCILE: marking', key, 'closed (flat at IB, model exited)');
+        try {
+          if (!serverTrades) serverTrades = await fetchJson('/api/ibkr/trades');
+          const t = (serverTrades.trades || []).find(x => x.key === key);
+          if (t && t.openQty > 0) {
+            state.pendingReports = state.pendingReports || [];
+            state.pendingReports.push({
+              kind: 'exec', execId: `synth-${key}-${row.stopId}`, key,
+              ticker: row.ticker, hz: row.hz, side: row.side, role: 'stop',
+              orderId: row.stopId, qty: t.openQty, price: row.stopPx,
+              currency: row.contract.currency || 'USD',
+              ccyScale: row.contract.penceQuoted ? 100 : 1,
+              synthetic: true, time: new Date().toISOString()
+            });
+            log('RECONCILE: synthetic stop exec reported for', key, t.openQty + '@' + row.stopPx, '(fill was missed while bridge was down)');
+          }
+        } catch (e) { log('reconcile trades fetch failed:', e.message); }
+        saveState(state);
+      }
+    } catch (e) { log('reconcile error', e.message); }
+  }
+
   async function pollOnce() {
     const data = await fetchJson(`/api/ibkr/events?since=${state.since}&limit=100`);
     const events = data.events || [];
@@ -514,7 +618,11 @@ async function main() {
   for (;;) {
     try { await pollOnce(); }
     catch (e) { log('poll error', e.message); }
-    if (Date.now() - lastSweep > SWEEP_MS) { lastSweep = Date.now(); sweepOrphans(); }
+    if (Date.now() - lastSweep > SWEEP_MS) {
+      lastSweep = Date.now();
+      sweepOrphans();
+      await reconcilePositions().catch(e => log('reconcile error', e.message));
+    }
     await new Promise(r => setTimeout(r, POLL_MS));
   }
 }
