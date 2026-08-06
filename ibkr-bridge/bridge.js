@@ -184,9 +184,11 @@ function sessionPhase(contract, nowMs = Date.now()) {
  */
 function parentEntrySpec(contract, action, qty) {
   const phase = sessionPhase(contract);
+  // IB SMART often rejects orderType 'MOO' (error 321). The portable form is
+  // MKT + tif OPG (submit to the opening auction).
   if (contract.usRth) {
     if (phase === 'closed') {
-      return { orderType: 'MOO', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MOO' };
+      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
     }
     // Premarket / RTH / post: marketable with outsideRth so IB accepts extended hours
     return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: true, transmit: false, entryStyle: 'MKT-EXT' };
@@ -195,8 +197,8 @@ function parentEntrySpec(contract, action, qty) {
     // Late board after the cash open — take market now, don't wait for tomorrow
     return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MKT' };
   }
-  // Pre-open or after previous close → Market-On-Open for the next auction
-  return { orderType: 'MOO', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MOO' };
+  // Pre-open or after previous close → opening auction
+  return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
 }
 
 // ── FX sizing ────────────────────────────────────────────────────────────────
@@ -603,12 +605,19 @@ async function main() {
         if (st === 'open') openTickers.add(posKeyOf(c));
       }
 
-      // 0. Upgrade legacy unfilled LMT parents to MOO/MKT (one-shot per key).
-      // Old bridge placed DAY limits at the model price; those miss the open.
-      // Cancel the stale bracket and re-place with market-on-open / outsideRTH.
+      // 0. Upgrade legacy unfilled LMT parents to MOO/MKT — ONLY for same-session
+      // recommendations. A missed entry from a prior day stays missed (user policy).
+      // Window: placed < 12h ago, model still open, flat at IB, no fill recorded.
       for (const [key, row] of Object.entries(state.byKey)) {
         if (row.closed || row.entryFilled || row.entryStyle || row.upgradedToMkt) continue;
         if (keyState.get(key) !== 'open') continue;
+        const ageH = (Date.now() - Date.parse(row.updated || 0)) / 3600000;
+        if (!(ageH >= 0) || ageH > 12) {
+          row.upgradedToMkt = true; // mark so we never chase a stale miss
+          log('RECONCILE: skip legacy upgrade (stale/missed entry)', key, 'ageH=', ageH.toFixed(1));
+          saveState(state);
+          continue;
+        }
         const held = row.contract ? posMap.get(posKeyOf(row.contract)) : null;
         const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
         if (posInDir > 0) continue; // already filled — leave alone
@@ -625,7 +634,7 @@ async function main() {
           if (placed) {
             placed.upgradedToMkt = true;
             state.byKey[key] = placed;
-            log('RECONCILE: upgraded legacy LMT →', placed.entryStyle, key);
+            log('RECONCILE: upgraded same-session LMT →', placed.entryStyle, key);
           } else {
             log('RECONCILE: legacy LMT cancelled but re-place skipped', key);
           }
