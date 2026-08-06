@@ -561,31 +561,12 @@ async function main() {
         const held = posMap.get(posKeyOf(row.contract));
         const flatAtIb = held ? held.pos === 0 : !posMap.has(posKeyOf(row.contract));
         if (!flatAtIb) continue;
-        if (keyState.get(key) === 'open') {
-          // Model still holds this trade open but IB is flat: the DAY entry LMT
-          // expired unfilled (e.g. recommended 20 min before the exchange close).
-          // Re-arm the bracket ONCE at the next session so the account converges
-          // with the model instead of missing the trade entirely.
-          const ageH = (Date.now() - Date.parse(row.updated || 0)) / 3600000;
-          if (!row.rearmed && ageH > 18 && ageH < 72) {
-            try {
-              if (!serverTrades) serverTrades = await fetchJson('/api/ibkr/trades');
-              const everFilled = (serverTrades.trades || []).some(x => x.key === key);
-              if (!everFilled) {
-                row.rearmed = true; // one-shot even if placement fails — never loop
-                const placed = await placeBracket({
-                  key, ticker: row.ticker, hz: row.hz, side: row.side,
-                  entry: row.entry, tp1: row.tp1Px, sl: row.stopPx, trailSl: row.stopPx,
-                  t: new Date().toISOString()
-                });
-                if (placed) { placed.rearmed = true; state.byKey[key] = placed; }
-                log('RECONCILE: re-armed unfilled entry', key, placed ? '(bracket re-placed)' : '(re-place failed/skipped)');
-                saveState(state);
-              }
-            } catch (e) { log('re-arm failed', key, e.message); }
-          }
-          continue;
-        }
+        // Model open + IB flat = the DAY entry LMT expired unfilled. By design
+        // the trade is MISSED, permanently: entry timing is part of the signal,
+        // so we never re-place an expired entry just because the price comes
+        // back to the level. A new position requires a fresh entry event from
+        // the model under current market conditions.
+        if (keyState.get(key) === 'open') continue;
         row.closed = true;
         row.updated = new Date().toISOString();
         log('RECONCILE: marking', key, 'closed (flat at IB, model exited)');
