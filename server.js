@@ -2855,23 +2855,12 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
     const entry = data[i + 1]?.o ?? data[i].c;
     if (!entry || entry <= 0) continue;
 
-    // Same min-R:R gate the live pick pipeline applies to medium/long — the
-    // replay must only take trades we would actually recommend (a 12%-stop /
-    // 5%-target setup is rejected live, so counting it poisoned the stats).
-    // Short is left ungated here: its live RR check runs on the full pick-time
-    // tech (channels/S-R) which this lightweight per-bar replay understates.
-    // Long may also qualify via its TP2 runner target at a 1.6× premium (the
-    // wide long stop is paid for by the runner, not the first partial).
+    // Same hard 1.1:1 TP1-vs-SL gate as live recommendations — no TP2 escape.
     if (hz !== 'short') {
       const gSl = computeTrailingStopFromTech(tech, entry, hz, isSell, fund);
       const gTp = computeFirstTargetFromTech(tech, entry, hz, isSell, gSl);
       if (gSl != null && gTp != null && !levelsMeetMinRR(entry, gTp, gSl, isSell, PICKS_MIN_RR)) {
-        let ok = false;
-        if (hz === 'long') {
-          const gTp2 = computeSecondTargetFromTech(tech, entry, hz, isSell, gTp);
-          ok = gTp2 != null && levelsMeetMinRR(entry, gTp2, gSl, isSell, PICKS_MIN_RR * 1.6);
-        }
-        if (!ok) continue;
+        continue;
       }
     }
 
@@ -10145,13 +10134,13 @@ function bracketEnabled(side, hz) {
 
 const HORIZON_MIN_PCT = {
   // SL: noise floors only (ATR / structure still drive the actual stop).
-  // After floors, enforceMinRiskReward lifts TP1 so reward/risk ≥ minRR.
+  // TP stays ATR/structure — never invented to pass RR. Below PICKS_MIN_RR → not recommended.
   short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.1 },
   medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.1 },
   long:   { sl: 0.080, tp1: 0, tp2: 0, minRR: 1.1 }
 };
 
-/** Minimum reward:risk (TP1 vs SL) for dashboard / history picks. Default 1.1. */
+/** Hard floor: TP1 reward / SL risk must be ≥ 1.1 or the setup is not recommended. */
 const PICKS_MIN_RR = Math.max(1.1, parseFloat(process.env.PICKS_MIN_RR || '1.1') || 1.1);
 
 function rewardRiskRatio(entry, tp1, sl, isSell) {
@@ -10871,28 +10860,14 @@ function stampDashDataReasons(dashData) {
   }
 }
 
-/** Ensure TP1 clears minRR vs SL (SL % floors often widen the stop and would
- *  otherwise leave reward < risk — e.g. AIR.DE TP1 +8.2 / SL −15.5). Then keep TP2 beyond TP1. */
-function enforceMinRiskReward(e, tp1, tp2, sl, isSell, minRR = PICKS_MIN_RR) {
+/** Keep TP2 beyond TP1 only. Never invent TP1 to pass RR — filterDashDataByMinRR
+ *  / levelsMeetMinRR drop setups below PICKS_MIN_RR (1.1:1 on TP1 vs SL). */
+function enforceMinRiskReward(e, tp1, tp2, sl, isSell, _minRR = PICKS_MIN_RR) {
   if (!e || !Number.isFinite(+e)) return { tp1, tp2, sl };
   e = +e;
   tp1 = tp1 != null ? +tp1 : null;
   tp2 = tp2 != null ? +tp2 : null;
   sl = sl != null ? +sl : null;
-  const need = Math.max(1.1, Number(minRR) || PICKS_MIN_RR);
-  if (Number.isFinite(tp1) && Number.isFinite(sl)) {
-    const risk = isSell ? (sl - e) : (e - sl);
-    if (risk > 0) {
-      const minReward = risk * need;
-      if (isSell) {
-        const maxTp1 = e - minReward;
-        if (!Number.isFinite(tp1) || tp1 > maxTp1) tp1 = roundPrice(maxTp1);
-      } else {
-        const minTp1 = e + minReward;
-        if (!Number.isFinite(tp1) || tp1 < minTp1) tp1 = roundPrice(minTp1);
-      }
-    }
-  }
   if (!Number.isFinite(tp1)) return { tp1, tp2, sl };
   if (isSell) {
     if (!Number.isFinite(tp2) || tp2 >= tp1) {
@@ -11020,8 +10995,13 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
       continue;
     }
     const isSell = act === 'sell';
-    // All horizons: TP1/TP2 from ATR + momentum + nearby structure.
-    // Stop from structure/ATR trail. Then lift TP1 to ≥1:1 if ATR undershoots — never invent 1.8×.
+    // All horizons: TP1/TP2 from ATR + momentum + structure; SL from trail/structure.
+    // If TP1/SL cannot clear PICKS_MIN_RR (1.1:1), do not recommend — clear levels + Hold.
+    const clearHz = () => {
+      row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = '';
+      row[actionKeys[hz]] = 'Hold';
+      if (String(row.action || '').toLowerCase() === act) row.action = 'Hold';
+    };
     const sl = hz === 'short'
       ? (computeMeanReversionLevels(tech, e, isSell) || {}).stop
       : computeTrailingStopFromTech(tech, e, hz, isSell, fund);
@@ -11030,10 +11010,11 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
       // Short fallback: full mean-reversion package if ATR path missing tech
       if (hz === 'short') {
         const lv = computeMeanReversionLevels(tech, e, isSell);
-        if (!lv) { row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = ''; continue; }
+        if (!lv) { clearHz(); continue; }
         const fl0 = applyHorizonMinPctFloors(e, lv.target, null, lv.stop, isSell, hz);
         const tp2s = computeSecondTargetFromTech(tech, e, hz, isSell, fl0.tp1);
         const fl = applyHorizonMinPctFloors(e, fl0.tp1, tp2s, fl0.sl, isSell, hz);
+        if (!levelsMeetMinRR(e, fl.tp1, fl.sl, isSell, PICKS_MIN_RR)) { clearHz(); continue; }
         row[hz + 'Entry'] = String(roundPrice(e));
         row[hz + 'Target1'] = fl.tp1 != null ? String(fl.tp1) : '';
         row[hz + 'Target2'] = fl.tp2 != null ? String(fl.tp2) : '';
@@ -11041,10 +11022,11 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
         row[hz + 'TrailingSL'] = false;
         continue;
       }
-      row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = '';
+      clearHz();
       continue;
     }
     const fl = applyHorizonMinPctFloors(e, targets.tp1, targets.tp2, sl, isSell, hz);
+    if (!levelsMeetMinRR(e, fl.tp1, fl.sl, isSell, PICKS_MIN_RR)) { clearHz(); continue; }
     row[hz + 'Entry'] = String(roundPrice(e));
     row[hz + 'Target1'] = fl.tp1 != null ? String(fl.tp1) : '';
     row[hz + 'Target2'] = fl.tp2 != null ? String(fl.tp2) : '';

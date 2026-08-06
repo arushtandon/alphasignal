@@ -2015,27 +2015,13 @@ function roundDashPrice(x) {
   return +Number(x).toFixed(d);
 }
 
-/** Keep TP2 beyond TP1 only — low-RR setups are filtered out, not rewritten. */
+/** Keep TP2 beyond TP1 only. Never invent TP1 — setups below 1.1:1 are dropped. */
 function enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, minRR) {
   if (!e || !Number.isFinite(+e)) return { tp1: tp1, tp2: tp2, sl: sl };
   e = +e;
   tp1 = tp1 != null ? +tp1 : null;
   tp2 = tp2 != null ? +tp2 : null;
   sl = sl != null ? +sl : null;
-  var need = Math.max(1.1, Number(minRR) || PICKS_MIN_RR);
-  if (Number.isFinite(tp1) && Number.isFinite(sl)) {
-    var risk = isSell ? (sl - e) : (e - sl);
-    if (risk > 0) {
-      var minReward = risk * need;
-      if (isSell) {
-        var maxTp1 = e - minReward;
-        if (!Number.isFinite(tp1) || tp1 > maxTp1) tp1 = roundDashPrice(maxTp1);
-      } else {
-        var minTp1 = e + minReward;
-        if (!Number.isFinite(tp1) || tp1 < minTp1) tp1 = roundDashPrice(minTp1);
-      }
-    }
-  }
   if (!Number.isFinite(tp1)) return { tp1: tp1, tp2: tp2, sl: sl };
   if (isSell) {
     if (!Number.isFinite(tp2) || tp2 >= tp1) {
@@ -5273,9 +5259,8 @@ function renderCard(s){
     }
   ];
 
-  // Render-time safety net: re-floor every horizon's TP/SL to the horizon min-% +
-  // reward:risk discipline so NO pick (incl. stale cached ones) can show a sub-floor
-  // level like a 2% "long-term" stop. Entry is never changed.
+  // Re-floor SL noise mins, then hard-drop any Buy/Sell that cannot clear 1.1:1
+  // on TP1 vs SL — never invent a higher TP1 just to recommend the trade.
   horizons.forEach(function (h) {
     if (h.action !== 'Buy' && h.action !== 'Sell') return;
     var isS = h.action === 'Sell';
@@ -5285,13 +5270,21 @@ function renderCard(s){
     var t2 = parseFloat(isS ? (h.sellTp2 || h.tp2) : h.tp2);
     var sv = parseFloat(isS ? (h.sellSl || h.sl) : h.sl);
     if (!isFinite(t1) && !isFinite(sv)) return;
-    var rr = applyHorizonMinPctFloorsDash(e, isFinite(t1) ? t1 : null, isFinite(t2) ? t2 : null, isFinite(sv) ? sv : null, isS, h.key);
+    var floored = applyHorizonMinPctFloorsDash(e, isFinite(t1) ? t1 : null, isFinite(t2) ? t2 : null, isFinite(sv) ? sv : null, isS, h.key);
+    if (!levelsMeetMinRRDash(e, floored.tp1, floored.sl, isS, PICKS_MIN_RR)) {
+      h.action = 'Hold';
+      h.entry = h.tp1 = h.tp2 = h.sl = '';
+      h.sellEntry = h.sellTp1 = h.sellTp2 = h.sellSl = '';
+      return;
+    }
     if (isS) {
-      h.sellTp1 = rr.tp1 != null ? String(rr.tp1) : h.sellTp1;
-      h.sellSl  = rr.sl  != null ? String(rr.sl)  : h.sellSl;
+      h.sellTp1 = floored.tp1 != null ? String(floored.tp1) : h.sellTp1;
+      h.sellSl  = floored.sl  != null ? String(floored.sl)  : h.sellSl;
+      if (floored.tp2 != null) h.sellTp2 = String(floored.tp2);
     } else {
-      h.tp1 = rr.tp1 != null ? String(rr.tp1) : h.tp1;
-      h.sl  = rr.sl  != null ? String(rr.sl)  : h.sl;
+      h.tp1 = floored.tp1 != null ? String(floored.tp1) : h.tp1;
+      h.sl  = floored.sl  != null ? String(floored.sl)  : h.sl;
+      if (floored.tp2 != null) h.tp2 = String(floored.tp2);
     }
   });
 
