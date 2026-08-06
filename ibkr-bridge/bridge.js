@@ -314,6 +314,9 @@ async function main() {
   // Live IBKR market data for MTM (posted to AlphaSignal every ~10s).
   const mktById = new Map(); // reqId -> { ticker, last, bid, ask, close }
   const mktSubscribed = new Set(); // AlphaSignal ticker already subscribed
+  // Account portfolio marks from IB (same marks TWS shows) — does NOT need a
+  // separate live market-data stream (avoids error 10197 competing session).
+  const portfolioMarks = new Map(); // yahooTicker -> { price, at, unrealizedPNL }
   let nextMktId = 1;
 
   function nid() { return nextOrderId++; }
@@ -330,9 +333,9 @@ async function main() {
     ib.on(EventName.error, (err, code, reqId) => {
       // 2104/2106/2158 are benign "market data farm OK" notices
       if ([2104, 2106, 2107, 2158].includes(Number(code))) return;
-      // 10197: another app (wall-clock / TWS) holds the live MD session.
-      // IB then refuses ticks on this client — close that live session, or
-      // AlphaSignal MTM will use FMP until IB ticks resume.
+      // 10197: IB allows only one live market-data consumer per user. TWS/Gateway
+      // UI often holds it — tick streams fail. Portfolio marks (updatePortfolio)
+      // still work and are the primary MTM source.
       if ([10197, 354].includes(Number(code))) {
         if (mdType !== 3 && !mdFellBack) {
           mdFellBack = true;
@@ -344,7 +347,7 @@ async function main() {
           } catch (_) {}
         } else if (!mdCompeteLogged) {
           mdCompeteLogged = true;
-          log('IB competing live session (', code, ') — no ticks here until wall-clock/TWS releases live MD; MTM will use FMP');
+          log('IB error', code, '— tick stream blocked (competing live MD); using account portfolio marks for MTM');
         }
         return;
       }
@@ -397,9 +400,6 @@ async function main() {
     const timeFloor = Math.floor((Date.now() - Date.UTC(2025, 0, 1)) / 1000);
     nextOrderId = Math.max(nextOrderId, timeFloor);
     log('Connected to IB paper. starting orderId=', nextOrderId);
-    // Default DELAYED (3): wall-clock/TWS usually holds the single live MD
-    // session → live (1) throws 10197 and freezes ticks. Set
-    // IBKR_MARKET_DATA_TYPE=1 only when nothing else is using live data.
     try { ib.reqMarketDataType(mdType); log('marketDataType=' + mdType + (mdType === 1 ? ' (live)' : mdType === 3 ? ' (delayed)' : '')); } catch (_) {}
     // Subscribe to positions — the source of truth for how many shares are
     // actually held (orderFills is in-memory only and dies with each restart).
@@ -409,7 +409,20 @@ async function main() {
     });
     ib.on(EventName.positionEnd, () => { positionsReady = true; log('IB position snapshot ready —', posMap.size, 'symbol(s)'); });
     ib.reqPositions();
-    // Streaming ticks → live MTM on the AlphaSignal IBKR tab.
+    // Account portfolio stream — IB's own mark per position (matches TWS MTM).
+    ib.on(EventName.updatePortfolio, (contract, position, marketPrice) => {
+      const pos = Number(position) || 0;
+      const px = Number(marketPrice);
+      if (!contract || !(px > 0) || !pos) return;
+      const y = yahooFromContract(contract);
+      if (!y) return;
+      portfolioMarks.set(y, { price: px, at: Date.now(), contract });
+    });
+    try {
+      ib.reqAccountUpdates(true, ACCOUNT || '');
+      log('accountUpdates subscribed for portfolio marks', ACCOUNT || '(default)');
+    } catch (e) { log('accountUpdates failed', e.message); }
+    // Streaming ticks (secondary) — may be blocked by competing live MD (10197).
     // Live: 1=bid 2=ask 4=last 9=close | Delayed: 66/67/68/75
     ib.on(EventName.tickPrice, (tickerId, field, price) => {
       const row = mktById.get(Number(tickerId));
@@ -509,22 +522,36 @@ async function main() {
   async function flushMarks() {
     if (DRY) return;
     await syncMktSubscriptions();
-    const marks = [];
+    const byTicker = new Map(); // ticker -> mark row
+    // 1) Primary: IB account portfolio marks (same as TWS paper MTM).
+    for (const [ticker, pm] of portfolioMarks) {
+      if (!(pm.price > 0)) continue;
+      byTicker.set(ticker, {
+        ticker, price: pm.price,
+        bid: null, ask: null, last: pm.price,
+        lastTickAt: pm.at || Date.now(),
+        src: 'ibkr', at: new Date().toISOString()
+      });
+    }
+    // 2) Secondary: tick stream when available (may be empty under 10197).
     for (const row of mktById.values()) {
-      // Stocks/premarket: prefer LAST (wall-clock uses mid for futures). A wide
-      // stale bid/ask mid was the source of the wrong FANG ~194 print.
       const spreadOk = row.bid > 0 && row.ask > 0 && row.ask >= row.bid
         && ((row.ask - row.bid) / ((row.ask + row.bid) / 2) < 0.02);
       const mid = spreadOk ? (row.bid + row.ask) / 2 : null;
       const px = (row.last > 0 ? row.last : null) || mid || (row.close > 0 ? row.close : null);
       if (!(px > 0)) continue;
-      marks.push({
-        ticker: row.ticker, price: px,
-        bid: row.bid, ask: row.ask, last: row.last,
-        lastTickAt: row.lastTickAt || null,
-        src: 'ibkr', at: new Date().toISOString()
-      });
+      const prev = byTicker.get(row.ticker);
+      // Prefer fresher tick over a stale portfolio print.
+      if (!prev || (row.lastTickAt && row.lastTickAt >= (prev.lastTickAt || 0))) {
+        byTicker.set(row.ticker, {
+          ticker: row.ticker, price: px,
+          bid: row.bid, ask: row.ask, last: row.last,
+          lastTickAt: row.lastTickAt || null,
+          src: 'ibkr', at: new Date().toISOString()
+        });
+      }
     }
+    const marks = [...byTicker.values()];
     if (!marks.length) return;
     try {
       const resp = await postJson('/api/ibkr/marks', { marks });

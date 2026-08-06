@@ -10145,16 +10145,14 @@ function bracketEnabled(side, hz) {
 
 const HORIZON_MIN_PCT = {
   // SL: noise floors only (ATR / structure still drive the actual stop).
-  // TP: ATR + momentum + S/R. minRR is a GATE for recommendations (see PICKS_MIN_RR) —
-  // we do NOT invent TP from the stop; setups below the floor are dropped.
-  short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.0 },
-  medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.0 },
-  long:   { sl: 0.080, tp1: 0, tp2: 0, minRR: 1.0 }
+  // After floors, enforceMinRiskReward lifts TP1 so reward/risk ≥ minRR.
+  short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.1 },
+  medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.1 },
+  long:   { sl: 0.080, tp1: 0, tp2: 0, minRR: 1.1 }
 };
 
-/** Minimum reward:risk for a setup to appear on the dashboard / enter history as a new pick.
- *  ATR may produce higher RR; anything below this is rejected (never invent TP to pass). */
-const PICKS_MIN_RR = Math.max(1.0, parseFloat(process.env.PICKS_MIN_RR || '1.0') || 1.0);
+/** Minimum reward:risk (TP1 vs SL) for dashboard / history picks. Default 1.1. */
+const PICKS_MIN_RR = Math.max(1.1, parseFloat(process.env.PICKS_MIN_RR || '1.1') || 1.1);
 
 function rewardRiskRatio(entry, tp1, sl, isSell) {
   const e = parseFloat(entry), t = parseFloat(tp1), s = parseFloat(sl);
@@ -10780,7 +10778,7 @@ function applyHorizonMinPctFloors(e, tp1, tp2, sl, isSell, hz) {
       if (!Number.isFinite(tp2) || tp2 < minTp2) tp2 = roundPrice(minTp2);
     }
   }
-  return enforceMinRiskReward(e, tp1, tp2, sl, isSell, f.minRR != null ? f.minRR : 1.0);
+  return enforceMinRiskReward(e, tp1, tp2, sl, isSell, f.minRR != null ? f.minRR : PICKS_MIN_RR);
 }
 
 function roundPrice(x) {
@@ -10873,14 +10871,28 @@ function stampDashDataReasons(dashData) {
   }
 }
 
-/** Keep TP2 beyond TP1. Does NOT invent TP1 from stop distance — low-RR setups
- *  are rejected by levelsMeetMinRR / filterDashDataByMinRR instead. */
+/** Ensure TP1 clears minRR vs SL (SL % floors often widen the stop and would
+ *  otherwise leave reward < risk — e.g. AIR.DE TP1 +8.2 / SL −15.5). Then keep TP2 beyond TP1. */
 function enforceMinRiskReward(e, tp1, tp2, sl, isSell, minRR = PICKS_MIN_RR) {
   if (!e || !Number.isFinite(+e)) return { tp1, tp2, sl };
   e = +e;
   tp1 = tp1 != null ? +tp1 : null;
   tp2 = tp2 != null ? +tp2 : null;
   sl = sl != null ? +sl : null;
+  const need = Math.max(1.1, Number(minRR) || PICKS_MIN_RR);
+  if (Number.isFinite(tp1) && Number.isFinite(sl)) {
+    const risk = isSell ? (sl - e) : (e - sl);
+    if (risk > 0) {
+      const minReward = risk * need;
+      if (isSell) {
+        const maxTp1 = e - minReward;
+        if (!Number.isFinite(tp1) || tp1 > maxTp1) tp1 = roundPrice(maxTp1);
+      } else {
+        const minTp1 = e + minReward;
+        if (!Number.isFinite(tp1) || tp1 < minTp1) tp1 = roundPrice(minTp1);
+      }
+    }
+  }
   if (!Number.isFinite(tp1)) return { tp1, tp2, sl };
   if (isSell) {
     if (!Number.isFinite(tp2) || tp2 >= tp1) {

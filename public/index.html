@@ -2022,6 +2022,20 @@ function enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, minRR) {
   tp1 = tp1 != null ? +tp1 : null;
   tp2 = tp2 != null ? +tp2 : null;
   sl = sl != null ? +sl : null;
+  var need = Math.max(1.1, Number(minRR) || PICKS_MIN_RR);
+  if (Number.isFinite(tp1) && Number.isFinite(sl)) {
+    var risk = isSell ? (sl - e) : (e - sl);
+    if (risk > 0) {
+      var minReward = risk * need;
+      if (isSell) {
+        var maxTp1 = e - minReward;
+        if (!Number.isFinite(tp1) || tp1 > maxTp1) tp1 = roundDashPrice(maxTp1);
+      } else {
+        var minTp1 = e + minReward;
+        if (!Number.isFinite(tp1) || tp1 < minTp1) tp1 = roundDashPrice(minTp1);
+      }
+    }
+  }
   if (!Number.isFinite(tp1)) return { tp1: tp1, tp2: tp2, sl: sl };
   if (isSell) {
     if (!Number.isFinite(tp2) || tp2 >= tp1) {
@@ -2065,7 +2079,7 @@ function applyHorizonMinPctFloorsDash(e, tp1, tp2, sl, isSell, hz) {
       if (!Number.isFinite(tp2) || tp2 < minTp2B) tp2 = roundDashPrice(minTp2B);
     }
   }
-  return enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, f.minRR != null ? f.minRR : 1.0);
+  return enforceMinRiskRewardDash(e, tp1, tp2, sl, isSell, f.minRR != null ? f.minRR : PICKS_MIN_RR);
 }
 function ratingImpliesSellDash(rating) {
   return String(rating || '').toLowerCase().includes('sell');
