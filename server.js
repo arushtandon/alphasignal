@@ -12208,7 +12208,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
       for (const sym of uniq) {
         if (markMap[sym] && Number(markMap[sym].price) > 0) continue;
         const cached = _ibkrMarkCache.get(sym);
-        if (cached && Date.now() - cached.at < 5 * 60 * 1000) { markMap[sym] = { price: cached.px }; continue; }
+        // 45s cache — IBKR tab auto-refreshes MTM every 60s
+        if (cached && Date.now() - cached.at < 45 * 1000) { markMap[sym] = { price: cached.px }; continue; }
         try {
           const bars = await fetchOHLCV(sym, '1mo', '1d'); // needs ≥15 bars internally
           const px = bars && bars.length ? Number(bars[bars.length - 1].c) : null;

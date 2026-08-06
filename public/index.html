@@ -624,7 +624,8 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
       <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div>
           <div class="pt">IBKR trade analysis</div>
-          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Paper account · real TWS fills reported by the local bridge · daily realised & unrealised PnL</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Paper account · real TWS fills reported by the local bridge · live MTM every 60s</div>
+          <div id="ibkrMtmStamp" style="font-size:9px;color:var(--m2);font-family:'DM Mono',monospace;margin-top:3px">MTM: —</div>
         </div>
         <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderIbkr(true)">↻ Refresh</button>
       </div>
@@ -1698,20 +1699,41 @@ function switchTab(t){
       return refreshHistoryPnl().catch(function(){});
     }).then(renderPerf).catch(function(e){ console.warn(e); renderPerf(); });
   }
-  if(t==='ibkr') renderIbkr();
+  if(t==='ibkr') { renderIbkr(true); startIbkrMtm(); }
+  else stopIbkrMtm();
   if(t==='watchlist') renderWl();
 }
 
 // ══════════════════════════════════════════════
 // IBKR TRADE ANALYSIS — real paper-account fills
 // ══════════════════════════════════════════════
+let _ibkrMtmTimer = null;
+function startIbkrMtm(){
+  stopIbkrMtm();
+  _ibkrMtmTimer = setInterval(function(){
+    const pane = document.getElementById('pane-ibkr');
+    if (pane && pane.classList.contains('vis')) renderIbkr(true);
+    else stopIbkrMtm();
+  }, 60000);
+}
+function stopIbkrMtm(){
+  if (_ibkrMtmTimer) { clearInterval(_ibkrMtmTimer); _ibkrMtmTimer = null; }
+}
 async function renderIbkr(force){
   const el = document.getElementById('ibkrContent');
   if (!el) return;
   try {
-    const r = await fetch('/api/ibkr/trades' + (force ? '?t=' + Date.now() : ''), { cache: 'no-store' });
+    const r = await fetch('/api/ibkr/trades?t=' + Date.now(), { cache: 'no-store' });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || 'bad response');
+    const stamp = document.getElementById('ibkrMtmStamp');
+    if (stamp) {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2,'0');
+      const mm = String(now.getMinutes()).padStart(2,'0');
+      const ss = String(now.getSeconds()).padStart(2,'0');
+      stamp.textContent = 'MTM refreshed '+hh+':'+mm+':'+ss+' · auto every 60s';
+    }
     if (!d.trades.length) {
       el.innerHTML = '<div class="emp"><div class="emp-a">α</div><p>No IBKR executions reported yet.<br>'
         + 'Fills appear here once the local bridge (ibkr-bridge) is running next to TWS/IB Gateway<br>'
