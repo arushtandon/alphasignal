@@ -624,7 +624,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
       <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div>
           <div class="pt">IBKR trade analysis</div>
-          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Paper account · real TWS fills reported by the local bridge · live MTM every 60s</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Paper account · real TWS fills · MTM from IBKR prices every 15s</div>
           <div id="ibkrMtmStamp" style="font-size:9px;color:var(--m2);font-family:'DM Mono',monospace;margin-top:3px">MTM: —</div>
         </div>
         <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderIbkr(true)">↻ Refresh</button>
@@ -1715,7 +1715,7 @@ function startIbkrMtm(){
     const pane = document.getElementById('pane-ibkr');
     if (pane && pane.classList.contains('vis')) renderIbkr(true);
     else stopIbkrMtm();
-  }, 60000);
+  }, 15000);
 }
 function stopIbkrMtm(){
   if (_ibkrMtmTimer) { clearInterval(_ibkrMtmTimer); _ibkrMtmTimer = null; }
@@ -1727,7 +1727,7 @@ function setIbkrMtmStamp(msg){
   const hh = String(now.getHours()).padStart(2,'0');
   const mm = String(now.getMinutes()).padStart(2,'0');
   const ss = String(now.getSeconds()).padStart(2,'0');
-  stamp.textContent = (msg || ('MTM refreshed '+hh+':'+mm+':'+ss+' · auto every 60s'));
+  stamp.textContent = (msg || ('MTM refreshed '+hh+':'+mm+':'+ss+' · IBKR prices · auto every 15s'));
 }
 async function renderIbkr(force){
   const el = document.getElementById('ibkrContent');
@@ -1837,7 +1837,7 @@ async function renderIbkr(force){
         + td('right','var(--m2)') + (t.rec&&t.rec.tp1?fmtPx(t.rec.tp1):'—')+'</td>'
         + td('right','var(--m2)') + (t.rec?(fmtPx(t.rec.lastTrailSl!=null?t.rec.lastTrailSl:t.rec.sl)):'—')+'</td>'
         + td('right') + (t.openQty>0?t.openQty:'—')+'</td>'
-        + td('right') + fmtPx(t.mark)+'</td>'
+        + td('right') + fmtPx(t.mark)+(t.markSrc==='ibkr'?' <span style="font-size:8px;color:var(--ac)">IB</span>':'')+'</td>'
         + td('right',pc(t.realizedUsd)) + fp(t.realizedUsd)+'</td>'
         + td('right',pc(t.unrealizedUsd)) + (t.openQty>0?fp(t.unrealizedUsd):'—')+'</td>'
         + td('left',stC) + t.status+'</td>'

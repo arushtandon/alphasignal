@@ -298,6 +298,10 @@ async function main() {
   let positionsReady = false; // set once IB's initial position snapshot lands
   const posKeyOf = c => `${String(c.symbol).toUpperCase()}|${c.currency}`;
   const _flattenTried = new Map(); // pk -> last reconcile-flatten attempt ts
+  // Live IBKR market data for MTM (posted to AlphaSignal every ~10s).
+  const mktById = new Map(); // reqId -> { ticker, last, bid, ask, close }
+  const mktSubscribed = new Set(); // AlphaSignal ticker already subscribed
+  let nextMktId = 1;
 
   function nid() { return nextOrderId++; }
 
@@ -365,8 +369,87 @@ async function main() {
     });
     ib.on(EventName.positionEnd, () => { positionsReady = true; log('IB position snapshot ready —', posMap.size, 'symbol(s)'); });
     ib.reqPositions();
+    // Streaming ticks → live MTM on the AlphaSignal IBKR tab.
+    ib.on(EventName.tickPrice, (tickerId, field, price) => {
+      const row = mktById.get(Number(tickerId));
+      if (!row || !(Number(price) > 0)) return;
+      const px = Number(price);
+      // 1=bid 2=ask 4=last 6=high 7=low 9=close
+      if (field === 4) row.last = px;
+      else if (field === 1) row.bid = px;
+      else if (field === 2) row.ask = px;
+      else if (field === 9) row.close = px;
+    });
   } else {
     log('DRY RUN — orders are logged only. Set IBKR_DRY_RUN=0 to place paper orders.');
+  }
+
+  function yahooFromContract(c) {
+    if (!c) return null;
+    const sym = String(c.symbol || '');
+    const ccy = c.currency;
+    if (ccy === 'HKD') return sym + '.HK';
+    if (ccy === 'JPY') return sym + '.T';
+    if (ccy === 'GBP') return sym + '.L';
+    if (ccy === 'EUR') {
+      if (c.primaryExch === 'SBF') return sym + '.PA';
+      if (c.primaryExch === 'AEB') return sym + '.AS';
+      if (c.primaryExch === 'BVME') return sym + '.MI';
+      return sym + '.DE';
+    }
+    return sym;
+  }
+
+  /** Subscribe to IB market data for an AlphaSignal ticker (idempotent). */
+  function ensureMktData(ticker, contract) {
+    if (DRY || !ib || !ticker || !contract || mktSubscribed.has(ticker)) return;
+    const id = nextMktId++;
+    mktById.set(id, { ticker, last: null, bid: null, ask: null, close: null });
+    mktSubscribed.add(ticker);
+    const oc = orderContractFromPos(contract) || {
+      symbol: contract.symbol, secType: contract.secType || 'STK',
+      exchange: 'SMART', currency: contract.currency,
+      primaryExch: contract.primaryExch, conId: contract.conId
+    };
+    try {
+      ib.reqMktData(id, oc, '', false, false);
+      log('mktData subscribed', ticker, 'reqId=' + id);
+    } catch (e) { log('mktData subscribe failed', ticker, e.message); }
+  }
+
+  function syncMktSubscriptions() {
+    // Open AlphaSignal trades that have (or may have) a live position
+    for (const row of Object.values(state.byKey)) {
+      if (row.closed || !row.contract || !row.ticker) continue;
+      ensureMktData(row.ticker, row.contract);
+    }
+    // Any non-zero IB position (covers orphans / missed state keys)
+    for (const { pos, contract } of posMap.values()) {
+      if (!pos) continue;
+      const y = yahooFromContract(contract);
+      if (y) ensureMktData(y, contract);
+    }
+  }
+
+  async function flushMarks() {
+    if (DRY) return;
+    syncMktSubscriptions();
+    const marks = [];
+    for (const row of mktById.values()) {
+      const mid = (row.bid > 0 && row.ask > 0) ? (row.bid + row.ask) / 2 : null;
+      const px = row.last || mid || row.close;
+      if (!(px > 0)) continue;
+      marks.push({
+        ticker: row.ticker, price: px,
+        bid: row.bid, ask: row.ask, last: row.last,
+        src: 'ibkr', at: new Date().toISOString()
+      });
+    }
+    if (!marks.length) return;
+    try {
+      const resp = await postJson('/api/ibkr/marks', { marks });
+      if (resp && resp.ok) log('marks posted', marks.length, '→', marks.map(m => m.ticker + '=' + m.price).join(' '));
+    } catch (e) { log('marks flush failed:', e.message); }
   }
 
   function baseOrder(extra) {
@@ -801,9 +884,14 @@ async function main() {
   }
 
   let lastSweep = 0;
+  let lastMarks = 0;
   for (;;) {
     try { await pollOnce(); }
     catch (e) { log('poll error', e.message); }
+    if (Date.now() - lastMarks > 10000) {
+      lastMarks = Date.now();
+      await flushMarks().catch(e => log('marks error', e.message));
+    }
     if (Date.now() - lastSweep > SWEEP_MS) {
       lastSweep = Date.now();
       sweepOrphans();

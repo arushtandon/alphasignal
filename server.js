@@ -12176,7 +12176,40 @@ app.post('/api/ibkr/purge', express.json({ limit: '32kb' }), (req, res) => {
   res.json({ ok: true, before: before.length, after: after.length, removed: before.length - after.length });
 });
 
-// USD conversion for fill PnL (fills arrive in the exchange currency).
+// Live marks from the local IBKR bridge (TWS/Gateway market data) — preferred for MTM.
+const IBKR_MARKS_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_marks.json');
+let _ibkrLiveMarks = {}; // ticker -> { price, bid, ask, last, at, src }
+try {
+  if (fs.existsSync(IBKR_MARKS_FILE)) {
+    const j = JSON.parse(fs.readFileSync(IBKR_MARKS_FILE, 'utf8'));
+    if (j && typeof j === 'object') _ibkrLiveMarks = j;
+  }
+} catch (_) {}
+
+app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const marks = Array.isArray(req.body && req.body.marks) ? req.body.marks : [];
+  let n = 0;
+  const now = Date.now();
+  for (const m of marks) {
+    const ticker = String(m && m.ticker || '').trim();
+    const price = Number(m && m.price);
+    if (!ticker || !(price > 0)) continue;
+    _ibkrLiveMarks[ticker] = {
+      price,
+      bid: m.bid != null ? Number(m.bid) : null,
+      ask: m.ask != null ? Number(m.ask) : null,
+      last: m.last != null ? Number(m.last) : null,
+      src: 'ibkr',
+      at: now
+    };
+    n++;
+  }
+  try { fs.writeFileSync(IBKR_MARKS_FILE, JSON.stringify(_ibkrLiveMarks)); } catch (_) {}
+  res.json({ ok: true, updated: n, tickers: Object.keys(_ibkrLiveMarks).length });
+});
+
+// Yahoo fallback cache (only used when bridge marks are missing/stale).
 const _ibkrMarkCache = new Map(); // sym -> { px, at, src }
 const _ibkrFx = { at: 0, rates: {} };
 
@@ -12280,12 +12313,18 @@ app.get('/api/ibkr/trades', async (req, res) => {
     let markMap = {};
     if (needMarks.length) {
       const uniq = [...new Set(needMarks)];
-      // Always refresh open marks via intraday chart/meta (v7 often 401s on Render
-      // and the old daily-close fallback never moved during the session).
+      const MARK_FRESH_MS = 90 * 1000; // bridge posts ~every 10s; accept up to 90s
       for (const sym of uniq) {
+        // 1) Prefer live IBKR marks pushed by the local bridge (TWS/Gateway).
+        const ibm = _ibkrLiveMarks[sym];
+        if (ibm && Number(ibm.price) > 0 && (Date.now() - Number(ibm.at || 0)) < MARK_FRESH_MS) {
+          markMap[sym] = { price: Number(ibm.price), src: 'ibkr' };
+          continue;
+        }
+        // 2) Yahoo fallback only when the bridge has no fresh mark.
         const cached = _ibkrMarkCache.get(sym);
         if (cached && Date.now() - cached.at < 40 * 1000) {
-          markMap[sym] = { price: cached.px, src: cached.src };
+          markMap[sym] = { price: cached.px, src: cached.src || 'yahoo' };
           continue;
         }
         try {
@@ -12296,7 +12335,6 @@ app.get('/api/ibkr/trades', async (req, res) => {
             continue;
           }
         } catch (_) {}
-        // Last resort: bulk v7 (may be previous close when markets are shut)
         try {
           const bulk = await fetchQuotesV7Bulk([sym]);
           const px = bulk[sym] && Number(bulk[sym].price);
@@ -12350,8 +12388,11 @@ app.get('/api/ibkr/trades', async (req, res) => {
       t.realizedUsd = +(t.realizedLocal * fx).toFixed(2);
       totRealUsd += t.realizedUsd;
       const dir = t.side === 'sell' ? -1 : 1;
-      const mark = markMap[t.ticker] && Number(markMap[t.ticker].price) > 0 ? Number(markMap[t.ticker].price) : null;
+      let mark = markMap[t.ticker] && Number(markMap[t.ticker].price) > 0 ? Number(markMap[t.ticker].price) : null;
+      // LSE fills are in pence (ccyScale=100); IB sometimes ticks in pounds.
+      if (mark != null && t.ccyScale === 100 && t.avgEntry > 0 && mark * 10 < t.avgEntry) mark *= 100;
       t.mark = mark;
+      t.markSrc = mark != null ? (markMap[t.ticker] && markMap[t.ticker].src) || null : null;
       t.unrealizedUsd = (t.openQty > 0 && mark != null)
         ? +(((mark - t.avgEntry) * t.openQty * dir / (t.ccyScale || 1)) * fx).toFixed(2)
         : (t.openQty > 0 ? null : 0);
