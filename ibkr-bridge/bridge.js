@@ -561,7 +561,31 @@ async function main() {
         const held = posMap.get(posKeyOf(row.contract));
         const flatAtIb = held ? held.pos === 0 : !posMap.has(posKeyOf(row.contract));
         if (!flatAtIb) continue;
-        if (keyState.get(key) === 'open') continue; // model still open + flat = entry never filled yet
+        if (keyState.get(key) === 'open') {
+          // Model still holds this trade open but IB is flat: the DAY entry LMT
+          // expired unfilled (e.g. recommended 20 min before the exchange close).
+          // Re-arm the bracket ONCE at the next session so the account converges
+          // with the model instead of missing the trade entirely.
+          const ageH = (Date.now() - Date.parse(row.updated || 0)) / 3600000;
+          if (!row.rearmed && ageH > 18 && ageH < 72) {
+            try {
+              if (!serverTrades) serverTrades = await fetchJson('/api/ibkr/trades');
+              const everFilled = (serverTrades.trades || []).some(x => x.key === key);
+              if (!everFilled) {
+                row.rearmed = true; // one-shot even if placement fails — never loop
+                const placed = await placeBracket({
+                  key, ticker: row.ticker, hz: row.hz, side: row.side,
+                  entry: row.entry, tp1: row.tp1Px, sl: row.stopPx, trailSl: row.stopPx,
+                  t: new Date().toISOString()
+                });
+                if (placed) { placed.rearmed = true; state.byKey[key] = placed; }
+                log('RECONCILE: re-armed unfilled entry', key, placed ? '(bracket re-placed)' : '(re-place failed/skipped)');
+                saveState(state);
+              }
+            } catch (e) { log('re-arm failed', key, e.message); }
+          }
+          continue;
+        }
         row.closed = true;
         row.updated = new Date().toISOString();
         log('RECONCILE: marking', key, 'closed (flat at IB, model exited)');
