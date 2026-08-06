@@ -12209,13 +12209,48 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
   res.json({ ok: true, updated: n, tickers: Object.keys(_ibkrLiveMarks).length });
 });
 
-// Yahoo fallback cache (only used when bridge marks are missing/stale).
+// Fallback mark cache (FMP / Yahoo) — only when bridge IB marks are missing/stale.
 const _ibkrMarkCache = new Map(); // sym -> { px, at, src }
 const _ibkrFx = { at: 0, rates: {} };
 
-/** Session-aware last trade for MTM (pre/post included). Prefer the latest
- *  1m bar with includePrePost — IB delayed-frozen often sticks on a stale print
- *  in US extended hours (e.g. FANG 194.6 vs live premarket ~186). */
+/** FMP last price for IBKR MTM when live IB ticks are missing/stale. */
+async function fetchFmpQuotePrice(symbol) {
+  const k = fmpEnvKeyFund();
+  if (!k || !symbol) return null;
+  const cached = _ibkrMarkCache.get('fmp:' + symbol);
+  if (cached && Date.now() - cached.at < 20 * 1000 && cached.px > 0) {
+    return { price: cached.px, src: 'fmp' };
+  }
+  const variants = await fmpAllSymbolVariants(symbol, k).catch(() => intlVendorSymbolVariants(symbol));
+  const list = [...new Set([symbol, ...variants])].filter(Boolean).slice(0, 10);
+  for (const raw of list) {
+    for (const makeUrl of [
+      () => `https://financialmodelingprep.com/api/v3/quote/${encodeURIComponent(raw)}?apikey=${encodeURIComponent(k)}`,
+      () => `https://financialmodelingprep.com/stable/quote?symbol=${encodeURIComponent(raw)}&apikey=${encodeURIComponent(k)}`
+    ]) {
+      try {
+        const r = await fetch(makeUrl(), {
+          signal: AbortSignal.timeout(8000),
+          headers: { Accept: 'application/json' }
+        });
+        if (!r.ok) continue;
+        let arr = await r.json().catch(() => []);
+        if (!Array.isArray(arr) && arr && typeof arr === 'object') {
+          arr = Array.isArray(arr.data) ? arr.data : [arr];
+        }
+        const row = Array.isArray(arr) && arr[0] ? arr[0] : null;
+        const price = Number(row && (row.price ?? row.close ?? row.last));
+        if (price > 0) {
+          _ibkrMarkCache.set('fmp:' + symbol, { px: price, at: Date.now(), src: 'fmp' });
+          return { price, src: 'fmp' };
+        }
+      } catch (_) { /* next */ }
+    }
+  }
+  return null;
+}
+
+/** Session-aware Yahoo last trade (pre/post included) — last-resort MTM only. */
 async function fetchSessionAwareMark(symbol) {
   const variants = [symbol, String(symbol).replace(/\./g, '-')].filter((v, i, a) => a.indexOf(v) === i);
   for (const sym of variants) {
@@ -12348,37 +12383,34 @@ app.get('/api/ibkr/trades', async (req, res) => {
     let markMap = {};
     if (needMarks.length) {
       const uniq = [...new Set(needMarks)];
+      // Priority: fresh IB Gateway/TWS live ticks → FMP quote → Yahoo last.
+      // Do NOT prefer Yahoo over IB — paper account MTM should match TWS.
       const IB_FRESH_MS = 90 * 1000;
-      // Wall-clock style: always pull a fresh session-aware Yahoo mark (includes
-      // US pre/post). Only keep an IB tick if it agrees within 1% — delayed IB
-      // paper data has been posting stale/wrong US prints (FANG 194 vs ~186).
       await Promise.all(uniq.map(async (sym) => {
-        let yahoo = null;
-        try { yahoo = await fetchSessionAwareMark(sym); } catch (_) {}
         const ibm = _ibkrLiveMarks[sym];
         const ibFresh = ibm && Number(ibm.price) > 0 && (Date.now() - Number(ibm.at || 0)) < IB_FRESH_MS;
-        if (yahoo && yahoo.price > 0 && ibFresh) {
-          const drift = Math.abs(Number(ibm.price) - yahoo.price) / yahoo.price;
-          if (drift <= 0.01) {
-            markMap[sym] = { price: Number(ibm.price), src: 'ibkr' };
-            return;
-          }
-          // IB disagrees — trust Yahoo extended-hours
-          markMap[sym] = { price: yahoo.price, src: yahoo.src || 'yahoo' };
-          return;
-        }
-        if (yahoo && yahoo.price > 0) {
-          markMap[sym] = { price: yahoo.price, src: yahoo.src || 'yahoo' };
-          return;
-        }
         if (ibFresh) {
           markMap[sym] = { price: Number(ibm.price), src: 'ibkr' };
           return;
         }
         try {
+          const fmp = await fetchFmpQuotePrice(sym);
+          if (fmp && fmp.price > 0) {
+            markMap[sym] = { price: fmp.price, src: 'fmp' };
+            return;
+          }
+        } catch (_) {}
+        try {
+          const yahoo = await fetchSessionAwareMark(sym);
+          if (yahoo && yahoo.price > 0) {
+            markMap[sym] = { price: yahoo.price, src: yahoo.src || 'yahoo' };
+            return;
+          }
+        } catch (_) {}
+        try {
           const bulk = await fetchQuotesV7Bulk([sym]);
           const px = bulk[sym] && Number(bulk[sym].price);
-          if (px > 0) markMap[sym] = { price: px, src: 'v7' };
+          if (px > 0) markMap[sym] = { price: px, src: 'yahoo:v7' };
         } catch (_) {}
       }));
     }

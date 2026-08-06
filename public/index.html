@@ -624,7 +624,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
       <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div>
           <div class="pt">IBKR trade analysis</div>
-          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Paper account · real TWS fills · live MTM every 5s (pre/post market aware)</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Paper account · real TWS fills · MTM every 5s (IB live → FMP → Yahoo)</div>
           <div id="ibkrMtmStamp" style="font-size:9px;color:var(--m2);font-family:'DM Mono',monospace;margin-top:3px">MTM: —</div>
         </div>
         <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderIbkr(true)">↻ Refresh</button>
@@ -1769,8 +1769,10 @@ async function tickIbkrMtm(){
       const markEl = document.querySelector('[data-ibkr-mark="'+CSS.escape(t.key)+'"]');
       const unEl = document.querySelector('[data-ibkr-unreal="'+CSS.escape(t.key)+'"]');
       if (markEl) {
-        const tag = t.markSrc && String(t.markSrc).indexOf('yahoo')===0 ? ' <span style="font-size:8px;color:var(--m1)">live</span>'
-          : (t.markSrc==='ibkr' ? ' <span style="font-size:8px;color:var(--ac)">IB</span>' : '');
+        const src = String(t.markSrc || '');
+        const tag = src === 'ibkr' ? ' <span style="font-size:8px;color:var(--ac)">IB</span>'
+          : (src === 'fmp' ? ' <span style="font-size:8px;color:var(--m1)">FMP</span>'
+            : (src.indexOf('yahoo') === 0 || src === 'v7' ? ' <span style="font-size:8px;color:var(--m1)">YF</span>' : ''));
         markEl.innerHTML = ibkrFmtPx(t.mark) + tag;
       }
       if (unEl) {
@@ -1881,9 +1883,10 @@ async function renderIbkr(force){
       const reason = t.status==='closed'
         ? (t.rec && t.rec.exitReason ? t.rec.exitReason : (t.exitType||'—'))
         : (t.exitType || (t.rec && t.rec.lastTrailSl ? 'open · TSL '+fmtPx(t.rec.lastTrailSl) : 'open'));
-      const markTag = t.markSrc && String(t.markSrc).indexOf('yahoo')===0
-        ? ' <span style="font-size:8px;color:var(--m1)">live</span>'
-        : (t.markSrc==='ibkr' ? ' <span style="font-size:8px;color:var(--ac)">IB</span>' : '');
+      const _ms = String(t.markSrc || '');
+      const markTag = _ms === 'ibkr' ? ' <span style="font-size:8px;color:var(--ac)">IB</span>'
+        : (_ms === 'fmp' ? ' <span style="font-size:8px;color:var(--m1)">FMP</span>'
+          : (_ms.indexOf('yahoo') === 0 || _ms === 'v7' ? ' <span style="font-size:8px;color:var(--m1)">YF</span>' : ''));
       return '<tr data-ibkr-key="'+t.key+'">'
         + td('left') + '<span style="font-weight:600">'+t.ticker+'</span> <span style="font-size:8px;color:var(--m1)">'+hzTag(t.hz)+'</span></td>'
         + td('left',dirC) + t.side.toUpperCase()+'</td>'

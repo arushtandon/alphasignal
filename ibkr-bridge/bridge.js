@@ -312,6 +312,10 @@ async function main() {
     ib.on(EventName.error, (err, code, reqId) => {
       // 2104/2106/2158 are benign "market data farm OK" notices
       if ([2104, 2106, 2107, 2158].includes(Number(code))) return;
+      // No live entitlement / competing session → drop to delayed once.
+      if ([10197, 354].includes(Number(code))) {
+        try { ib.reqMarketDataType(3); log('marketDataType switched to 3 (delayed) after error', code); } catch (_) {}
+      }
       log('IB error', code, 'reqId=' + reqId, err && err.message ? err.message : err);
     });
     ib.on(EventName.orderStatus, (orderId, status, filled) => {
@@ -361,9 +365,10 @@ async function main() {
     const timeFloor = Math.floor((Date.now() - Date.UTC(2025, 0, 1)) / 1000);
     nextOrderId = Math.max(nextOrderId, timeFloor);
     log('Connected to IB paper. starting orderId=', nextOrderId);
-    // Prefer delayed-frozen when live is unavailable (paper / competing TWS
-    // session → error 10197). Still receives US pre/post when IB has it.
-    try { ib.reqMarketDataType(4); log('marketDataType=4 (delayed-frozen)'); } catch (_) {}
+    // Live market data (same as wall-clock). Fall back to delayed (3) only if
+    // live is denied — delayed-frozen (4) was posting stale/wrong US prints.
+    const mdType = Math.max(1, Math.min(4, parseInt(process.env.IBKR_MARKET_DATA_TYPE || '1', 10) || 1));
+    try { ib.reqMarketDataType(mdType); log('marketDataType=' + mdType + (mdType === 1 ? ' (live)' : mdType === 3 ? ' (delayed)' : '')); } catch (_) {}
     // Subscribe to positions — the source of truth for how many shares are
     // actually held (orderFills is in-memory only and dies with each restart).
     ib.on(EventName.position, (account, contract, pos) => {
@@ -373,13 +378,12 @@ async function main() {
     ib.on(EventName.positionEnd, () => { positionsReady = true; log('IB position snapshot ready —', posMap.size, 'symbol(s)'); });
     ib.reqPositions();
     // Streaming ticks → live MTM on the AlphaSignal IBKR tab.
-    // Also accept tick 66/67/68/75 (delayed last/bid/ask/close) for paper/RTH-off.
+    // Live: 1=bid 2=ask 4=last 9=close | Delayed: 66/67/68/75
     ib.on(EventName.tickPrice, (tickerId, field, price) => {
       const row = mktById.get(Number(tickerId));
       if (!row || !(Number(price) > 0)) return;
       const px = Number(price);
-      // Live: 1=bid 2=ask 4=last 9=close | Delayed: 66=last 67=bid 68=ask 75=close
-      if (field === 4 || field === 66) row.last = px;
+      if (field === 4 || field === 66) { row.last = px; row.lastAt = Date.now(); }
       else if (field === 1 || field === 67) row.bid = px;
       else if (field === 2 || field === 68) row.ask = px;
       else if (field === 9 || field === 75) row.close = px;
@@ -450,8 +454,12 @@ async function main() {
     await syncMktSubscriptions();
     const marks = [];
     for (const row of mktById.values()) {
-      const mid = (row.bid > 0 && row.ask > 0) ? (row.bid + row.ask) / 2 : null;
-      const px = row.last || mid || row.close;
+      // Stocks/premarket: prefer LAST (wall-clock uses mid for futures). A wide
+      // stale bid/ask mid was the source of the wrong FANG ~194 print.
+      const spreadOk = row.bid > 0 && row.ask > 0 && row.ask >= row.bid
+        && ((row.ask - row.bid) / ((row.ask + row.bid) / 2) < 0.02);
+      const mid = spreadOk ? (row.bid + row.ask) / 2 : null;
+      const px = (row.last > 0 ? row.last : null) || mid || (row.close > 0 ? row.close : null);
       if (!(px > 0)) continue;
       marks.push({
         ticker: row.ticker, price: px,
