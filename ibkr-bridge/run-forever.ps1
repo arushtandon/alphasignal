@@ -1,4 +1,4 @@
-# Keeps the AlphaSignal -> IBKR bridge running: restarts it automatically if it
+﻿# Keeps the AlphaSignal -> IBKR bridge running: restarts it automatically if it
 # crashes or the PC reboots (when registered as a scheduled task - see README).
 #
 #   powershell -ExecutionPolicy Bypass -File run-forever.ps1
@@ -12,6 +12,7 @@ $env:ALPHASIGNAL_URL = "https://alphasignal-dvg5.onrender.com"
 $env:IBKR_PORT       = "4002"        # 4002 = IB Gateway paper, 7497 = TWS paper
 $env:IBKR_ACCOUNT    = "DU1764495"
 $env:IBKR_DRY_RUN    = "0"
+$env:IBKR_MARKET_DATA_TYPE = "3"   # delayed - wall-clock/TWS holds live (avoids 10197)
 
 New-Item -ItemType Directory -Force -Path "$PSScriptRoot\logs" | Out-Null
 
@@ -33,3 +34,4 @@ while ($true) {
   Write-Host "$(Get-Date -Format o) bridge exited - restarting in 30s"
   Start-Sleep -Seconds 30
 }
+

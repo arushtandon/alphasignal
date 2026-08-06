@@ -62,7 +62,20 @@ const ALLOW_NSE = process.env.IBKR_ALLOW_NSE === '1';
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, 'bridge-state.json');
 const SWEEP_MS = 5 * 60 * 1000;
 
-function log(...a) { console.log(new Date().toISOString(), ...a); }
+function log(...a) {
+  const line = [new Date().toISOString(), ...a].map(x => (typeof x === 'string' ? x : String(x))).join(' ');
+  // Always append to the daily log (cmd >> redirection block-buffers Node stdout
+  // so the bridge can look "dead" for minutes while still running).
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const dir = path.join(__dirname, 'logs');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, `bridge-${day}.log`), line + '\n');
+  } catch (_) {}
+  if (process.stdout.isTTY) {
+    try { process.stdout.write(line + '\n'); } catch (_) {}
+  }
+}
 
 function loadState() {
   try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); }
@@ -374,9 +387,10 @@ async function main() {
     const timeFloor = Math.floor((Date.now() - Date.UTC(2025, 0, 1)) / 1000);
     nextOrderId = Math.max(nextOrderId, timeFloor);
     log('Connected to IB paper. starting orderId=', nextOrderId);
-    // Live market data (same as wall-clock). Fall back to delayed (3) only if
-    // live is denied — delayed-frozen (4) was posting stale/wrong US prints.
-    const mdType = Math.max(1, Math.min(4, parseInt(process.env.IBKR_MARKET_DATA_TYPE || '1', 10) || 1));
+    // Default DELAYED (3): wall-clock/TWS usually holds the single live MD
+    // session → live (1) throws 10197 and freezes ticks. Set
+    // IBKR_MARKET_DATA_TYPE=1 only when nothing else is using live data.
+    const mdType = Math.max(1, Math.min(4, parseInt(process.env.IBKR_MARKET_DATA_TYPE || '3', 10) || 3));
     try { ib.reqMarketDataType(mdType); log('marketDataType=' + mdType + (mdType === 1 ? ' (live)' : mdType === 3 ? ' (delayed)' : '')); } catch (_) {}
     // Subscribe to positions — the source of truth for how many shares are
     // actually held (orderFills is in-memory only and dies with each restart).
@@ -455,6 +469,7 @@ async function main() {
     log('mktData resubscribed', saved.length, 'symbol(s) reason=' + (reason || ''));
   }
 
+  let _openTickersCache = { at: 0, rows: [] };
   async function syncMktSubscriptions() {
     // Open AlphaSignal trades that have (or may have) a live position
     for (const row of Object.values(state.byKey)) {
@@ -467,16 +482,19 @@ async function main() {
       const y = yahooFromContract(contract);
       if (y) ensureMktData(y, contract);
     }
-    // Also subscribe whatever the IBKR tab currently shows as open — keeps
-    // FANG/VTR marked even if bridge state was wrongly closed.
-    try {
-      const t = await fetchJson('/api/ibkr/trades');
-      for (const row of (t && t.trades) || []) {
-        if (!row || row.openQty <= 0 || !row.ticker) continue;
-        const c = toContract(row.ticker);
-        if (c) ensureMktData(row.ticker, c);
-      }
-    } catch (_) {}
+    // Rarely refresh from the IBKR tab open list — /api/ibkr/trades is heavy
+    // (FMP/Yahoo fallbacks) and was stalling the bridge every 10s.
+    if (Date.now() - _openTickersCache.at > 120000) {
+      try {
+        const t = await fetchJson('/api/ibkr/trades');
+        _openTickersCache = { at: Date.now(), rows: (t && t.trades) || [] };
+      } catch (_) { _openTickersCache.at = Date.now(); }
+    }
+    for (const row of _openTickersCache.rows) {
+      if (!row || row.openQty <= 0 || !row.ticker) continue;
+      const c = toContract(row.ticker);
+      if (c) ensureMktData(row.ticker, c);
+    }
   }
 
   async function flushMarks() {
