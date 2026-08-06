@@ -12418,17 +12418,19 @@ app.get('/api/ibkr/trades', async (req, res) => {
             const fmp = await fetchFmpQuotePrice(sym);
             if (fmp && fmp.price > 0) picked = { price: fmp.price, src: 'fmp' };
           } catch (_) {}
-          if (!picked) {
-            try {
-              const yahoo = await fetchSessionAwareMark(sym);
-              if (yahoo && yahoo.price > 0) picked = { price: yahoo.price, src: yahoo.src || 'yahoo' };
-            } catch (_) {}
-          }
+          // Prefer Yahoo v7 quote over 1m chart — 1m bars stay flat for ~60s and
+          // look "dead" on the IBKR tab even when the tape is moving.
           if (!picked) {
             try {
               const bulk = await fetchQuotesV7Bulk([sym]);
               const px = bulk[sym] && Number(bulk[sym].price);
               if (px > 0) picked = { price: px, src: 'yahoo:v7' };
+            } catch (_) {}
+          }
+          if (!picked) {
+            try {
+              const yahoo = await fetchSessionAwareMark(sym);
+              if (yahoo && yahoo.price > 0) picked = { price: yahoo.price, src: yahoo.src || 'yahoo' };
             } catch (_) {}
           }
         }
