@@ -12195,11 +12195,22 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
     const ticker = String(m && m.ticker || '').trim();
     const price = Number(m && m.price);
     if (!ticker || !(price > 0)) continue;
+    const prev = _ibkrLiveMarks[ticker];
+    // Freshness must follow the last IB tick, not the bridge POST time.
+    // Otherwise a frozen delayed print (competing live session) looks "live"
+    // forever because flushMarks posts every ~15s with the same price.
+    let lastTickAt = m.lastTickAt != null ? Number(m.lastTickAt) : NaN;
+    if (!(lastTickAt > 0)) {
+      if (prev && Number(prev.price) === price && prev.lastTickAt > 0) lastTickAt = Number(prev.lastTickAt);
+      else if (prev && Number(prev.price) === price && prev.at > 0) lastTickAt = Number(prev.at);
+      else lastTickAt = now;
+    }
     _ibkrLiveMarks[ticker] = {
       price,
       bid: m.bid != null ? Number(m.bid) : null,
       ask: m.ask != null ? Number(m.ask) : null,
       last: m.last != null ? Number(m.last) : null,
+      lastTickAt,
       src: 'ibkr',
       at: now
     };
@@ -12383,12 +12394,13 @@ app.get('/api/ibkr/trades', async (req, res) => {
     let markMap = {};
     if (needMarks.length) {
       const uniq = [...new Set(needMarks)];
-      // Priority: fresh IB Gateway/TWS live ticks → FMP quote → Yahoo last.
-      // Do NOT prefer Yahoo over IB — paper account MTM should match TWS.
-      const IB_FRESH_MS = 90 * 1000;
+      // Priority: fresh IB ticks → FMP quote → Yahoo last.
+      // Fresh = lastTickAt (when IB last printed), not bridge POST time.
+      const IB_FRESH_MS = 45 * 1000;
       await Promise.all(uniq.map(async (sym) => {
         const ibm = _ibkrLiveMarks[sym];
-        const ibFresh = ibm && Number(ibm.price) > 0 && (Date.now() - Number(ibm.at || 0)) < IB_FRESH_MS;
+        const tickAt = Number(ibm && (ibm.lastTickAt || ibm.at) || 0);
+        const ibFresh = ibm && Number(ibm.price) > 0 && tickAt > 0 && (Date.now() - tickAt) < IB_FRESH_MS;
         if (ibFresh) {
           markMap[sym] = { price: Number(ibm.price), src: 'ibkr' };
           return;

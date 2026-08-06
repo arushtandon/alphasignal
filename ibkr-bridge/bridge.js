@@ -309,13 +309,22 @@ async function main() {
     const stoqey = require('@stoqey/ib');
     EventName = stoqey.EventName;
     ib = new stoqey.IBApi({ host: HOST, port: PORT, clientId: CLIENT_ID });
+    let mdFellBack = false;
     ib.on(EventName.error, (err, code, reqId) => {
       // 2104/2106/2158 are benign "market data farm OK" notices
       if ([2104, 2106, 2107, 2158].includes(Number(code))) return;
-      // No live entitlement / competing session → drop to delayed once.
-      if ([10197, 354].includes(Number(code))) {
-        try { ib.reqMarketDataType(3); log('marketDataType switched to 3 (delayed) after error', code); } catch (_) {}
+      // Competing live session (TWS / wall-clock) or no live entitlement →
+      // delayed once, then cancel+resubscribe so delayed ticks actually flow.
+      if ([10197, 354].includes(Number(code)) && !mdFellBack) {
+        mdFellBack = true;
+        try {
+          ib.reqMarketDataType(3);
+          log('marketDataType switched to 3 (delayed) after error', code, '— close TWS/wall-clock live MD for live ticks');
+          resubscribeAllMkt('delayed-fallback');
+        } catch (_) {}
       }
+      // Don't spam the log every 15s for the same competing-session errors.
+      if ([10197, 354].includes(Number(code)) && mdFellBack) return;
       log('IB error', code, 'reqId=' + reqId, err && err.message ? err.message : err);
     });
     ib.on(EventName.orderStatus, (orderId, status, filled) => {
@@ -383,7 +392,9 @@ async function main() {
       const row = mktById.get(Number(tickerId));
       if (!row || !(Number(price) > 0)) return;
       const px = Number(price);
-      if (field === 4 || field === 66) { row.last = px; row.lastAt = Date.now(); }
+      const now = Date.now();
+      row.lastTickAt = now;
+      if (field === 4 || field === 66) { row.last = px; row.lastAt = now; }
       else if (field === 1 || field === 67) row.bid = px;
       else if (field === 2 || field === 68) row.ask = px;
       else if (field === 9 || field === 75) row.close = px;
@@ -412,7 +423,10 @@ async function main() {
   function ensureMktData(ticker, contract) {
     if (DRY || !ib || !ticker || !contract || mktSubscribed.has(ticker)) return;
     const id = nextMktId++;
-    mktById.set(id, { ticker, last: null, bid: null, ask: null, close: null });
+    mktById.set(id, {
+      ticker, last: null, bid: null, ask: null, close: null,
+      lastTickAt: null, lastAt: null, contract
+    });
     mktSubscribed.add(ticker);
     const oc = orderContractFromPos(contract) || {
       symbol: contract.symbol, secType: contract.secType || 'STK',
@@ -423,6 +437,22 @@ async function main() {
       ib.reqMktData(id, oc, '', false, false);
       log('mktData subscribed', ticker, 'reqId=' + id);
     } catch (e) { log('mktData subscribe failed', ticker, e.message); }
+  }
+
+  /** After marketDataType change, IB keeps old streams mute — cancel & re-req. */
+  function resubscribeAllMkt(reason) {
+    if (DRY || !ib) return;
+    const saved = [];
+    for (const row of mktById.values()) {
+      if (row && row.ticker && row.contract) saved.push({ ticker: row.ticker, contract: row.contract });
+    }
+    for (const id of [...mktById.keys()]) {
+      try { ib.cancelMktData(id); } catch (_) {}
+    }
+    mktById.clear();
+    mktSubscribed.clear();
+    for (const s of saved) ensureMktData(s.ticker, s.contract);
+    log('mktData resubscribed', saved.length, 'symbol(s) reason=' + (reason || ''));
   }
 
   async function syncMktSubscriptions() {
@@ -464,6 +494,7 @@ async function main() {
       marks.push({
         ticker: row.ticker, price: px,
         bid: row.bid, ask: row.ask, last: row.last,
+        lastTickAt: row.lastTickAt || null,
         src: 'ibkr', at: new Date().toISOString()
       });
     }
