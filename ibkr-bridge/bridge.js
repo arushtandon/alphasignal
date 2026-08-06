@@ -201,6 +201,7 @@ async function main() {
   const posMap = new Map();
   let positionsReady = false; // set once IB's initial position snapshot lands
   const posKeyOf = c => `${String(c.symbol).toUpperCase()}|${c.currency}`;
+  const _flattenTried = new Map(); // pk -> last reconcile-flatten attempt ts
 
   function nid() { return nextOrderId++; }
 
@@ -533,8 +534,14 @@ async function main() {
       }
 
       // 1. Orphan POSITIONS — held at IB, closed (or unknown) per AlphaSignal.
+      // Retry window (not a one-shot): a MKT DAY order placed while that
+      // exchange is closed expires unfilled, so re-attempt after 30 min if the
+      // position subscription still shows shares held.
       for (const [pk, { pos, contract }] of posMap) {
         if (!pos || !everTraded.has(pk) || openTickers.has(pk)) continue;
+        const lastTry = _flattenTried.get(pk) || 0;
+        if (Date.now() - lastTry < 30 * 60 * 1000) continue;
+        _flattenTried.set(pk, Date.now());
         const qty = Math.abs(pos);
         const fid = nid();
         log('RECONCILE: flattening orphan position', pk, 'pos=' + pos, '(AlphaSignal has no open trade for it)');
@@ -545,7 +552,6 @@ async function main() {
           orderId: fid, action: pos > 0 ? 'SELL' : 'BUY',
           orderType: 'MKT', totalQuantity: qty, tif: 'DAY', transmit: true
         }), 'reconcile-flatten ' + pk);
-        posMap.set(pk, { pos: 0, contract }); // don't re-fire before the fill updates
       }
 
       // 2. Rows flat at IB but never closed in state (exit filled while down).
