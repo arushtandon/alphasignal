@@ -1756,34 +1756,76 @@ async function renderIbkr(force){
         +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
     }
 
+    // ── Performance analysis (mirrors the Performance tab, on REAL fills) ──
+    const closed = d.trades.filter(t => t.status==='closed');
+    const box = (title, inner, minW) =>
+      '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;flex:1;min-width:'+(minW||240)+'px">'
+      +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">'+title+'</div>'+inner+'</div>';
+    const mkTbl = (heads, rows) =>
+      '<table style="width:100%;border-collapse:collapse"><thead><tr>'
+      + heads.map((h,i)=>th(i===0?'left':'right')+h+'</th>').join('')
+      +'</tr></thead><tbody>'+rows.join('')+'</tbody></table>';
+    const statRow = (label, arr) => {
+      const n = arr.length;
+      const pnl = arr.reduce((s,t)=>s+(t.realizedUsd||0),0);
+      const w = arr.filter(t=>(t.realizedUsd||0)>0).length;
+      const wr = n ? Math.round(w/n*100) : null;
+      return '<tr>'+td('left','var(--m2)')+label+'</td>'+td('right')+n+'</td>'
+        +td('right',pc(pnl))+fp(pnl)+'</td>'+td('right',wr==null?'var(--m1)':wr>=55?'var(--buy)':wr>=40?'#F5C842':'var(--sell)')+(wr==null?'—':wr+'%')+'</td></tr>';
+    };
+    // Exit quality — what actually closed each trade at IB
+    const exitTypes = ['trailing stop (post-TP1)','stop-loss (full)','signal/time exit','tp exit'];
+    const exitRows = exitTypes.map(x => statRow(x, closed.filter(t=>t.exitType===x)))
+      .concat([statRow('tp1 banked — runner live', d.trades.filter(t=>t.exitType==='tp1 banked — runner live'))]);
+    // Horizon + side splits
+    const hzRows = ['short','medium','long'].map(h => statRow(h.toUpperCase(), closed.filter(t=>t.hz===h)));
+    const sideRows = ['buy','sell'].map(s => statRow(s.toUpperCase(), closed.filter(t=>t.side===s)));
+    // Entry slippage vs the recommendation (actual fill vs model entry)
+    const slips = d.trades.filter(t=>t.rec && t.rec.entry>0 && t.avgEntry>0)
+      .map(t => Math.abs(t.avgEntry - t.rec.entry)/t.rec.entry*10000);
+    const slipTxt = slips.length ? (slips.reduce((a,b)=>a+b,0)/slips.length).toFixed(0)+' bps avg entry slippage ('+slips.length+' trades)' : 'no recommendation joins yet';
+    const analysisHtml = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
+      + box('Exit quality — real fills', mkTbl(['Exit type','N','Realised $','Win %'], exitRows), 300)
+      + box('By horizon (closed)', mkTbl(['Horizon','N','Realised $','Win %'], hzRows))
+      + box('By side (closed)', mkTbl(['Side','N','Realised $','Win %'], sideRows)
+          +'<div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;padding:6px 8px 0">'+slipTxt+'</div>')
+      + '</div>';
+
     // Trades table
     const hzTag = h => h==='medium'?'MED':h==='long'?'LONG':'SHORT';
     const tRows = d.trades.map(t => {
       const dirC = t.side==='sell'?'var(--sell)':'var(--buy)';
       const stC = t.status==='closed'?'var(--m1)':t.status==='partial'?'#F5C842':'var(--ac)';
       const fmtPx = p => p==null?'—':(p>=1000?p.toFixed(0):p>=100?p.toFixed(1):p.toFixed(2));
+      const reason = t.status==='closed'
+        ? (t.rec && t.rec.exitReason ? t.rec.exitReason : (t.exitType||'—'))
+        : (t.exitType || (t.rec && t.rec.lastTrailSl ? 'open · TSL '+fmtPx(t.rec.lastTrailSl) : 'open'));
       return '<tr>'
         + td('left') + '<span style="font-weight:600">'+t.ticker+'</span> <span style="font-size:8px;color:var(--m1)">'+hzTag(t.hz)+'</span></td>'
         + td('left',dirC) + t.side.toUpperCase()+'</td>'
         + td('right','var(--m2)') + String(t.entryTime).slice(0,10)+'</td>'
         + td('right') + t.entryQty+'</td>'
         + td('right') + fmtPx(t.avgEntry)+' <span style="font-size:8px;color:var(--m1)">'+t.currency+'</span></td>'
+        + td('right','var(--m2)') + (t.rec&&t.rec.tp1?fmtPx(t.rec.tp1):'—')+'</td>'
+        + td('right','var(--m2)') + (t.rec?(fmtPx(t.rec.lastTrailSl!=null?t.rec.lastTrailSl:t.rec.sl)):'—')+'</td>'
         + td('right') + (t.openQty>0?t.openQty:'—')+'</td>'
         + td('right') + fmtPx(t.mark)+'</td>'
         + td('right',pc(t.realizedUsd)) + fp(t.realizedUsd)+'</td>'
         + td('right',pc(t.unrealizedUsd)) + (t.openQty>0?fp(t.unrealizedUsd):'—')+'</td>'
         + td('left',stC) + t.status+'</td>'
+        + td('left','var(--m2)') + '<span style="font-size:9px">'+reason+'</span></td>'
         + '</tr>';
     }).join('');
     const tradesHtml = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;overflow-x:auto">'
       +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">IBKR paper trades — from actual executions ('+d.fillCount+' fills)</div>'
-      +'<table style="width:100%;border-collapse:collapse;min-width:760px"><thead><tr>'
+      +'<table style="width:100%;border-collapse:collapse;min-width:960px"><thead><tr>'
       + th('left')+'Ticker</th>'+th('left')+'Side</th>'+th('right')+'Entry date</th>'+th('right')+'Qty</th>'
-      + th('right')+'Avg fill</th>'+th('right')+'Open qty</th>'+th('right')+'Mark</th>'
-      + th('right')+'Realised $</th>'+th('right')+'Unrealised $</th>'+th('left')+'Status</th>'
+      + th('right')+'Avg fill</th>'+th('right')+'TP1</th>'+th('right')+'SL/TSL</th>'
+      + th('right')+'Open qty</th>'+th('right')+'Mark</th>'
+      + th('right')+'Realised $</th>'+th('right')+'Unrealised $</th>'+th('left')+'Status</th>'+th('left')+'Exit reasoning</th>'
       +'</tr></thead><tbody>'+tRows+'</tbody></table></div>';
 
-    el.innerHTML = cards + dailyHtml + tradesHtml;
+    el.innerHTML = cards + analysisHtml + dailyHtml + tradesHtml;
   } catch (e) {
     el.innerHTML = '<div class="emp"><div class="emp-a">!</div><p>Could not load IBKR trades: '+e.message+'</p></div>';
   }

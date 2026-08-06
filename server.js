@@ -10590,11 +10590,17 @@ setTimeout(async function bootDashHistorySync() {
 
 // ── Pick / universe scan scheduler ───────────────────────────────────────────
 // Cadence (Asia/Singapore — user local morning):
-//   • DAILY ≥06:00 SGT — regenerate picks from the shortlist with fresh OHLCV.
+//   • 04:45 SGT — universe rescan kicks off (fresh candidates for the day).
+//   • ≥05:00 SGT — regenerate picks so Japan names (Tokyo opens 08:00 SGT) are
+//     on the board and at IBKR well before the open.
 //   • Also force-regen if picks are >20h old (catches missed ticks / failed runs).
 //   • SHORTLIST — rebuild when older than UNIVERSE_SHORTLIST_TTL (20h).
 // Singapore is always UTC+8 (no DST).
-const PICKS_REFRESH_HOUR_SGT = Math.max(0, Math.min(23, parseInt(process.env.PICKS_REFRESH_HOUR_SGT || '6', 10) || 6));
+// NOTE: this only fires while the server process is awake. On Render free tier
+// the service spins down without inbound traffic — the ibkr-bridge polling
+// every 15s doubles as the keep-alive, so keep the bridge running overnight.
+const PICKS_REFRESH_HOUR_SGT = Math.max(0, Math.min(23, parseInt(process.env.PICKS_REFRESH_HOUR_SGT || '5', 10) || 5));
+const SCAN_PRE_MINUTES_SGT = 4 * 60 + 45; // 04:45 SGT universe rescan
 const PICKS_MAX_AGE_MS = Math.max(6, parseInt(process.env.PICKS_MAX_AGE_HOURS || '20', 10) || 20) * 60 * 60 * 1000;
 const SGT_OFFSET_MS = 8 * 60 * 60 * 1000;
 function singaporeParts(ms = Date.now()) {
@@ -10615,7 +10621,8 @@ async function scanSchedulerTick(boot = false) {
   try {
     if (universeScanState.running || serverPicksGenerating) return;
     const now = Date.now();
-    const { key: todayKey, hour } = singaporeParts(now);
+    const { key: todayKey, hour, minute } = singaporeParts(now);
+    const sgtMinutes = hour * 60 + minute;
     const picksTs = dashboardPicksCache && dashboardPicksCache.dashTs ? Number(dashboardPicksCache.dashTs) : 0;
     const picksAge = picksTs > 0 ? (now - picksTs) : Infinity;
     const shortlistStale = !universeShortlist
@@ -10629,14 +10636,16 @@ async function scanSchedulerTick(boot = false) {
       // board updates even while the heavy universe scan is running.
     }
 
-    const pastRefreshHour = hour >= PICKS_REFRESH_HOUR_SGT;
+    const pastRefreshHour = sgtMinutes >= PICKS_REFRESH_HOUR_SGT * 60;
+    const pastScanTime = sgtMinutes >= SCAN_PRE_MINUTES_SGT;
     const newSgtDay = _lastPicksDateKey !== todayKey;
     const overdue = picksAge > PICKS_MAX_AGE_MS;
 
-    // Morning (or overdue): always refresh the universe pool on a new SGT day so
+    // 04:45 SGT (or overdue): refresh the universe pool on a new SGT day so
     // we are not re-ranking yesterday's shortlist into the same top-5 forever.
-    if (pastRefreshHour && newSgtDay && !shortlistStale && !universeScanState.running) {
-      console.log('Scheduler: new SGT morning → universe rescan for fresh candidates');
+    // Runs BEFORE the 05:00 picks regen so the board is built from fresh candidates.
+    if (pastScanTime && newSgtDay && !shortlistStale && !universeScanState.running) {
+      console.log('Scheduler: new SGT morning (04:45+) → universe rescan for fresh candidates');
       runUniverseScan({ reason: 'morning' });
     }
 
@@ -10665,10 +10674,11 @@ async function scanSchedulerTick(boot = false) {
   } catch (e) { console.warn('scanSchedulerTick:', e.message); }
 }
 
-// Initial kick once the heavier boot sync has settled, then poll every 15 min
-// (was 30) so a failed 6am attempt retries before the cash open.
+// Initial kick once the heavier boot sync has settled, then poll every 5 min
+// so the 05:00 SGT board lands by ~05:05 and failed attempts retry quickly
+// before the Tokyo open (08:00 SGT).
 setTimeout(() => scanSchedulerTick(true), 30000);
-setInterval(() => scanSchedulerTick(false), 15 * 60 * 1000);
+setInterval(() => scanSchedulerTick(false), 5 * 60 * 1000);
 
 // Manual / client-triggered picks regeneration (does not wait for the clock).
 app.post('/api/dashboard/picks/regen', express.json({ limit: '32kb' }), async (req, res) => {
@@ -12117,6 +12127,7 @@ app.post('/api/ibkr/report', (req, res) => {
 });
 
 // USD conversion for fill PnL (fills arrive in the exchange currency).
+const _ibkrMarkCache = new Map(); // sym -> { px, at } chart-close fallback marks
 const _ibkrFx = { at: 0, rates: {} };
 async function ibkrUsdPerCcy(ccy) {
   if (!ccy || ccy === 'USD') return 1;
@@ -12186,7 +12197,56 @@ app.get('/api/ibkr/trades', async (req, res) => {
 
     let markMap = {};
     if (needMarks.length) {
-      try { markMap = await fetchQuotesV7Bulk([...new Set(needMarks)]); } catch (_) {}
+      const uniq = [...new Set(needMarks)];
+      try { markMap = await fetchQuotesV7Bulk(uniq); } catch (_) {}
+      // Yahoo's v7 quote endpoint frequently 401s from datacenter IPs; the chart
+      // endpoint does not. Fall back to the latest daily close so open positions
+      // always get a mark (cached 5 min).
+      for (const sym of uniq) {
+        if (markMap[sym] && Number(markMap[sym].price) > 0) continue;
+        const cached = _ibkrMarkCache.get(sym);
+        if (cached && Date.now() - cached.at < 5 * 60 * 1000) { markMap[sym] = { price: cached.px }; continue; }
+        try {
+          const bars = await fetchOHLCV(sym, '1mo', '1d'); // needs ≥15 bars internally
+          const px = bars && bars.length ? Number(bars[bars.length - 1].c) : null;
+          if (px > 0) { markMap[sym] = { price: px }; _ibkrMarkCache.set(sym, { px, at: Date.now() }); }
+        } catch (_) {}
+      }
+    }
+
+    // Join AlphaSignal's own lifecycle events so each IBKR trade carries the
+    // recommendation levels and the model's exit reasoning.
+    const recByKey = new Map();
+    try {
+      for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n')) {
+        let e; try { e = JSON.parse(line); } catch (_) { continue; }
+        if (!e || !e.key) continue;
+        const rec = recByKey.get(e.key) || {};
+        if (e.type === 'entry') {
+          rec.entry = e.entry; rec.tp1 = e.tp1; rec.tp2 = e.tp2; rec.sl = e.sl; rec.name = e.name;
+        }
+        if (e.type === 'exit') {
+          rec.exitReason = e.exitReason || e.status || null;
+          rec.exitStatus = e.status || null;
+          rec.modelExitPrice = e.exitPrice ?? null;
+          rec.modelPnlDollar = e.pnlDollar ?? null;
+        }
+        if (e.type === 'tsl_update') rec.lastTrailSl = e.trailSl ?? rec.lastTrailSl;
+        recByKey.set(e.key, rec);
+      }
+    } catch (_) {}
+    for (const t of trades) {
+      const rec = recByKey.get(t.key);
+      if (rec) t.rec = rec;
+      // Exit type from the actual fills (what really closed the trade at IB).
+      const hasTp1 = t.fills.some(f => f.role === 'tp1');
+      const hasStop = t.fills.some(f => f.role === 'stop');
+      const hasFlat = t.fills.some(f => f.role === 'flatten');
+      t.exitType = t.status !== 'closed' ? (hasTp1 ? 'tp1 banked — runner live' : null)
+        : hasFlat ? 'signal/time exit'
+        : hasStop && hasTp1 ? 'trailing stop (post-TP1)'
+        : hasStop ? 'stop-loss (full)'
+        : 'tp exit';
     }
 
     const daily = new Map();
