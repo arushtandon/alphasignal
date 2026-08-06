@@ -3,7 +3,7 @@
 #
 #   powershell -ExecutionPolicy Bypass -File run-forever.ps1
 #
-# Logs: ibkr-bridge\logs\bridge-YYYY-MM-DD.log
+# Logs: ibkr-bridge\logs\bridge-YYYY-MM-DD.log (written by bridge.js itself)
 
 $ErrorActionPreference = "Continue"
 Set-Location $PSScriptRoot
@@ -25,13 +25,14 @@ Write-Host ""
 while ($true) {
   $log = "$PSScriptRoot\logs\bridge-$(Get-Date -Format 'yyyy-MM-dd').log"
   $stamp = Get-Date -Format o
-  Add-Content $log "$stamp [run-forever] starting bridge"
+  # Don't hold an exclusive lock on the log (cmd >> was blocking restarts).
+  try { Add-Content -Path $log -Value "$stamp [run-forever] starting bridge" -ErrorAction SilentlyContinue } catch {}
   Write-Host "$stamp starting bridge -> $log  (this window stays quiet; watch the log file)"
-  # cmd-style redirection keeps the log readable (shared-read) while running,
-  # so Get-Content -Tail -Wait works from another window.
-  cmd /c "node bridge.js >> `"$log`" 2>&1"
-  Add-Content $log "$(Get-Date -Format o) [run-forever] bridge exited (code $LASTEXITCODE) - restarting in 30s"
-  Write-Host "$(Get-Date -Format o) bridge exited - restarting in 30s"
+  # bridge.js appendFileSyncs its own log; keep console quiet
+  $p = Start-Process -FilePath "node" -ArgumentList "bridge.js" -WorkingDirectory $PSScriptRoot -PassThru -WindowStyle Hidden
+  Wait-Process -Id $p.Id
+  $code = $p.ExitCode
+  try { Add-Content -Path $log -Value "$(Get-Date -Format o) [run-forever] bridge exited (code $code) - restarting in 30s" -ErrorAction SilentlyContinue } catch {}
+  Write-Host "$(Get-Date -Format o) bridge exited (code $code) - restarting in 30s"
   Start-Sleep -Seconds 30
 }
-

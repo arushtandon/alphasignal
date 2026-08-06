@@ -323,21 +323,27 @@ async function main() {
     EventName = stoqey.EventName;
     ib = new stoqey.IBApi({ host: HOST, port: PORT, clientId: CLIENT_ID });
     let mdFellBack = false;
+    let mdCompeteLogged = false;
     ib.on(EventName.error, (err, code, reqId) => {
       // 2104/2106/2158 are benign "market data farm OK" notices
       if ([2104, 2106, 2107, 2158].includes(Number(code))) return;
-      // Competing live session (TWS / wall-clock) or no live entitlement →
-      // delayed once, then cancel+resubscribe so delayed ticks actually flow.
-      if ([10197, 354].includes(Number(code)) && !mdFellBack) {
-        mdFellBack = true;
-        try {
-          ib.reqMarketDataType(3);
-          log('marketDataType switched to 3 (delayed) after error', code, '— close TWS/wall-clock live MD for live ticks');
-          resubscribeAllMkt('delayed-fallback');
-        } catch (_) {}
+      // 10197: another app (wall-clock / TWS) holds the live MD session.
+      // IB then refuses ticks on this client — close that live session, or
+      // AlphaSignal MTM will use FMP until IB ticks resume.
+      if ([10197, 354].includes(Number(code))) {
+        if (mdType !== 3 && !mdFellBack) {
+          mdFellBack = true;
+          try {
+            ib.reqMarketDataType(3);
+            log('marketDataType switched to 3 (delayed) after error', code);
+            resubscribeAllMkt('delayed-fallback');
+          } catch (_) {}
+        } else if (!mdCompeteLogged) {
+          mdCompeteLogged = true;
+          log('IB competing live session (', code, ') — no ticks here until wall-clock/TWS releases live MD; MTM will use FMP');
+        }
+        return;
       }
-      // Don't spam the log every 15s for the same competing-session errors.
-      if ([10197, 354].includes(Number(code)) && mdFellBack) return;
       log('IB error', code, 'reqId=' + reqId, err && err.message ? err.message : err);
     });
     ib.on(EventName.orderStatus, (orderId, status, filled) => {

@@ -12231,34 +12231,36 @@ async function fetchFmpQuotePrice(symbol) {
   const k = fmpEnvKeyFund();
   if (!k || !symbol) return null;
   const cached = _ibkrMarkCache.get('fmp:' + symbol);
-  if (cached && Date.now() - cached.at < 15 * 1000 && cached.px > 0) {
+  if (cached && Date.now() - cached.at < 10 * 1000 && cached.px > 0) {
     return { price: cached.px, src: 'fmp' };
   }
-  // Short static list only (Yahoo-style + bare + common FMP spellings).
-  const list = [...new Set(fmpSymbolVariantsForApi(symbol))].filter(Boolean).slice(0, 4);
-  for (const raw of list) {
-    for (const makeUrl of [
-      () => `https://financialmodelingprep.com/stable/quote?symbol=${encodeURIComponent(raw)}&apikey=${encodeURIComponent(k)}`,
-      () => `https://financialmodelingprep.com/api/v3/quote/${encodeURIComponent(raw)}?apikey=${encodeURIComponent(k)}`
-    ]) {
-      try {
-        const r = await fetch(makeUrl(), {
-          signal: AbortSignal.timeout(4000),
-          headers: { Accept: 'application/json' }
-        });
-        if (!r.ok) continue;
-        let arr = await r.json().catch(() => []);
-        if (!Array.isArray(arr) && arr && typeof arr === 'object') {
-          arr = Array.isArray(arr.data) ? arr.data : [arr];
-        }
-        const row = Array.isArray(arr) && arr[0] ? arr[0] : null;
+  // Short static list only (Yahoo-style + bare). Try batch v3 first (fastest).
+  const list = [...new Set(fmpSymbolVariantsForApi(symbol))].filter(Boolean).slice(0, 3);
+  const batch = list.join(',');
+  const urls = [
+    `https://financialmodelingprep.com/api/v3/quote/${encodeURIComponent(batch)}?apikey=${encodeURIComponent(k)}`,
+    ...list.map(raw => `https://financialmodelingprep.com/stable/quote?symbol=${encodeURIComponent(raw)}&apikey=${encodeURIComponent(k)}`)
+  ];
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, {
+        signal: AbortSignal.timeout(3500),
+        headers: { Accept: 'application/json' }
+      });
+      if (!r.ok) continue;
+      let arr = await r.json().catch(() => []);
+      if (!Array.isArray(arr) && arr && typeof arr === 'object') {
+        arr = Array.isArray(arr.data) ? arr.data : [arr];
+      }
+      if (!Array.isArray(arr)) continue;
+      for (const row of arr) {
         const price = Number(row && (row.price ?? row.close ?? row.last));
         if (price > 0) {
           _ibkrMarkCache.set('fmp:' + symbol, { px: price, at: Date.now(), src: 'fmp' });
           return { price, src: 'fmp' };
         }
-      } catch (_) { /* next */ }
-    }
+      }
+    } catch (_) { /* next */ }
   }
   return null;
 }
