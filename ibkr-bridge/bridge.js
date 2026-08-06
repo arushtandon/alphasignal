@@ -414,9 +414,27 @@ async function main() {
       const pos = Number(position) || 0;
       const px = Number(marketPrice);
       if (!contract || !(px > 0) || !pos) return;
+      const now = Date.now();
+      const aliases = new Set();
       const y = yahooFromContract(contract);
-      if (!y) return;
-      portfolioMarks.set(y, { price: px, at: Date.now(), contract });
+      if (y) aliases.add(y);
+      // Dual-listed names (e.g. AIR on IBIS vs SBF) — AlphaSignal may use AIR.DE
+      // while IB portfolio reports AIR.PA. Alias via conId / open bridge keys.
+      const conId = contract.conId != null ? Number(contract.conId) : null;
+      for (const row of Object.values(state.byKey)) {
+        if (!row || row.closed || !row.ticker) continue;
+        if (conId && row.contract && Number(row.contract.conId) === conId) aliases.add(row.ticker);
+        else if (String(row.contract && row.contract.symbol || '') === String(contract.symbol || '')
+          && String(row.contract && row.contract.currency || '') === String(contract.currency || '')) {
+          aliases.add(row.ticker);
+        }
+      }
+      // Bare EUR "AIR" → also try .DE / .PA spellings used on the site.
+      if (contract.currency === 'EUR' && contract.symbol) {
+        aliases.add(String(contract.symbol) + '.DE');
+        aliases.add(String(contract.symbol) + '.PA');
+      }
+      for (const t of aliases) portfolioMarks.set(t, { price: px, at: now, contract });
     });
     try {
       ib.reqAccountUpdates(true, ACCOUNT || '');
