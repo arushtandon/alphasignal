@@ -12033,7 +12033,7 @@ function emitTradeEvent(type, payload) {
   return evt;
 }
 
-function readTradeEvents(sinceSeq, limit) {
+function readTradeEvents(sinceSeq, limit, tail) {
   const since = Math.max(0, Number(sinceSeq) || 0);
   const lim = Math.min(Math.max(1, Number(limit) || 200), 2000);
   try {
@@ -12045,7 +12045,10 @@ function readTradeEvents(sinceSeq, limit) {
         if ((e.seq || 0) > since) out.push(e);
       } catch (_) { /* skip */ }
     }
-    return out.slice(0, lim);
+    // Poller paging wants the OLDEST lim (forward cursor); the bridge's
+    // reconciliation sweep wants the NEWEST lim (tail=1) — with oldest-first
+    // truncation it stopped seeing recent trades once the log passed lim.
+    return tail ? out.slice(-lim) : out.slice(0, lim);
   } catch (_) {
     return [];
   }
@@ -12063,7 +12066,7 @@ app.get('/api/ibkr/events', (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   const since = parseInt(req.query.since, 10) || 0;
   const limit = parseInt(req.query.limit, 10) || 200;
-  const events = readTradeEvents(since, limit);
+  const events = readTradeEvents(since, limit, req.query.tail === '1');
   res.json({
     ok: true,
     latestSeq: _tradeEventSeq,
@@ -12803,7 +12806,9 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
           // recalibrate-levels pass; this keeps RR sane in the meantime).
           if (prevEntry && Math.abs(fixed - prevEntry) / prevEntry > 0.0005) {
             const k = fixed / prevEntry;
-            for (const lf of [hz + 'Target1', hz + 'StopLoss']) {
+            // Target2 included: it is reference-only (exit-quality analytics),
+            // but leaving it unscaled corrupted TP2-reached stats (audit F2).
+            for (const lf of [hz + 'Target1', hz + 'Target2', hz + 'StopLoss']) {
               const v = parseFloat(h[lf] || 0);
               if (v > 0) h[lf] = roundPrice(v * k);
             }

@@ -229,6 +229,7 @@ async function main() {
           else if (row.stopId === orderId) role = 'stop';
           else if ((row.closeIds || []).includes(orderId)) role = 'flatten';
           if (!role) continue;
+          if (role === 'entry') row.entryFilled = true; // persisted below with the report
           state.pendingReports = state.pendingReports || [];
           state.pendingReports.push({
             kind: 'exec', execId: exec.execId, key,
@@ -374,6 +375,12 @@ async function main() {
   function onOrderStatus(orderId, status, filled) {
     for (const [key, row] of Object.entries(state.byKey)) {
       if (row.closed) continue;
+      // Persist the parent-fill fact — entry_finalized's safety guard reads it
+      // after restarts, when the in-memory orderFills counters are gone.
+      if (row.parentId === orderId && filled > 0 && !row.entryFilled) {
+        row.entryFilled = true;
+        saveState(state);
+      }
       if (row.tp1Id === orderId && (status === 'Filled' || filled >= row.qtySold) && filled > 0) {
         onTp1Filled(key, row);
         saveState(state);
@@ -401,7 +408,11 @@ async function main() {
     let remaining;
     if (!DRY && held) {
       remaining = row.side === 'sell' ? Math.max(0, -held.pos) : Math.max(0, held.pos);
-      remaining = Math.min(remaining, row.qtyTotal); // never flatten more than this trade's size
+      // Cap at what THIS trade can still hold: after TP1 banked the partial,
+      // only the runner remains. posMap is per-SYMBOL, so when two trades
+      // (e.g. medium + long) share a symbol, capping at qtyTotal would eat
+      // the sibling trade's shares (audit finding B2).
+      remaining = Math.min(remaining, row.tp1Done ? row.qtyRunner : row.qtyTotal);
     } else {
       const parentFilled = DRY ? row.qtyTotal : (orderFills[row.parentId] || 0);
       const soldAtTp1 = row.tp1Done ? row.qtySold : (row.tp1Id != null ? (orderFills[row.tp1Id] || 0) : 0);
@@ -435,13 +446,27 @@ async function main() {
     const row = state.byKey[key];
     if (evt.type === 'entry_finalized') {
       // Server finalized the entry price (next-open) — retune an unfilled parent LMT.
-      if (row && !row.closed && evt.entry > 0 && (orderFills[row.parentId] || 0) === 0 && !DRY && ib) {
-        row.entry = evt.entry;
-        transmitOrder(row.parentId, row.contract, baseOrder({
-          orderId: row.parentId, action: row.side === 'sell' ? 'SELL' : 'BUY',
-          orderType: 'LMT', lmtPrice: roundPx(evt.entry), totalQuantity: row.qtyTotal,
-          tif: 'DAY', outsideRth: !!row.contract.usRth, transmit: true
-        }), 'entry re-price ' + key);
+      // The "unfilled" check must survive restarts (audit finding B1): orderFills
+      // is in-memory only, so a restart between the fill and this event made the
+      // old guard see 0 filled and re-place a full-size LMT on an already-filled
+      // trade. Require ALL of: no persisted fill flag, no in-session fill, the
+      // position snapshot loaded, and no shares held in this trade's direction.
+      if (row && !row.closed && evt.entry > 0 && !DRY && ib) {
+        const held = row.contract ? posMap.get(posKeyOf(row.contract)) : null;
+        const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+        const provablyUnfilled = !row.entryFilled
+          && (orderFills[row.parentId] || 0) === 0
+          && positionsReady && posInDir <= 0;
+        if (provablyUnfilled) {
+          row.entry = evt.entry;
+          transmitOrder(row.parentId, row.contract, baseOrder({
+            orderId: row.parentId, action: row.side === 'sell' ? 'SELL' : 'BUY',
+            orderType: 'LMT', lmtPrice: roundPx(evt.entry), totalQuantity: row.qtyTotal,
+            tif: 'DAY', outsideRth: !!row.contract.usRth, transmit: true
+          }), 'entry re-price ' + key);
+        } else {
+          log('entry_finalized skipped for', key, '— cannot prove parent unfilled (filled flag:', !!row.entryFilled + ', posInDir:', posInDir + ', posReady:', positionsReady + ')');
+        }
       }
       return;
     }
@@ -515,7 +540,10 @@ async function main() {
     if (DRY || !ib) return;
     if (!positionsReady) { log('reconcile skipped — waiting for IB position snapshot'); return; }
     try {
-      const feed = await fetchJson('/api/ibkr/events?since=0&limit=1000');
+      // tail=1 → NEWEST 2000 events (oldest-first truncation went stale past
+      // the limit). Old keys whose entries fall outside the window fail closed:
+      // unknown tickers are never flattened.
+      const feed = await fetchJson('/api/ibkr/events?since=0&limit=2000&tail=1');
       const events = (feed && feed.events) || [];
       if (!events.length) return;
       const keyState = new Map(); // key -> 'open' | 'closed'
