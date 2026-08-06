@@ -250,6 +250,39 @@ function roundPx(x) {
   return n >= 1000 ? +n.toFixed(0) : n >= 100 ? +n.toFixed(1) : +n.toFixed(2);
 }
 
+/**
+ * Build a placeable IB contract from a position snapshot.
+ * Position events often omit primaryExch; SMART + bare "6690" then returns
+ * error 200 (no security definition). Pin the listing exchange from currency.
+ */
+function orderContractFromPos(c) {
+  if (!c) return null;
+  const out = {
+    secType: c.secType || 'STK',
+    exchange: 'SMART',
+    currency: c.currency || 'USD'
+  };
+  const conId = Number(c.conId);
+  if (conId > 0) out.conId = conId;
+  if (c.symbol != null && c.symbol !== '') out.symbol = String(c.symbol);
+  if (c.localSymbol) out.localSymbol = String(c.localSymbol);
+  if (c.primaryExch) {
+    out.primaryExch = c.primaryExch;
+  } else if (out.currency === 'HKD') {
+    out.primaryExch = 'SEHK';
+    // IB often wants the numeric code as-is; keep symbol from the position
+  } else if (out.currency === 'JPY') {
+    out.primaryExch = 'TSEJ';
+  } else if (out.currency === 'EUR') {
+    out.primaryExch = 'IBIS';
+  } else if (out.currency === 'GBP') {
+    out.primaryExch = 'LSE';
+  } else if (out.currency === 'USD') {
+    out.primaryExch = 'NASDAQ';
+  }
+  return out;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
   const state = loadState();
@@ -653,11 +686,14 @@ async function main() {
         _flattenTried.set(pk, Date.now());
         const qty = Math.abs(pos);
         const fid = nid();
-        log('RECONCILE: flattening orphan position', pk, 'pos=' + pos, '(AlphaSignal has no open trade for it)');
-        transmitOrder(fid, {
-          conId: contract.conId, symbol: contract.symbol,
-          secType: contract.secType || 'STK', exchange: 'SMART', currency: contract.currency
-        }, baseOrder({
+        const oc = orderContractFromPos(contract);
+        log('RECONCILE: flattening orphan position', pk, 'pos=' + pos,
+          'contract=' + JSON.stringify(oc), '(AlphaSignal has no open trade for it)');
+        if (!oc || (!oc.conId && !oc.symbol)) {
+          log('RECONCILE: skip flatten — incomplete contract for', pk);
+          continue;
+        }
+        transmitOrder(fid, oc, baseOrder({
           orderId: fid, action: pos > 0 ? 'SELL' : 'BUY',
           orderType: 'MKT', totalQuantity: qty, tif: 'DAY', transmit: true
         }), 'reconcile-flatten ' + pk);
