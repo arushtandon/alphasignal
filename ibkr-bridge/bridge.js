@@ -812,8 +812,14 @@ async function main() {
       log('DRY bracket', evt.ticker, evt.side, JSON.stringify({ contract, parent, stopOrder, tp1Order, split, entryStyle, phase: sessionPhase(contract), quotePx, quoteSrc }, null, 1));
     } else {
       // Prefer conId when resolved — HK SMART+symbol alone often hits error 200.
+      // Pin SEHK for Hong Kong; SMART for everything else.
       const oc = (contract.conId > 0)
-        ? { conId: Number(contract.conId), secType: 'STK', exchange: 'SMART', currency: contract.currency }
+        ? {
+            conId: Number(contract.conId),
+            secType: 'STK',
+            exchange: contract.market === 'HK' ? 'SEHK' : 'SMART',
+            currency: contract.currency
+          }
         : (orderContractFromPos(contract) || contract);
       ib.placeOrder(parentId, oc, parent);
       ib.placeOrder(stopId, oc, stopOrder);
@@ -1085,13 +1091,36 @@ async function main() {
       }
 
       // 0z. Seed missing HK/JP state rows still open on the model (state loss /
-      // cursor past the original entry event).
+      // cursor past the original entry event). Only recent entries — never
+      // revive multi-week-old Asia keys that happen to still show open.
+      const SEED_MAX_AGE_MS = MAX_EVENT_AGE_MS; // same 24h gate as live entries
       for (const [key, stOpen] of keyState) {
         if (stOpen !== 'open' || state.byKey[key]) continue;
         const src = entryByKey.get(key);
         if (!src || !src.ticker) continue;
         const c = toContract(src.ticker);
         if (!c || (c.market !== 'HK' && c.market !== 'JP')) continue;
+        const tradeTs = Date.parse(src.entryDate || src.t || 0);
+        if (!Number.isFinite(tradeTs) || (Date.now() - tradeTs) > SEED_MAX_AGE_MS) {
+          log('RECONCILE: skip seed (stale Asia key)', key);
+          continue;
+        }
+        // If IB already holds this symbol in the trade direction, assume the
+        // original fill survived state loss — mark filled, do not double-enter.
+        const held = posMap.get(posKeyOf(c));
+        const posInDir = held ? (src.side === 'sell' ? -held.pos : held.pos) : 0;
+        if (posInDir > 0) {
+          state.byKey[key] = {
+            ticker: src.ticker, hz: src.hz, side: src.side,
+            entry: src.entry, stopPx: src.sl || src.trailSl, tp1Px: src.tp1 || 0,
+            entryStyle: 'MKT', entryFilled: true, closed: false,
+            contract: c, qtyTotal: posInDir, updated: new Date().toISOString(),
+            recoveredFromPosition: true
+          };
+          log('RECONCILE: recovered filled Asia row from IB position', key, 'qty', posInDir);
+          saveState(state);
+          continue;
+        }
         state.byKey[key] = {
           ticker: src.ticker, hz: src.hz, side: src.side,
           entry: src.entry, stopPx: src.sl || src.trailSl, tp1Px: src.tp1 || 0,
