@@ -63,14 +63,27 @@ const MAX_EVENT_AGE_MS = Math.max(1, parseFloat(process.env.IBKR_MAX_EVENT_AGE_H
 const ALLOW_NSE = process.env.IBKR_ALLOW_NSE === '1';
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, 'bridge-state.json');
 const SWEEP_MS = 5 * 60 * 1000;
-/** Tickers that must never stay open — Hold→Buy bug / dual-list duplicates.
- *  Flattened at session open; fills tagged errorTrade (excluded from model PnL). */
+/** Optional kill-switch only (default EMPTY). Authorization is by provenance
+ *  (open emitted entry key), not ticker identity — see Claude audit Fix 1. */
 const ERROR_TRADE_TICKERS = new Set(
-  String(process.env.IBKR_ERROR_TICKERS || 'FSLR,BMY,CVX,MPC,HSBA.L,AIR.DE,AIR.PA,VTR,FANG,8002.T')
+  String(process.env.IBKR_ERROR_TICKERS || '')
     .split(/[\s,]+/).filter(Boolean).map(s => s.toUpperCase())
 );
 /** Max adverse slippage vs model entry for US RTH market chase (bps). */
 const US_RTH_MAX_CHASE_BPS = Math.max(0, parseInt(process.env.IBKR_US_RTH_MAX_CHASE_BPS || '100', 10) || 100);
+
+/** Match server.js singaporeToDateString — IBKR keys use Asia/Singapore calendar days. */
+function singaporeToDateString(ms = Date.now()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Singapore',
+    weekday: 'short',
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric'
+  }).formatToParts(new Date(ms));
+  const get = (t) => (parts.find(p => p.type === t) || {}).value || '';
+  return `${get('weekday')} ${get('month')} ${get('day')} ${get('year')}`;
+}
 
 function log(...a) {
   const line = [new Date().toISOString(), ...a].map(x => (typeof x === 'string' ? x : String(x))).join(' ');
@@ -387,6 +400,8 @@ async function main() {
   let forceReconcile = false; // set on positionEnd so Asia re-arms don't wait 5m
   const posKeyOf = c => `${String(c.symbol).toUpperCase()}|${c.currency}`;
   const _flattenTried = new Map(); // pk -> last reconcile-flatten attempt ts
+  const _unauthStreak = new Map(); // pk -> consecutive unauthorized reconcile hits
+  const _cancelWaiters = new Map(); // orderId -> { resolve, timer }
   const lotCache = new Map(); // posKey -> board lot
   let nextDetailsId = 900000;
   // Live IBKR market data for MTM (posted to AlphaSignal every ~10s).
@@ -756,6 +771,28 @@ async function main() {
     try { ib.cancelOrder(orderId); log('cancel sent', label, orderId); } catch (e) { log('cancel failed', label, orderId, e.message); }
   }
 
+  /** Wait until IB acks cancel (or timeout). Used to close the place-then-cancel double-fill window. */
+  function waitCancel(orderId, timeoutMs = 3000) {
+    if (orderId == null || DRY || !ib) return Promise.resolve('skip');
+    return new Promise(resolve => {
+      const prev = _cancelWaiters.get(orderId);
+      if (prev) { try { clearTimeout(prev.timer); prev.resolve('superseded'); } catch (_) {} }
+      const timer = setTimeout(() => {
+        _cancelWaiters.delete(orderId);
+        resolve('timeout');
+      }, timeoutMs);
+      _cancelWaiters.set(orderId, { resolve, timer });
+    });
+  }
+
+  function noteCancelAck(orderId, status) {
+    const w = _cancelWaiters.get(orderId);
+    if (!w) return;
+    clearTimeout(w.timer);
+    _cancelWaiters.delete(orderId);
+    w.resolve(status || 'Cancelled');
+  }
+
   function ibQuoteForTicker(ticker) {
     const pm = portfolioMarks.get(ticker);
     if (pm && pm.price > 0) return Number(pm.price);
@@ -903,6 +940,10 @@ async function main() {
   }
 
   function onOrderStatus(orderId, status, filled) {
+    const st = String(status || '');
+    if (st === 'Cancelled' || st === 'ApiCancelled' || st === 'Inactive') {
+      noteCancelAck(orderId, st);
+    }
     for (const [key, row] of Object.entries(state.byKey)) {
       if (row.closed) continue;
       // Persist the parent-fill fact — entry_finalized's safety guard reads it
@@ -989,13 +1030,14 @@ async function main() {
         const hz = evt.hz || 'short';
         const keyDay = String(key.split('|')[2] || '');
         const keyDayMs = Date.parse(keyDay);
+        // Exact SGT day-key match (same helper as server tradeEventSnapshot).
         const h = rows.find(x => {
           if (!x || x.ticker !== evt.ticker) return false;
           if (String(x.hz || 'short') !== String(hz)) return false;
           const ms = Date.parse(x.entryDate || x.timestamp || 0);
           if (!Number.isFinite(ms)) return false;
-          if (new Date(ms).toDateString() === keyDay) return true;
-          return Number.isFinite(keyDayMs) && Math.abs(ms - keyDayMs) < 36 * 3600 * 1000;
+          return singaporeToDateString(ms) === keyDay
+            || (Number.isFinite(keyDayMs) && Math.abs(ms - keyDayMs) < 2 * 3600 * 1000);
         });
         const act = String((h && (h[hz + 'Action'] || h.action)) || '').toLowerCase();
         if (act !== 'buy' && act !== 'sell') {
@@ -1186,10 +1228,8 @@ async function main() {
             if (String(x.hz || 'short') !== String(hz)) return false;
             const ms = Date.parse(x.entryDate || x.timestamp || 0);
             if (!Number.isFinite(ms)) return false;
-            // Render (UTC) vs bridge PC (SGT) can disagree on toDateString().
-            // Accept exact day-token match OR entry within 36h of the key day.
-            if (new Date(ms).toDateString() === keyDay) return true;
-            return Number.isFinite(keyDayMs) && Math.abs(ms - keyDayMs) < 36 * 3600 * 1000;
+            return singaporeToDateString(ms) === keyDay
+              || (Number.isFinite(keyDayMs) && Math.abs(ms - keyDayMs) < 2 * 3600 * 1000);
           });
           if (!h) continue;
           const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
@@ -1356,8 +1396,23 @@ async function main() {
 
         try {
           const src = entryByKey.get(key) || {};
-          // Place FIRST — only cancel the old bracket after a new one is accepted.
-          // (Cancel-then-defer during HK lunch previously orphaned working orders.)
+          // Cancel-confirm-place: never leave two parents live (place-then-cancel
+          // double-filled 2914.T long). Lunch path never reaches here (no reason).
+          const oldParent = row.parentId, oldStop = row.stopId, oldTp1 = row.tp1Id;
+          const cancelWaits = [];
+          if (oldParent != null) {
+            cancelOrder(oldParent, 'rearm parent ' + key);
+            cancelWaits.push(waitCancel(oldParent, 3500));
+          }
+          if (oldStop != null) {
+            cancelOrder(oldStop, 'rearm stop ' + key);
+            cancelWaits.push(waitCancel(oldStop, 3500));
+          }
+          if (oldTp1 != null) {
+            cancelOrder(oldTp1, 'rearm tp1 ' + key);
+            cancelWaits.push(waitCancel(oldTp1, 3500));
+          }
+          if (cancelWaits.length) await Promise.all(cancelWaits);
           const placed = await placeBracket({
             key, ticker: row.ticker, hz: row.hz, side: row.side || src.side,
             entry: src.entry != null ? src.entry : row.entry,
@@ -1367,77 +1422,94 @@ async function main() {
             t: new Date().toISOString()
           });
           if (placed) {
-            cancelOrder(row.parentId, 'rearm parent ' + key);
-            cancelOrder(row.stopId, 'rearm stop ' + key);
-            if (row.tp1Id != null) cancelOrder(row.tp1Id, 'rearm tp1 ' + key);
             placed.lastRearmAt = new Date().toISOString();
             placed.rearmReason = reason;
             placed.rearmCount = (Number(row.rearmCount) || 0) + 1;
-            // Clear false fills from sibling-symbol attribution
             placed.entryFilled = false;
             state.byKey[key] = placed;
             log('RECONCILE: re-armed', key, 'reason=' + reason, '→', placed.entryStyle,
               'lot=' + (placed.contract && placed.contract.lotHint));
           } else {
             row.lastRearmAt = new Date().toISOString();
-            log('RECONCILE: rearm place skipped', key, reason);
+            log('RECONCILE: rearm place skipped (after cancel)', key, reason);
           }
           saveState(state);
         } catch (e) { log('RECONCILE: rearm failed', key, e.message); }
       }
 
-      // 0e. ERROR TRADES — unauthorized Hold→Buy / dual-list names. Force-close
-      // at the next session open and attach a state row so execDetails reports
-      // fills with errorTrade:true (excluded from model PnL on the site).
-      for (const [pk, { pos, contract }] of posMap) {
-        if (!pos) continue;
-        const y = yahooFromContract(contract);
-        const yU = String(y || '').toUpperCase();
-        const symU = String(contract.symbol || '').toUpperCase();
-        const isErr = ERROR_TRADE_TICKERS.has(yU)
-          || ERROR_TRADE_TICKERS.has(symU)
-          || [...ERROR_TRADE_TICKERS].some(t => t.replace(/\.(DE|PA|L|HK|T)$/i, '') === symU);
-        if (!isErr) continue;
-        const phase = sessionPhase(contract);
-        // Queue DAY MKT — IB holds until the venue is open (US 09:30 ET etc.).
-        if (phase === 'lunch') continue;
-        const lastTry = _flattenTried.get('err|' + pk) || 0;
-        if (Date.now() - lastTry < 15 * 60 * 1000) continue;
-        _flattenTried.set('err|' + pk, Date.now());
-        const qty = Math.abs(pos);
-        const fid = nid();
-        const oc = orderContractFromPos(contract);
-        if (!oc || (!oc.conId && !oc.symbol)) continue;
-        const ticker = y || symU;
-        const errKey = Object.keys(state.byKey).find(k =>
-          state.byKey[k] && String(state.byKey[k].ticker || '').toUpperCase() === String(ticker).toUpperCase()
-          && (state.byKey[k].errorTrade || state.byKey[k].flatReason === 'unauthorized-non-recommendation'))
-          || `${ticker}|error|${new Date().toDateString()}`;
-        const prev = state.byKey[errKey] || {};
-        state.byKey[errKey] = {
-          ...prev,
-          ticker, hz: prev.hz || 'error', side: pos > 0 ? 'buy' : 'sell',
-          contract: oc, closed: false, errorTrade: true,
-          flatReason: 'unauthorized-non-recommendation',
-          closeIds: [...(prev.closeIds || []), fid],
-          qtyTotal: qty, updated: new Date().toISOString()
-        };
-        saveState(state);
-        log('RECONCILE: ERROR TRADE flatten', errKey, 'pos=' + pos, 'phase=' + phase);
-        transmitOrder(fid, oc, baseOrder({
-          orderId: fid, action: pos > 0 ? 'SELL' : 'BUY',
-          orderType: 'MKT', totalQuantity: qty, tif: 'DAY', transmit: true
-        }), 'error-flatten ' + errKey);
+      // 0e. Optional env kill-switch only (IBKR_ERROR_TICKERS). Default empty —
+      // unauthorized closes use provenance orphan flatten below, not ticker identity.
+      if (ERROR_TRADE_TICKERS.size) {
+        for (const [pk, { pos, contract }] of posMap) {
+          if (!pos) continue;
+          const y = yahooFromContract(contract);
+          const yU = String(y || '').toUpperCase();
+          const symU = String(contract.symbol || '').toUpperCase();
+          const isErr = ERROR_TRADE_TICKERS.has(yU) || ERROR_TRADE_TICKERS.has(symU)
+            || [...ERROR_TRADE_TICKERS].some(t => t.replace(/\.(DE|PA|L|HK|T)$/i, '') === symU);
+          if (!isErr) continue;
+          if (sessionPhase(contract) === 'lunch') continue;
+          const lastTry = _flattenTried.get('err|' + pk) || 0;
+          if (Date.now() - lastTry < 15 * 60 * 1000) continue;
+          _flattenTried.set('err|' + pk, Date.now());
+          const qty = Math.abs(pos);
+          const fid = nid();
+          const oc = orderContractFromPos(contract);
+          if (!oc || (!oc.conId && !oc.symbol)) continue;
+          const ticker = y || symU;
+          const errKey = `${ticker}|error|${singaporeToDateString()}`;
+          state.byKey[errKey] = {
+            ...(state.byKey[errKey] || {}),
+            ticker, hz: 'error', side: pos > 0 ? 'buy' : 'sell',
+            contract: oc, closed: false, errorTrade: true,
+            flatReason: 'env-error-ticker',
+            closeIds: [...((state.byKey[errKey] && state.byKey[errKey].closeIds) || []), fid],
+            qtyTotal: qty, updated: new Date().toISOString()
+          };
+          saveState(state);
+          log('RECONCILE: ENV error-ticker flatten', errKey, 'pos=' + pos);
+          transmitOrder(fid, oc, baseOrder({
+            orderId: fid, action: pos > 0 ? 'SELL' : 'BUY',
+            orderType: 'MKT', totalQuantity: qty, tif: 'DAY', transmit: true
+          }), 'error-flatten ' + errKey);
+        }
       }
 
-      // 1. Orphan POSITIONS — held at IB, closed (or unknown) per AlphaSignal.
-      // Retry window (not a one-shot): a MKT DAY order placed while that
-      // exchange is closed expires unfilled, so re-attempt after 30 min if the
-      // position subscription still shows shares held.
+      // 1. Orphan POSITIONS — held at IB, no open AlphaSignal key.
+      // Debounce: require TWO consecutive reconcile sweeps classifying unauthorized
+      // before flattening (avoids racing a brand-new fill vs feed/day-key lag).
       for (const [pk, { pos, contract }] of posMap) {
-        if (!pos || !everTraded.has(pk) || openTickers.has(pk)) continue;
+        if (!pos || !everTraded.has(pk) || openTickers.has(pk)) {
+          _unauthStreak.delete(pk);
+          continue;
+        }
         const y = yahooFromContract(contract);
-        if (ERROR_TRADE_TICKERS.has(String(y || '').toUpperCase())) continue; // handled above
+        // Exempt: any still-open emitted entry for this ticker within event age
+        // (provenance), even if day-key formatting briefly disagrees.
+        let recentOpenEntry = false;
+        for (const [ek, stOpen] of keyState) {
+          if (stOpen !== 'open') continue;
+          const src = entryByKey.get(ek);
+          if (!src || !src.ticker) continue;
+          if (String(src.ticker).toUpperCase() !== String(y || '').toUpperCase()
+            && String(src.ticker).toUpperCase() !== String(contract.symbol || '').toUpperCase()) continue;
+          const age = Date.now() - Date.parse(src.entryDate || src.t || 0);
+          if (Number.isFinite(age) && age >= 0 && age <= MAX_EVENT_AGE_MS) {
+            recentOpenEntry = true;
+            break;
+          }
+        }
+        if (recentOpenEntry) {
+          _unauthStreak.delete(pk);
+          log('RECONCILE: skip orphan flatten — recent open entry for', y || pk);
+          continue;
+        }
+        const streak = (_unauthStreak.get(pk) || 0) + 1;
+        _unauthStreak.set(pk, streak);
+        if (streak < 2) {
+          log('RECONCILE: unauthorized candidate (debounce 1/2)', pk, 'pos=' + pos, 'ticker=' + (y || ''));
+          continue;
+        }
         const lastTry = _flattenTried.get(pk) || 0;
         if (Date.now() - lastTry < 30 * 60 * 1000) continue;
         _flattenTried.set(pk, Date.now());
@@ -1445,7 +1517,8 @@ async function main() {
         const fid = nid();
         const oc = orderContractFromPos(contract);
         log('RECONCILE: flattening orphan position', pk, 'pos=' + pos,
-          'contract=' + JSON.stringify(oc), '(AlphaSignal has no open trade for it)');
+          'contract=' + JSON.stringify(oc),
+          '(no open emitted entry — provenance unauthorized)');
         if (!oc || (!oc.conId && !oc.symbol)) {
           log('RECONCILE: skip flatten — incomplete contract for', pk);
           continue;

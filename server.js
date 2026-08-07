@@ -6569,15 +6569,15 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
   if (basePx && Number.isFinite(basePx)) {
     const openAct = String(trade[hz + 'Action'] || trade.action || '').toLowerCase();
     const openSt = String(trade[hz + 'Status'] || trade.status || 'open').toLowerCase();
-    const freezeOpen = (openAct === 'buy' || openAct === 'sell')
-      && (!openSt || openSt === 'open' || openSt === 'tp1_open');
+    const latched = !!ibkrLiveEntrySide(trade.ticker, hz, trade.entryDate || trade.timestamp);
+    const freezeOpen = latched || ((openAct === 'buy' || openAct === 'sell')
+      && (!openSt || openSt === 'open' || openSt === 'tp1_open'));
     const tempRow = {
       ...trade,
       shortAction: trade.shortAction || (String(trade.action || '').toLowerCase() === 'sell' ? 'Sell' : 'Buy'),
       mediumAction: trade.mediumAction || trade.shortAction || 'Hold',
       longAction: trade.longAction || trade.shortAction || 'Hold',
-      // Keep open history actions as Buy/Sell during level refresh — Conf/RR
-      // demote must not rewrite live recommendations to Hold.
+      // LATCH: live emitted entry (no exit) — Conf/RR demote must not → Hold.
       _freezeOpenAction: freezeOpen
     };
     applyServerPriceLevels(tempRow, basePx, tech, fund);
@@ -7350,8 +7350,8 @@ app.get('/api/dashboard/universe/status', (req, res) => {
 
 // ── Health (after tradeHistory — used in payload) ────────────────────────────
 app.get('/api/history/status', (req, res) => {
-  const today = new Date().toDateString();
-  const todayCnt = tradeHistory.filter(h => new Date(h.entryDate||h.timestamp).toDateString()===today).length;
+  const today = singaporeToDateString();
+  const todayCnt = tradeHistory.filter(h => historyTradeEntryDay(h) === today).length;
   const byHz = {};
   tradeHistory.forEach(h => { const hz=h.hz||'none'; byHz[hz]=(byHz[hz]||0)+1; });
   res.json({total:tradeHistory.length, todayCount:todayCnt, byHz, file:HISTORY_FILE});
@@ -7682,10 +7682,11 @@ async function addTradesToHistory(trades) {
   // re-enter as closed rows (they reopen and the sim re-decides them).
   const foldedIn = normalizeExtinctStatuses(trades, 'ingest');
   if (foldedIn) console.log('History ingest: folded', foldedIn, 'stale full-TP1/TP2 rows into partial+TSL');
-  const todayStr = new Date().toDateString();
+  // One trading-day definition (SGT) for history keys + IBKR event keys.
+  const todayStr = singaporeToDateString();
   const keyOf = (t) => {
     const hz = t.hz || 'short';
-    const day = new Date(t.entryDate || t.timestamp || Date.now()).toDateString();
+    const day = historyTradeEntryDay(t) || singaporeToDateString();
     return `${t.ticker}|${hz}|${day}`;
   };
   // Snapshot existing rows by key BEFORE we drop them, so a re-recorded pick keeps
@@ -7711,7 +7712,7 @@ async function addTradesToHistory(trades) {
     // Only gate FRESH (today's) buy picks on SL cooldown. Historical re-uploads
     // (older entryDate, e.g. localStorage recovery after a deploy) must always be
     // preserved so durable history is never silently dropped.
-    const isToday = new Date(trade.entryDate || trade.timestamp || Date.now()).toDateString() === todayStr;
+    const isToday = historyTradeEntryDay(trade) === todayStr;
     if (!isSell && isToday && isSLCooldownActive(trade.ticker, hz)) {
       console.log('History add skipped (SL cooldown):', trade.ticker, hz);
       continue;
@@ -7778,16 +7779,16 @@ async function addTradesToHistory(trades) {
       ]) {
         if (prev[f] !== undefined) trade[f] = prev[f];
       }
-      // FREEZE ACTION: once recorded as Buy/Sell and still open, never let a
-      // board refresh / Conf demote rewrite it to Hold. That mismatch made the
-      // IBKR bridge flatten live fills ("signal/time exit") while the dashboard
-      // still showed Buy picks.
+      // FREEZE / LATCH ACTION: open Buy/Sell, or a live emitted IBKR entry with
+      // no exit, must not be rewritten to Hold by Conf demote / board refresh.
       const prevAct = String(prev[hz + 'Action'] || prev.action || '').toLowerCase();
       const prevStatus = String(prev[hz + 'Status'] || prev.status || 'open').toLowerCase();
       const stillOpen = !prevStatus || prevStatus === 'open' || prevStatus === 'tp1_open';
-      if (stillOpen && (prevAct === 'buy' || prevAct === 'sell')) {
-        trade.action = prev.action;
-        trade[hz + 'Action'] = prev[hz + 'Action'] || prev.action;
+      const liveSide = ibkrLiveEntrySide(trade.ticker, hz, trade.entryDate || trade.timestamp || prev.entryDate);
+      if (liveSide || (stillOpen && (prevAct === 'buy' || prevAct === 'sell'))) {
+        const keep = liveSide === 'sell' ? 'Sell' : (liveSide === 'buy' ? 'Buy' : (prev[hz + 'Action'] || prev.action));
+        trade.action = keep;
+        trade[hz + 'Action'] = keep;
         if (prev[hz + 'Conf'] != null) trade[hz + 'Conf'] = prev[hz + 'Conf'];
         if (prev[hz + 'Score'] != null) trade[hz + 'Score'] = prev[hz + 'Score'];
         if (prev[hz + 'SellScore'] != null) trade[hz + 'SellScore'] = prev[hz + 'SellScore'];
@@ -8004,8 +8005,8 @@ async function importSeedRecommendedCsvsIfMissing() {
   for (const file of files) {
     const entryDate = entryDateFromRecommendedFilename(file);
     if (!entryDate) continue;
-    const dayStr = new Date(entryDate).toDateString();
-    const have = tradeHistory.some(h => new Date(h.entryDate || h.timestamp).toDateString() === dayStr);
+    const dayStr = singaporeToDateString(Date.parse(entryDate) || Date.now());
+    const have = tradeHistory.some(h => historyTradeEntryDay(h) === dayStr);
     if (have) {
       console.log('Seed CSV skip (day already in history):', file);
       continue;
@@ -8053,9 +8054,9 @@ app.post('/api/history/update-pnl', express.json(), (req, res) => {
   if (!Array.isArray(updates)) return res.status(400).json({ error: 'Expected array' });
   
   updates.forEach(u => {
-    const idx = tradeHistory.findIndex(h => 
-      h.ticker === u.ticker && 
-      new Date(h.entryDate||h.timestamp).toDateString() === new Date(u.entryDate).toDateString()
+    const uDay = singaporeToDateString(Date.parse(u.entryDate) || Date.now());
+    const idx = tradeHistory.findIndex(h =>
+      h.ticker === u.ticker && historyTradeEntryDay(h) === uDay
     );
     if (idx >= 0) {
       const h = tradeHistory[idx];
@@ -8078,10 +8079,10 @@ app.post('/api/history/update-pnl', express.json(), (req, res) => {
 app.post('/api/history/clear-today', express.json(), (req, res) => {
   const { tickers } = req.body;
   if(!Array.isArray(tickers)) return res.status(400).json({error:'Expected tickers array'});
-  const today = new Date().toDateString();
+  const today = singaporeToDateString();
   const before = tradeHistory.length;
   tradeHistory = tradeHistory.filter(h => {
-    const isToday = new Date(h.entryDate||h.timestamp).toDateString() === today;
+    const isToday = historyTradeEntryDay(h) === today;
     return !(isToday && tickers.includes(h.ticker));
   });
   saveHistoryFile(tradeHistory);
@@ -10559,12 +10560,12 @@ function migrateLegacyTightStops() {
 }
 
 function purgeOpenCooldownBuysFromHistory() {
-  const today = new Date().toDateString();
+  const today = singaporeToDateString();
   const before = tradeHistory.length;
   tradeHistory = tradeHistory.filter(h => {
     if (!isHistoryBuySellRecord(h)) return true;
     const hz = h.hz || 'short';
-    const isToday = new Date(h.entryDate || h.timestamp).toDateString() === today;
+    const isToday = historyTradeEntryDay(h) === today;
     const st = h[hz + 'Status'] || h.status || 'open';
     const isOpen = st === 'open';
     const isBuy = String(h.action || '').toLowerCase() !== 'sell';
@@ -11058,9 +11059,14 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
     const isSell = act === 'sell';
     // All horizons: TP1/TP2 from ATR + momentum + structure; SL from trail/structure.
     // If TP1/SL cannot clear PICKS_MIN_RR (1.1:1), or confidence < 62%, do not recommend.
+    // Auto-latch: live emitted entry (no exit) skips Conf/RR demote to Hold.
+    if (!row._freezeOpenAction && row.ticker
+      && ibkrLiveEntrySide(row.ticker, hz, row.entryDate || row.timestamp)) {
+      row._freezeOpenAction = true;
+    }
     const clearHz = () => {
-      // Dashboard / new-pick path: drop levels + demote. History enrich passes
-      // frozen open rows — never rewrite those to Hold (IBKR already traded).
+      // Dashboard / new-pick path: drop levels + demote. Latched / frozen open
+      // rows — never rewrite those to Hold (IBKR already authorized).
       if (row._freezeOpenAction) {
         row[hz + 'Entry'] = row[hz + 'Entry'] || '';
         return;
@@ -12104,15 +12110,24 @@ function tradeEventSnapshot(h, hz, extra) {
 
 /** True if an open IBKR entry already exists for this key or a dual-list alias. */
 function ibkrHasOpenEntryFor(ticker, hz, entryDate) {
+  return !!ibkrLiveEntrySide(ticker, hz, entryDate);
+}
+
+/**
+ * Emitted-entry LATCH: if an `entry` event exists with no `exit` for this
+ * ticker|hz|SGT-day (or alias), return the side ('buy'|'sell'). Conf demote
+ * must not rewrite these to Hold while the trade is live.
+ */
+function ibkrLiveEntrySide(ticker, hz, entryDate) {
   const entryMs = Date.parse(entryDate || Date.now());
   const keyDay = singaporeToDateString(Number.isFinite(entryMs) ? entryMs : Date.now());
   const aliases = new Set([String(ticker || '').toUpperCase()]);
   for (const a of (IBKR_LISTING_ALIASES[String(ticker || '').toUpperCase()] || [])) {
     aliases.add(String(a).toUpperCase());
   }
-  const open = new Set();
+  const open = new Map(); // key -> side
   try {
-    if (!fs.existsSync(TRADE_EVENTS_FILE)) return false;
+    if (!fs.existsSync(TRADE_EVENTS_FILE)) return null;
     const lines = fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean);
     for (const line of lines) {
       try {
@@ -12121,14 +12136,14 @@ function ibkrHasOpenEntryFor(ticker, hz, entryDate) {
         const [t, ehz, day] = String(e.key).split('|');
         if (!aliases.has(String(t || '').toUpperCase())) continue;
         if (String(ehz) !== String(hz || 'short')) continue;
-        // Same calendar day only — older dual listings must not block forever
         if (day && day !== keyDay) continue;
-        if (e.type === 'entry') open.add(e.key);
+        if (e.type === 'entry') open.set(e.key, e.side === 'sell' ? 'sell' : 'buy');
         else if (e.type === 'exit') open.delete(e.key);
       } catch (_) { /* skip */ }
     }
-  } catch (_) { return false; }
-  return open.size > 0;
+  } catch (_) { return null; }
+  if (!open.size) return null;
+  return open.values().next().value;
 }
 
 function shouldEmitIbkrEntry(trade, hz) {
@@ -12289,8 +12304,14 @@ app.get('/api/ibkr/status', (req, res) => {
 // paper-account PnL (fills, not theoretical marks). Append-only JSONL on the
 // data disk, deduped by IB execId.
 const IBKR_FILLS_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_fills.jsonl');
-/** Hold→Buy bug names + dual listings that must never count in model PnL. */
-const IBKR_ERROR_TRADE_TICKERS = new Set([
+/** Optional kill-switch only (default EMPTY). Authorization is by provenance /
+ *  fill.errorTrade stamps — not a permanent ticker ban (Claude audit Fix 1). */
+const IBKR_ERROR_TRADE_TICKERS = new Set(
+  String(process.env.IBKR_ERROR_TICKERS || '')
+    .split(/[\s,]+/).filter(Boolean).map(s => s.toUpperCase())
+);
+/** One-time stamp of known Hold→Buy / dual-list fills so past Error PnL stays. */
+const IBKR_LEGACY_ERROR_TICKERS = new Set([
   'FSLR', 'BMY', 'CVX', 'MPC', 'HSBA.L', 'AIR.DE', 'AIR.PA', 'VTR', 'FANG', '8002.T'
 ]);
 const IBKR_ERROR_TRADES_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_error_trades.json');
@@ -12307,11 +12328,39 @@ function isIbkrErrorTrade(t, extra) {
   if (!t) return false;
   if (t.errorTrade === true) return true;
   const tk = String(t.ticker || '').toUpperCase();
-  if (IBKR_ERROR_TRADE_TICKERS.has(tk) || (extra && extra.tickers.has(tk))) return true;
+  // Env kill-switch + explicit key list only — NOT the legacy name set
+  // (that would permanently ban a future valid FSLR Buy).
+  if (IBKR_ERROR_TRADE_TICKERS.has(tk)) return true;
   if (extra && extra.keys.has(t.key)) return true;
   if ((t.fills || []).some(f => f.errorTrade)) return true;
   return false;
 }
+/** Stamp historical fills that match the known unauthorized episode once. */
+function stampLegacyIbkrErrorFills() {
+  try {
+    if (!fs.existsSync(IBKR_FILLS_FILE)) return 0;
+    const lines = fs.readFileSync(IBKR_FILLS_FILE, 'utf8').trim().split('\n').filter(Boolean);
+    let n = 0;
+    const out = lines.map(line => {
+      let r; try { r = JSON.parse(line); } catch (_) { return line; }
+      if (!r || r.errorTrade) return line;
+      const tk = String(r.ticker || '').toUpperCase();
+      if (!IBKR_LEGACY_ERROR_TICKERS.has(tk)) return line;
+      r.errorTrade = true;
+      n++;
+      return JSON.stringify(r);
+    });
+    if (n) {
+      fs.writeFileSync(IBKR_FILLS_FILE, out.join('\n') + '\n');
+      console.log('Stamped', n, 'legacy IBKR fill(s) as errorTrade (past unauthorized episode)');
+    }
+    return n;
+  } catch (e) {
+    console.warn('legacy error-trade stamp failed:', e.message);
+    return 0;
+  }
+}
+stampLegacyIbkrErrorFills();
 let _ibkrExecIds = new Set();
 try {
   if (fs.existsSync(IBKR_FILLS_FILE)) {
@@ -12344,6 +12393,8 @@ app.post('/api/ibkr/report', (req, res) => {
       currency: String(r.currency || 'USD'), ccyScale: Number(r.ccyScale) || 1,
       orderId: r.orderId ?? null,
       time: r.time || new Date().toISOString(),
+      // Tag only when bridge stamps errorTrade or optional env kill-switch.
+      // Never permanently ban a ticker by legacy name list.
       errorTrade: r.errorTrade === true || IBKR_ERROR_TRADE_TICKERS.has(String(r.ticker || '').toUpperCase())
     };
     try {
@@ -13253,7 +13304,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
       }
       // A trade entered today keeps its scan-time entry (that IS the correct entry);
       // only older rows need the historical-close repair / are eligible to flip.
-      const enteredToday = new Date(entryMs).toDateString() === new Date().toDateString();
+      const enteredToday = singaporeToDateString(entryMs) === singaporeToDateString();
 
       // ENTRY FINALISATION (always-on, once per trade): the recorded entry must be
       // the MARKET OPEN of the session the fill actually happens in — the FIRST
