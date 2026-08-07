@@ -264,12 +264,12 @@ async function usdToCurrency(ccy) {
 }
 
 /** Whole-share split of the FX-adjusted notional; respects exchange lot hints. */
-async function shareSplit(entry, contract) {
+async function shareSplit(entry, contract, lotOverride) {
   const e = Number(entry);
   if (!(e > 0)) return { total: 0, sold: 0, runner: 0 };
   let localNotional = NOTIONAL * await usdToCurrency(contract.currency);
   if (contract.penceQuoted) localNotional *= 100; // LSE quotes in pence
-  const lot = contract.lotHint || 1;
+  const lot = Math.max(1, Number(lotOverride || contract.lotHint) || 1);
   let total = Math.floor(localNotional / e);
   total = Math.floor(total / lot) * lot;
   if (total < lot) return { total: 0, sold: 0, runner: 0 };
@@ -278,9 +278,26 @@ async function shareSplit(entry, contract) {
   return { total, sold, runner: total - sold };
 }
 
-function roundPx(x) {
+/** Round to exchange tick. HK uses SEHK price bands; others keep legacy steps. */
+function roundPx(x, contract) {
   const n = Number(x);
   if (!Number.isFinite(n)) return n;
+  if (contract && contract.market === 'HK') {
+    const a = Math.abs(n);
+    let tick = 0.05;
+    if (a < 0.25) tick = 0.001;
+    else if (a < 0.5) tick = 0.005;
+    else if (a < 10) tick = 0.01;
+    else if (a < 20) tick = 0.02;
+    else if (a < 100) tick = 0.05;
+    else if (a < 200) tick = 0.1;
+    else if (a < 500) tick = 0.2;
+    else if (a < 1000) tick = 0.5;
+    else if (a < 2000) tick = 1;
+    else tick = 2;
+    const dp = tick >= 1 ? 0 : (String(tick).split('.')[1] || '').length;
+    return +(Math.round(n / tick) * tick).toFixed(dp);
+  }
   return n >= 1000 ? +n.toFixed(0) : n >= 100 ? +n.toFixed(1) : +n.toFixed(2);
 }
 
@@ -333,6 +350,8 @@ async function main() {
   let forceReconcile = false; // set on positionEnd so Asia re-arms don't wait 5m
   const posKeyOf = c => `${String(c.symbol).toUpperCase()}|${c.currency}`;
   const _flattenTried = new Map(); // pk -> last reconcile-flatten attempt ts
+  const lotCache = new Map(); // posKey -> board lot
+  let nextDetailsId = 900000;
   // Live IBKR market data for MTM (posted to AlphaSignal every ~10s).
   const mktById = new Map(); // reqId -> { ticker, last, bid, ask, close }
   const mktSubscribed = new Set(); // AlphaSignal ticker already subscribed
@@ -518,6 +537,65 @@ async function main() {
     return sym;
   }
 
+  /** Board lot from IB contract details (critical for HK — 0005 is 400, not 100). */
+  function resolveLot(contract) {
+    if (!contract) return Promise.resolve(1);
+    const key = posKeyOf(contract);
+    if (lotCache.has(key)) return Promise.resolve(lotCache.get(key));
+    const fallback = Math.max(1, Number(contract.lotHint) || 1);
+    if (DRY || !ib || !EventName) {
+      lotCache.set(key, fallback);
+      return Promise.resolve(fallback);
+    }
+    return new Promise(resolve => {
+      const reqId = nextDetailsId++;
+      let done = false;
+      const finish = (lot) => {
+        if (done) return;
+        done = true;
+        try { ib.off(EventName.contractDetails, onDet); } catch (_) {}
+        try { ib.off(EventName.contractDetailsEnd, onEnd); } catch (_) {}
+        const out = Math.max(1, Number(lot) || fallback);
+        lotCache.set(key, out);
+        if (out !== fallback) log('lot size', contract.symbol, contract.currency, '→', out);
+        resolve(out);
+      };
+      const t = setTimeout(() => finish(fallback), 5000);
+      const onDet = (id, details) => {
+        if (Number(id) !== reqId) return;
+        clearTimeout(t);
+        const d = details || {};
+        const c = d.contract || {};
+        const minSize = Number(d.minSize || d.orderMinSize || c.minSize || 0);
+        // Prefer IB minSize; else keep exchange hint
+        finish(minSize > 0 ? minSize : fallback);
+        // Stash conId for cleaner subsequent orders
+        const conId = Number(c.conId || d.conId);
+        if (conId > 0) contract.conId = conId;
+        if (c.localSymbol) contract.localSymbol = String(c.localSymbol);
+      };
+      const onEnd = (id) => {
+        if (Number(id) !== reqId) return;
+        clearTimeout(t);
+        finish(fallback);
+      };
+      ib.on(EventName.contractDetails, onDet);
+      ib.on(EventName.contractDetailsEnd, onEnd);
+      try {
+        ib.reqContractDetails(reqId, {
+          symbol: String(contract.symbol),
+          secType: contract.secType || 'STK',
+          exchange: 'SMART',
+          currency: contract.currency,
+          primaryExch: contract.primaryExch
+        });
+      } catch (e) {
+        clearTimeout(t);
+        finish(fallback);
+      }
+    });
+  }
+
   /** Subscribe to IB market data for an AlphaSignal ticker (idempotent). */
   function ensureMktData(ticker, contract) {
     if (DRY || !ib || !ticker || !contract || mktSubscribed.has(ticker)) return;
@@ -677,10 +755,12 @@ async function main() {
       return null;
     }
     const isSell = evt.side === 'sell';
-    const split = await shareSplit(evt.entry, contract);
-    if (split.total < 1) { log('skip entry — zero shares for', evt.ticker, 'entry', evt.entry); return null; }
-    const stopPx = roundPx(evt.trailSl != null ? evt.trailSl : evt.sl);
-    const tp1Px = roundPx(evt.tp1);
+    const lot = await resolveLot(contract);
+    contract.lotHint = lot;
+    const split = await shareSplit(evt.entry, contract, lot);
+    if (split.total < 1) { log('skip entry — zero shares for', evt.ticker, 'entry', evt.entry, 'lot', lot); return null; }
+    const stopPx = roundPx(evt.trailSl != null ? evt.trailSl : evt.sl, contract);
+    const tp1Px = roundPx(evt.tp1, contract);
     if (!(stopPx > 0)) { log('skip entry — no stop level for', evt.ticker); return null; }
 
     const openAction = isSell ? 'SELL' : 'BUY';
@@ -720,9 +800,10 @@ async function main() {
     if (DRY || !ib) {
       log('DRY bracket', evt.ticker, evt.side, JSON.stringify({ contract, parent, stopOrder, tp1Order, split, entryStyle, phase: sessionPhase(contract), quotePx, quoteSrc }, null, 1));
     } else {
-      ib.placeOrder(parentId, contract, parent);
-      ib.placeOrder(stopId, contract, stopOrder);
-      if (tp1Order) ib.placeOrder(tp1Id, contract, tp1Order);
+      const oc = orderContractFromPos(contract) || contract;
+      ib.placeOrder(parentId, oc, parent);
+      ib.placeOrder(stopId, oc, stopOrder);
+      if (tp1Order) ib.placeOrder(tp1Id, oc, tp1Order);
       const gateNote = contract.usRth && sessionPhase(contract) === 'pre'
         ? ` quote=${quotePx != null ? quotePx : 'n/a'}(${quoteSrc || 'none'}) vs entry=${roundPx(evt.entry)} → ${entryStyle}`
         : '';
@@ -742,9 +823,9 @@ async function main() {
   function onTp1Filled(key, row) {
     if (row.tp1Done || row.closed) return;
     row.tp1Done = true;
-    const beStop = row.side === 'sell'
-      ? Math.min(row.stopPx, roundPx(row.entry))
-      : Math.max(row.stopPx, roundPx(row.entry));
+      const beStop = row.side === 'sell'
+      ? Math.min(row.stopPx, roundPx(row.entry, row.contract))
+      : Math.max(row.stopPx, roundPx(row.entry, row.contract));
     row.stopPx = beStop;
     if (row.qtyRunner > 0) {
       transmitOrder(row.stopId, row.contract, baseOrder({
@@ -856,7 +937,7 @@ async function main() {
     }
     if (evt.type === 'tsl_update') {
       if (!row || row.closed) { log('tsl_update for unknown/closed key', key); return; }
-      const newStop = roundPx(evt.trailSl);
+      const newStop = roundPx(evt.trailSl, row.contract);
       if (!(newStop > 0)) return;
       // Ratchet only — never loosen (mirror of the sim's "never down" rule).
       const improves = row.side === 'sell' ? newStop < row.stopPx : newStop > row.stopPx;
@@ -983,26 +1064,43 @@ async function main() {
         saveState(state);
       }
 
+      // Latest entry levels from the feed (state may have tp1=0 / stale stops).
+      const entryByKey = new Map();
+      for (const e of events) {
+        if (e && e.type === 'entry' && e.key) entryByKey.set(e.key, e);
+      }
+
       // 0. Re-arm unfilled parents still open on the model.
       //   • HK / JP: chase while model open (missed OPG must not stay dead)
       //   • EU / UK: OPG before open; if still unfilled once RTH starts → MKT
       //   • US: OPG overnight; in pre/extended upgrade to MKT-EXT only when the
       //     live quote is at/better than the AlphaSignal entry; else stay OPG
       for (const [key, row] of Object.entries(state.byKey)) {
-        if (row.closed || row.entryFilled || !row.ticker) continue;
+        if (row.closed || !row.ticker) continue;
         if (keyState.get(key) !== 'open') continue;
         const contract = row.contract || toContract(row.ticker);
         if (!contract) continue;
+        const market = contract.market || (contract.usRth ? 'US' : '');
+        const phase = sessionPhase(contract);
+        const asia = market === 'HK' || market === 'JP';
+        // False fill: sibling horizon shares a symbol and stamped entryFilled while
+        // this row is still OPG. Clear so Asia can re-arm in RTH.
+        if (row.entryFilled && asia && phase === 'rth' && row.entryStyle === 'OPG') {
+          log('RECONCILE: clearing false entryFilled on OPG Asia row', key);
+          row.entryFilled = false;
+          saveState(state);
+        }
+        if (row.entryFilled) continue;
         const held = posMap.get(posKeyOf(contract));
         const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
-        if (posInDir > 0) {
+        // Only attribute fills to THIS parent — sibling horizons share a symbol
+        // (e.g. 2914.T short filled must not mark 2914.T long filled).
+        const parentFilledQty = orderFills[row.parentId] || 0;
+        if (posInDir > 0 && parentFilledQty > 0) {
           row.entryFilled = true;
           saveState(state);
           continue;
         }
-        const market = contract.market || (contract.usRth ? 'US' : '');
-        const phase = sessionPhase(contract);
-        const asia = market === 'HK' || market === 'JP';
         const eu = market === 'XETRA' || market === 'EURONEXT' || market === 'LSE';
         const us = !!contract.usRth;
 
@@ -1010,7 +1108,11 @@ async function main() {
         if (asia) {
           // Chase missed/expired Asia entries; do not cancel a live RTH MKT
           if (phase === 'rth' && row.entryStyle !== 'MKT') reason = 'asia-rth';
-          else if (phase !== 'rth' && row.entryStyle === 'MKT') reason = 'asia-to-opg';
+          else if (phase === 'rth' && row.entryStyle === 'MKT' && row.lastRearmAt
+            && (Date.now() - Date.parse(row.lastRearmAt)) > 2 * 60 * 1000) {
+            // Prior MKT place rejected (lot/tick/contract) — retry with fresh details
+            reason = 'asia-rth-retry';
+          } else if (phase !== 'rth' && row.entryStyle === 'MKT') reason = 'asia-to-opg';
           else if (!row.entryStyle) reason = 'asia-missing-style';
         } else if (eu && phase === 'rth' && row.entryStyle === 'OPG') {
           reason = 'eu-rth-after-opg';
@@ -1037,23 +1139,31 @@ async function main() {
         if (!reason) continue;
 
         const last = row.lastRearmAt ? Date.parse(row.lastRearmAt) : 0;
-        if (last && Date.now() - last < 15 * 60 * 1000) continue;
+        const minGap = reason === 'asia-rth-retry' ? 2 * 60 * 1000 : 15 * 60 * 1000;
+        if (last && Date.now() - last < minGap) continue;
 
         cancelOrder(row.parentId, 'rearm parent ' + key);
         cancelOrder(row.stopId, 'rearm stop ' + key);
         if (row.tp1Id != null) cancelOrder(row.tp1Id, 'rearm tp1 ' + key);
         try {
+          const src = entryByKey.get(key) || {};
           const placed = await placeBracket({
-            key, ticker: row.ticker, hz: row.hz, side: row.side,
-            entry: row.entry, tp1: row.tp1Px, sl: row.stopPx, trailSl: row.stopPx,
+            key, ticker: row.ticker, hz: row.hz, side: row.side || src.side,
+            entry: src.entry != null ? src.entry : row.entry,
+            tp1: src.tp1 != null ? src.tp1 : row.tp1Px,
+            sl: src.sl != null ? src.sl : row.stopPx,
+            trailSl: src.trailSl != null ? src.trailSl : (src.sl != null ? src.sl : row.stopPx),
             t: new Date().toISOString()
           });
           if (placed) {
             placed.lastRearmAt = new Date().toISOString();
             placed.rearmReason = reason;
             placed.rearmCount = (Number(row.rearmCount) || 0) + 1;
+            // Clear false fills from sibling-symbol attribution
+            placed.entryFilled = false;
             state.byKey[key] = placed;
-            log('RECONCILE: re-armed', key, 'reason=' + reason, '→', placed.entryStyle);
+            log('RECONCILE: re-armed', key, 'reason=' + reason, '→', placed.entryStyle,
+              'lot=' + (placed.contract && placed.contract.lotHint));
           } else {
             row.lastRearmAt = new Date().toISOString();
             log('RECONCILE: rearm place skipped', key, reason);
