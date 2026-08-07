@@ -12,6 +12,9 @@ $env:ALPHASIGNAL_URL = "https://alphasignal-dvg5.onrender.com"
 $env:IBKR_PORT       = "4002"        # 4002 = IB Gateway paper, 7497 = TWS paper
 $env:IBKR_ACCOUNT    = "DU1764495"
 $env:IBKR_DRY_RUN    = "0"
+# Avoid clientId 17 — a stuck elevated node often holds it (Access Denied to kill).
+# flatten-all.js uses 18; keep bridge on 27.
+$env:IBKR_CLIENT_ID  = "27"
 # Portfolio marks (updatePortfolio) are the primary MTM source. Tick MD type
 # is secondary — 3=delayed is fine when TWS already holds the live MD slot.
 $env:IBKR_MARKET_DATA_TYPE = "3"
