@@ -160,7 +160,7 @@ function toContract(ticker) {
 /**
  * Session phase for the listing. Approximate local RTH windows in UTC —
  * used only to choose MOO vs MKT (never to place a limit chase).
- * Returns 'pre' | 'rth' | 'closed'.
+ * Returns 'pre' | 'rth' | 'lunch' | 'closed'.
  */
 function sessionPhase(contract, nowMs = Date.now()) {
   const d = new Date(nowMs);
@@ -174,7 +174,8 @@ function sessionPhase(contract, nowMs = Date.now()) {
   const windows = {
     US:       { open: 13 * 60 + 30, close: 20 * 60, preOpen: 8 * 60 },   // 4am–4pm ET (UTC-4 DST)
     JP:       { open: 0 * 60,       close: 6 * 60 },                     // 09:00–15:00 JST
-    HK:       { open: 1 * 60 + 30,  close: 8 * 60 },                     // 09:30–16:00 HKT
+    // HK: 09:30–12:00 & 13:00–16:00 HKT (lunch 12:00–13:00 — IB rejects many orders)
+    HK:       { open: 1 * 60 + 30, close: 8 * 60, lunchStart: 4 * 60, lunchEnd: 5 * 60 },
     XETRA:    { open: 7 * 60,       close: 15 * 60 + 30 },               // 09:00–17:30 CEST
     EURONEXT: { open: 7 * 60,       close: 15 * 60 + 30 },
     LSE:      { open: 7 * 60,       close: 15 * 60 + 30 }                // 08:00–16:30 BST
@@ -187,6 +188,8 @@ function sessionPhase(contract, nowMs = Date.now()) {
     if (utcMin >= w.close && utcMin < 24 * 60) return 'pre'; // treat as extended
     return 'closed';
   }
+  if (m === 'HK' && w.lunchStart != null
+    && utcMin >= w.lunchStart && utcMin < w.lunchEnd) return 'lunch';
   if (utcMin >= w.open && utcMin < w.close) return 'rth';
   // Before open same calendar day → pre (MOO queues for today's auction)
   if (utcMin < w.open) return 'pre';
@@ -230,6 +233,10 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
   if (phase === 'rth') {
     // Late board after the cash open — take market now (HK/JP/EU/UK)
     return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MKT' };
+  }
+  if (phase === 'lunch') {
+    // SEHK midday break — do not submit (IB often returns error 200).
+    return { defer: true, entryStyle: 'DEFER-LUNCH', action, totalQuantity: qty };
   }
   // Pre-open or after previous close → opening auction (EU/UK/Asia)
   return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
@@ -780,7 +787,11 @@ async function main() {
     const parentSpec = parentEntrySpec(contract, openAction, split.total, {
       side: evt.side, entryPx: evt.entry, quotePx
     });
-    const { entryStyle, ...parentFields } = parentSpec;
+    if (parentSpec.defer) {
+      log('defer entry', evt.ticker, parentSpec.entryStyle, 'phase=', sessionPhase(contract));
+      return null;
+    }
+    const { entryStyle, defer, ...parentFields } = parentSpec;
     const parent = baseOrder({ orderId: parentId, ...parentFields });
     // Stop child: FULL quantity — pre-TP1 an SL hit closes the whole position
     // (identical to the simulator's sl_hit). GTC so it survives sessions.
@@ -800,7 +811,10 @@ async function main() {
     if (DRY || !ib) {
       log('DRY bracket', evt.ticker, evt.side, JSON.stringify({ contract, parent, stopOrder, tp1Order, split, entryStyle, phase: sessionPhase(contract), quotePx, quoteSrc }, null, 1));
     } else {
-      const oc = orderContractFromPos(contract) || contract;
+      // Prefer conId when resolved — HK SMART+symbol alone often hits error 200.
+      const oc = (contract.conId > 0)
+        ? { conId: Number(contract.conId), secType: 'STK', exchange: 'SMART', currency: contract.currency }
+        : (orderContractFromPos(contract) || contract);
       ib.placeOrder(parentId, oc, parent);
       ib.placeOrder(stopId, oc, stopOrder);
       if (tp1Order) ib.placeOrder(tp1Id, oc, tp1Order);
@@ -1106,13 +1120,14 @@ async function main() {
 
         let reason = null;
         if (asia) {
-          // Chase missed/expired Asia entries; do not cancel a live RTH MKT
-          if (phase === 'rth' && row.entryStyle !== 'MKT') reason = 'asia-rth';
+          if (phase === 'lunch') {
+            // Wait for 13:00 HKT reopen — do not cancel/replace during the break
+          } else if (phase === 'rth' && row.entryStyle !== 'MKT') reason = 'asia-rth';
           else if (phase === 'rth' && row.entryStyle === 'MKT' && row.lastRearmAt
             && (Date.now() - Date.parse(row.lastRearmAt)) > 2 * 60 * 1000) {
-            // Prior MKT place rejected (lot/tick/contract) — retry with fresh details
+            // Prior MKT place rejected (lot/tick/contract/lunch) — retry
             reason = 'asia-rth-retry';
-          } else if (phase !== 'rth' && row.entryStyle === 'MKT') reason = 'asia-to-opg';
+          } else if (phase !== 'rth' && phase !== 'lunch' && row.entryStyle === 'MKT') reason = 'asia-to-opg';
           else if (!row.entryStyle) reason = 'asia-missing-style';
         } else if (eu && phase === 'rth' && row.entryStyle === 'OPG') {
           reason = 'eu-rth-after-opg';
@@ -1272,6 +1287,16 @@ async function main() {
     if (Date.now() - lastMarks > 10000) {
       lastMarks = Date.now();
       await flushMarks().catch(e => log('marks error', e.message));
+    }
+    // HK afternoon reopen: chase rows that are not on a live RTH MKT yet
+    if (!forceReconcile && positionsReady) {
+      for (const row of Object.values(state.byKey)) {
+        if (row.closed || row.entryFilled || !row.contract || row.contract.market !== 'HK') continue;
+        if (sessionPhase(row.contract) === 'rth' && row.entryStyle !== 'MKT') {
+          forceReconcile = true;
+          break;
+        }
+      }
     }
     if (forceReconcile || Date.now() - lastSweep > SWEEP_MS) {
       forceReconcile = false;
