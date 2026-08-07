@@ -1437,18 +1437,95 @@ async function main() {
         } catch (e) { log('RECONCILE: rearm failed', key, e.message); }
       }
 
-      // 0e. Optional env kill-switch only (IBKR_ERROR_TICKERS). Default empty —
-      // unauthorized closes use provenance orphan flatten below, not ticker identity.
+      // 0e. Never treat AIR.DE as an error flatten target — it was the real
+      // recommendation; only AIR.PA (dual-list duplicate) is unauthorized.
+      for (const k of Object.keys(state.byKey)) {
+        const row = state.byKey[k];
+        if (!row) continue;
+        if (String(row.ticker || '').toUpperCase() === 'AIR.DE'
+          && (row.errorTrade || row.flatReason === 'unauthorized-non-recommendation' || /\|error\|/.test(k))) {
+          log('RECONCILE: clearing AIR.DE error-flatten state (model trade)', k);
+          delete state.byKey[k];
+          saveState(state);
+        }
+      }
+
+      // 0e2. Resume flattens for rows already tagged unauthorized in local state
+      // (Hold→Buy episode). Not a permanent ticker ban — only existing tags.
+      // Skip AIR.DE. Skip lunch. US DAY MKT only during pre/RTH.
+      for (const [key, row] of Object.entries(state.byKey)) {
+        if (!row) continue;
+        if (!row.errorTrade && row.flatReason !== 'unauthorized-non-recommendation'
+          && row.flatReason !== 'dual-list-duplicate-accounting') continue;
+        if (String(row.ticker || '').toUpperCase() === 'AIR.DE') continue;
+        // Re-open if still held at IB (prior DAY MKT expired unfilled).
+        if (row.closed) {
+          const c0 = row.contract || toContract(row.ticker);
+          const h0 = c0 ? posMap.get(posKeyOf(c0)) : null;
+          if (!h0 || !h0.pos) continue;
+          row.closed = false;
+          saveState(state);
+          log('RECONCILE: re-open unauthorized row still held', key, 'pos=' + h0.pos);
+        }
+        if (row.closed) continue;
+        const contract = row.contract || toContract(row.ticker);
+        if (!contract) continue;
+        if (sessionPhase(contract) === 'lunch') continue;
+        // US: only submit during RTH/pre so DAY orders don't die overnight
+        if (contract.usRth && sessionPhase(contract) === 'closed') continue;
+        const pk = posKeyOf(contract);
+        const held = posMap.get(pk);
+        if (!held || !held.pos) { row.closed = true; saveState(state); continue; }
+        // Dual-list: if AIR.PA shares conId/pos with open AIR.DE model entry,
+        // only flatten shares above the model lot (keep recommended position).
+        let qty = Math.abs(held.pos);
+        if (String(row.ticker || '').toUpperCase() === 'AIR.PA') {
+          const deOpen = [...keyState.entries()].some(([ek, st]) =>
+            st === 'open' && String(ek).startsWith('AIR.DE|'));
+          if (deOpen) {
+            const modelLot = Number(row.qtyTotal) > 0 ? Number(row.qtyTotal) : 40;
+            // Keep one model lot; flatten the duplicate remainder only.
+            qty = Math.max(0, Math.abs(held.pos) - modelLot);
+            if (!(qty > 0)) {
+              log('RECONCILE: AIR.PA accounting-only — keeping AIR.DE model lot, no flatten', key, 'pos=' + held.pos);
+              row.closed = true;
+              row.flatReason = 'dual-list-duplicate-accounting';
+              saveState(state);
+              continue;
+            }
+          }
+        }
+        const lastTry = _flattenTried.get('err|' + key) || 0;
+        if (Date.now() - lastTry < 15 * 60 * 1000) continue;
+        _flattenTried.set('err|' + key, Date.now());
+        const fid = nid();
+        const oc = orderContractFromPos(held.contract || contract);
+        if (!oc || (!oc.conId && !oc.symbol)) continue;
+        row.errorTrade = true;
+        row.flatReason = row.flatReason || 'unauthorized-non-recommendation';
+        row.closeIds = [...(row.closeIds || []), fid];
+        row.updated = new Date().toISOString();
+        saveState(state);
+        log('RECONCILE: unauthorized-state flatten', key, 'pos=' + held.pos, 'qty=' + qty, 'phase=' + sessionPhase(contract));
+        transmitOrder(fid, oc, baseOrder({
+          orderId: fid, action: held.pos > 0 ? 'SELL' : 'BUY',
+          orderType: 'MKT', totalQuantity: qty, tif: 'DAY', transmit: true
+        }), 'error-flatten ' + key);
+      }
+
+      // 0e3. Optional env kill-switch (IBKR_ERROR_TICKERS). Default empty.
       if (ERROR_TRADE_TICKERS.size) {
         for (const [pk, { pos, contract }] of posMap) {
           if (!pos) continue;
           const y = yahooFromContract(contract);
           const yU = String(y || '').toUpperCase();
+          if (yU === 'AIR.DE') continue;
           const symU = String(contract.symbol || '').toUpperCase();
           const isErr = ERROR_TRADE_TICKERS.has(yU) || ERROR_TRADE_TICKERS.has(symU)
             || [...ERROR_TRADE_TICKERS].some(t => t.replace(/\.(DE|PA|L|HK|T)$/i, '') === symU);
           if (!isErr) continue;
           if (sessionPhase(contract) === 'lunch') continue;
+          if (contract.usRth && sessionPhase(contract) === 'closed') continue;
           const lastTry = _flattenTried.get('err|' + pk) || 0;
           if (Date.now() - lastTry < 15 * 60 * 1000) continue;
           _flattenTried.set('err|' + pk, Date.now());

@@ -12310,32 +12310,56 @@ const IBKR_ERROR_TRADE_TICKERS = new Set(
   String(process.env.IBKR_ERROR_TICKERS || '')
     .split(/[\s,]+/).filter(Boolean).map(s => s.toUpperCase())
 );
-/** One-time stamp of known Hold→Buy / dual-list fills so past Error PnL stays. */
+/**
+ * One-time stamp of known Hold→Buy / dual-list fills so past Error PnL stays.
+ * AIR.DE is intentionally EXCLUDED — it was the real recommendation; only the
+ * AIR.PA dual-list duplicate is an error trade.
+ */
 const IBKR_LEGACY_ERROR_TICKERS = new Set([
-  'FSLR', 'BMY', 'CVX', 'MPC', 'HSBA.L', 'AIR.DE', 'AIR.PA', 'VTR', 'FANG', '8002.T'
+  'FSLR', 'BMY', 'CVX', 'MPC', 'HSBA.L', 'AIR.PA', 'VTR', 'FANG', '8002.T'
 ]);
+/** Keys that must stay error even if ticker-level rules change. */
+const IBKR_LEGACY_ERROR_KEYS = new Set([
+  'AIR.PA|medium|Thu Aug 06 2026',
+  'FSLR|medium|Thu Aug 06 2026',
+  'BMY|long|Thu Aug 06 2026',
+  'CVX|short|Thu Aug 06 2026',
+  'MPC|short|Thu Aug 06 2026',
+  'HSBA.L|short|Thu Aug 06 2026',
+  'VTR|short|Wed Aug 05 2026',
+  'FANG|short|Wed Aug 05 2026',
+  '8002.T|short|Mon Aug 03 2026'
+]);
+/** Model keys wrongly stamped as error — clear on boot. */
+const IBKR_UNSTAMP_ERROR_TICKERS = new Set(['AIR.DE']);
 const IBKR_ERROR_TRADES_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_error_trades.json');
 function loadIbkrErrorTradeExtra() {
   try {
     const j = JSON.parse(fs.readFileSync(IBKR_ERROR_TRADES_FILE, 'utf8'));
     return {
       tickers: new Set((j.tickers || []).map(t => String(t).toUpperCase())),
-      keys: new Set(j.keys || [])
+      keys: new Set([...(j.keys || []), ...IBKR_LEGACY_ERROR_KEYS])
     };
-  } catch (_) { return { tickers: new Set(), keys: new Set() }; }
+  } catch (_) {
+    return { tickers: new Set(), keys: new Set(IBKR_LEGACY_ERROR_KEYS) };
+  }
 }
 function isIbkrErrorTrade(t, extra) {
   if (!t) return false;
-  if (t.errorTrade === true) return true;
   const tk = String(t.ticker || '').toUpperCase();
-  // Env kill-switch + explicit key list only — NOT the legacy name set
-  // (that would permanently ban a future valid FSLR Buy).
+  // Never classify AIR.DE as error — recommended listing (AIR.PA was the duplicate).
+  if (IBKR_UNSTAMP_ERROR_TICKERS.has(tk)) return false;
+  if (t.errorTrade === true) return true;
+  // Env kill-switch + explicit key list only — NOT a permanent ticker ban.
   if (IBKR_ERROR_TRADE_TICKERS.has(tk)) return true;
   if (extra && extra.keys.has(t.key)) return true;
-  if ((t.fills || []).some(f => f.errorTrade)) return true;
+  if (IBKR_LEGACY_ERROR_KEYS.has(t.key)) return true;
+  if ((t.fills || []).some(f => f.errorTrade && !IBKR_UNSTAMP_ERROR_TICKERS.has(String(f.ticker || tk).toUpperCase()))) {
+    return true;
+  }
   return false;
 }
-/** Stamp historical fills that match the known unauthorized episode once. */
+/** Stamp historical unauthorized fills; never stamp AIR.DE (model trade). */
 function stampLegacyIbkrErrorFills() {
   try {
     if (!fs.existsSync(IBKR_FILLS_FILE)) return 0;
@@ -12343,9 +12367,13 @@ function stampLegacyIbkrErrorFills() {
     let n = 0;
     const out = lines.map(line => {
       let r; try { r = JSON.parse(line); } catch (_) { return line; }
-      if (!r || r.errorTrade) return line;
+      if (!r) return line;
       const tk = String(r.ticker || '').toUpperCase();
-      if (!IBKR_LEGACY_ERROR_TICKERS.has(tk)) return line;
+      if (IBKR_UNSTAMP_ERROR_TICKERS.has(tk)) return line; // handled by unstamp
+      if (r.errorTrade) return line;
+      const byKey = IBKR_LEGACY_ERROR_KEYS.has(String(r.key || ''));
+      const byTicker = IBKR_LEGACY_ERROR_TICKERS.has(tk);
+      if (!byKey && !byTicker) return line;
       r.errorTrade = true;
       n++;
       return JSON.stringify(r);
@@ -12360,7 +12388,65 @@ function stampLegacyIbkrErrorFills() {
     return 0;
   }
 }
+/** Move AIR.DE fills from Error → Model (recommended listing, not the dual-list bug). */
+function unstampModelIbkrFills() {
+  try {
+    if (!fs.existsSync(IBKR_FILLS_FILE)) return 0;
+    const lines = fs.readFileSync(IBKR_FILLS_FILE, 'utf8').trim().split('\n').filter(Boolean);
+    let n = 0;
+    const out = lines.map(line => {
+      let r; try { r = JSON.parse(line); } catch (_) { return line; }
+      if (!r || !r.errorTrade) return line;
+      const tk = String(r.ticker || '').toUpperCase();
+      if (!IBKR_UNSTAMP_ERROR_TICKERS.has(tk)) return line;
+      r.errorTrade = false;
+      n++;
+      return JSON.stringify(r);
+    });
+    if (n) {
+      fs.writeFileSync(IBKR_FILLS_FILE, out.join('\n') + '\n');
+      console.log('Unstamped', n, 'AIR.DE fill(s) → model trades (recommended listing)');
+      auditLog('ibkr_unstamp_model_fills', { tickers: [...IBKR_UNSTAMP_ERROR_TICKERS], count: n });
+    }
+    return n;
+  } catch (e) {
+    console.warn('model fill unstamp failed:', e.message);
+    return 0;
+  }
+}
+/**
+ * Close unauthorized Hold→Buy / dual-list entry events so orphan flatten can
+ * act by provenance. Never exits AIR.DE (model recommendation).
+ */
+function emitExitsForLegacyUnauthorizedKeys() {
+  if (process.env.IBKR_EVENTS_ENABLED === '0') return 0;
+  const open = new Set();
+  try {
+    if (!fs.existsSync(TRADE_EVENTS_FILE)) return 0;
+    for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
+      let e; try { e = JSON.parse(line); } catch (_) { continue; }
+      if (!e || !e.key) continue;
+      if (e.type === 'entry') open.add(e.key);
+      else if (e.type === 'exit') open.delete(e.key);
+    }
+  } catch (_) { return 0; }
+  let n = 0;
+  for (const key of IBKR_LEGACY_ERROR_KEYS) {
+    if (!open.has(key)) continue;
+    const [ticker, hz] = key.split('|');
+    if (IBKR_UNSTAMP_ERROR_TICKERS.has(String(ticker || '').toUpperCase())) continue;
+    emitTradeEvent('exit', {
+      key, ticker, hz: hz || 'short', side: 'buy',
+      reason: 'unauthorized-non-recommendation', errorTrade: true
+    });
+    n++;
+  }
+  if (n) console.log('Emitted', n, 'exit event(s) for legacy unauthorized IBKR keys');
+  return n;
+}
 stampLegacyIbkrErrorFills();
+unstampModelIbkrFills();
+emitExitsForLegacyUnauthorizedKeys();
 let _ibkrExecIds = new Set();
 try {
   if (fs.existsSync(IBKR_FILLS_FILE)) {
