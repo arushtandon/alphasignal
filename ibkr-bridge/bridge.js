@@ -1084,6 +1084,24 @@ async function main() {
         if (e && e.type === 'entry' && e.key) entryByKey.set(e.key, e);
       }
 
+      // 0z. Seed missing HK/JP state rows still open on the model (state loss /
+      // cursor past the original entry event).
+      for (const [key, stOpen] of keyState) {
+        if (stOpen !== 'open' || state.byKey[key]) continue;
+        const src = entryByKey.get(key);
+        if (!src || !src.ticker) continue;
+        const c = toContract(src.ticker);
+        if (!c || (c.market !== 'HK' && c.market !== 'JP')) continue;
+        state.byKey[key] = {
+          ticker: src.ticker, hz: src.hz, side: src.side,
+          entry: src.entry, stopPx: src.sl || src.trailSl, tp1Px: src.tp1 || 0,
+          entryStyle: null, entryFilled: false, closed: false,
+          contract: c, updated: new Date().toISOString()
+        };
+        log('RECONCILE: seeded missing Asia state row', key);
+        saveState(state);
+      }
+
       // 0. Re-arm unfilled parents still open on the model.
       //   • HK / JP: chase while model open (missed OPG must not stay dead)
       //   • EU / UK: OPG before open; if still unfilled once RTH starts → MKT
@@ -1157,11 +1175,10 @@ async function main() {
         const minGap = reason === 'asia-rth-retry' ? 2 * 60 * 1000 : 15 * 60 * 1000;
         if (last && Date.now() - last < minGap) continue;
 
-        cancelOrder(row.parentId, 'rearm parent ' + key);
-        cancelOrder(row.stopId, 'rearm stop ' + key);
-        if (row.tp1Id != null) cancelOrder(row.tp1Id, 'rearm tp1 ' + key);
         try {
           const src = entryByKey.get(key) || {};
+          // Place FIRST — only cancel the old bracket after a new one is accepted.
+          // (Cancel-then-defer during HK lunch previously orphaned working orders.)
           const placed = await placeBracket({
             key, ticker: row.ticker, hz: row.hz, side: row.side || src.side,
             entry: src.entry != null ? src.entry : row.entry,
@@ -1171,6 +1188,9 @@ async function main() {
             t: new Date().toISOString()
           });
           if (placed) {
+            cancelOrder(row.parentId, 'rearm parent ' + key);
+            cancelOrder(row.stopId, 'rearm stop ' + key);
+            if (row.tp1Id != null) cancelOrder(row.tp1Id, 'rearm tp1 ' + key);
             placed.lastRearmAt = new Date().toISOString();
             placed.rearmReason = reason;
             placed.rearmCount = (Number(row.rearmCount) || 0) + 1;
