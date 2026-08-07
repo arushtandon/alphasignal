@@ -285,24 +285,27 @@ async function shareSplit(entry, contract, lotOverride) {
   return { total, sold, runner: total - sold };
 }
 
+function hkTickSize(px) {
+  const a = Math.abs(Number(px) || 0);
+  if (a < 0.25) return 0.001;
+  if (a < 0.5) return 0.005;
+  if (a < 10) return 0.01;
+  if (a < 20) return 0.02;
+  if (a < 100) return 0.05;
+  if (a < 200) return 0.1;
+  if (a < 500) return 0.2;
+  if (a < 1000) return 0.5;
+  if (a < 2000) return 1;
+  return 2;
+}
+
 /** Round to exchange tick. HK uses SEHK price bands; others keep legacy steps.
  *  dir: 'up' | 'down' | undefined (nearest) — use up/down for stop/TP validity. */
 function roundPx(x, contract, dir) {
   const n = Number(x);
   if (!Number.isFinite(n)) return n;
   if (contract && contract.market === 'HK') {
-    const a = Math.abs(n);
-    let tick = 0.05;
-    if (a < 0.25) tick = 0.001;
-    else if (a < 0.5) tick = 0.005;
-    else if (a < 10) tick = 0.01;
-    else if (a < 20) tick = 0.02;
-    else if (a < 100) tick = 0.05;
-    else if (a < 200) tick = 0.1;
-    else if (a < 500) tick = 0.2;
-    else if (a < 1000) tick = 0.5;
-    else if (a < 2000) tick = 1;
-    else tick = 2;
+    const tick = hkTickSize(n);
     const dp = tick >= 1 ? 0 : (String(tick).split('.')[1] || '').length;
     let stepped;
     if (dir === 'down') stepped = Math.floor(n / tick + 1e-9) * tick;
@@ -774,8 +777,14 @@ async function main() {
     const openAction = isSell ? 'SELL' : 'BUY';
     const closeAction = isSell ? 'BUY' : 'SELL';
     // Stops: round away from the market so STP is valid on SEHK tick grid.
+    // Nudge one extra HK tick — IB rejected 44.65 (error 110) even though it
+    // sits on the 0.05 band; child reject leaves parent transmit=false.
     const rawStop = evt.trailSl != null ? evt.trailSl : evt.sl;
-    const stopPx = roundPx(rawStop, contract, isSell ? 'up' : 'down');
+    let stopPx = roundPx(rawStop, contract, isSell ? 'up' : 'down');
+    if (contract.market === 'HK' && stopPx > 0) {
+      const tick = hkTickSize(stopPx);
+      stopPx = roundPx(isSell ? stopPx + tick : stopPx - tick, contract);
+    }
     const tp1Px = roundPx(evt.tp1, contract, isSell ? 'down' : 'up');
     if (!(stopPx > 0)) { log('skip entry — no stop level for', evt.ticker); return null; }
     const rthOk = !!contract.usRth; // outsideRth only meaningful for US SMART
