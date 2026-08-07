@@ -356,6 +356,22 @@ function roundPx(x, contract, dir) {
  * Position events often omit primaryExch; SMART + bare "6690" then returns
  * error 200 (no security definition). Pin the listing exchange from currency.
  */
+/** Attach market/usRth so sessionPhase does not fall through to XETRA for US names. */
+function enrichSessionMeta(c) {
+  if (!c) return c;
+  const ccy = String(c.currency || '');
+  if (ccy === 'USD' || c.usRth) {
+    c.usRth = true;
+    c.market = 'US';
+  } else if (ccy === 'HKD') c.market = 'HK';
+  else if (ccy === 'JPY') c.market = 'JP';
+  else if (ccy === 'GBP') c.market = 'LSE';
+  else if (ccy === 'EUR') {
+    c.market = (String(c.primaryExch || '') === 'SBF') ? 'EURONEXT' : 'XETRA';
+  }
+  return c;
+}
+
 function orderContractFromPos(c) {
   if (!c) return null;
   const out = {
@@ -381,7 +397,7 @@ function orderContractFromPos(c) {
   } else if (out.currency === 'USD') {
     out.primaryExch = 'NASDAQ';
   }
-  return out;
+  return enrichSessionMeta(out);
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -512,7 +528,7 @@ async function main() {
     // actually held (orderFills is in-memory only and dies with each restart).
     ib.on(EventName.position, (account, contract, pos) => {
       if (ACCOUNT && account !== ACCOUNT) return;
-      posMap.set(posKeyOf(contract), { pos: Number(pos) || 0, contract });
+      posMap.set(posKeyOf(contract), { pos: Number(pos) || 0, contract: enrichSessionMeta(contract) });
     });
     ib.on(EventName.positionEnd, () => {
       positionsReady = true;
