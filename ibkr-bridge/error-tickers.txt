@@ -1,0 +1,12 @@
+# Unauthorized Hold→Buy / dual-list names — force-closed as error trades.
+# Mirrored in bridge.js ERROR_TRADE_TICKERS and server.js IBKR_ERROR_TRADE_TICKERS.
+FSLR
+BMY
+CVX
+MPC
+HSBA.L
+AIR.DE
+AIR.PA
+VTR
+FANG
+8002.T

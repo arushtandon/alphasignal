@@ -12133,6 +12133,10 @@ function ibkrHasOpenEntryFor(ticker, hz, entryDate) {
 
 function shouldEmitIbkrEntry(trade, hz) {
   if (!trade || !isHistoryBuySellRecord(trade)) return false;
+  if (IBKR_ERROR_TRADE_TICKERS.has(String(trade.ticker || '').toUpperCase())) {
+    console.log('IBKR entry skipped (error-trade blocklist):', trade.ticker);
+    return false;
+  }
   const snap = tradeEventSnapshot(trade, hz);
   if (snap.side !== 'buy' && snap.side !== 'sell') return false;
   if (!(snap.entry > 0) || !(snap.sl > 0)) return false;
@@ -12285,6 +12289,29 @@ app.get('/api/ibkr/status', (req, res) => {
 // paper-account PnL (fills, not theoretical marks). Append-only JSONL on the
 // data disk, deduped by IB execId.
 const IBKR_FILLS_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_fills.jsonl');
+/** Hold→Buy bug names + dual listings that must never count in model PnL. */
+const IBKR_ERROR_TRADE_TICKERS = new Set([
+  'FSLR', 'BMY', 'CVX', 'MPC', 'HSBA.L', 'AIR.DE', 'AIR.PA', 'VTR', 'FANG', '8002.T'
+]);
+const IBKR_ERROR_TRADES_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_error_trades.json');
+function loadIbkrErrorTradeExtra() {
+  try {
+    const j = JSON.parse(fs.readFileSync(IBKR_ERROR_TRADES_FILE, 'utf8'));
+    return {
+      tickers: new Set((j.tickers || []).map(t => String(t).toUpperCase())),
+      keys: new Set(j.keys || [])
+    };
+  } catch (_) { return { tickers: new Set(), keys: new Set() }; }
+}
+function isIbkrErrorTrade(t, extra) {
+  if (!t) return false;
+  if (t.errorTrade === true) return true;
+  const tk = String(t.ticker || '').toUpperCase();
+  if (IBKR_ERROR_TRADE_TICKERS.has(tk) || (extra && extra.tickers.has(tk))) return true;
+  if (extra && extra.keys.has(t.key)) return true;
+  if ((t.fills || []).some(f => f.errorTrade)) return true;
+  return false;
+}
 let _ibkrExecIds = new Set();
 try {
   if (fs.existsSync(IBKR_FILLS_FILE)) {
@@ -12316,7 +12343,8 @@ app.post('/api/ibkr/report', (req, res) => {
       qty: Number(r.qty), price: Number(r.price),
       currency: String(r.currency || 'USD'), ccyScale: Number(r.ccyScale) || 1,
       orderId: r.orderId ?? null,
-      time: r.time || new Date().toISOString()
+      time: r.time || new Date().toISOString(),
+      errorTrade: r.errorTrade === true || IBKR_ERROR_TRADE_TICKERS.has(String(r.ticker || '').toUpperCase())
     };
     try {
       fs.appendFileSync(IBKR_FILLS_FILE, JSON.stringify(row) + '\n');
@@ -12550,6 +12578,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       try { writeIbkrFillRows(clean); auditLog('ibkr_auto_purge_stale', { before: rows.length, after: clean.length }); } catch (_) {}
       rows = clean;
     }
+    const errExtra = loadIbkrErrorTradeExtra();
     const byKey = new Map();
     for (const r of rows) {
       if (!byKey.has(r.key)) byKey.set(r.key, []);
@@ -12577,11 +12606,13 @@ app.get('/api/ibkr/trades', async (req, res) => {
         currency: f0.currency, ccyScale: scale,
         entryQty, exitQty, openQty, avgEntry,
         realizedLocal,
-        fills: fills.map(f => ({ role: f.role, qty: f.qty, price: f.price, time: f.time })),
+        fills: fills.map(f => ({ role: f.role, qty: f.qty, price: f.price, time: f.time, errorTrade: !!f.errorTrade })),
         entryTime: entries[0] ? entries[0].time : f0.time,
         lastTime: fills[fills.length - 1].time,
-        status: openQty > 0 ? (exitQty > 0 ? 'partial' : 'open') : 'closed'
+        status: openQty > 0 ? (exitQty > 0 ? 'partial' : 'open') : 'closed',
+        errorTrade: !!(f0.errorTrade || fills.some(f => f.errorTrade))
       };
+      t.errorTrade = isIbkrErrorTrade(t, errExtra);
       trades.push(t);
       if (openQty > 0 && f0.ticker) needMarks.push(f0.ticker);
     }
@@ -12650,24 +12681,30 @@ app.get('/api/ibkr/trades', async (req, res) => {
       const hasTp1 = t.fills.some(f => f.role === 'tp1');
       const hasStop = t.fills.some(f => f.role === 'stop');
       const hasFlat = t.fills.some(f => f.role === 'flatten');
+      t.hasFlatten = hasFlat;
       // Prefer the AlphaSignal exit reason when present; only fall back to
       // fill-role heuristics. Flatten fills used to be mislabeled "signal/time
       // exit" even when the bridge force-closed on a Hold rewrite.
       const modelReason = (rec && (rec.exitReason || rec.exitStatus)) || null;
-      t.exitType = t.status !== 'closed' ? (hasTp1 ? 'tp1 banked — runner live' : null)
-        : modelReason ? String(modelReason)
-        : hasFlat ? 'flatten exit'
-        : hasStop && hasTp1 ? 'trailing stop (post-TP1)'
-        : hasStop ? 'stop-loss (full)'
-        : 'tp exit';
+      if (t.errorTrade && (t.status === 'closed' || hasFlat)) {
+        t.exitType = 'error flatten';
+      } else {
+        t.exitType = t.status !== 'closed' ? (hasTp1 ? 'tp1 banked — runner live' : null)
+          : modelReason ? String(modelReason)
+          : hasFlat ? 'flatten exit'
+          : hasStop && hasTp1 ? 'trailing stop (post-TP1)'
+          : hasStop ? 'stop-loss (full)'
+          : 'tp exit';
+      }
     }
 
     const daily = new Map();
+    const dailyError = new Map();
     let totRealUsd = 0, totUnrealUsd = 0, wins = 0, losses = 0, openCount = 0, closedCount = 0;
+    let errRealUsd = 0, errUnrealUsd = 0, errOpen = 0, errClosed = 0;
     for (const t of trades) {
       const fx = await ibkrUsdPerCcy(t.currency);
       t.realizedUsd = +(t.realizedLocal * fx).toFixed(2);
-      totRealUsd += t.realizedUsd;
       const dir = t.side === 'sell' ? -1 : 1;
       let mark = markMap[t.ticker] && Number(markMap[t.ticker].price) > 0 ? Number(markMap[t.ticker].price) : null;
       // LSE fills are in pence (ccyScale=100); IB sometimes ticks in pounds.
@@ -12677,36 +12714,73 @@ app.get('/api/ibkr/trades', async (req, res) => {
       t.unrealizedUsd = (t.openQty > 0 && mark != null)
         ? +(((mark - t.avgEntry) * t.openQty * dir / (t.ccyScale || 1)) * fx).toFixed(2)
         : (t.openQty > 0 ? null : 0);
-      if (t.unrealizedUsd != null) totUnrealUsd += t.unrealizedUsd;
-      if (t.status === 'closed') {
-        closedCount++;
-        if (t.realizedUsd > 0) wins++; else if (t.realizedUsd < 0) losses++;
-      } else openCount++;
+
+      if (t.errorTrade) {
+        errRealUsd += t.realizedUsd;
+        if (t.unrealizedUsd != null) errUnrealUsd += t.unrealizedUsd;
+        if (t.status === 'closed') errClosed++; else errOpen++;
+      } else {
+        totRealUsd += t.realizedUsd;
+        if (t.unrealizedUsd != null) totUnrealUsd += t.unrealizedUsd;
+        if (t.status === 'closed') {
+          closedCount++;
+          if (t.realizedUsd > 0) wins++; else if (t.realizedUsd < 0) losses++;
+        } else openCount++;
+      }
       // Daily realized: attribute each exit fill's PnL (vs avg entry) to its day.
       for (const f of t.fills) {
         if (f.role === 'entry') continue;
         const day = String(f.time).slice(0, 10);
         const pnlUsd = ((f.price - t.avgEntry) * f.qty * dir / (t.ccyScale || 1)) * fx;
-        daily.set(day, (daily.get(day) || 0) + pnlUsd);
+        if (t.errorTrade) dailyError.set(day, (dailyError.get(day) || 0) + pnlUsd);
+        else daily.set(day, (daily.get(day) || 0) + pnlUsd);
       }
     }
+
+    // Flatten / exit reporting: include ALL realised on the same ticker that
+    // shares a flatten (closed + partial). Example: 2914 short +14 and long
+    // flatten −9 → tickerGroupRealized = +5 (not +14 alone).
+    const byTicker = new Map();
+    for (const t of trades) {
+      if (t.errorTrade) continue;
+      const k = String(t.ticker || '').toUpperCase();
+      if (!byTicker.has(k)) byTicker.set(k, []);
+      byTicker.get(k).push(t);
+    }
+    for (const [, group] of byTicker) {
+      const anyFlat = group.some(t => t.hasFlatten);
+      if (!anyFlat) continue;
+      const groupReal = +group.reduce((s, t) => s + (t.realizedUsd || 0), 0).toFixed(2);
+      for (const t of group) {
+        if (t.hasFlatten || t.status === 'closed') t.tickerGroupRealizedUsd = groupReal;
+      }
+    }
+
     const dailyArr = [...daily.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1)
       .map(([date, pnl]) => ({ date, realizedUsd: +pnl.toFixed(2) }));
     let cum = 0;
     for (const d of dailyArr) { cum += d.realizedUsd; d.cumUsd = +cum.toFixed(2); }
+    const dailyErrorArr = [...dailyError.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1)
+      .map(([date, pnl]) => ({ date, realizedUsd: +pnl.toFixed(2) }));
     trades.sort((a, b) => (a.entryTime < b.entryTime ? 1 : -1));
 
     res.json({
       ok: true,
       trades,
       daily: dailyArr,
+      dailyError: dailyErrorArr,
       totals: {
         realizedUsd: +totRealUsd.toFixed(2),
         unrealizedUsd: +totUnrealUsd.toFixed(2),
         openCount, closedCount, wins, losses,
-        winRate: (wins + losses) ? Math.round(wins / (wins + losses) * 100) : null
+        winRate: (wins + losses) ? Math.round(wins / (wins + losses) * 100) : null,
+        errorRealizedUsd: +errRealUsd.toFixed(2),
+        errorUnrealizedUsd: +errUnrealUsd.toFixed(2),
+        errorOpenCount: errOpen,
+        errorClosedCount: errClosed
       },
-      fillCount: rows.length
+      fillCount: rows.length,
+      errorTickers: [...IBKR_ERROR_TRADE_TICKERS]
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

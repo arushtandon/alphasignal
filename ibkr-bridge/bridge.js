@@ -63,6 +63,14 @@ const MAX_EVENT_AGE_MS = Math.max(1, parseFloat(process.env.IBKR_MAX_EVENT_AGE_H
 const ALLOW_NSE = process.env.IBKR_ALLOW_NSE === '1';
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, 'bridge-state.json');
 const SWEEP_MS = 5 * 60 * 1000;
+/** Tickers that must never stay open — Hold→Buy bug / dual-list duplicates.
+ *  Flattened at session open; fills tagged errorTrade (excluded from model PnL). */
+const ERROR_TRADE_TICKERS = new Set(
+  String(process.env.IBKR_ERROR_TICKERS || 'FSLR,BMY,CVX,MPC,HSBA.L,AIR.DE,AIR.PA,VTR,FANG,8002.T')
+    .split(/[\s,]+/).filter(Boolean).map(s => s.toUpperCase())
+);
+/** Max adverse slippage vs model entry for US RTH market chase (bps). */
+const US_RTH_MAX_CHASE_BPS = Math.max(0, parseInt(process.env.IBKR_US_RTH_MAX_CHASE_BPS || '100', 10) || 100);
 
 function log(...a) {
   const line = [new Date().toISOString(), ...a].map(x => (typeof x === 'string' ? x : String(x))).join(' ');
@@ -218,7 +226,21 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
   // MKT + tif OPG (submit to the opening auction).
   if (contract.usRth) {
     if (phase === 'rth') {
-      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: true, transmit: false, entryStyle: 'MKT-EXT' };
+      // Never chase a stale model entry more than US_RTH_MAX_CHASE_BPS adverse
+      // (FSLR bought 248 vs entry 236.8 after a late Hold→Buy emit).
+      if (entryPx > 0 && quotePx > 0) {
+        const sell = side === 'sell';
+        const adverseBps = sell
+          ? ((entryPx - quotePx) / entryPx) * 10000
+          : ((quotePx - entryPx) / entryPx) * 10000;
+        if (adverseBps > US_RTH_MAX_CHASE_BPS) {
+          return {
+            defer: true, entryStyle: 'SKIP-CHASE', action, totalQuantity: qty,
+            skipReason: 'us-rth-chase ' + adverseBps.toFixed(0) + 'bps > ' + US_RTH_MAX_CHASE_BPS
+          };
+        }
+      }
+      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MKT' };
     }
     if (phase === 'pre') {
       // Premarket / post: only lift if quote is at or better than recommendation
@@ -432,6 +454,7 @@ async function main() {
             orderId, qty: Number(exec.shares), price: Number(exec.price),
             currency: row.contract && row.contract.currency || 'USD',
             ccyScale: row.contract && row.contract.penceQuoted ? 100 : 1,
+            errorTrade: !!(row.errorTrade || ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())),
             time: new Date().toISOString()
           });
           saveState(state);
@@ -790,10 +813,11 @@ async function main() {
     const rthOk = !!contract.usRth; // outsideRth only meaningful for US SMART
     const parentId = nid(), stopId = nid(), tp1Id = tp1Px > 0 && split.sold > 0 ? nid() : null;
 
-    // US pre/extended: gate on live quote vs recommended entry. No quote → OPG.
+    // US pre/extended + RTH chase: gate on live quote vs recommended entry.
     let quotePx = null;
     let quoteSrc = null;
-    if (contract.usRth && sessionPhase(contract) === 'pre') {
+    const usPhase = contract.usRth ? sessionPhase(contract) : null;
+    if (contract.usRth && (usPhase === 'pre' || usPhase === 'rth')) {
       ensureMktData(evt.ticker, contract);
       const q = await fetchEntryQuote(evt.ticker);
       quotePx = q.px;
@@ -950,10 +974,35 @@ async function main() {
         log('skip entry (not Buy/Sell):', key, 'side=', evt.side);
         return;
       }
+      if (ERROR_TRADE_TICKERS.has(String(evt.ticker || '').toUpperCase())) {
+        log('skip entry (error-trade ticker blocklist):', key);
+        return;
+      }
       if (!(Number(evt.entry) > 0) || !(Number(evt.trailSl != null ? evt.trailSl : evt.sl) > 0)) {
         log('skip entry (missing entry/SL):', key);
         return;
       }
+      // Defense in depth: re-check live history is still Buy/Sell for this key.
+      try {
+        const hist = await fetchJson('/api/history');
+        const rows = Array.isArray(hist) ? hist : [];
+        const hz = evt.hz || 'short';
+        const keyDay = String(key.split('|')[2] || '');
+        const keyDayMs = Date.parse(keyDay);
+        const h = rows.find(x => {
+          if (!x || x.ticker !== evt.ticker) return false;
+          if (String(x.hz || 'short') !== String(hz)) return false;
+          const ms = Date.parse(x.entryDate || x.timestamp || 0);
+          if (!Number.isFinite(ms)) return false;
+          if (new Date(ms).toDateString() === keyDay) return true;
+          return Number.isFinite(keyDayMs) && Math.abs(ms - keyDayMs) < 36 * 3600 * 1000;
+        });
+        const act = String((h && (h[hz + 'Action'] || h.action)) || '').toLowerCase();
+        if (act !== 'buy' && act !== 'sell') {
+          log('skip entry (history not Buy/Sell):', key, 'action=', act || 'missing');
+          return;
+        }
+      } catch (e) { log('entry history check failed (continuing with event side):', e.message); }
       // Age gate on the TRADE's entry date (not the event emit time). A stale
       // history re-save can emit a fresh evt.t for a months-old trade — that
       // must NEVER place a live order (AZN.L Jun-09 incident).
@@ -1337,12 +1386,58 @@ async function main() {
         } catch (e) { log('RECONCILE: rearm failed', key, e.message); }
       }
 
+      // 0e. ERROR TRADES — unauthorized Hold→Buy / dual-list names. Force-close
+      // at the next session open and attach a state row so execDetails reports
+      // fills with errorTrade:true (excluded from model PnL on the site).
+      for (const [pk, { pos, contract }] of posMap) {
+        if (!pos) continue;
+        const y = yahooFromContract(contract);
+        const yU = String(y || '').toUpperCase();
+        const symU = String(contract.symbol || '').toUpperCase();
+        const isErr = ERROR_TRADE_TICKERS.has(yU)
+          || ERROR_TRADE_TICKERS.has(symU)
+          || [...ERROR_TRADE_TICKERS].some(t => t.replace(/\.(DE|PA|L|HK|T)$/i, '') === symU);
+        if (!isErr) continue;
+        const phase = sessionPhase(contract);
+        // Queue DAY MKT — IB holds until the venue is open (US 09:30 ET etc.).
+        if (phase === 'lunch') continue;
+        const lastTry = _flattenTried.get('err|' + pk) || 0;
+        if (Date.now() - lastTry < 15 * 60 * 1000) continue;
+        _flattenTried.set('err|' + pk, Date.now());
+        const qty = Math.abs(pos);
+        const fid = nid();
+        const oc = orderContractFromPos(contract);
+        if (!oc || (!oc.conId && !oc.symbol)) continue;
+        const ticker = y || symU;
+        const errKey = Object.keys(state.byKey).find(k =>
+          state.byKey[k] && String(state.byKey[k].ticker || '').toUpperCase() === String(ticker).toUpperCase()
+          && (state.byKey[k].errorTrade || state.byKey[k].flatReason === 'unauthorized-non-recommendation'))
+          || `${ticker}|error|${new Date().toDateString()}`;
+        const prev = state.byKey[errKey] || {};
+        state.byKey[errKey] = {
+          ...prev,
+          ticker, hz: prev.hz || 'error', side: pos > 0 ? 'buy' : 'sell',
+          contract: oc, closed: false, errorTrade: true,
+          flatReason: 'unauthorized-non-recommendation',
+          closeIds: [...(prev.closeIds || []), fid],
+          qtyTotal: qty, updated: new Date().toISOString()
+        };
+        saveState(state);
+        log('RECONCILE: ERROR TRADE flatten', errKey, 'pos=' + pos, 'phase=' + phase);
+        transmitOrder(fid, oc, baseOrder({
+          orderId: fid, action: pos > 0 ? 'SELL' : 'BUY',
+          orderType: 'MKT', totalQuantity: qty, tif: 'DAY', transmit: true
+        }), 'error-flatten ' + errKey);
+      }
+
       // 1. Orphan POSITIONS — held at IB, closed (or unknown) per AlphaSignal.
       // Retry window (not a one-shot): a MKT DAY order placed while that
       // exchange is closed expires unfilled, so re-attempt after 30 min if the
       // position subscription still shows shares held.
       for (const [pk, { pos, contract }] of posMap) {
         if (!pos || !everTraded.has(pk) || openTickers.has(pk)) continue;
+        const y = yahooFromContract(contract);
+        if (ERROR_TRADE_TICKERS.has(String(y || '').toUpperCase())) continue; // handled above
         const lastTry = _flattenTried.get(pk) || 0;
         if (Date.now() - lastTry < 30 * 60 * 1000) continue;
         _flattenTried.set(pk, Date.now());

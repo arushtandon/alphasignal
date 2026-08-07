@@ -1818,14 +1818,20 @@ async function renderIbkr(force){
     const todayKey = new Date().toISOString().slice(0,10);
     const todayRow = d.daily.find(x => x.date === todayKey);
     const todayReal = todayRow ? todayRow.realizedUsd : 0;
+    const todayErr = (d.dailyError||[]).find(x => x.date === todayKey);
+    const todayErrReal = todayErr ? todayErr.realizedUsd : 0;
     const wrColor = tt.winRate==null?'var(--m1)':tt.winRate>=55?'var(--buy)':tt.winRate>=40?'#F5C842':'var(--sell)';
     const net = tt.realizedUsd + tt.unrealizedUsd;
+    const errNet = (tt.errorRealizedUsd||0) + (tt.errorUnrealizedUsd||0);
     const cards = '<div id="ibkrLiveRoot" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
-      + tile('ibkrCardToday','Today realised', fp(todayReal), todayKey, pc(todayReal))
-      + tile('ibkrCardReal','Total realised', fp(tt.realizedUsd), tt.closedCount+' closed', pc(tt.realizedUsd))
+      + tile('ibkrCardToday','Today realised', fp(todayReal), 'model · '+todayKey, pc(todayReal))
+      + tile('ibkrCardReal','Total realised', fp(tt.realizedUsd), tt.closedCount+' closed (excl. errors)', pc(tt.realizedUsd))
       + tile('ibkrCardUnreal','Unrealised', fp(tt.unrealizedUsd), tt.openCount+' open', pc(tt.unrealizedUsd))
-      + tile('ibkrCardNet','Net PnL', fp(net), 'realised + unrealised', pc(net))
+      + tile('ibkrCardNet','Net PnL', fp(net), 'model realised + unrealised', pc(net))
       + tile('ibkrCardWR','Win rate', tt.winRate!=null?tt.winRate+'%':'—', tt.wins+'W / '+tt.losses+'L', wrColor)
+      + tile('ibkrCardErr','Error trades PnL', fp(errNet),
+          'real '+fp(tt.errorRealizedUsd||0)+' · open '+(tt.errorOpenCount||0)+' · today '+fp(todayErrReal),
+          pc(errNet))
       + '</div>';
 
     const th = s => '<th style="text-align:'+s+';padding:4px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;border-bottom:1px solid var(--b1)">';
@@ -1844,7 +1850,9 @@ async function renderIbkr(force){
         +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
     }
 
-    const closed = d.trades.filter(t => t.status==='closed');
+    const modelTrades = d.trades.filter(t => !t.errorTrade);
+    const errorTrades = d.trades.filter(t => t.errorTrade);
+    const closed = modelTrades.filter(t => t.status==='closed');
     const box = (title, inner, minW) =>
       '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;flex:1;min-width:'+(minW||240)+'px">'
       +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">'+title+'</div>'+inner+'</div>';
@@ -1852,6 +1860,27 @@ async function renderIbkr(force){
       '<table style="width:100%;border-collapse:collapse"><thead><tr>'
       + heads.map((h,i)=>th(i===0?'left':'right')+h+'</th>').join('')
       +'</tr></thead><tbody>'+rows.join('')+'</tbody></table>';
+    // Flatten exits: one row per ticker, PnL = sum of all realised on that
+    // ticker (closed + partial flatten). 2914 +14 and −9 → one flatten of +5.
+    const exitPnlUnits = (type) => {
+      if (type === 'flatten exit') {
+        const seen = new Set();
+        const units = [];
+        for (const t of modelTrades) {
+          if (!t.hasFlatten && t.exitType !== 'flatten exit') continue;
+          const tk = String(t.ticker||'').toUpperCase();
+          if (seen.has(tk)) continue;
+          seen.add(tk);
+          const pnl = t.tickerGroupRealizedUsd != null
+            ? t.tickerGroupRealizedUsd
+            : modelTrades.filter(x => String(x.ticker||'').toUpperCase()===tk)
+                .reduce((s,x)=>s+(x.realizedUsd||0),0);
+          units.push({ realizedUsd: +pnl.toFixed(2) });
+        }
+        return units;
+      }
+      return closed.filter(t => t.exitType === type);
+    };
     const statRow = (label, arr) => {
       const n = arr.length;
       const pnl = arr.reduce((s,t)=>s+(t.realizedUsd||0),0);
@@ -1861,11 +1890,11 @@ async function renderIbkr(force){
         +td('right',pc(pnl))+fp(pnl)+'</td>'+td('right',wr==null?'var(--m1)':wr>=55?'var(--buy)':wr>=40?'#F5C842':'var(--sell)')+(wr==null?'—':wr+'%')+'</td></tr>';
     };
     const exitTypes = ['trailing stop (post-TP1)','stop-loss (full)','signal/time exit','flatten exit','tp exit'];
-    const exitRows = exitTypes.map(x => statRow(x, closed.filter(t=>t.exitType===x)))
-      .concat([statRow('tp1 banked — runner live', d.trades.filter(t=>t.exitType==='tp1 banked — runner live'))]);
+    const exitRows = exitTypes.map(x => statRow(x, exitPnlUnits(x)))
+      .concat([statRow('tp1 banked — runner live', modelTrades.filter(t=>t.exitType==='tp1 banked — runner live'))]);
     const hzRows = ['short','medium','long'].map(h => statRow(h.toUpperCase(), closed.filter(t=>t.hz===h)));
     const sideRows = ['buy','sell'].map(s => statRow(s.toUpperCase(), closed.filter(t=>t.side===s)));
-    const slips = d.trades.filter(t=>t.rec && t.rec.entry>0 && t.avgEntry>0)
+    const slips = modelTrades.filter(t=>t.rec && t.rec.entry>0 && t.avgEntry>0)
       .map(t => Math.abs(t.avgEntry - t.rec.entry)/t.rec.entry*10000);
     const slipTxt = slips.length ? (slips.reduce((a,b)=>a+b,0)/slips.length).toFixed(0)+' bps avg entry slippage ('+slips.length+' trades)' : 'no recommendation joins yet';
     const analysisHtml = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
@@ -1876,19 +1905,24 @@ async function renderIbkr(force){
       + '</div>';
 
     const hzTag = h => h==='medium'?'MED':h==='long'?'LONG':'SHORT';
-    const tRows = d.trades.map(t => {
+    const rowHtml = (t, err) => {
       const dirC = t.side==='sell'?'var(--sell)':'var(--buy)';
       const stC = t.status==='closed'?'var(--m1)':t.status==='partial'?'#F5C842':'var(--ac)';
       const fmtPx = ibkrFmtPx;
-      const reason = t.status==='closed'
-        ? (t.rec && t.rec.exitReason ? t.rec.exitReason : (t.exitType||'—'))
-        : (t.exitType || (t.rec && t.rec.lastTrailSl ? 'open · TSL '+fmtPx(t.rec.lastTrailSl) : 'open'));
+      const showReal = t.realizedUsd;
+      const realNote = (t.tickerGroupRealizedUsd != null && t.hasFlatten
+        && Math.abs(t.tickerGroupRealizedUsd - t.realizedUsd) > 0.005)
+        ? ' <span style="font-size:8px;color:var(--m1)" title="All flatten legs on this ticker">Σ '+fp(t.tickerGroupRealizedUsd)+'</span>' : '';
+      const reason = err ? ('ERROR · '+(t.exitType||'unauthorized'))
+        : (t.status==='closed'
+          ? (t.rec && t.rec.exitReason ? t.rec.exitReason : (t.exitType||'—'))
+          : (t.exitType || (t.rec && t.rec.lastTrailSl ? 'open · TSL '+fmtPx(t.rec.lastTrailSl) : 'open')));
       const _ms = String(t.markSrc || '');
       const markTag = _ms === 'ibkr' ? ' <span style="font-size:8px;color:var(--ac)">IB</span>'
         : (_ms === 'fmp' ? ' <span style="font-size:8px;color:var(--m1)">FMP</span>'
           : (_ms.indexOf('yahoo') === 0 || _ms === 'v7' ? ' <span style="font-size:8px;color:var(--m1)">YF</span>' : ''));
-      return '<tr data-ibkr-key="'+t.key+'">'
-        + td('left') + '<span style="font-weight:600">'+t.ticker+'</span> <span style="font-size:8px;color:var(--m1)">'+hzTag(t.hz)+'</span></td>'
+      return '<tr data-ibkr-key="'+t.key+'"'+(err?' style="opacity:.85"':'')+'>'
+        + td('left') + '<span style="font-weight:600">'+t.ticker+'</span> <span style="font-size:8px;color:var(--m1)">'+hzTag(t.hz)+(err?' · ERR':'')+'</span></td>'
         + td('left',dirC) + t.side.toUpperCase()+'</td>'
         + td('right','var(--m2)') + String(t.entryTime).slice(0,10)
           + ((t.key||'').split('|')[2] ? ' <span style="font-size:8px;color:var(--m1)" title="Recommendation day">'
@@ -1899,22 +1933,34 @@ async function renderIbkr(force){
         + td('right','var(--m2)') + (t.rec?(fmtPx(t.rec.lastTrailSl!=null?t.rec.lastTrailSl:t.rec.sl)):'—')+'</td>'
         + td('right') + (t.openQty>0?t.openQty:'—')+'</td>'
         + '<td data-ibkr-mark="'+t.key+'" style="text-align:right;padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;color:var(--t1)">'+fmtPx(t.mark)+markTag+'</td>'
-        + td('right',pc(t.realizedUsd)) + fp(t.realizedUsd)+'</td>'
+        + td('right',pc(showReal)) + fp(showReal)+realNote+'</td>'
         + '<td data-ibkr-unreal="'+t.key+'" style="text-align:right;padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;color:'+pc(t.unrealizedUsd)+'">'+(t.openQty>0?fp(t.unrealizedUsd):'—')+'</td>'
         + td('left',stC) + t.status+'</td>'
         + td('left','var(--m2)') + '<span style="font-size:9px">'+reason+'</span></td>'
         + '</tr>';
-    }).join('');
-    const tradesHtml = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;overflow-x:auto">'
-      +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">IBKR paper trades — fill date (grey = recommendation day). Dashboard shows current board only — not every chased Asia fill. ('+d.fillCount+' fills)</div>'
+    };
+    const tRows = modelTrades.map(t => rowHtml(t, false)).join('');
+    const eRows = errorTrades.map(t => rowHtml(t, true)).join('');
+    const tradesHtml = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;overflow-x:auto;margin-bottom:14px">'
+      +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">Model trades — flatten PnL nets sibling horizons on the same ticker ('+modelTrades.length+' · '+d.fillCount+' fills)</div>'
       +'<table style="width:100%;border-collapse:collapse;min-width:960px"><thead><tr>'
       + th('left')+'Ticker</th>'+th('left')+'Side</th>'+th('right')+'Fill date</th>'+th('right')+'Qty</th>'
       + th('right')+'Avg fill</th>'+th('right')+'TP1</th>'+th('right')+'SL/TSL</th>'
       + th('right')+'Open qty</th>'+th('right')+'Mark</th>'
       + th('right')+'Realised $</th>'+th('right')+'Unrealised $</th>'+th('left')+'Status</th>'+th('left')+'Exit reasoning</th>'
       +'</tr></thead><tbody>'+tRows+'</tbody></table></div>';
+    const errHtml = errorTrades.length
+      ? ('<div style="background:var(--s1);border:1px solid #8B3A3A;border-radius:8px;padding:8px 4px;overflow-x:auto">'
+        +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:#E88;font-family:DM Mono,monospace;padding:0 8px 5px">Error trades — unauthorized Hold→Buy / dual-list (excluded from model PnL) · '+errorTrades.length+'</div>'
+        +'<table style="width:100%;border-collapse:collapse;min-width:960px"><thead><tr>'
+        + th('left')+'Ticker</th>'+th('left')+'Side</th>'+th('right')+'Fill date</th>'+th('right')+'Qty</th>'
+        + th('right')+'Avg fill</th>'+th('right')+'TP1</th>'+th('right')+'SL/TSL</th>'
+        + th('right')+'Open qty</th>'+th('right')+'Mark</th>'
+        + th('right')+'Realised $</th>'+th('right')+'Unrealised $</th>'+th('left')+'Status</th>'+th('left')+'Exit reasoning</th>'
+        +'</tr></thead><tbody>'+eRows+'</tbody></table></div>')
+      : '';
 
-    el.innerHTML = cards + analysisHtml + dailyHtml + tradesHtml;
+    el.innerHTML = cards + analysisHtml + dailyHtml + tradesHtml + errHtml;
   } catch (e) {
     setIbkrMtmStamp('MTM error: '+e.message+' · retrying every 5s');
     el.innerHTML = '<div class="emp"><div class="emp-a">!</div><p>Could not load IBKR trades: '+e.message+'</p></div>';
