@@ -384,7 +384,14 @@ async function main() {
         }
       } catch (e) { log('execDetails error', e.message); }
     });
+    // Only exit on disconnect AFTER a full handshake. Early "disconnected"
+    // during connect usually means clientId is already taken by a zombie.
+    let ibReady = false;
     ib.on(EventName.disconnected, () => {
+      if (!ibReady) {
+        log('IB disconnected during connect — is clientId', CLIENT_ID, 'already in use?');
+        return;
+      }
       log('IB disconnected — exiting so run-forever can restart');
       process.exit(2);
     });
@@ -398,6 +405,7 @@ async function main() {
       ib.once(EventName.nextValidId, id => { clearTimeout(t); nextOrderId = id; resolve(); });
       ib.reqIds();
     });
+    ibReady = true;
     // TWS's nextValidId can lag behind ids burned by other API clients in the
     // same TWS session (e.g. flatten-all), causing "Duplicate order id" (103).
     // Floor the counter to seconds-since-2025 so every run starts above any
