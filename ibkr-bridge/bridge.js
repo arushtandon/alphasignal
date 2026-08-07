@@ -7,12 +7,14 @@
  *   This process runs NEXT TO IB Gateway or TWS (cannot run on Render)
  *   Polls GET /api/ibkr/events and mirrors the AlphaSignal exit spec exactly:
  *
- *     entry        → parent MARKET entry — never a limit chase of the model price:
- *                      • US: MKT with outsideRth (premarket / RTH / post)
- *                        or MOO if the US cash session is fully closed
- *                      • JP / HK / EU / UK: MOO before the open; MKT if already
- *                        in regular hours (late board). Recommended price is
- *                        used only for share sizing.
+ *     entry        → parent MARKET entry (recommended price sizes shares + gates US pre):
+ *                      • US pre/extended: MKT outsideRth ONLY if live quote is at
+ *                        or better than the AlphaSignal entry (buy: quote≤entry,
+ *                        sell: quote≥entry); otherwise MOO (OPG) for the cash open
+ *                      • US RTH: MKT; US fully closed: MOO for next open
+ *                      • JP / HK / EU / UK: MOO before the open; MKT in RTH
+ *                      • Unfilled HK/JP still open on the model are re-armed
+ *                        (missed Asia opens are chased while the signal is live)
  *                    + STP stop  @ SL   for the FULL quantity  (pre-TP1 an SL hit
  *                      exits the WHOLE position — same as the simulator)
  *                    + LMT TP1   @ TP1  for the partial (half) quantity
@@ -191,26 +193,45 @@ function sessionPhase(contract, nowMs = Date.now()) {
   return 'closed'; // after close → MOO for tomorrow's open
 }
 
+/** True when extended-hours quote is at/better than the model entry. */
+function premarketFavorable(side, entryPx, quotePx) {
+  const e = Number(entryPx);
+  const q = Number(quotePx);
+  if (!(e > 0) || !(q > 0)) return false;
+  const sell = String(side || '').toLowerCase() === 'sell';
+  return sell ? q >= e : q <= e;
+}
+
 /**
- * Parent entry order: market-on-open / outside-RTH market ONLY.
- * Recommended model price is NEVER used as a limit — only for sizing.
+ * Parent entry order: MOO / RTH MKT / US extended MKT (price-gated).
+ * opts: { side, entryPx, quotePx } — quotePx gates US pre/extended only.
  */
-function parentEntrySpec(contract, action, qty) {
+function parentEntrySpec(contract, action, qty, opts = {}) {
   const phase = sessionPhase(contract);
+  const side = opts.side || (String(action).toUpperCase() === 'SELL' ? 'sell' : 'buy');
+  const entryPx = Number(opts.entryPx);
+  const quotePx = Number(opts.quotePx);
   // IB SMART often rejects orderType 'MOO' (error 321). The portable form is
   // MKT + tif OPG (submit to the opening auction).
   if (contract.usRth) {
-    if (phase === 'closed') {
+    if (phase === 'rth') {
+      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: true, transmit: false, entryStyle: 'MKT-EXT' };
+    }
+    if (phase === 'pre') {
+      // Premarket / post: only lift if quote is at or better than recommendation
+      if (premarketFavorable(side, entryPx, quotePx)) {
+        return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: true, transmit: false, entryStyle: 'MKT-EXT' };
+      }
       return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
     }
-    // Premarket / RTH / post: marketable with outsideRth so IB accepts extended hours
-    return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: true, transmit: false, entryStyle: 'MKT-EXT' };
+    // Fully closed (overnight before US pre) → next cash open
+    return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
   }
   if (phase === 'rth') {
-    // Late board after the cash open — take market now, don't wait for tomorrow
+    // Late board after the cash open — take market now (HK/JP/EU/UK)
     return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MKT' };
   }
-  // Pre-open or after previous close → opening auction
+  // Pre-open or after previous close → opening auction (EU/UK/Asia)
   return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
 }
 
@@ -309,6 +330,7 @@ async function main() {
   // "SYMBOL|CCY" -> { pos, contract }. Populated by the reqPositions subscription.
   const posMap = new Map();
   let positionsReady = false; // set once IB's initial position snapshot lands
+  let forceReconcile = false; // set on positionEnd so Asia re-arms don't wait 5m
   const posKeyOf = c => `${String(c.symbol).toUpperCase()}|${c.currency}`;
   const _flattenTried = new Map(); // pk -> last reconcile-flatten attempt ts
   // Live IBKR market data for MTM (posted to AlphaSignal every ~10s).
@@ -420,7 +442,11 @@ async function main() {
       if (ACCOUNT && account !== ACCOUNT) return;
       posMap.set(posKeyOf(contract), { pos: Number(pos) || 0, contract });
     });
-    ib.on(EventName.positionEnd, () => { positionsReady = true; log('IB position snapshot ready —', posMap.size, 'symbol(s)'); });
+    ib.on(EventName.positionEnd, () => {
+      positionsReady = true;
+      forceReconcile = true;
+      log('IB position snapshot ready —', posMap.size, 'symbol(s)');
+    });
     ib.reqPositions();
     // Account portfolio stream — IB's own mark per position (matches TWS MTM).
     ib.on(EventName.updatePortfolio, (contract, position, marketPrice) => {
@@ -614,6 +640,35 @@ async function main() {
     try { ib.cancelOrder(orderId); log('cancel sent', label, orderId); } catch (e) { log('cancel failed', label, orderId, e.message); }
   }
 
+  function ibQuoteForTicker(ticker) {
+    const pm = portfolioMarks.get(ticker);
+    if (pm && pm.price > 0) return Number(pm.price);
+    for (const row of mktById.values()) {
+      if (!row || row.ticker !== ticker) continue;
+      const spreadOk = row.bid > 0 && row.ask > 0 && row.ask >= row.bid;
+      const mid = spreadOk ? (row.bid + row.ask) / 2 : null;
+      const px = (row.last > 0 ? row.last : null) || mid || (row.close > 0 ? row.close : null);
+      if (px > 0) return Number(px);
+    }
+    return null;
+  }
+
+  /** Live/pre quote for US premarket gate (IB ticks, else AlphaSignal /api/prices). */
+  async function fetchEntryQuote(ticker) {
+    const ibPx = ibQuoteForTicker(ticker);
+    if (ibPx > 0) return { px: ibPx, src: 'ibkr' };
+    try {
+      const j = await fetchJson('/api/prices?symbols=' + encodeURIComponent(ticker));
+      const v = j && j[ticker];
+      if (v == null) return { px: null, src: null };
+      const pre = Number(v.preMarketPrice ?? v.preMarket ?? 0);
+      if (pre > 0) return { px: pre, src: 'pre' };
+      const px = Number(v.price ?? v.regularMarketPrice ?? v.last ?? v);
+      if (px > 0) return { px, src: 'last' };
+    } catch (e) { log('entry quote fetch failed', ticker, e.message); }
+    return { px: null, src: null };
+  }
+
   // ── Entry: full bracket ────────────────────────────────────────────────────
   async function placeBracket(evt) {
     const contract = toContract(evt.ticker);
@@ -633,9 +688,18 @@ async function main() {
     const rthOk = !!contract.usRth; // outsideRth only meaningful for US SMART
     const parentId = nid(), stopId = nid(), tp1Id = tp1Px > 0 && split.sold > 0 ? nid() : null;
 
-    // Parent: MARKET at open / outside RTH — never a limit at the model price.
-    // evt.entry is used only above for share sizing.
-    const parentSpec = parentEntrySpec(contract, openAction, split.total);
+    // US pre/extended: gate on live quote vs recommended entry. No quote → OPG.
+    let quotePx = null;
+    let quoteSrc = null;
+    if (contract.usRth && sessionPhase(contract) === 'pre') {
+      ensureMktData(evt.ticker, contract);
+      const q = await fetchEntryQuote(evt.ticker);
+      quotePx = q.px;
+      quoteSrc = q.src;
+    }
+    const parentSpec = parentEntrySpec(contract, openAction, split.total, {
+      side: evt.side, entryPx: evt.entry, quotePx
+    });
     const { entryStyle, ...parentFields } = parentSpec;
     const parent = baseOrder({ orderId: parentId, ...parentFields });
     // Stop child: FULL quantity — pre-TP1 an SL hit closes the whole position
@@ -654,13 +718,16 @@ async function main() {
     }) : null;
 
     if (DRY || !ib) {
-      log('DRY bracket', evt.ticker, evt.side, JSON.stringify({ contract, parent, stopOrder, tp1Order, split, entryStyle, phase: sessionPhase(contract) }, null, 1));
+      log('DRY bracket', evt.ticker, evt.side, JSON.stringify({ contract, parent, stopOrder, tp1Order, split, entryStyle, phase: sessionPhase(contract), quotePx, quoteSrc }, null, 1));
     } else {
       ib.placeOrder(parentId, contract, parent);
       ib.placeOrder(stopId, contract, stopOrder);
       if (tp1Order) ib.placeOrder(tp1Id, contract, tp1Order);
+      const gateNote = contract.usRth && sessionPhase(contract) === 'pre'
+        ? ` quote=${quotePx != null ? quotePx : 'n/a'}(${quoteSrc || 'none'}) vs entry=${roundPx(evt.entry)} → ${entryStyle}`
+        : '';
       log('Placed bracket', evt.ticker, evt.side,
-        `style=${entryStyle} phase=${sessionPhase(contract)} qty=${split.total} sizePx=${roundPx(evt.entry)} stop=${stopPx}(full) tp1=${tp1Px}x${split.sold} runner=${split.runner}`);
+        `style=${entryStyle} phase=${sessionPhase(contract)} qty=${split.total} sizePx=${roundPx(evt.entry)} stop=${stopPx}(full) tp1=${tp1Px}x${split.sold} runner=${split.runner}${gateNote}`);
     }
     return {
       parentId, stopId, tp1Id,
@@ -916,26 +983,65 @@ async function main() {
         saveState(state);
       }
 
-      // 0. Upgrade legacy unfilled LMT parents to MOO/MKT — ONLY for same-session
-      // recommendations. A missed entry from a prior day stays missed (user policy).
-      // Window: placed < 12h ago, model still open, flat at IB, no fill recorded.
+      // 0. Re-arm unfilled parents still open on the model.
+      //   • HK / JP: chase while model open (missed OPG must not stay dead)
+      //   • EU / UK: OPG before open; if still unfilled once RTH starts → MKT
+      //   • US: OPG overnight; in pre/extended upgrade to MKT-EXT only when the
+      //     live quote is at/better than the AlphaSignal entry; else stay OPG
       for (const [key, row] of Object.entries(state.byKey)) {
-        if (row.closed || row.entryFilled || row.entryStyle || row.upgradedToMkt) continue;
+        if (row.closed || row.entryFilled || !row.ticker) continue;
         if (keyState.get(key) !== 'open') continue;
-        const ageH = (Date.now() - Date.parse(row.updated || 0)) / 3600000;
-        if (!(ageH >= 0) || ageH > 12) {
-          row.upgradedToMkt = true; // mark so we never chase a stale miss
-          log('RECONCILE: skip legacy upgrade (stale/missed entry)', key, 'ageH=', ageH.toFixed(1));
+        const contract = row.contract || toContract(row.ticker);
+        if (!contract) continue;
+        const held = posMap.get(posKeyOf(contract));
+        const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+        if (posInDir > 0) {
+          row.entryFilled = true;
           saveState(state);
           continue;
         }
-        const held = row.contract ? posMap.get(posKeyOf(row.contract)) : null;
-        const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
-        if (posInDir > 0) continue; // already filled — leave alone
-        row.upgradedToMkt = true; // one-shot even if re-place fails
-        cancelOrder(row.parentId, 'legacy-LMT parent ' + key);
-        cancelOrder(row.stopId, 'legacy-LMT stop ' + key);
-        if (row.tp1Id != null) cancelOrder(row.tp1Id, 'legacy-LMT tp1 ' + key);
+        const market = contract.market || (contract.usRth ? 'US' : '');
+        const phase = sessionPhase(contract);
+        const asia = market === 'HK' || market === 'JP';
+        const eu = market === 'XETRA' || market === 'EURONEXT' || market === 'LSE';
+        const us = !!contract.usRth;
+
+        let reason = null;
+        if (asia) {
+          // Chase missed/expired Asia entries; do not cancel a live RTH MKT
+          if (phase === 'rth' && row.entryStyle !== 'MKT') reason = 'asia-rth';
+          else if (phase !== 'rth' && row.entryStyle === 'MKT') reason = 'asia-to-opg';
+          else if (!row.entryStyle) reason = 'asia-missing-style';
+        } else if (eu && phase === 'rth' && row.entryStyle === 'OPG') {
+          reason = 'eu-rth-after-opg';
+        } else if (us) {
+          if (phase === 'pre') {
+            ensureMktData(row.ticker, contract);
+            const q = await fetchEntryQuote(row.ticker);
+            const fav = premarketFavorable(row.side, row.entry, q.px);
+            if (fav && row.entryStyle !== 'MKT-EXT') {
+              reason = 'us-pre-favorable';
+              log('RECONCILE: US pre gate OPEN', key, 'quote=', q.px, '(' + (q.src || '?') + ') entry=', row.entry, 'side=', row.side);
+            } else if (!fav && row.entryStyle === 'MKT-EXT') {
+              // Was chasing extended; quote no longer good → park at next open
+              reason = 'us-pre-unfavorable-to-opg';
+              log('RECONCILE: US pre gate CLOSED', key, 'quote=', q.px, 'entry=', row.entry, '→ OPG');
+            }
+          } else if (phase === 'rth' && row.entryStyle === 'OPG') {
+            reason = 'us-rth-after-opg';
+          } else if (phase === 'closed' && row.entryStyle === 'MKT-EXT') {
+            // Overnight leftover extended order — convert to next-open OPG
+            reason = 'us-overnight-to-opg';
+          }
+        }
+        if (!reason) continue;
+
+        const last = row.lastRearmAt ? Date.parse(row.lastRearmAt) : 0;
+        if (last && Date.now() - last < 15 * 60 * 1000) continue;
+
+        cancelOrder(row.parentId, 'rearm parent ' + key);
+        cancelOrder(row.stopId, 'rearm stop ' + key);
+        if (row.tp1Id != null) cancelOrder(row.tp1Id, 'rearm tp1 ' + key);
         try {
           const placed = await placeBracket({
             key, ticker: row.ticker, hz: row.hz, side: row.side,
@@ -943,14 +1049,17 @@ async function main() {
             t: new Date().toISOString()
           });
           if (placed) {
-            placed.upgradedToMkt = true;
+            placed.lastRearmAt = new Date().toISOString();
+            placed.rearmReason = reason;
+            placed.rearmCount = (Number(row.rearmCount) || 0) + 1;
             state.byKey[key] = placed;
-            log('RECONCILE: upgraded same-session LMT →', placed.entryStyle, key);
+            log('RECONCILE: re-armed', key, 'reason=' + reason, '→', placed.entryStyle);
           } else {
-            log('RECONCILE: legacy LMT cancelled but re-place skipped', key);
+            row.lastRearmAt = new Date().toISOString();
+            log('RECONCILE: rearm place skipped', key, reason);
           }
           saveState(state);
-        } catch (e) { log('RECONCILE: legacy upgrade failed', key, e.message); }
+        } catch (e) { log('RECONCILE: rearm failed', key, e.message); }
       }
 
       // 1. Orphan POSITIONS — held at IB, closed (or unknown) per AlphaSignal.
@@ -984,11 +1093,8 @@ async function main() {
         const held = posMap.get(posKeyOf(row.contract));
         const flatAtIb = held ? held.pos === 0 : !posMap.has(posKeyOf(row.contract));
         if (!flatAtIb) continue;
-        // Model open + IB flat = the DAY entry LMT expired unfilled. By design
-        // the trade is MISSED, permanently: entry timing is part of the signal,
-        // so we never re-place an expired entry just because the price comes
-        // back to the level. A new position requires a fresh entry event from
-        // the model under current market conditions.
+        // Model still open + IB flat → leave for the re-arm loop above (Asia
+        // chase / EU-RTH / US pre gate). Do not mark closed while the signal lives.
         if (keyState.get(key) === 'open') continue;
         row.closed = true;
         row.updated = new Date().toISOString();
@@ -1057,7 +1163,8 @@ async function main() {
       lastMarks = Date.now();
       await flushMarks().catch(e => log('marks error', e.message));
     }
-    if (Date.now() - lastSweep > SWEEP_MS) {
+    if (forceReconcile || Date.now() - lastSweep > SWEEP_MS) {
+      forceReconcile = false;
       lastSweep = Date.now();
       sweepOrphans();
       await reconcilePositions().catch(e => log('reconcile error', e.message));
