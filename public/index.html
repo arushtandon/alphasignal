@@ -1978,6 +1978,8 @@ const DASH_HORIZON_MIN_PCT = {
   long:   { sl: 0.080, tp1: 0, tp2: 0, minRR: 1.1 }
 };
 const PICKS_MIN_RR = 1.1;
+/** Must match server PICKS_MIN_CONF — confidence % below this is never recommended. */
+const PICKS_MIN_CONF = 62;
 
 function rewardRiskRatioDash(entry, tp1, sl, isSell) {
   var e = parseFloat(entry), t = parseFloat(tp1), s = parseFloat(sl);
@@ -2582,6 +2584,8 @@ function pruneDashDataByLiveActions(dashData) {
     const spec = paneMap[pane];
     out[pane] = (dashData[pane] || []).filter(function (s) {
       const action = s[spec.hz + 'Action'] || s.action || 'Hold';
+      const conf = Number(s[spec.hz + 'Conf'] || s.shortConf || 0);
+      if (!(conf >= PICKS_MIN_CONF)) return false;
       if (spec.side === 'buy') {
         return action === 'Buy' && (s[spec.hz + 'Score'] || 0) >= 62 && !/SL cooldown/i.test(s[spec.hz + 'Rating'] || '');
       }
@@ -3504,12 +3508,14 @@ async function saveDashPicksToHistory(data) {
     tp2 = rrFix.tp2;
     sl = rrFix.sl;
     if (!levelsMeetMinRRDash(entry, tp1, sl, isSell, PICKS_MIN_RR)) return null;
+    var confVal = Number(s[hz+'Conf']||s.shortConf||0);
+    if (!(confVal >= PICKS_MIN_CONF)) return null;
     return {
       _v: 2,
       ticker: s.ticker, name: s.name||s.ticker, sector: s.sector||'',
       hz,
       action: isSell ? 'Sell' : 'Buy',
-      rating, conf: s[hz+'Conf']||s.shortConf||0,
+      rating, conf: confVal,
       shortAction:  hz==='short'  ? (isSell?'Sell':'Buy') : 'n/a',
       mediumAction: hz==='medium' ? (isSell?'Sell':'Buy') : 'n/a',
       longAction:   hz==='long'   ? (isSell?'Sell':'Buy') : 'n/a',
@@ -4345,6 +4351,8 @@ function renderPicksPane(elId,picks,hz,side){
     const action = s[hz+'Action'] || s.action || 'Hold';
     const lv = pickLevelsForDashboardPane(s, hz, action==='Sell');
     const hasPricing = lv.entry!=null && lv.sl!=null && lv.tp1!=null;
+    const conf = Number(s[hz+'Conf']||s.shortConf||0);
+    if(!(conf>=PICKS_MIN_CONF)) return false;
     if(isSell){
       return action==='Sell' && (s[hz+'SellScore']||0)>=62 && hasPricing
         && levelsMeetMinRRDash(lv.entry, lv.tp1, lv.sl, true, PICKS_MIN_RR);
@@ -4357,8 +4365,8 @@ function renderPicksPane(elId,picks,hz,side){
     var emptyMsg = gated
       ? ((isSell?'Sell':'Buy')+' · '+hz+' is paused by DISABLED_BRACKETS on the server. Clear that env var (or switch timeframe) to see picks.')
       : (isSell
-        ? ((window.ST&&ST.sellPicksDisabled)?'Sell picks are reference-only: backtests show no positive expectancy on short trades (buy brackets carry the edge). Sell scores remain visible in Analysis.':'No sell setups with RR ≥ '+PICKS_MIN_RR+':1 for this horizon. Try Medium/Long tabs, or click Refresh picks.')
-        : 'No buy setups with RR ≥ '+PICKS_MIN_RR+':1 for this horizon. Try Medium/Long tabs, or click Refresh picks.');
+        ? ((window.ST&&ST.sellPicksDisabled)?'Sell picks are reference-only: backtests show no positive expectancy on short trades (buy brackets carry the edge). Sell scores remain visible in Analysis.':'No sell setups with Conf ≥ '+PICKS_MIN_CONF+'% and RR ≥ '+PICKS_MIN_RR+':1 for this horizon. Try Medium/Long tabs, or click Refresh picks.')
+        : 'No buy setups with Conf ≥ '+PICKS_MIN_CONF+'% and RR ≥ '+PICKS_MIN_RR+':1 for this horizon. Try Medium/Long tabs, or click Refresh picks.');
     el.innerHTML = '<div style="padding:.75rem 1rem;font-size:11px;color:var(--m1);font-family:DM Mono,monospace;border:1px dashed var(--b1);border-radius:8px;margin:.5rem 0">'
       + emptyMsg + '</div>';
     return;
@@ -5271,7 +5279,8 @@ function renderCard(s){
     var sv = parseFloat(isS ? (h.sellSl || h.sl) : h.sl);
     if (!isFinite(t1) && !isFinite(sv)) return;
     var floored = applyHorizonMinPctFloorsDash(e, isFinite(t1) ? t1 : null, isFinite(t2) ? t2 : null, isFinite(sv) ? sv : null, isS, h.key);
-    if (!levelsMeetMinRRDash(e, floored.tp1, floored.sl, isS, PICKS_MIN_RR)) {
+    if (!levelsMeetMinRRDash(e, floored.tp1, floored.sl, isS, PICKS_MIN_RR)
+      || !(Number(h.conf) >= PICKS_MIN_CONF)) {
       h.action = 'Hold';
       h.entry = h.tp1 = h.tp2 = h.sl = '';
       h.sellEntry = h.sellTp1 = h.sellTp2 = h.sellSl = '';

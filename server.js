@@ -6061,6 +6061,13 @@ function applyTierScoreCaps(quantSignal) {
     const ar = deriveActionRating(q.buyScore, q.sellScore);
     q.action = ar.action;
     q.rating = ar.rating;
+    // Confidence (= winRateHint) must clear 62%. Score≥62 alone is not enough.
+    const conf = Number(q.winRateHint) || 0;
+    if ((q.action === 'Buy' || q.action === 'Sell') && conf < PICKS_MIN_CONF) {
+      q.action = 'Hold';
+      q.rating = 'Hold';
+      q.tierLabel = (q.tierLabel ? q.tierLabel + ' · ' : '') + 'Conf ' + conf + '% < ' + PICKS_MIN_CONF + '%';
+    }
   });
 }
 
@@ -7079,6 +7086,12 @@ async function generateServerPicksFromShortlist(opts = {}) {
         row[hz + 'Action'] = cooled ? 'Hold' : (sig.action || 'Hold');
         row[hz + 'Rating'] = cooled ? 'SL cooldown' : (sig.rating || 'Hold');
         row[hz + 'Conf'] = sig.winRateHint || Math.max(buy, sell);
+        // Hard floor: never recommend when displayed confidence is below 62%.
+        if (!cooled && (row[hz + 'Action'] === 'Buy' || row[hz + 'Action'] === 'Sell')
+          && (Number(row[hz + 'Conf']) || 0) < PICKS_MIN_CONF) {
+          row[hz + 'Action'] = 'Hold';
+          row[hz + 'Rating'] = 'Hold';
+        }
         const condTxt = (sig.conditions || []).slice(0, 4).join('; ');
         row[hz + 'Analysis'] = condTxt;
         row[hz + 'SellAnalysis'] = condTxt;
@@ -10142,6 +10155,8 @@ const HORIZON_MIN_PCT = {
 
 /** Hard floor: TP1 reward / SL risk must be ≥ 1.1 or the setup is not recommended. */
 const PICKS_MIN_RR = Math.max(1.1, parseFloat(process.env.PICKS_MIN_RR || '1.1') || 1.1);
+/** UI "confidence %" (= winRateHint). Below this → never Buy/Sell / never IBKR. */
+const PICKS_MIN_CONF = Math.max(62, parseInt(process.env.PICKS_MIN_CONF || '62', 10) || 62);
 
 function rewardRiskRatio(entry, tp1, sl, isSell) {
   const e = parseFloat(entry), t = parseFloat(tp1), s = parseFloat(sl);
@@ -10344,9 +10359,11 @@ function filterDashDataBySLCooldown(dashData) {
       if (side === 'buy') {
         if (isSLCooldownActive(pick.ticker, hz)) return false;
         if (/SL cooldown/i.test(rating)) return false;
-        // Only genuine Buy setups with a passing score belong in a buy pane.
-        if (!(action === 'Buy' && (pick[hz + 'Score'] || 0) >= 62)) return false;
-      } else if (!(action === 'Sell' && (pick[hz + 'SellScore'] || 0) >= 62)) {
+        // Only genuine Buy setups with score + confidence ≥ 62 belong in a buy pane.
+        if (!(action === 'Buy' && (pick[hz + 'Score'] || 0) >= 62
+          && (Number(pick[hz + 'Conf']) || 0) >= PICKS_MIN_CONF)) return false;
+      } else if (!(action === 'Sell' && (pick[hz + 'SellScore'] || 0) >= 62
+        && (Number(pick[hz + 'Conf']) || 0) >= PICKS_MIN_CONF)) {
         return false;
       }
       const isSell = side === 'sell';
@@ -10369,6 +10386,12 @@ function filterDashDataByMinRR(dashData, minRR = PICKS_MIN_RR) {
       const entry = parseFloat(pick[hz + 'Entry'] || pick.entry);
       const tp1 = parseFloat(pick[hz + 'Target1'] || (isSell ? pick.sellTarget1 : pick.target1));
       const sl = parseFloat(pick[hz + 'StopLoss'] || (isSell ? pick.sellStopLoss : pick.stopLoss));
+      const conf = Number(pick[hz + 'Conf'] || pick.conf || 0);
+      if (!(conf >= PICKS_MIN_CONF)) {
+        dropped++;
+        console.log('Pick dropped (Conf <', PICKS_MIN_CONF + '%):', pick.ticker, hz, side, 'conf=', conf);
+        return false;
+      }
       const ok = levelsMeetMinRR(entry, tp1, sl, isSell, minRR);
       if (!ok) {
         dropped++;
@@ -10378,7 +10401,7 @@ function filterDashDataByMinRR(dashData, minRR = PICKS_MIN_RR) {
       return ok;
     });
   }
-  if (dropped) console.log('filterDashDataByMinRR dropped', dropped, 'rows (minRR', minRR + ')');
+  if (dropped) console.log('filterDashDataByMinRR dropped', dropped, 'rows (minRR', minRR + ', minConf', PICKS_MIN_CONF + '%)');
   return out;
 }
 
@@ -10996,12 +11019,14 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
     }
     const isSell = act === 'sell';
     // All horizons: TP1/TP2 from ATR + momentum + structure; SL from trail/structure.
-    // If TP1/SL cannot clear PICKS_MIN_RR (1.1:1), do not recommend — clear levels + Hold.
+    // If TP1/SL cannot clear PICKS_MIN_RR (1.1:1), or confidence < 62%, do not recommend.
     const clearHz = () => {
       row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = '';
       row[actionKeys[hz]] = 'Hold';
       if (String(row.action || '').toLowerCase() === act) row.action = 'Hold';
     };
+    const conf = Number(row[hz + 'Conf'] || row.conf || 0);
+    if (conf > 0 && conf < PICKS_MIN_CONF) { clearHz(); continue; }
     const sl = hz === 'short'
       ? (computeMeanReversionLevels(tech, e, isSell) || {}).stop
       : computeTrailingStopFromTech(tech, e, hz, isSell, fund);
@@ -12065,6 +12090,12 @@ function shouldEmitIbkrEntry(trade, hz) {
   const snap = tradeEventSnapshot(trade, hz);
   if (snap.side !== 'buy' && snap.side !== 'sell') return false;
   if (!(snap.entry > 0) || !(snap.sl > 0)) return false;
+  const z = hz || trade.hz || 'short';
+  const conf = Number(trade[z + 'Conf'] || trade.conf || 0);
+  if (!(conf >= PICKS_MIN_CONF)) {
+    console.log('IBKR entry skipped (Conf <', PICKS_MIN_CONF + '%):', snap.key, 'conf=', conf);
+    return false;
+  }
   // Require min RR when TP1 exists; reject null-TP1 entries (not recommendable).
   if (!(snap.tp1 > 0) || !levelsMeetMinRR(snap.entry, snap.tp1, snap.sl, snap.side === 'sell', PICKS_MIN_RR)) {
     return false;
