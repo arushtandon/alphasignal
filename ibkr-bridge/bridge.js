@@ -1119,29 +1119,53 @@ async function main() {
         if (e && e.type === 'entry' && e.key) entryByKey.set(e.key, e);
       }
 
-      // Flatten any live bridge row whose AlphaSignal history is no longer Buy/Sell
-      // (RR demote → Hold, signal flip). Prevents holding non-recommendations.
+      // History Hold-check: ONLY cancel *unfilled* parents.
+      // Never flatten a filled position because history was rewritten to Hold
+      // (conf demote / board refresh). That bug closed live Asia fills as
+      // "signal/time exit". Filled trades exit via TP/SL or an explicit server
+      // `exit` event only.
       try {
         const hist = await fetchJson('/api/history');
         const rows = Array.isArray(hist) ? hist : [];
         for (const [key, row] of Object.entries(state.byKey)) {
           if (row.closed || !row.ticker) continue;
           const hz = row.hz || 'short';
-          const h = rows.find(x => x && x.ticker === row.ticker
-            && String(x.hz || 'short') === String(hz)
-            && new Date(x.entryDate || x.timestamp || 0).toDateString() === String(key.split('|')[2] || ''));
+          const keyDay = String(key.split('|')[2] || '');
+          const keyDayMs = Date.parse(keyDay);
+          const h = rows.find(x => {
+            if (!x || x.ticker !== row.ticker) return false;
+            if (String(x.hz || 'short') !== String(hz)) return false;
+            const ms = Date.parse(x.entryDate || x.timestamp || 0);
+            if (!Number.isFinite(ms)) return false;
+            // Render (UTC) vs bridge PC (SGT) can disagree on toDateString().
+            // Accept exact day-token match OR entry within 36h of the key day.
+            if (new Date(ms).toDateString() === keyDay) return true;
+            return Number.isFinite(keyDayMs) && Math.abs(ms - keyDayMs) < 36 * 3600 * 1000;
+          });
           if (!h) continue;
           const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
           if (act === 'buy' || act === 'sell') continue;
-          log('RECONCILE: history is', act || 'Hold', '— flattening non-recommendation', key);
-          closeOut(key, row, 'history no longer Buy/Sell');
+          const contract = row.contract || toContract(row.ticker);
+          const held = contract ? posMap.get(posKeyOf(contract)) : null;
+          const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+          if (row.entryFilled || posInDir > 0) {
+            log('RECONCILE: history is', act || 'Hold', 'but filled — keep until server exit', key);
+            continue;
+          }
+          log('RECONCILE: history is', act || 'Hold', '— cancelling unfilled parent', key);
+          if (row.parentId != null) cancelOrder(row.parentId, 'hold-cancel parent ' + key);
+          if (row.stopId != null) cancelOrder(row.stopId, 'hold-cancel stop ' + key);
+          if (row.tp1Id != null) cancelOrder(row.tp1Id, 'hold-cancel tp1 ' + key);
+          row.closed = true;
+          row.holdCancelledUnfilled = true;
+          row.updated = new Date().toISOString();
           saveState(state);
         }
       } catch (e) { log('RECONCILE: history Hold-check failed', e.message); }
 
       // 0z. Seed missing HK/JP state rows still open on the model (state loss /
       // cursor past the original entry event). Only recent entries — never
-      // revive multi-week-old Asia keys that happen to still show open.
+      // revive multi-day-old Asia keys (e.g. Wed Aug 05) that still lack an exit.
       const SEED_MAX_AGE_MS = MAX_EVENT_AGE_MS; // same 24h gate as live entries
       for (const [key, stOpen] of keyState) {
         if (stOpen !== 'open' || state.byKey[key]) continue;
@@ -1150,7 +1174,12 @@ async function main() {
         const c = toContract(src.ticker);
         if (!c || (c.market !== 'HK' && c.market !== 'JP')) continue;
         const tradeTs = Date.parse(src.entryDate || src.t || 0);
-        if (!Number.isFinite(tradeTs) || (Date.now() - tradeTs) > SEED_MAX_AGE_MS) {
+        const keyDayTs = Date.parse(String(key.split('|')[2] || ''));
+        const oldest = Math.min(
+          Number.isFinite(tradeTs) ? tradeTs : Infinity,
+          Number.isFinite(keyDayTs) ? keyDayTs : Infinity
+        );
+        if (!Number.isFinite(oldest) || oldest === Infinity || (Date.now() - oldest) > SEED_MAX_AGE_MS) {
           log('RECONCILE: skip seed (stale Asia key)', key);
           continue;
         }
@@ -1193,23 +1222,46 @@ async function main() {
         const market = contract.market || (contract.usRth ? 'US' : '');
         const phase = sessionPhase(contract);
         const asia = market === 'HK' || market === 'JP';
-        // False fill: sibling horizon shares a symbol and stamped entryFilled while
-        // this row is still OPG. Clear so Asia can re-arm in RTH.
-        if (row.entryFilled && asia && phase === 'rth' && row.entryStyle === 'OPG') {
-          log('RECONCILE: clearing false entryFilled on OPG Asia row', key);
-          row.entryFilled = false;
-          saveState(state);
-        }
-        if (row.entryFilled) continue;
         const held = posMap.get(posKeyOf(contract));
         const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
         // Only attribute fills to THIS parent — sibling horizons share a symbol
         // (e.g. 2914.T short filled must not mark 2914.T long filled).
         const parentFilledQty = orderFills[row.parentId] || 0;
+        // False fill: sibling horizon stamped entryFilled while this OPG never
+        // filled. Only clear when THIS parent has zero fills — otherwise we
+        // re-arm and double-buy (2914.T long entered twice today).
+        if (row.entryFilled && asia && phase === 'rth' && row.entryStyle === 'OPG'
+          && parentFilledQty <= 0) {
+          log('RECONCILE: clearing false entryFilled on OPG Asia row', key);
+          row.entryFilled = false;
+          saveState(state);
+        }
+        if (row.entryFilled || parentFilledQty > 0) {
+          if (!row.entryFilled && parentFilledQty > 0) {
+            row.entryFilled = true;
+            saveState(state);
+          }
+          continue;
+        }
         if (posInDir > 0 && parentFilledQty > 0) {
           row.entryFilled = true;
           saveState(state);
           continue;
+        }
+        // Never chase Asia keys older than the event-age gate (prevents Aug 05
+        // shorts being MKT-bought on Aug 07 just because model status is still open).
+        if (asia) {
+          const srcAge = entryByKey.get(key);
+          const tradeTs = Date.parse((srcAge && (srcAge.entryDate || srcAge.t)) || 0);
+          const keyDayTs = Date.parse(String(key.split('|')[2] || ''));
+          const oldest = Math.min(
+            Number.isFinite(tradeTs) ? tradeTs : Infinity,
+            Number.isFinite(keyDayTs) ? keyDayTs : Infinity
+          );
+          if (Number.isFinite(oldest) && oldest !== Infinity && (Date.now() - oldest) > MAX_EVENT_AGE_MS) {
+            log('RECONCILE: skip re-arm (stale Asia key)', key);
+            continue;
+          }
         }
         const eu = market === 'XETRA' || market === 'EURONEXT' || market === 'LSE';
         const us = !!contract.usRth;

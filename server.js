@@ -6443,11 +6443,12 @@ function isHistoryBuySellRecord(h) {
 
 function historyTradeEntryDay(trade) {
   if (!trade) return '';
-  return new Date(trade.entryDate || trade.timestamp || 0).toDateString();
+  const ms = Date.parse(trade.entryDate || trade.timestamp || 0);
+  return Number.isFinite(ms) ? singaporeToDateString(ms) : singaporeToDateString();
 }
 
 function isHistoryTradeFromToday(trade) {
-  return historyTradeEntryDay(trade) === new Date().toDateString();
+  return historyTradeEntryDay(trade) === singaporeToDateString();
 }
 
 function compactFundSnapshot(fund) {
@@ -6566,11 +6567,18 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
     ? frozenEntry
     : tech.currentPrice;
   if (basePx && Number.isFinite(basePx)) {
+    const openAct = String(trade[hz + 'Action'] || trade.action || '').toLowerCase();
+    const openSt = String(trade[hz + 'Status'] || trade.status || 'open').toLowerCase();
+    const freezeOpen = (openAct === 'buy' || openAct === 'sell')
+      && (!openSt || openSt === 'open' || openSt === 'tp1_open');
     const tempRow = {
       ...trade,
       shortAction: trade.shortAction || (String(trade.action || '').toLowerCase() === 'sell' ? 'Sell' : 'Buy'),
       mediumAction: trade.mediumAction || trade.shortAction || 'Hold',
-      longAction: trade.longAction || trade.shortAction || 'Hold'
+      longAction: trade.longAction || trade.shortAction || 'Hold',
+      // Keep open history actions as Buy/Sell during level refresh — Conf/RR
+      // demote must not rewrite live recommendations to Hold.
+      _freezeOpenAction: freezeOpen
     };
     applyServerPriceLevels(tempRow, basePx, tech, fund);
     ['short', 'medium', 'long'].forEach(hzKey => {
@@ -7769,6 +7777,21 @@ async function addTradesToHistory(trades) {
         'entryPending', 'entryFinalized' // entry-finalisation state must survive re-records
       ]) {
         if (prev[f] !== undefined) trade[f] = prev[f];
+      }
+      // FREEZE ACTION: once recorded as Buy/Sell and still open, never let a
+      // board refresh / Conf demote rewrite it to Hold. That mismatch made the
+      // IBKR bridge flatten live fills ("signal/time exit") while the dashboard
+      // still showed Buy picks.
+      const prevAct = String(prev[hz + 'Action'] || prev.action || '').toLowerCase();
+      const prevStatus = String(prev[hz + 'Status'] || prev.status || 'open').toLowerCase();
+      const stillOpen = !prevStatus || prevStatus === 'open' || prevStatus === 'tp1_open';
+      if (stillOpen && (prevAct === 'buy' || prevAct === 'sell')) {
+        trade.action = prev.action;
+        trade[hz + 'Action'] = prev[hz + 'Action'] || prev.action;
+        if (prev[hz + 'Conf'] != null) trade[hz + 'Conf'] = prev[hz + 'Conf'];
+        if (prev[hz + 'Score'] != null) trade[hz + 'Score'] = prev[hz + 'Score'];
+        if (prev[hz + 'SellScore'] != null) trade[hz + 'SellScore'] = prev[hz + 'SellScore'];
+        if (prev[hz + 'Rating'] != null) trade[hz + 'Rating'] = prev[hz + 'Rating'];
       }
     }
     accepted.push(trade);
@@ -10625,6 +10648,21 @@ function singaporeParts(ms = Date.now()) {
 }
 function singaporeDateKey(ms = Date.now()) { return singaporeParts(ms).key; }
 
+/** Same shape as Date#toDateString(), but always in Asia/Singapore (UTC+8).
+ *  IBKR trade keys and history day matching must not depend on the host TZ
+ *  (Render=UTC vs bridge PC=SGT was splitting "today" across two calendar days). */
+function singaporeToDateString(ms = Date.now()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Singapore',
+    weekday: 'short',
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric'
+  }).formatToParts(new Date(ms));
+  const get = (t) => (parts.find(p => p.type === t) || {}).value || '';
+  return `${get('weekday')} ${get('month')} ${get('day')} ${get('year')}`;
+}
+
 // Seed from last REAL generation time (not boot filter stamps).
 let _lastPicksDateKey = (dashboardPicksCache && dashboardPicksCache.dashTs)
   ? singaporeDateKey(dashboardPicksCache.dashTs) : null;
@@ -11021,6 +11059,12 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
     // All horizons: TP1/TP2 from ATR + momentum + structure; SL from trail/structure.
     // If TP1/SL cannot clear PICKS_MIN_RR (1.1:1), or confidence < 62%, do not recommend.
     const clearHz = () => {
+      // Dashboard / new-pick path: drop levels + demote. History enrich passes
+      // frozen open rows — never rewrite those to Hold (IBKR already traded).
+      if (row._freezeOpenAction) {
+        row[hz + 'Entry'] = row[hz + 'Entry'] || '';
+        return;
+      }
       row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = '';
       row[actionKeys[hz]] = 'Hold';
       if (String(row.action || '').toLowerCase() === act) row.action = 'Hold';
@@ -12030,7 +12074,8 @@ function ibkrHzAction(h, hz) {
 
 function tradeEventSnapshot(h, hz, extra) {
   const z = hz || h.hz || 'short';
-  const keyDay = new Date(h.entryDate || h.timestamp || Date.now()).toDateString();
+  const entryMs = Date.parse(h.entryDate || h.timestamp || Date.now());
+  const keyDay = singaporeToDateString(Number.isFinite(entryMs) ? entryMs : Date.now());
   const act = ibkrHzAction(h, z);
   return {
     ticker: h.ticker,
@@ -12059,7 +12104,8 @@ function tradeEventSnapshot(h, hz, extra) {
 
 /** True if an open IBKR entry already exists for this key or a dual-list alias. */
 function ibkrHasOpenEntryFor(ticker, hz, entryDate) {
-  const keyDay = new Date(entryDate || Date.now()).toDateString();
+  const entryMs = Date.parse(entryDate || Date.now());
+  const keyDay = singaporeToDateString(Number.isFinite(entryMs) ? entryMs : Date.now());
   const aliases = new Set([String(ticker || '').toUpperCase()]);
   for (const a of (IBKR_LISTING_ALIASES[String(ticker || '').toUpperCase()] || [])) {
     aliases.add(String(a).toUpperCase());
@@ -12129,6 +12175,54 @@ function emitTradeEvent(type, payload) {
   }
   auditLog('trade_event', { type, seq: evt.seq, ticker: payload && payload.ticker, hz: payload && payload.hz });
   return evt;
+}
+
+/** Restore Buy/Sell on open history rows that were wrongly demoted to Hold after
+ *  an IBKR entry event was already emitted (Conf gate / board refresh). */
+function repairOpenHistoryActionsFromIbkrEvents() {
+  const openSideByKey = new Map();
+  try {
+    if (!fs.existsSync(TRADE_EVENTS_FILE)) return 0;
+    for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n')) {
+      let e; try { e = JSON.parse(line); } catch (_) { continue; }
+      if (!e || !e.key) continue;
+      if (e.type === 'entry' && (e.side === 'buy' || e.side === 'sell')) openSideByKey.set(e.key, e.side);
+      else if (e.type === 'exit') openSideByKey.delete(e.key);
+    }
+  } catch (_) { return 0; }
+  let n = 0;
+  for (const h of tradeHistory) {
+    if (!h || !h.ticker) continue;
+    const hz = h.hz || 'short';
+    const st = String(h[hz + 'Status'] || h.status || 'open').toLowerCase();
+    if (st && st !== 'open' && st !== 'tp1_open') continue;
+    const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
+    if (act === 'buy' || act === 'sell') continue;
+    const day = historyTradeEntryDay(h);
+    const key = `${h.ticker}|${hz}|${day}`;
+    let side = openSideByKey.get(key);
+    if (!side) {
+      for (const [k, s] of openSideByKey) {
+        const [t, ehz] = String(k).split('|');
+        if (t === h.ticker && ehz === hz) { side = s; break; }
+      }
+    }
+    if (!side) continue;
+    const labeled = side === 'sell' ? 'Sell' : 'Buy';
+    h.action = labeled;
+    h[hz + 'Action'] = labeled;
+    n++;
+    auditLog('history_action_repaired_from_ibkr', { ticker: h.ticker, hz, side: labeled, key });
+  }
+  if (n) {
+    saveHistoryFile(tradeHistory);
+    console.log('Repaired', n, 'open history row(s) Hold→Buy/Sell from IBKR entry events');
+  }
+  return n;
+}
+
+try { repairOpenHistoryActionsFromIbkrEvents(); } catch (e) {
+  console.warn('history action repair failed:', e.message);
 }
 
 function readTradeEvents(sinceSeq, limit, tail) {
@@ -12556,8 +12650,13 @@ app.get('/api/ibkr/trades', async (req, res) => {
       const hasTp1 = t.fills.some(f => f.role === 'tp1');
       const hasStop = t.fills.some(f => f.role === 'stop');
       const hasFlat = t.fills.some(f => f.role === 'flatten');
+      // Prefer the AlphaSignal exit reason when present; only fall back to
+      // fill-role heuristics. Flatten fills used to be mislabeled "signal/time
+      // exit" even when the bridge force-closed on a Hold rewrite.
+      const modelReason = (rec && (rec.exitReason || rec.exitStatus)) || null;
       t.exitType = t.status !== 'closed' ? (hasTp1 ? 'tp1 banked — runner live' : null)
-        : hasFlat ? 'signal/time exit'
+        : modelReason ? String(modelReason)
+        : hasFlat ? 'flatten exit'
         : hasStop && hasTp1 ? 'trailing stop (post-TP1)'
         : hasStop ? 'stop-loss (full)'
         : 'tp exit';

@@ -1860,7 +1860,7 @@ async function renderIbkr(force){
       return '<tr>'+td('left','var(--m2)')+label+'</td>'+td('right')+n+'</td>'
         +td('right',pc(pnl))+fp(pnl)+'</td>'+td('right',wr==null?'var(--m1)':wr>=55?'var(--buy)':wr>=40?'#F5C842':'var(--sell)')+(wr==null?'—':wr+'%')+'</td></tr>';
     };
-    const exitTypes = ['trailing stop (post-TP1)','stop-loss (full)','signal/time exit','tp exit'];
+    const exitTypes = ['trailing stop (post-TP1)','stop-loss (full)','signal/time exit','flatten exit','tp exit'];
     const exitRows = exitTypes.map(x => statRow(x, closed.filter(t=>t.exitType===x)))
       .concat([statRow('tp1 banked — runner live', d.trades.filter(t=>t.exitType==='tp1 banked — runner live'))]);
     const hzRows = ['short','medium','long'].map(h => statRow(h.toUpperCase(), closed.filter(t=>t.hz===h)));
@@ -1890,7 +1890,9 @@ async function renderIbkr(force){
       return '<tr data-ibkr-key="'+t.key+'">'
         + td('left') + '<span style="font-weight:600">'+t.ticker+'</span> <span style="font-size:8px;color:var(--m1)">'+hzTag(t.hz)+'</span></td>'
         + td('left',dirC) + t.side.toUpperCase()+'</td>'
-        + td('right','var(--m2)') + String(t.entryTime).slice(0,10)+'</td>'
+        + td('right','var(--m2)') + String(t.entryTime).slice(0,10)
+          + ((t.key||'').split('|')[2] ? ' <span style="font-size:8px;color:var(--m1)" title="Recommendation day">'
+            + String((t.key||'').split('|')[2]).replace(/^\w{3}\s/,'').slice(0,6)+'</span>' : '')+'</td>'
         + td('right') + t.entryQty+'</td>'
         + td('right') + fmtPx(t.avgEntry)+' <span style="font-size:8px;color:var(--m1)">'+t.currency+'</span></td>'
         + td('right','var(--m2)') + (t.rec&&t.rec.tp1?fmtPx(t.rec.tp1):'—')+'</td>'
@@ -1904,9 +1906,9 @@ async function renderIbkr(force){
         + '</tr>';
     }).join('');
     const tradesHtml = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;overflow-x:auto">'
-      +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">IBKR paper trades — from actual executions ('+d.fillCount+' fills)</div>'
+      +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">IBKR paper trades — fill date (grey = recommendation day). Dashboard shows current board only — not every chased Asia fill. ('+d.fillCount+' fills)</div>'
       +'<table style="width:100%;border-collapse:collapse;min-width:960px"><thead><tr>'
-      + th('left')+'Ticker</th>'+th('left')+'Side</th>'+th('right')+'Entry date</th>'+th('right')+'Qty</th>'
+      + th('left')+'Ticker</th>'+th('left')+'Side</th>'+th('right')+'Fill date</th>'+th('right')+'Qty</th>'
       + th('right')+'Avg fill</th>'+th('right')+'TP1</th>'+th('right')+'SL/TSL</th>'
       + th('right')+'Open qty</th>'+th('right')+'Mark</th>'
       + th('right')+'Realised $</th>'+th('right')+'Unrealised $</th>'+th('left')+'Status</th>'+th('left')+'Exit reasoning</th>'
