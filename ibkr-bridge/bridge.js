@@ -1476,7 +1476,7 @@ async function main() {
         if (String(row.ticker || '').toUpperCase() === 'AIR.DE') continue;
         // Re-open if still held at IB (prior DAY MKT expired unfilled).
         if (row.closed) {
-          const c0 = row.contract || toContract(row.ticker);
+          const c0 = enrichSessionMeta(row.contract || toContract(row.ticker));
           const h0 = c0 ? posMap.get(posKeyOf(c0)) : null;
           if (!h0 || !h0.pos) continue;
           row.closed = false;
@@ -1484,11 +1484,11 @@ async function main() {
           log('RECONCILE: re-open unauthorized row still held', key, 'pos=' + h0.pos);
         }
         if (row.closed) continue;
-        const contract = row.contract || toContract(row.ticker);
+        const contract = enrichSessionMeta(row.contract || toContract(row.ticker));
         if (!contract) continue;
         if (sessionPhase(contract) === 'lunch') continue;
-        // US: only submit during RTH/pre so DAY orders don't die overnight
-        if (contract.usRth && sessionPhase(contract) === 'closed') continue;
+        // US: only submit in true RTH — pre/closed DAY MKTs were dying unfilled
+        if (contract.usRth && sessionPhase(contract) !== 'rth') continue;
         const pk = posKeyOf(contract);
         const held = posMap.get(pk);
         if (!held || !held.pos) { row.closed = true; saveState(state); continue; }
