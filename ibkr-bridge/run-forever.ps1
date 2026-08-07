@@ -18,22 +18,28 @@ $env:IBKR_MARKET_DATA_TYPE = "3"
 
 New-Item -ItemType Directory -Force -Path "$PSScriptRoot\logs" | Out-Null
 
+# Resolve real node.exe (avoid shim that Start-Process mishandles)
+$node = (Get-Command node -ErrorAction SilentlyContinue | Select-Object -First 1).Source
+if (-not $node) { $node = "node" }
+
 Write-Host "AlphaSignal IBKR bridge supervisor"
+Write-Host "node: $node"
 Write-Host "Logs go to: $PSScriptRoot\logs\bridge-YYYY-MM-DD.log"
 Write-Host "Live tail in another window:"
+Write-Host "  cd $PSScriptRoot"
 Write-Host "  Get-Content .\logs\bridge-$(Get-Date -Format 'yyyy-MM-dd').log -Tail 50 -Wait"
 Write-Host ""
 
 while ($true) {
   $log = "$PSScriptRoot\logs\bridge-$(Get-Date -Format 'yyyy-MM-dd').log"
   $stamp = Get-Date -Format o
-  # Don't hold an exclusive lock on the log (cmd >> was blocking restarts).
   try { Add-Content -Path $log -Value "$stamp [run-forever] starting bridge" -ErrorAction SilentlyContinue } catch {}
-  Write-Host "$stamp starting bridge -> $log  (this window stays quiet; watch the log file)"
-  # bridge.js appendFileSyncs its own log; keep console quiet
-  $p = Start-Process -FilePath "node" -ArgumentList "bridge.js" -WorkingDirectory $PSScriptRoot -PassThru -WindowStyle Hidden
-  Wait-Process -Id $p.Id
-  $code = $p.ExitCode
+  Write-Host "$stamp starting bridge -> $log"
+  # Run in THIS process (not Start-Process). Start-Process was reporting exit
+  # code 0 within ~1s while marks still came from a leftover node, or killing
+  # the supervisor loop while a zombie held clientId 17.
+  & $node "$PSScriptRoot\bridge.js"
+  $code = $LASTEXITCODE
   try { Add-Content -Path $log -Value "$(Get-Date -Format o) [run-forever] bridge exited (code $code) - restarting in 30s" -ErrorAction SilentlyContinue } catch {}
   Write-Host "$(Get-Date -Format o) bridge exited (code $code) - restarting in 30s"
   Start-Sleep -Seconds 30

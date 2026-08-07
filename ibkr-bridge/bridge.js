@@ -384,13 +384,18 @@ async function main() {
         }
       } catch (e) { log('execDetails error', e.message); }
     });
+    ib.on(EventName.disconnected, () => {
+      log('IB disconnected — exiting so run-forever can restart');
+      process.exit(2);
+    });
     await new Promise((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('IB connect timeout — is TWS/Gateway paper running with API enabled?')), 20000);
       ib.once(EventName.connected, () => { clearTimeout(t); resolve(); });
       ib.connect();
     });
-    await new Promise(resolve => {
-      ib.once(EventName.nextValidId, id => { nextOrderId = id; resolve(); });
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('IB nextValidId timeout — is another API client using clientId ' + CLIENT_ID + '?')), 20000);
+      ib.once(EventName.nextValidId, id => { clearTimeout(t); nextOrderId = id; resolve(); });
       ib.reqIds();
     });
     // TWS's nextValidId can lag behind ids burned by other API clients in the
