@@ -12515,6 +12515,34 @@ function writeIbkrFillRows(rows) {
   _ibkrExecIds = new Set(rows.map(r => r.execId).filter(Boolean));
 }
 
+/** One-shot: coarse integer exec.price → IB portfolio averageCost (9988 @124 → ~123.8). */
+(function correctKnownCoarseIbkrFills() {
+  const KNOWN = {
+    '9988.HK|short|Wed Aug 05 2026': 123.7965
+  };
+  try {
+    if (!fs.existsSync(IBKR_FILLS_FILE)) return;
+    const rows = readIbkrFillRows();
+    let n = 0;
+    const out = rows.map(r => {
+      if (!r || r.role !== 'entry') return r;
+      const avg = KNOWN[r.key];
+      if (!(avg > 0) || !(Number(r.price) > 0)) return r;
+      if (Math.abs(Number(r.price) - avg) < 0.01) return r;
+      if (!Number.isInteger(Number(r.price))) return r;
+      n++;
+      return { ...r, price: avg, priceCorrectedFrom: Number(r.price), priceCorrectedAt: new Date().toISOString() };
+    });
+    if (n) {
+      writeIbkrFillRows(out);
+      console.log('Corrected', n, 'coarse IBKR fill price(s) (known IB avgCost)');
+      auditLog('ibkr_correct_avg_boot', { correctedFills: n, keys: Object.keys(KNOWN) });
+    }
+  } catch (e) {
+    console.warn('known fill avg correct failed:', e.message);
+  }
+})();
+
 /** Drop phantom/stale fills (and optional explicit keys) from the durable log. */
 app.post('/api/ibkr/purge', express.json({ limit: '32kb' }), (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
@@ -12529,6 +12557,44 @@ app.post('/api/ibkr/purge', express.json({ limit: '32kb' }), (req, res) => {
   writeIbkrFillRows(after);
   auditLog('ibkr_purge', { before: before.length, after: after.length, removed: before.length - after.length });
   res.json({ ok: true, before: before.length, after: after.length, removed: before.length - after.length });
+});
+
+/**
+ * Rewrite entry-fill prices for a key to match IB averageCost / avgFillPrice
+ * (fixes coarse integer exec.price e.g. 9988 @124 → 123.8).
+ * Body: { corrections: [{ key, avgEntry }] }
+ */
+app.post('/api/ibkr/correct-avg', express.json({ limit: '64kb' }), (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const corrections = Array.isArray(req.body && req.body.corrections) ? req.body.corrections : [];
+  if (!corrections.length) return res.json({ ok: true, corrected: 0 });
+  const byKey = new Map();
+  for (const c of corrections) {
+    if (!c || !c.key || !(Number(c.avgEntry) > 0)) continue;
+    byKey.set(String(c.key), Number(c.avgEntry));
+  }
+  if (!byKey.size) return res.json({ ok: true, corrected: 0 });
+  const rows = readIbkrFillRows();
+  let n = 0;
+  const out = rows.map(r => {
+    if (!r || r.role !== 'entry') return r;
+    const avg = byKey.get(r.key);
+    if (!(avg > 0)) return r;
+    const prev = Number(r.price);
+    if (!(prev > 0) || Math.abs(prev - avg) < 1e-9) return r;
+    n++;
+    return { ...r, price: avg, priceCorrectedFrom: prev, priceCorrectedAt: new Date().toISOString() };
+  });
+  if (n) {
+    writeIbkrFillRows(out);
+    auditLog('ibkr_correct_avg', {
+      correctedFills: n,
+      keys: [...byKey.keys()],
+      avgs: Object.fromEntries(byKey)
+    });
+    console.log('IBKR fill avg corrected:', n, 'fill(s) across', byKey.size, 'key(s)');
+  }
+  res.json({ ok: true, corrected: n, keys: byKey.size });
 });
 
 // Live marks from the local IBKR bridge (TWS/Gateway market data) — preferred for MTM.

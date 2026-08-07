@@ -85,6 +85,35 @@ function singaporeToDateString(ms = Date.now()) {
   return `${get('weekday')} ${get('month')} ${get('day')} ${get('year')}`;
 }
 
+/** Normalize Yahoo tickers so 5.HK ≡ 0005.HK for open-lot / orphan matching. */
+function normalizeYahooTicker(t) {
+  const s = String(t || '').toUpperCase();
+  const m = s.match(/^(\d+)\.HK$/);
+  if (m) return m[1].padStart(4, '0') + '.HK';
+  return s;
+}
+
+/**
+ * IB execDetails sometimes returns coarse integer prices (9988 @124) while
+ * orderStatus.avgFillPrice / portfolio averageCost show the true ~123.8.
+ */
+function pickFillPrice(execPrice, avgFillPrice, lastFillPrice, contract) {
+  const ep = Number(execPrice);
+  const avg = Number(avgFillPrice);
+  const last = Number(lastFillPrice);
+  const candidates = [last, avg, ep].filter(x => Number.isFinite(x) && x > 0);
+  if (!candidates.length) return ep;
+  // Prefer non-integer when exec looks truncated (common on HK/JP).
+  const coarse = Number.isFinite(ep) && Number.isInteger(ep) && ep >= 10;
+  if (coarse) {
+    if (Number.isFinite(last) && last > 0 && !Number.isInteger(last)) return last;
+    if (Number.isFinite(avg) && avg > 0 && !Number.isInteger(avg)) return avg;
+  }
+  if (Number.isFinite(last) && last > 0) return last;
+  if (Number.isFinite(ep) && ep > 0) return ep;
+  return avg;
+}
+
 function log(...a) {
   const line = [new Date().toISOString(), ...a].map(x => (typeof x === 'string' ? x : String(x))).join(' ');
   // Always append to the daily log (cmd >> redirection block-buffers Node stdout
@@ -409,6 +438,7 @@ async function main() {
   let EventName = null;
   let nextOrderId = 1;
   const orderFills = {}; // orderId -> filled qty (from orderStatus) — LOST on restart
+  const orderAvgFill = new Map(); // orderId -> { avgFillPrice, lastFillPrice, filled }
   // Live positions from IB (survives restarts, unlike orderFills). Keyed
   // "SYMBOL|CCY" -> { pos, contract }. Populated by the reqPositions subscription.
   const posMap = new Map();
@@ -416,8 +446,10 @@ async function main() {
   let forceReconcile = false; // set on positionEnd so Asia re-arms don't wait 5m
   const posKeyOf = c => `${String(c.symbol).toUpperCase()}|${c.currency}`;
   const _flattenTried = new Map(); // pk -> last reconcile-flatten attempt ts
-  const _unauthStreak = new Map(); // pk -> consecutive unauthorized reconcile hits
+  // Persist debounce across restarts (in-memory Map was resetting to 1/2 every boot).
+  if (!state.unauthStreak || typeof state.unauthStreak !== 'object') state.unauthStreak = {};
   const _cancelWaiters = new Map(); // orderId -> { resolve, timer }
+  const portfolioAvgCost = new Map(); // normalized yahoo -> averageCost from IB
   const lotCache = new Map(); // posKey -> board lot
   let nextDetailsId = 900000;
   // Live IBKR market data for MTM (posted to AlphaSignal every ~10s).
@@ -462,14 +494,25 @@ async function main() {
       }
       log('IB error', code, 'reqId=' + reqId, err && err.message ? err.message : err);
     });
-    ib.on(EventName.orderStatus, (orderId, status, filled) => {
+    ib.on(EventName.orderStatus, (orderId, status, filled, remaining, avgFillPrice, permId, parentId, lastFillPrice) => {
       orderFills[orderId] = Number(filled) || 0;
-      onOrderStatus(orderId, status, Number(filled) || 0);
+      const avg = Number(avgFillPrice);
+      const last = Number(lastFillPrice);
+      if ((Number.isFinite(avg) && avg > 0) || (Number.isFinite(last) && last > 0)) {
+        orderAvgFill.set(Number(orderId), {
+          avgFillPrice: Number.isFinite(avg) && avg > 0 ? avg : null,
+          lastFillPrice: Number.isFinite(last) && last > 0 ? last : null,
+          filled: Number(filled) || 0
+        });
+      }
+      onOrderStatus(orderId, status, Number(filled) || 0, avg);
     });
     // Real executions → queue a report for the AlphaSignal site (IBKR tab).
     ib.on(EventName.execDetails, (reqId, contract, exec) => {
       try {
         const orderId = Number(exec.orderId);
+        const oa = orderAvgFill.get(orderId) || {};
+        const px = pickFillPrice(exec.price, oa.avgFillPrice, oa.lastFillPrice, contract);
         for (const [key, row] of Object.entries(state.byKey)) {
           let role = null;
           if (row.parentId === orderId) role = 'entry';
@@ -477,19 +520,29 @@ async function main() {
           else if (row.stopId === orderId) role = 'stop';
           else if ((row.closeIds || []).includes(orderId)) role = 'flatten';
           if (!role) continue;
-          if (role === 'entry') row.entryFilled = true; // persisted below with the report
+          if (role === 'entry') {
+            row.entryFilled = true;
+            if (Number.isFinite(oa.avgFillPrice) && oa.avgFillPrice > 0) {
+              row.ibAvgFill = oa.avgFillPrice;
+            }
+          }
           state.pendingReports = state.pendingReports || [];
           state.pendingReports.push({
             kind: 'exec', execId: exec.execId, key,
             ticker: row.ticker, hz: row.hz, side: row.side, role,
-            orderId, qty: Number(exec.shares), price: Number(exec.price),
+            orderId, qty: Number(exec.shares), price: px,
             currency: row.contract && row.contract.currency || 'USD',
             ccyScale: row.contract && row.contract.penceQuoted ? 100 : 1,
             errorTrade: !!(row.errorTrade || ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())),
             time: new Date().toISOString()
           });
           saveState(state);
-          log('exec captured', role, key, exec.shares + '@' + exec.price);
+          if (Number(exec.price) !== px) {
+            log('exec captured', role, key, exec.shares + '@' + px,
+              '(IB exec.price=' + exec.price + ' avgFill=' + (oa.avgFillPrice || 'n/a') + ')');
+          } else {
+            log('exec captured', role, key, exec.shares + '@' + px);
+          }
           break;
         }
       } catch (e) { log('execDetails error', e.message); }
@@ -536,10 +589,11 @@ async function main() {
       log('IB position snapshot ready —', posMap.size, 'symbol(s)');
     });
     ib.reqPositions();
-    // Account portfolio stream — IB's own mark per position (matches TWS MTM).
-    ib.on(EventName.updatePortfolio, (contract, position, marketPrice) => {
+    // Account portfolio stream — IB's own mark + averageCost (true fill avg).
+    ib.on(EventName.updatePortfolio, (contract, position, marketPrice, marketValue, averageCost) => {
       const pos = Number(position) || 0;
       const px = Number(marketPrice);
+      const avgCost = Number(averageCost);
       if (!contract || !(px > 0) || !pos) return;
       const now = Date.now();
       const aliases = new Set();
@@ -561,12 +615,24 @@ async function main() {
         aliases.add(String(contract.symbol) + '.DE');
         aliases.add(String(contract.symbol) + '.PA');
       }
+      // HK padded aliases (5.HK ↔ 0005.HK)
+      for (const a of [...aliases]) {
+        aliases.add(normalizeYahooTicker(a));
+        const m = String(a).match(/^0*(\d+)\.HK$/i);
+        if (m) aliases.add(m[1] + '.HK');
+      }
+      if (Number.isFinite(avgCost) && avgCost > 0) {
+        for (const t of aliases) portfolioAvgCost.set(normalizeYahooTicker(t), avgCost);
+      }
       for (const t of aliases) {
         const prev = portfolioMarks.get(t);
         // Only bump `at` when price moves — sticky portfolio reprints must not
         // look like fresh ticks on the AlphaSignal server.
         const moved = !prev || Math.abs(Number(prev.price) - px) > 1e-9;
-        portfolioMarks.set(t, { price: px, at: moved ? now : (prev.at || now), contract });
+        portfolioMarks.set(t, {
+          price: px, at: moved ? now : (prev.at || now), contract,
+          avgCost: Number.isFinite(avgCost) && avgCost > 0 ? avgCost : (prev && prev.avgCost)
+        });
       }
     });
     try {
@@ -594,7 +660,11 @@ async function main() {
     if (!c) return null;
     const sym = String(c.symbol || '');
     const ccy = c.currency;
-    if (ccy === 'HKD') return sym + '.HK';
+    if (ccy === 'HKD') {
+      // Pad numeric HK codes so IB "5" matches AlphaSignal "0005.HK"
+      if (/^\d+$/.test(sym)) return sym.padStart(4, '0') + '.HK';
+      return sym + '.HK';
+    }
     if (ccy === 'JPY') return sym + '.T';
     if (ccy === 'GBP') return sym + '.L';
     if (ccy === 'EUR') {
@@ -955,7 +1025,7 @@ async function main() {
     log('TP1 filled', key, '— stop resized to runner', row.qtyRunner, '@ breakeven-floor', beStop);
   }
 
-  function onOrderStatus(orderId, status, filled) {
+  function onOrderStatus(orderId, status, filled, avgFillPrice) {
     const st = String(status || '');
     if (st === 'Cancelled' || st === 'ApiCancelled' || st === 'Inactive') {
       noteCancelAck(orderId, st);
@@ -966,7 +1036,10 @@ async function main() {
       // after restarts, when the in-memory orderFills counters are gone.
       if (row.parentId === orderId && filled > 0 && !row.entryFilled) {
         row.entryFilled = true;
+        if (Number.isFinite(avgFillPrice) && avgFillPrice > 0) row.ibAvgFill = avgFillPrice;
         saveState(state);
+      } else if (row.parentId === orderId && Number.isFinite(avgFillPrice) && avgFillPrice > 0) {
+        row.ibAvgFill = avgFillPrice;
       }
       if (row.tp1Id === orderId && (status === 'Filled' || filled >= row.qtySold) && filled > 0) {
         onTp1Filled(key, row);
@@ -1173,14 +1246,34 @@ async function main() {
         if (e.type === 'entry') { if (!keyState.has(e.key)) keyState.set(e.key, 'open'); }
         else if (e.type === 'exit') keyState.set(e.key, 'closed');
       }
-      const everTraded = new Set();   // "SYM|CCY" AlphaSignal ever traded
-      const openTickers = new Set();  // "SYM|CCY" with at least one open key
+      // Open model lots by normalized Yahoo ticker (not SYM|CCY — that merged
+      // dual listings and dropped padded HK codes from orphan eligibility).
+      const openYahoo = new Set();
+      const openQtyByYahoo = new Map(); // normalized yahoo -> model open qty
       for (const [key, st] of keyState) {
-        const c = toContract(key.split('|')[0]);
-        if (!c) continue;
-        everTraded.add(posKeyOf(c));
-        if (st === 'open') openTickers.add(posKeyOf(c));
+        if (st !== 'open') continue;
+        const ticker = normalizeYahooTicker(key.split('|')[0]);
+        if (!ticker) continue;
+        openYahoo.add(ticker);
+        const row = state.byKey[key];
+        const q = row && (Number(row.qtyRunner) > 0 && row.tp1Done
+          ? Number(row.qtyRunner)
+          : Number(row.qtyTotal) || Number(row.qtySold) || 0);
+        if (q > 0) openQtyByYahoo.set(ticker, (openQtyByYahoo.get(ticker) || 0) + q);
       }
+      // Prefer live openQty from site fills when available (more accurate).
+      try {
+        const tr = await fetchJson('/api/ibkr/trades');
+        for (const t of (tr && tr.trades) || []) {
+          if (!t || !(t.openQty > 0) || t.errorTrade) continue;
+          const y = normalizeYahooTicker(t.ticker);
+          // Don't shrink below event-open presence
+          openYahoo.add(y);
+          const prev = openQtyByYahoo.get(y) || 0;
+          // Use max of state estimate vs reported open (avoid under-protecting)
+          openQtyByYahoo.set(y, Math.max(prev, Number(t.openQty) || 0));
+        }
+      } catch (_) { /* keep state-based qtys */ }
 
       // 0a. Cancel working orders for ANCIENT keys only (e.g. Jun-09 re-emits).
       // Do NOT use the 24h entry-event age here — open trades routinely live
@@ -1568,49 +1661,48 @@ async function main() {
         }
       }
 
-      // 1. Orphan POSITIONS — held at IB, no open AlphaSignal key.
-      // Debounce: require TWO consecutive reconcile sweeps classifying unauthorized
-      // before flattening (avoids racing a brand-new fill vs feed/day-key lag).
+      // 1. Orphan POSITIONS — held at IB, no open AlphaSignal yahoo ticker.
+      // No everTraded gate (aged-out events used to permanently protect leftovers).
+      // Debounce persisted in state.unauthStreak across restarts.
       for (const [pk, { pos, contract }] of posMap) {
-        if (!pos || !everTraded.has(pk) || openTickers.has(pk)) {
-          _unauthStreak.delete(pk);
+        if (!pos) {
+          if (state.unauthStreak[pk]) { delete state.unauthStreak[pk]; saveState(state); }
           continue;
         }
-        const y = yahooFromContract(contract);
-        // Exempt: any still-open emitted entry for this ticker within event age
-        // (provenance), even if day-key formatting briefly disagrees.
-        let recentOpenEntry = false;
-        for (const [ek, stOpen] of keyState) {
-          if (stOpen !== 'open') continue;
-          const src = entryByKey.get(ek);
-          if (!src || !src.ticker) continue;
-          if (String(src.ticker).toUpperCase() !== String(y || '').toUpperCase()
-            && String(src.ticker).toUpperCase() !== String(contract.symbol || '').toUpperCase()) continue;
-          const age = Date.now() - Date.parse(src.entryDate || src.t || 0);
-          if (Number.isFinite(age) && age >= 0 && age <= MAX_EVENT_AGE_MS) {
-            recentOpenEntry = true;
-            break;
-          }
-        }
-        if (recentOpenEntry) {
-          _unauthStreak.delete(pk);
-          log('RECONCILE: skip orphan flatten — recent open entry for', y || pk);
+        const cMeta = enrichSessionMeta(contract);
+        const y = normalizeYahooTicker(yahooFromContract(cMeta) || '');
+        if (!y) continue;
+        // Never orphan-flatten AIR.DE model lot
+        if (y === 'AIR.DE') {
+          if (state.unauthStreak[pk]) { delete state.unauthStreak[pk]; saveState(state); }
           continue;
         }
-        const streak = (_unauthStreak.get(pk) || 0) + 1;
-        _unauthStreak.set(pk, streak);
+        const hasOpenModel = openYahoo.has(y);
+        if (hasOpenModel) {
+          if (state.unauthStreak[pk]) { delete state.unauthStreak[pk]; saveState(state); }
+          continue;
+        }
+        // Venue session: only flatten in RTH (HK lunch skip via sessionPhase)
+        const phase = sessionPhase(cMeta);
+        if (phase !== 'rth') {
+          log('RECONCILE: orphan wait session', pk, 'ticker=' + y, 'phase=' + phase);
+          continue;
+        }
+        const streak = (Number(state.unauthStreak[pk]) || 0) + 1;
+        state.unauthStreak[pk] = streak;
+        saveState(state);
         if (streak < 2) {
-          log('RECONCILE: unauthorized candidate (debounce 1/2)', pk, 'pos=' + pos, 'ticker=' + (y || ''));
+          log('RECONCILE: unauthorized candidate (debounce 1/2)', pk, 'pos=' + pos, 'ticker=' + y);
           continue;
         }
         const lastTry = _flattenTried.get(pk) || 0;
-        if (Date.now() - lastTry < 30 * 60 * 1000) continue;
+        if (Date.now() - lastTry < 15 * 60 * 1000) continue;
         _flattenTried.set(pk, Date.now());
         const qty = Math.abs(pos);
         const fid = nid();
-        const oc = orderContractFromPos(contract);
+        const oc = orderContractFromPos(cMeta);
         log('RECONCILE: flattening orphan position', pk, 'pos=' + pos,
-          'contract=' + JSON.stringify(oc),
+          'ticker=' + y, 'contract=' + JSON.stringify(oc),
           '(no open emitted entry — provenance unauthorized)');
         if (!oc || (!oc.conId && !oc.symbol)) {
           log('RECONCILE: skip flatten — incomplete contract for', pk);
@@ -1621,6 +1713,67 @@ async function main() {
           orderType: 'MKT', totalQuantity: qty, tif: 'DAY', transmit: true
         }), 'reconcile-flatten ' + pk);
       }
+
+      // 1b. Excess qty — IB holds more than open AlphaSignal model lots.
+      for (const [pk, { pos, contract }] of posMap) {
+        if (!pos) continue;
+        const cMeta = enrichSessionMeta(contract);
+        const y = normalizeYahooTicker(yahooFromContract(cMeta) || '');
+        if (!y || !openYahoo.has(y)) continue;
+        if (y === 'AIR.DE') continue;
+        const modelQty = Number(openQtyByYahoo.get(y)) || 0;
+        if (!(modelQty > 0)) continue;
+        const ibQty = Math.abs(pos);
+        const excess = ibQty - modelQty;
+        if (!(excess > 0)) continue;
+        const phase = sessionPhase(cMeta);
+        if (phase !== 'rth') continue;
+        const lastTry = _flattenTried.get('xs|' + pk) || 0;
+        if (Date.now() - lastTry < 15 * 60 * 1000) continue;
+        _flattenTried.set('xs|' + pk, Date.now());
+        const fid = nid();
+        const oc = orderContractFromPos(cMeta);
+        if (!oc || (!oc.conId && !oc.symbol)) continue;
+        log('RECONCILE: flattening excess qty', pk, 'ticker=' + y,
+          'ib=' + ibQty, 'model=' + modelQty, 'excess=' + excess);
+        transmitOrder(fid, oc, baseOrder({
+          orderId: fid, action: pos > 0 ? 'SELL' : 'BUY',
+          orderType: 'MKT', totalQuantity: excess, tif: 'DAY', transmit: true
+        }), 'excess-flatten ' + pk);
+      }
+
+      // 1c. Correct reported entry avgs when IB averageCost drifts from site fills.
+      try {
+        const corrections = [];
+        for (const [key, row] of Object.entries(state.byKey)) {
+          if (!row || row.closed || !row.entryFilled || !row.ticker) continue;
+          const y = normalizeYahooTicker(row.ticker);
+          const ibAvg = Number(row.ibAvgFill) > 0
+            ? Number(row.ibAvgFill)
+            : Number(portfolioAvgCost.get(y));
+          if (!(ibAvg > 0)) continue;
+          const tick = (row.contract && row.contract.market === 'HK')
+            ? hkTickSize(ibAvg)
+            : (ibAvg >= 1000 ? 1 : ibAvg >= 100 ? 0.1 : 0.01);
+          // Skip if we already corrected to this avg
+          if (row.avgCorrectedTo && Math.abs(Number(row.avgCorrectedTo) - ibAvg) <= tick) continue;
+          corrections.push({ key, avgEntry: ibAvg, ticker: row.ticker });
+        }
+        if (corrections.length) {
+          const resp = await postJson('/api/ibkr/correct-avg', { corrections });
+          if (resp && resp.ok) {
+            for (const c of corrections) {
+              if (state.byKey[c.key]) {
+                state.byKey[c.key].avgCorrectedTo = c.avgEntry;
+                state.byKey[c.key].ibAvgFill = c.avgEntry;
+              }
+            }
+            saveState(state);
+            log('RECONCILE: corrected fill avgs', resp.corrected || corrections.length,
+              corrections.map(c => c.ticker + '=' + c.avgEntry).join(' '));
+          }
+        }
+      } catch (e) { log('RECONCILE: fill avg correct failed', e.message); }
 
       // 2. Rows flat at IB but never closed in state (exit filled while down).
       let serverTrades = null;
