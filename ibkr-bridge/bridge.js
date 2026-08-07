@@ -285,8 +285,9 @@ async function shareSplit(entry, contract, lotOverride) {
   return { total, sold, runner: total - sold };
 }
 
-/** Round to exchange tick. HK uses SEHK price bands; others keep legacy steps. */
-function roundPx(x, contract) {
+/** Round to exchange tick. HK uses SEHK price bands; others keep legacy steps.
+ *  dir: 'up' | 'down' | undefined (nearest) — use up/down for stop/TP validity. */
+function roundPx(x, contract, dir) {
   const n = Number(x);
   if (!Number.isFinite(n)) return n;
   if (contract && contract.market === 'HK') {
@@ -303,7 +304,11 @@ function roundPx(x, contract) {
     else if (a < 2000) tick = 1;
     else tick = 2;
     const dp = tick >= 1 ? 0 : (String(tick).split('.')[1] || '').length;
-    return +(Math.round(n / tick) * tick).toFixed(dp);
+    let stepped;
+    if (dir === 'down') stepped = Math.floor(n / tick + 1e-9) * tick;
+    else if (dir === 'up') stepped = Math.ceil(n / tick - 1e-9) * tick;
+    else stepped = Math.round(n / tick) * tick;
+    return +stepped.toFixed(dp);
   }
   return n >= 1000 ? +n.toFixed(0) : n >= 100 ? +n.toFixed(1) : +n.toFixed(2);
 }
@@ -766,12 +771,13 @@ async function main() {
     contract.lotHint = lot;
     const split = await shareSplit(evt.entry, contract, lot);
     if (split.total < 1) { log('skip entry — zero shares for', evt.ticker, 'entry', evt.entry, 'lot', lot); return null; }
-    const stopPx = roundPx(evt.trailSl != null ? evt.trailSl : evt.sl, contract);
-    const tp1Px = roundPx(evt.tp1, contract);
-    if (!(stopPx > 0)) { log('skip entry — no stop level for', evt.ticker); return null; }
-
     const openAction = isSell ? 'SELL' : 'BUY';
     const closeAction = isSell ? 'BUY' : 'SELL';
+    // Stops: round away from the market so STP is valid on SEHK tick grid.
+    const rawStop = evt.trailSl != null ? evt.trailSl : evt.sl;
+    const stopPx = roundPx(rawStop, contract, isSell ? 'up' : 'down');
+    const tp1Px = roundPx(evt.tp1, contract, isSell ? 'down' : 'up');
+    if (!(stopPx > 0)) { log('skip entry — no stop level for', evt.ticker); return null; }
     const rthOk = !!contract.usRth; // outsideRth only meaningful for US SMART
     const parentId = nid(), stopId = nid(), tp1Id = tp1Px > 0 && split.sold > 0 ? nid() : null;
 
@@ -816,8 +822,11 @@ async function main() {
       const oc = (contract.conId > 0)
         ? {
             conId: Number(contract.conId),
+            symbol: contract.symbol != null ? String(contract.symbol) : undefined,
+            localSymbol: contract.localSymbol || undefined,
             secType: 'STK',
             exchange: contract.market === 'HK' ? 'SEHK' : 'SMART',
+            primaryExch: contract.primaryExch,
             currency: contract.currency
           }
         : (orderContractFromPos(contract) || contract);
