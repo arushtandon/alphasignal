@@ -7759,10 +7759,10 @@ async function addTradesToHistory(trades) {
       }
     }
     accepted.push(trade);
-    // IBKR feed: brand-new TODAY entries only. Re-importing old history must
-    // never re-emit 'entry' (that caused the bridge to market-buy AZN.L / AAPL
-    // from a June 9 record when it was re-saved on Aug 6).
-    if (!prev && isToday) {
+    // IBKR feed: brand-new TODAY Buy/Sell with valid RR only.
+    // Hold must never emit (tradeEventSnapshot used to default Hold→buy).
+    // Re-importing old history must never re-emit 'entry'.
+    if (!prev && isToday && shouldEmitIbkrEntry(trade, hz)) {
       try { emitTradeEvent('entry', tradeEventSnapshot(trade, hz)); } catch (_) {}
     }
    } catch (err) {
@@ -11990,34 +11990,105 @@ try {
   }
 } catch (_) {}
 
+/** Dual-listed names that must not open two IBKR brackets for the same thesis. */
+const IBKR_LISTING_ALIASES = {
+  'AIR.DE': ['AIR.PA'],
+  'AIR.PA': ['AIR.DE']
+};
+
+function ibkrHzAction(h, hz) {
+  const z = hz || h.hz || 'short';
+  const a = String(h[z + 'Action'] || h.action || '').toLowerCase();
+  if (a === 'buy' || a === 'sell') return a;
+  return null;
+}
+
 function tradeEventSnapshot(h, hz, extra) {
+  const z = hz || h.hz || 'short';
   const keyDay = new Date(h.entryDate || h.timestamp || Date.now()).toDateString();
+  const act = ibkrHzAction(h, z);
   return {
     ticker: h.ticker,
     name: h.name || h.ticker,
-    hz: hz || h.hz || 'short',
-    side: String(h.action || '').toLowerCase() === 'sell' ? 'sell' : 'buy',
-    entry: parseFloat(h[(hz || h.hz || 'short') + 'Entry'] || h.entry) || null,
-    tp1: parseFloat(h[(hz || h.hz || 'short') + 'Target1'] || h.target1) || null,
-    tp2: parseFloat(h[(hz || h.hz || 'short') + 'Target2'] || h.target2) || null,
-    sl: parseFloat(h[(hz || h.hz || 'short') + 'StopLoss'] || h.stopLoss) || null,
-    trailSl: h[(hz || h.hz || 'short') + 'LiveTrailSL'] != null
-      ? parseFloat(h[(hz || h.hz || 'short') + 'LiveTrailSL']) : null,
-    sharesTotal: h[(hz || h.hz || 'short') + 'SharesTotal'] ?? null,
-    sharesSoldTp1: h[(hz || h.hz || 'short') + 'SharesSoldTP1'] ?? null,
-    sharesRunner: h[(hz || h.hz || 'short') + 'SharesRunner'] ?? null,
-    status: h[(hz || h.hz || 'short') + 'Status'] || h.status || null,
-    exitPrice: h[(hz || h.hz || 'short') + 'ExitPrice'] != null
-      ? parseFloat(h[(hz || h.hz || 'short') + 'ExitPrice']) : null,
-    pnlDollar: h[(hz || h.hz || 'short') + 'PnlDollar'] ?? null,
+    hz: z,
+    // NEVER default Hold/unknown → buy (that mis-fired FSLR/BMY/CVX/MPC/HSBA/AIR).
+    side: act === 'sell' ? 'sell' : (act === 'buy' ? 'buy' : null),
+    entry: parseFloat(h[z + 'Entry'] || h.entry) || null,
+    tp1: parseFloat(h[z + 'Target1'] || h.target1) || null,
+    tp2: parseFloat(h[z + 'Target2'] || h.target2) || null,
+    sl: parseFloat(h[z + 'StopLoss'] || h.stopLoss) || null,
+    trailSl: h[z + 'LiveTrailSL'] != null
+      ? parseFloat(h[z + 'LiveTrailSL']) : null,
+    sharesTotal: h[z + 'SharesTotal'] ?? null,
+    sharesSoldTp1: h[z + 'SharesSoldTP1'] ?? null,
+    sharesRunner: h[z + 'SharesRunner'] ?? null,
+    status: h[z + 'Status'] || h.status || null,
+    exitPrice: h[z + 'ExitPrice'] != null
+      ? parseFloat(h[z + 'ExitPrice']) : null,
+    pnlDollar: h[z + 'PnlDollar'] ?? null,
     entryDate: h.entryDate || h.timestamp || null,
-    key: `${h.ticker}|${hz || h.hz || 'short'}|${keyDay}`,
+    key: `${h.ticker}|${z}|${keyDay}`,
     ...(extra || {})
   };
 }
 
+/** True if an open IBKR entry already exists for this key or a dual-list alias. */
+function ibkrHasOpenEntryFor(ticker, hz, entryDate) {
+  const keyDay = new Date(entryDate || Date.now()).toDateString();
+  const aliases = new Set([String(ticker || '').toUpperCase()]);
+  for (const a of (IBKR_LISTING_ALIASES[String(ticker || '').toUpperCase()] || [])) {
+    aliases.add(String(a).toUpperCase());
+  }
+  const open = new Set();
+  try {
+    if (!fs.existsSync(TRADE_EVENTS_FILE)) return false;
+    const lines = fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean);
+    for (const line of lines) {
+      try {
+        const e = JSON.parse(line);
+        if (!e || !e.key) continue;
+        const [t, ehz, day] = String(e.key).split('|');
+        if (!aliases.has(String(t || '').toUpperCase())) continue;
+        if (String(ehz) !== String(hz || 'short')) continue;
+        // Same calendar day only — older dual listings must not block forever
+        if (day && day !== keyDay) continue;
+        if (e.type === 'entry') open.add(e.key);
+        else if (e.type === 'exit') open.delete(e.key);
+      } catch (_) { /* skip */ }
+    }
+  } catch (_) { return false; }
+  return open.size > 0;
+}
+
+function shouldEmitIbkrEntry(trade, hz) {
+  if (!trade || !isHistoryBuySellRecord(trade)) return false;
+  const snap = tradeEventSnapshot(trade, hz);
+  if (snap.side !== 'buy' && snap.side !== 'sell') return false;
+  if (!(snap.entry > 0) || !(snap.sl > 0)) return false;
+  // Require min RR when TP1 exists; reject null-TP1 entries (not recommendable).
+  if (!(snap.tp1 > 0) || !levelsMeetMinRR(snap.entry, snap.tp1, snap.sl, snap.side === 'sell', PICKS_MIN_RR)) {
+    return false;
+  }
+  if (ibkrHasOpenEntryFor(snap.ticker, snap.hz, snap.entryDate)) {
+    console.log('IBKR entry skipped (open alias/duplicate):', snap.key);
+    auditLog('ibkr_entry_blocked_alias', { key: snap.key, ticker: snap.ticker, hz: snap.hz });
+    return false;
+  }
+  return true;
+}
+
 function emitTradeEvent(type, payload) {
   if (process.env.IBKR_EVENTS_ENABLED === '0') return null;
+  if (type === 'entry') {
+    if (!payload || (payload.side !== 'buy' && payload.side !== 'sell')) {
+      console.log('IBKR entry skipped (not Buy/Sell):', payload && payload.key);
+      return null;
+    }
+    if (!(payload.entry > 0) || !(payload.sl > 0)) {
+      console.log('IBKR entry skipped (missing levels):', payload && payload.key);
+      return null;
+    }
+  }
   _tradeEventSeq += 1;
   const evt = { seq: _tradeEventSeq, t: new Date().toISOString(), type, ...(payload || {}) };
   try {

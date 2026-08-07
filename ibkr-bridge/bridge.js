@@ -943,6 +943,17 @@ async function main() {
     const key = evt.key || `${evt.ticker}|${evt.hz}|${evt.entryDate}`;
     if (evt.type === 'entry') {
       if (state.byKey[key] && state.byKey[key].parentId) { log('skip duplicate entry', key); return; }
+      // Hard gate: only real Buy/Sell with levels. Hold must never trade
+      // (server used to default Hold→buy and paper-bought FSLR/BMY/…).
+      const side = String(evt.side || '').toLowerCase();
+      if (side !== 'buy' && side !== 'sell') {
+        log('skip entry (not Buy/Sell):', key, 'side=', evt.side);
+        return;
+      }
+      if (!(Number(evt.entry) > 0) || !(Number(evt.trailSl != null ? evt.trailSl : evt.sl) > 0)) {
+        log('skip entry (missing entry/SL):', key);
+        return;
+      }
       // Age gate on the TRADE's entry date (not the event emit time). A stale
       // history re-save can emit a fresh evt.t for a months-old trade — that
       // must NEVER place a live order (AZN.L Jun-09 incident).
@@ -1107,6 +1118,26 @@ async function main() {
       for (const e of events) {
         if (e && e.type === 'entry' && e.key) entryByKey.set(e.key, e);
       }
+
+      // Flatten any live bridge row whose AlphaSignal history is no longer Buy/Sell
+      // (RR demote → Hold, signal flip). Prevents holding non-recommendations.
+      try {
+        const hist = await fetchJson('/api/history');
+        const rows = Array.isArray(hist) ? hist : [];
+        for (const [key, row] of Object.entries(state.byKey)) {
+          if (row.closed || !row.ticker) continue;
+          const hz = row.hz || 'short';
+          const h = rows.find(x => x && x.ticker === row.ticker
+            && String(x.hz || 'short') === String(hz)
+            && new Date(x.entryDate || x.timestamp || 0).toDateString() === String(key.split('|')[2] || ''));
+          if (!h) continue;
+          const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
+          if (act === 'buy' || act === 'sell') continue;
+          log('RECONCILE: history is', act || 'Hold', '— flattening non-recommendation', key);
+          closeOut(key, row, 'history no longer Buy/Sell');
+          saveState(state);
+        }
+      } catch (e) { log('RECONCILE: history Hold-check failed', e.message); }
 
       // 0z. Seed missing HK/JP state rows still open on the model (state loss /
       // cursor past the original entry event). Only recent entries — never
