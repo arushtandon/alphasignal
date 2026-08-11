@@ -6457,7 +6457,14 @@ function priorBoardCooldownSet(opts = {}) {
 }
 
 function topNRotating(arr, key, cooldownSet, n = 5) {
-  const sorted = (arr || []).slice().sort((a, b) => (b[key] || 0) - (a[key] || 0));
+  const hzFromKey = String(key || '').replace(/SellScore$/i, '').replace(/Score$/i, '');
+  const ratingKey = hzFromKey ? (hzFromKey + 'Rating') : 'rating';
+  const sorted = (arr || []).slice().sort((a, b) => {
+    const as = isStrongRecommendableRating(a[ratingKey]) ? 1 : 0;
+    const bs = isStrongRecommendableRating(b[ratingKey]) ? 1 : 0;
+    if (bs !== as) return bs - as; // Strong first
+    return (b[key] || 0) - (a[key] || 0);
+  });
   const cool = cooldownSet || new Set();
   // Never soft-fill from cooldown / already-shown names — empty pane beats a repeat.
   return sorted
@@ -7199,12 +7206,9 @@ async function generateServerPicksFromShortlist(opts = {}) {
           writeOpenRowAction(row, hz, 'Hold');
           row[hz + 'Rating'] = 'Hold';
         }
-        // Board only surfaces Strong Buy / Strong Sell — plain Buy/Sell and Hold are not recommendations.
-        if (!cooled && (row[hz + 'Action'] === 'Buy' || row[hz + 'Action'] === 'Sell')
-          && !isStrongRecommendableRating(row[hz + 'Rating'])) {
-          writeOpenRowAction(row, hz, 'Hold');
-          row[hz + 'Rating'] = 'Hold';
-        }
+        // Prefer Strong on the board (see assignment below). Do NOT demote plain
+        // Buy/Sell to Hold here — that emptied every pane and forced clients to
+        // rescan the universe on each refresh. History/IBKR still require Strong.
         const condTxt = (sig.conditions || []).slice(0, 4).join('; ');
         row[hz + 'Analysis'] = condTxt;
         row[hz + 'SellAnalysis'] = condTxt;
@@ -7242,18 +7246,26 @@ async function generateServerPicksFromShortlist(opts = {}) {
       const alreadyLong  = hasOpenTradeInDirection(r.ticker, false);
       const alreadyShort = hasOpenTradeInDirection(r.ticker, true);
       for (const hz of HZS) {
+        // Prefer Strong Buy/Sell (+1000 sort boost); allow plain Buy/Sell that
+        // still meet Conf≥62 / score≥62 so the board is not empty when no Strong
+        // names clear the bars (empty cache → client "rescans every refresh").
         const buyBase = bracketEnabled('buy', hz) && r[hz + 'Action'] === 'Buy'
-          && isStrongRecommendableRating(r[hz + 'Rating'])
           && (r[hz + 'Score'] || 0) >= 62
+          && (Number(r[hz + 'Conf']) || 0) >= PICKS_MIN_CONF
           && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r, hz);
-        if (buyBase && !alreadyLong && (r[hz + 'Score'] || 0) > bBuyScore) {
-          bBuyScore = r[hz + 'Score'] || 0; bBuyHz = hz;
+        if (buyBase && !alreadyLong) {
+          const buyRank = (r[hz + 'Score'] || 0)
+            + (isStrongRecommendableRating(r[hz + 'Rating']) ? 1000 : 0);
+          if (buyRank > bBuyScore) { bBuyScore = buyRank; bBuyHz = hz; }
         }
         const sellBase = bracketEnabled('sell', hz) && SELL_PICKS_ENABLED && r[hz + 'Action'] === 'Sell'
-          && isStrongRecommendableRating(r[hz + 'Rating'])
-          && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r, hz);
-        if (sellBase && !alreadyShort && (r[hz + 'SellScore'] || 0) > bSellScore) {
-          bSellScore = r[hz + 'SellScore'] || 0; bSellHz = hz;
+          && (r[hz + 'SellScore'] || 0) >= 62
+          && (Number(r[hz + 'Conf']) || 0) >= PICKS_MIN_CONF
+          && hasPx(r, hz);
+        if (sellBase && !alreadyShort) {
+          const sellRank = (r[hz + 'SellScore'] || 0)
+            + (isStrongRecommendableRating(r[hz + 'Rating']) ? 1000 : 0);
+          if (sellRank > bSellScore) { bSellScore = sellRank; bSellHz = hz; }
         }
       }
       // One direction per ticker on the board; prefer the stronger side.
@@ -10302,7 +10314,7 @@ const PICKS_MIN_RR = Math.max(1.1, parseFloat(process.env.PICKS_MIN_RR || '1.1')
 /** UI "confidence %" (= winRateHint). Below this → never Buy/Sell / never IBKR. */
 const PICKS_MIN_CONF = Math.max(62, parseInt(process.env.PICKS_MIN_CONF || '62', 10) || 62);
 
-/** Recommended board / IBKR / open-book: Strong Buy or Strong Sell only — never Hold or plain Buy/Sell. */
+/** Strong Buy / Strong Sell — preferred on the board; required for history emit & IBKR. */
 function isStrongRecommendableRating(rating) {
   const r = String(rating || '').trim().toLowerCase();
   return r === 'strong buy' || r === 'strong sell';
@@ -10506,14 +10518,16 @@ function filterDashDataBySLCooldown(dashData) {
     out[pane] = (dashData[pane] || []).filter(pick => {
       const action = pick[hz + 'Action'] || pick.action || 'Hold';
       const rating = String(pick[hz + 'Rating'] || '');
+      if (/^hold$/i.test(String(rating).trim()) || /SL cooldown/i.test(rating)) return false;
       if (side === 'buy') {
         if (isSLCooldownActive(pick.ticker, hz)) return false;
-        if (/SL cooldown/i.test(rating)) return false;
-        // Strong Buy only — Hold / plain Buy are never recommended.
-        if (!(action === 'Buy' && isStrongRecommendableRating(rating)
+        // Serve cached board: Buy + Conf/score floor. Strong-only is enforced at
+        // generation — re-applying it on every GET emptied the board and forced
+        // a full client universe rescan on each page refresh.
+        if (!(action === 'Buy'
           && (pick[hz + 'Score'] || 0) >= 62
           && (Number(pick[hz + 'Conf']) || 0) >= PICKS_MIN_CONF)) return false;
-      } else if (!(action === 'Sell' && isStrongRecommendableRating(rating)
+      } else if (!(action === 'Sell'
         && (pick[hz + 'SellScore'] || 0) >= 62
         && (Number(pick[hz + 'Conf']) || 0) >= PICKS_MIN_CONF)) {
         return false;

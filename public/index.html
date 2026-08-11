@@ -2590,12 +2590,19 @@ async function fetchServerDashPicks(){
 
 async function fetchServerDashPicksWithRetry(attempts){
   attempts=attempts||5;
+  var last=null;
   for(var i=0;i<attempts;i++){
     const got=await fetchServerDashPicks();
-    if(got&&got.dashData&&dashHasPicks(got.dashData))return got;
-    if(i<attempts-1)await new Promise(function(res){setTimeout(res,1500*(i+1));});
+    if(got&&got.dashData){
+      // Successful API response — do not spin waiting for picks to appear.
+      // Empty boards used to retry 5× (felt like a hung API) then kick off a
+      // full client universe rescan on every refresh.
+      if(dashHasPicks(got.dashData)||i===0) return got;
+      last=got;
+    }
+    if(i<attempts-1)await new Promise(function(res){setTimeout(res,900*(i+1));});
   }
-  return null;
+  return last;
 }
 
 async function liveFilterDashPicksInPlace(dashData) {
@@ -2731,19 +2738,45 @@ async function loadDashboard(force=false){
   ST.dashTs=null;
 
   if(!force){
-    const server=await fetchServerDashPicksWithRetry(5);
+    const server=await fetchServerDashPicksWithRetry(2);
     if(server&&server.dashData&&dashHasPicks(server.dashData)){
       await applyServerDashPicks(server);
       return;
     }
+    // Cached board exists but is empty (filters / Strong-only / rotation). Never
+    // fall through to a multi-minute client universe scan on every page refresh —
+    // ask the server to regenerate once and show the empty panes immediately.
+    if(server&&server.dashData){
+      ST.dashData=normalizeDashData(server.dashData);
+      ST.dashTs=server.dashTs||null;
+      await renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true});
+      const dashTsEl=document.getElementById('dashTs');
+      if(dashTsEl){
+        dashTsEl.textContent=server.dashTs
+          ? ('No picks in cache · '+new Date(server.dashTs).toLocaleString()+' — regenerating on server…')
+          : 'No picks in cache — regenerating on server…';
+      }
+      if(!window._dashEmptyRegenStarted){
+        window._dashEmptyRegenStarted=true;
+        forceRefreshPicks({forceUniverse:false}).finally(function(){ window._dashEmptyRegenStarted=false; });
+      }
+      return;
+    }
     const dashTsEl=document.getElementById('dashTs');
-    if(dashTsEl)dashTsEl.textContent='No server picks yet — starting scan…';
+    if(dashTsEl)dashTsEl.textContent='No server picks yet — asking server to generate…';
+    if(!window._dashEmptyRegenStarted){
+      window._dashEmptyRegenStarted=true;
+      await forceRefreshPicks({forceUniverse:false}).finally(function(){ window._dashEmptyRegenStarted=false; });
+    }
+    return;
   }
   await runDashScan(force);
 }
 
 /** Force the server to rebuild picks (fresh OHLCV + rotate off prior board), then reload. */
-async function forceRefreshPicks(){
+async function forceRefreshPicks(opts){
+  opts=opts||{};
+  const forceUniverse=opts.forceUniverse!==false; // default true for button; boot may pass false
   const dashTsEl=document.getElementById('dashTs');
   if(dashTsEl) dashTsEl.textContent='Regenerating server picks (rotating off prior board)…';
   try{
@@ -2751,7 +2784,7 @@ async function forceRefreshPicks(){
       method:'POST',
       cache:'no-store',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ forceUniverse:true })
+      body:JSON.stringify({ forceUniverse:!!forceUniverse })
     }).then(x=>x.json()).catch(()=>null);
     if(r && r.ok===false && r.reason==='no shortlist — universe scan started'){
       if(dashTsEl) dashTsEl.textContent='No shortlist yet — universe scan started. This can take 5–15 min…';
@@ -2770,8 +2803,16 @@ async function forceRefreshPicks(){
       pollUniverseScan();
     }
   }catch(e){ console.warn('forceRefreshPicks', e.message||e); }
-  ST.dashData=null; ST.dashTs=null;
-  await loadDashboard(false);
+  // Reload from cache only — never re-enter loadDashboard (avoids regen loops /
+  // accidental client universe scans on empty boards).
+  const server=await fetchServerDashPicks();
+  if(server&&server.dashData&&dashHasPicks(server.dashData)){
+    await applyServerDashPicks(server);
+  }else if(server&&server.dashData){
+    ST.dashData=normalizeDashData(server.dashData);
+    ST.dashTs=server.dashTs||null;
+    await renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true});
+  }
 }
 
 async function rescanUniverse(){
@@ -2838,6 +2879,12 @@ async function runDashScan(force){
       await applyServerDashPicks(server);
       return;
     }
+    // Prefer server-side regen over the slow client batch scan (Free tier delays).
+    // Client scan is reserved for explicit force / "Rescan" paths.
+    const dashTsEl0 = document.getElementById('dashTs');
+    if (dashTsEl0) dashTsEl0.textContent = 'Regenerating picks on server (no client universe scan)…';
+    await forceRefreshPicks({forceUniverse:false});
+    return;
   }
   const dashTsEl = document.getElementById('dashTs');
   if (dashTsEl) dashTsEl.textContent = 'Scanning research universe… (typically a few minutes; progress below)';
@@ -7142,7 +7189,7 @@ async function startApp() {
   } catch (e) {
     console.warn('Dashboard bootstrap:', e);
     try {
-      await loadDashboard(true);
+      await loadDashboard(false);
     } catch (_) { /* ignore */ }
   }
 
