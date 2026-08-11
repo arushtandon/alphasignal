@@ -12477,7 +12477,7 @@ function ibkrLiveEntrySide(ticker, hz, entryDate) {
 
 function shouldEmitIbkrEntry(trade, hz) {
   if (!trade || !isHistoryBuySellRecord(trade)) return false;
-  if (IBKR_ERROR_TRADE_TICKERS.has(String(trade.ticker || '').toUpperCase())) {
+  if (isForceIbkrErrorTicker(trade.ticker)) {
     console.log('IBKR entry skipped (error-trade blocklist):', trade.ticker);
     return false;
   }
@@ -12688,15 +12688,16 @@ const IBKR_ERROR_TRADE_TICKERS = new Set(
     .split(/[\s,]+/).filter(Boolean).map(s => s.toUpperCase())
 );
 /**
- * One-time stamp of known Hold→Buy / dual-list fills so past Error PnL stays.
- * AIR.DE is intentionally EXCLUDED — it was the real recommendation; only the
- * AIR.PA dual-list duplicate is an error trade.
+ * Forced error trades — dual-list / Hold→Buy episodes. These win over provenance
+ * so AIR.DE and AIR.PA both show under Error trades (user request).
  */
-const IBKR_LEGACY_ERROR_TICKERS = new Set([
-  'FSLR', 'BMY', 'CVX', 'MPC', 'HSBA.L', 'AIR.PA', 'VTR', 'FANG', '8002.T'
+const IBKR_FORCE_ERROR_TICKERS = new Set([
+  'AIR.DE', 'AIR.PA', 'FSLR', 'BMY', 'CVX', 'MPC', 'HSBA.L', 'VTR', 'FANG', '8002.T'
 ]);
+const IBKR_LEGACY_ERROR_TICKERS = IBKR_FORCE_ERROR_TICKERS;
 /** Keys that must stay error even if ticker-level rules change. */
 const IBKR_LEGACY_ERROR_KEYS = new Set([
+  'AIR.DE|medium|Thu Aug 06 2026',
   'AIR.PA|medium|Thu Aug 06 2026',
   'FSLR|medium|Thu Aug 06 2026',
   'BMY|long|Thu Aug 06 2026',
@@ -12707,8 +12708,8 @@ const IBKR_LEGACY_ERROR_KEYS = new Set([
   'FANG|short|Wed Aug 05 2026',
   '8002.T|short|Mon Aug 03 2026'
 ]);
-/** Model keys wrongly stamped as error — clear on boot. */
-const IBKR_UNSTAMP_ERROR_TICKERS = new Set(['AIR.DE']);
+/** No longer unstamp AIR.DE — both Airbus listings are error trades. */
+const IBKR_UNSTAMP_ERROR_TICKERS = new Set();
 const IBKR_ERROR_TRADES_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_error_trades.json');
 function loadIbkrErrorTradeExtra() {
   try {
@@ -12721,48 +12722,60 @@ function loadIbkrErrorTradeExtra() {
     return { tickers: new Set(), keys: new Set(IBKR_LEGACY_ERROR_KEYS) };
   }
 }
+function isForceIbkrErrorTicker(ticker) {
+  const tk = String(ticker || '').toUpperCase();
+  if (IBKR_FORCE_ERROR_TICKERS.has(tk) || IBKR_ERROR_TRADE_TICKERS.has(tk)) return true;
+  for (const a of ibkrYahooAliases(tk)) {
+    if (IBKR_FORCE_ERROR_TICKERS.has(a) || IBKR_ERROR_TRADE_TICKERS.has(a)) return true;
+  }
+  return false;
+}
 function isIbkrErrorTrade(t, extra) {
   if (!t) return false;
   const tk = String(t.ticker || '').toUpperCase();
-  // Provenance wins: open emitted entry ⇒ never classify as error/unauthorized.
-  if (isPositionAuthorizedByProvenance(tk)) return false;
-  if (t.errorTrade === true) return true;
-  // Optional env kill-switch only — not a permanent ticker ban list.
-  if (IBKR_ERROR_TRADE_TICKERS.has(tk)) return true;
-  // Historical key stamps (past episodes) — key identity, not ticker bans.
+  // Force-error list / keys win over provenance (AIR.DE + AIR.PA → Error box).
+  if (isForceIbkrErrorTicker(tk)) return true;
   if (extra && extra.keys.has(t.key)) return true;
   if (IBKR_LEGACY_ERROR_KEYS.has(t.key)) return true;
+  if (t.errorTrade === true) return true;
   if ((t.fills || []).some(f => f.errorTrade)) return true;
+  // Provenance wins for everything else: open emitted entry ⇒ not an error.
+  if (isPositionAuthorizedByProvenance(tk)) return false;
+  if (extra && extra.tickers && extra.tickers.has(tk)) return true;
   return false;
 }
-/** Stamp historical unauthorized fills by KEY only (no ticker-name bans). */
+/** Stamp historical unauthorized fills by KEY and force-error tickers (AIR.*). */
 function stampLegacyIbkrErrorFills() {
   try {
     if (!fs.existsSync(IBKR_FILLS_FILE)) return 0;
     let n = 0;
     const next = readIbkrFillRows().map(r => {
       if (!r || r.errorTrade) return r;
-      if (isPositionAuthorizedByProvenance(r.ticker)) return r;
-      if (!IBKR_LEGACY_ERROR_KEYS.has(String(r.key || ''))) return r;
+      const forceKey = IBKR_LEGACY_ERROR_KEYS.has(String(r.key || ''));
+      const forceTk = isForceIbkrErrorTicker(r.ticker);
+      if (!forceKey && !forceTk) return r;
       n++;
       return Object.assign({}, r, { errorTrade: true });
     });
     if (!n) return 0;
     mutateFillLedger('stamp_legacy_error_keys', () => next);
-    console.log('Stamped', n, 'legacy IBKR fill(s) as errorTrade (past unauthorized episode)');
+    console.log('Stamped', n, 'IBKR fill(s) as errorTrade (AIR dual-list / legacy)');
     return n;
   } catch (e) {
     console.warn('legacy error-trade stamp failed:', e.message);
     return 0;
   }
 }
-/** Clear errorTrade on fills that are still provenance-authorized (model open). */
+/** Clear errorTrade on fills that are still provenance-authorized (model open).
+ *  Never unstamps force-error tickers (AIR.DE / AIR.PA). */
 function unstampModelIbkrFills() {
   try {
     if (!fs.existsSync(IBKR_FILLS_FILE)) return 0;
     let n = 0;
     const next = readIbkrFillRows().map(r => {
       if (!r || !r.errorTrade) return r;
+      if (isForceIbkrErrorTicker(r.ticker)) return r;
+      if (IBKR_LEGACY_ERROR_KEYS.has(String(r.key || ''))) return r;
       if (!isPositionAuthorizedByProvenance(r.ticker)
         && !IBKR_UNSTAMP_ERROR_TICKERS.has(String(r.ticker || '').toUpperCase())) {
         return r;
@@ -12781,8 +12794,8 @@ function unstampModelIbkrFills() {
   }
 }
 /**
- * Close unauthorized Hold→Buy / dual-list entry events so orphan flatten can
- * act by provenance. Never exits AIR.DE (model recommendation).
+ * Close unauthorized / dual-list entry events (including AIR.DE + AIR.PA) so
+ * orphan flatten and Error-trades UI stay aligned.
  */
 function emitExitsForLegacyUnauthorizedKeys() {
   if (process.env.IBKR_EVENTS_ENABLED === '0') return 0;
@@ -12800,7 +12813,6 @@ function emitExitsForLegacyUnauthorizedKeys() {
   for (const key of IBKR_LEGACY_ERROR_KEYS) {
     if (!open.has(key)) continue;
     const [ticker, hz] = key.split('|');
-    if (IBKR_UNSTAMP_ERROR_TICKERS.has(String(ticker || '').toUpperCase())) continue;
     emitTradeEvent('exit', {
       key, ticker, hz: hz || 'short', side: 'buy',
       reason: 'unauthorized-non-recommendation', errorTrade: true
@@ -12902,9 +12914,8 @@ app.post('/api/ibkr/report', (req, res) => {
       time: fillTime,
       session: phase,
       sessionLabel: r.sessionLabel || ibkrSessionLabel(phase),
-      // Tag only when bridge stamps errorTrade or optional env kill-switch.
-      // Never permanently ban a ticker by legacy name list.
-      errorTrade: r.errorTrade === true || IBKR_ERROR_TRADE_TICKERS.has(String(r.ticker || '').toUpperCase()),
+      // Bridge stamp, env kill-switch, or force-error list (AIR.DE / AIR.PA).
+      errorTrade: r.errorTrade === true || isForceIbkrErrorTicker(r.ticker),
       synthetic: r.synthetic === true || undefined,
       recon: r.recon ? String(r.recon) : undefined,
       markSrc: r.markSrc ? String(r.markSrc) : undefined
@@ -13407,7 +13418,8 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
               side: o.side, role: 'flatten', qty: o.openQty, price: px,
               currency: o.currency, ccyScale: o.ccyScale, orderId: null,
               time: fillAt, session: phase, sessionLabel: ibkrSessionLabel(phase),
-              errorTrade: !!o.errorTrade, synthetic: true,
+              errorTrade: !!(o.errorTrade || isForceIbkrErrorTicker(o.rawTicker || y)),
+              synthetic: true,
               recon: 'ghost-flat', markSrc: o.markSrc || 'unknown'
             });
             adjusted.push({
@@ -14109,7 +14121,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
         errorClosedCount: errClosed
       },
       fillCount: rows.length,
-      errorTickers: [...IBKR_ERROR_TRADE_TICKERS],
+      errorTickers: [...new Set([...IBKR_ERROR_TRADE_TICKERS, ...IBKR_FORCE_ERROR_TICKERS])],
       reconcile: reconReport ? {
         ok: !!reconReport.ok,
         at: reconReport.at,

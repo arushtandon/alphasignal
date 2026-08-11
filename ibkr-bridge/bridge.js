@@ -68,12 +68,34 @@ const MAX_EVENT_AGE_MS = Math.max(1, parseFloat(process.env.IBKR_MAX_EVENT_AGE_H
 const ALLOW_NSE = process.env.IBKR_ALLOW_NSE === '1';
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, 'bridge-state.json');
 const SWEEP_MS = 5 * 60 * 1000;
-/** Optional kill-switch only (default EMPTY). Authorization is by provenance
- *  (open emitted entry key), not ticker identity — see Claude audit Fix 1. */
-const ERROR_TRADE_TICKERS = new Set(
-  String(process.env.IBKR_ERROR_TICKERS || '')
-    .split(/[\s,]+/).filter(Boolean).map(s => s.toUpperCase())
-);
+/** Force-error tickers: env + error-tickers.txt (AIR.DE / AIR.PA dual-list, etc.).
+ *  These win over provenance for flatten + UI classification. */
+function loadErrorTradeTickers() {
+  const out = new Set(
+    String(process.env.IBKR_ERROR_TICKERS || '')
+      .split(/[\s,]+/).filter(Boolean).map(s => s.toUpperCase())
+  );
+  try {
+    const p = path.join(__dirname, 'error-tickers.txt');
+    if (fs.existsSync(p)) {
+      for (const line of fs.readFileSync(p, 'utf8').split(/\r?\n/)) {
+        const t = line.replace(/#.*$/, '').trim().toUpperCase();
+        if (t) out.add(t);
+      }
+    }
+  } catch (_) { /* optional file */ }
+  return out;
+}
+const ERROR_TRADE_TICKERS = loadErrorTradeTickers();
+function isForceErrorTicker(ticker) {
+  const y = normalizeYahooTicker(ticker);
+  if (!y) return false;
+  if (ERROR_TRADE_TICKERS.has(y)) return true;
+  for (const a of yahooAliases(y)) {
+    if (ERROR_TRADE_TICKERS.has(a)) return true;
+  }
+  return false;
+}
 /** Max adverse slippage vs model entry for US RTH market chase (bps). */
 const US_RTH_MAX_CHASE_BPS = Math.max(0, parseInt(process.env.IBKR_US_RTH_MAX_CHASE_BPS || '100', 10) || 100);
 
@@ -1840,12 +1862,13 @@ async function main() {
         } catch (e) { log('RECONCILE: rearm failed', key, e.message); }
       }
 
-      // 0e. Clear error-flatten tags when provenance says the name is authorized
-      // (open emitted entry / alias). Never flatten by ticker identity lists.
+      // 0e. Clear error-flatten tags when provenance says authorized — except
+      // force-error tickers (AIR.DE / AIR.PA dual-list stay Error trades).
       for (const k of Object.keys(state.byKey)) {
         const row = state.byKey[k];
         if (!row) continue;
         const yClear = normalizeYahooTicker(row.ticker || '');
+        if (isForceErrorTicker(yClear)) continue;
         if (setHasYahooAlias(openYahoo, yClear)
           && (row.errorTrade || row.flatReason === 'unauthorized-non-recommendation' || /\|error\|/.test(k))) {
           log('RECONCILE: clearing error-flatten state (provenance-authorized)', k);
@@ -1855,13 +1878,13 @@ async function main() {
       }
 
       // 0e2. Resume flattens for rows already tagged unauthorized in local state
-      // (Hold→Buy episode). Never flatten a ticker that still has an open MODEL entry.
+      // (Hold→Buy episode). Force-error tickers flatten even if provenance open.
       for (const [key, row] of Object.entries(state.byKey)) {
         if (!row) continue;
         if (!row.errorTrade && row.flatReason !== 'unauthorized-non-recommendation'
           && row.flatReason !== 'dual-list-duplicate-accounting') continue;
         const yProt = normalizeYahooTicker(row.ticker || '');
-        if (yProt && setHasYahooAlias(openYahoo, yProt)) {
+        if (yProt && setHasYahooAlias(openYahoo, yProt) && !isForceErrorTicker(yProt)) {
           log('RECONCILE: skip state error-flatten — open MODEL entry', yProt, key);
           continue;
         }
@@ -1884,22 +1907,25 @@ async function main() {
         const held = posMap.get(pk);
         if (!held || !held.pos) { row.closed = true; saveState(state); continue; }
         // Dual-list: if this listing aliases an open model key, keep one model lot.
+        // Skip when both sides are force-error (AIR.DE + AIR.PA → flatten all).
         let qty = Math.abs(held.pos);
-        const aliasModelOpen = [...keyState.entries()].some(([ek, st]) => {
-          if (st !== 'open') return false;
-          const et = normalizeYahooTicker(String(ek).split('|')[0] || '');
-          return setHasYahooAlias(new Set([et]), yProt) && et !== yProt;
-        });
-        if (aliasModelOpen) {
-          const modelLot = Number(row.qtyTotal) > 0 ? Number(row.qtyTotal)
-            : (openQtyByYahoo.get([...yahooAliases(yProt)].find(a => openQtyByYahoo.has(a)) || '') || 0);
-          qty = Math.max(0, Math.abs(held.pos) - (modelLot || 0));
-          if (!(qty > 0)) {
-            log('RECONCILE: dual-list accounting-only — keeping model lot, no flatten', key, 'pos=' + held.pos);
-            row.closed = true;
-            row.flatReason = 'dual-list-duplicate-accounting';
-            saveState(state);
-            continue;
+        if (!isForceErrorTicker(yProt)) {
+          const aliasModelOpen = [...keyState.entries()].some(([ek, st]) => {
+            if (st !== 'open') return false;
+            const et = normalizeYahooTicker(String(ek).split('|')[0] || '');
+            return setHasYahooAlias(new Set([et]), yProt) && et !== yProt;
+          });
+          if (aliasModelOpen) {
+            const modelLot = Number(row.qtyTotal) > 0 ? Number(row.qtyTotal)
+              : (openQtyByYahoo.get([...yahooAliases(yProt)].find(a => openQtyByYahoo.has(a)) || '') || 0);
+            qty = Math.max(0, Math.abs(held.pos) - (modelLot || 0));
+            if (!(qty > 0)) {
+              log('RECONCILE: dual-list accounting-only — keeping model lot, no flatten', key, 'pos=' + held.pos);
+              row.closed = true;
+              row.flatReason = 'dual-list-duplicate-accounting';
+              saveState(state);
+              continue;
+            }
           }
         }
         const lastTry = _flattenTried.get('err|' + key) || 0;
@@ -1920,20 +1946,20 @@ async function main() {
         }), 'error-flatten ' + key);
       }
 
-      // 0e3. Optional env kill-switch (IBKR_ERROR_TICKERS). Default empty.
+      // 0e3. Force-error flatten from env + error-tickers.txt (includes AIR.*).
       if (ERROR_TRADE_TICKERS.size) {
         for (const [pk, { pos, contract }] of posMap) {
           if (!pos) continue;
           const y = yahooFromContract(contract);
           const yU = String(y || '').toUpperCase();
-          if (y && setHasYahooAlias(openYahoo, y)) {
+          const symU = String(contract.symbol || '').toUpperCase();
+          const isErr = isForceErrorTicker(yU) || ERROR_TRADE_TICKERS.has(symU)
+            || [...ERROR_TRADE_TICKERS].some(t => t.replace(/\.(DE|PA|L|HK|T)$/i, '') === symU);
+          if (!isErr) continue;
+          if (y && setHasYahooAlias(openYahoo, y) && !isForceErrorTicker(y)) {
             log('RECONCILE: skip ENV error-flatten — open MODEL entry', y);
             continue;
           }
-          const symU = String(contract.symbol || '').toUpperCase();
-          const isErr = ERROR_TRADE_TICKERS.has(yU) || ERROR_TRADE_TICKERS.has(symU)
-            || [...ERROR_TRADE_TICKERS].some(t => t.replace(/\.(DE|PA|L|HK|T)$/i, '') === symU);
-          if (!isErr) continue;
           if (sessionPhase(contract) === 'lunch') continue;
           if (contract.usRth && sessionPhase(contract) === 'closed') continue;
           const lastTry = _flattenTried.get('err|' + pk) || 0;
