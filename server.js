@@ -12517,7 +12517,7 @@ app.post('/api/ibkr/report', (req, res) => {
     if (_ibkrExecIds.has(r.execId)) { skipped++; continue; }
     // Reject fills for recommendations whose entry day is ancient vs the fill
     // time (stale history re-emit → phantom paper trade).
-    if (isPhantomIbkrKey(r.key, r.time || new Date().toISOString())) {
+    if (isPhantomIbkrKey(r.key, r.time || new Date().toISOString(), r)) {
       skipped++;
       auditLog('ibkr_fill_rejected_stale_key', { key: r.key, execId: r.execId });
       continue;
@@ -12552,8 +12552,15 @@ app.post('/api/ibkr/report', (req, res) => {
   res.json({ ok: true, stored, skipped, totalExecs: _ibkrExecIds.size });
 });
 
-/** True when the recommendation day in `key` is >3d before the fill — not a real AlphaSignal→IBKR trade. */
-function isPhantomIbkrKey(key, fillTime) {
+/**
+ * True when the recommendation day in `key` is >3d before the fill — not a real
+ * AlphaSignal→IBKR trade. Synthetic / recon sync fills are exempt (they close or
+ * pad older keys to match the live paper account).
+ */
+function isPhantomIbkrKey(key, fillTime, row) {
+  if (row && (row.synthetic || row.recon || String(row.execId || '').startsWith('recon-'))) {
+    return false;
+  }
   const dayPart = String(key || '').split('|')[2];
   const keyTs = Date.parse(dayPart || 0);
   const fillTs = Date.parse(fillTime || 0) || Date.now();
@@ -12610,7 +12617,7 @@ app.post('/api/ibkr/purge', express.json({ limit: '32kb' }), (req, res) => {
   const before = readIbkrFillRows();
   const after = before.filter(r => {
     if (keys.has(r.key)) return false;
-    if (dropStale && isPhantomIbkrKey(r.key, r.time)) return false;
+    if (dropStale && isPhantomIbkrKey(r.key, r.time, r)) return false;
     return true;
   });
   writeIbkrFillRows(after);
@@ -12827,7 +12834,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
             if (!(px > 0) || !(o.openQty > 0)) continue;
             const fillAt = new Date().toISOString();
             const phase = ibkrSessionPhase(o.rawTicker || y, fillAt);
-            const execId = `recon-flat-${o.key}-${o.openQty}-${fillAt.slice(0, 13)}`;
+            const execId = `recon-flat-${o.key}-q${o.openQty}`;
             if (_ibkrExecIds.has(execId)) continue;
             newFills.push({
               execId, key: o.key, ticker: o.rawTicker || y, hz: o.hz || 'short',
@@ -12845,7 +12852,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
           if (!(avg > 0) || !(delta > 0)) continue;
           const fillAt = new Date().toISOString();
           const phase = ibkrSessionPhase(primary.rawTicker || y, fillAt);
-          const execId = `recon-entry-${primary.key}-${delta}-${fillAt.slice(0, 13)}`;
+          const execId = `recon-entry-${primary.key}-pad${delta}`;
           if (!_ibkrExecIds.has(execId)) {
             newFills.push({
               execId, key: primary.key, ticker: primary.rawTicker || y, hz: primary.hz || 'short',
@@ -12863,7 +12870,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
           if (!(px > 0) || !(delta > 0)) continue;
           const fillAt = new Date().toISOString();
           const phase = ibkrSessionPhase(primary.rawTicker || y, fillAt);
-          const execId = `recon-trim-${primary.key}-${delta}-${fillAt.slice(0, 13)}`;
+          const execId = `recon-trim-${primary.key}-q${delta}`;
           if (!_ibkrExecIds.has(execId)) {
             newFills.push({
               execId, key: primary.key, ticker: primary.rawTicker || y, hz: primary.hz || 'short',
@@ -13180,7 +13187,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
     let rows = readIbkrFillRows();
     // Auto-drop phantom fills (stale recommendation key vs fill time) so the
     // IBKR tab never shows error trades like the Jun-09 AZN.L re-emit.
-    const clean = rows.filter(r => !isPhantomIbkrKey(r.key, r.time));
+    const clean = rows.filter(r => !isPhantomIbkrKey(r.key, r.time, r));
     if (clean.length !== rows.length) {
       try { writeIbkrFillRows(clean); auditLog('ibkr_auto_purge_stale', { before: rows.length, after: clean.length }); } catch (_) {}
       rows = clean;
