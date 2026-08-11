@@ -4374,6 +4374,11 @@ async function renderDashboard(data, opts){
     ST.dashData=null; ST.dashTs=null;
     await runDashScan(true); return;
   }
+  // Open history Buys (e.g. SU.PA long) must be available before panes render —
+  // boot often paints the board before syncHistoryInBackground finishes.
+  if(!(ST.history||[]).length){
+    try{ await loadHistoryFromServer(); }catch(e){ console.warn('renderDashboard history preload', e.message||e); }
+  }
   const ts=ST.dashTs?new Date(ST.dashTs).toLocaleString():'—';
   const dashTsEl=document.getElementById('dashTs');
   if(dashTsEl&&!opts.keepSyncHeader){
@@ -4382,21 +4387,87 @@ async function renderDashboard(data, opts){
     dashTsEl.textContent='Synced picks · '+ts+' · '+ST.dashSummary+' · live prices';
   }
   console.log('renderDashboard called, short picks:', data.short&&data.short.length, 'medium:', data.medium&&data.medium.length);
-  const syms=[...(data.short||[]),...(data.medium||[]),...(data.long||[]),...(data.shortSell||[]),...(data.medSell||[]),...(data.longSell||[])].map(s=>s.ticker).filter(Boolean);
+  const merged={
+    short: mergeOpenHistoryIntoPicks(data.short,'short','buy'),
+    medium: mergeOpenHistoryIntoPicks(data.medium,'medium','buy'),
+    long: mergeOpenHistoryIntoPicks(data.long,'long','buy'),
+    shortSell: mergeOpenHistoryIntoPicks(data.shortSell||[],'short','sell'),
+    medSell: mergeOpenHistoryIntoPicks(data.medSell||[],'medium','sell'),
+    longSell: mergeOpenHistoryIntoPicks(data.longSell||[],'long','sell')
+  };
+  const syms=[].concat(merged.short,merged.medium,merged.long,merged.shortSell,merged.medSell,merged.longSell).map(s=>s.ticker).filter(Boolean);
   const u=[...new Set(syms)];
   if(u.length){ try{ await fetchLivePrices(u); }catch(e){} }
-  ['short','medium','long','shortSell','medSell','longSell'].forEach(function(k){
-    (data[k]||[]).forEach(function(s){ enrichDashPickLevels(s); });
+  Object.keys(merged).forEach(function(k){
+    (merged[k]||[]).forEach(function(s){ enrichDashPickLevels(s); });
   });
   if(u.length){ try{ updatePrices(); }catch(e){} }
-  updateHorizonTabLabels(data);
+  updateHorizonTabLabels(merged);
   switchHz(curHz||'short');
-  renderPicksPane('hzShortBuy',data.short,'short','buy');
-  renderPicksPane('hzMediumBuy',data.medium,'medium','buy');
-  renderPicksPane('hzLongBuy',data.long,'long','buy');
-  renderPicksPane('hzShortSell',data.shortSell||[],'short','sell');
-  renderPicksPane('hzMediumSell',data.medSell||[],'medium','sell');
-  renderPicksPane('hzLongSell',data.longSell||[],'long','sell');
+  // Merge open history recommendations into panes so a long Buy (e.g. SU.PA)
+  // does not "vanish" when today's rotating board has no new long picks.
+  renderPicksPane('hzShortBuy', merged.short,'short','buy');
+  renderPicksPane('hzMediumBuy', merged.medium,'medium','buy');
+  renderPicksPane('hzLongBuy', merged.long,'long','buy');
+  renderPicksPane('hzShortSell', merged.shortSell,'short','sell');
+  renderPicksPane('hzMediumSell', merged.medSell,'medium','sell');
+  renderPicksPane('hzLongSell', merged.longSell,'long','sell');
+}
+
+/** Open Buy/Sell rows from history for a horizon — book of record vs today's board. */
+function openHistoryPicksForPane(hz, side) {
+  const wantSell = side === 'sell';
+  const rows = (typeof getDisplayHistory === 'function' ? getDisplayHistory() : (ST.history || []));
+  return rows.filter(function (h) {
+    if (!h || !h.ticker) return false;
+    if ((h.hz || 'short') !== hz) return false;
+    const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
+    if (wantSell ? act !== 'sell' : act !== 'buy') return false;
+    const st = String(h[hz + 'Status'] || h.status || 'open').toLowerCase();
+    if (st !== 'open' && st !== 'tp1_open' && st !== 'pending') return false;
+    const conf = Number(h[hz + 'Conf'] || h.conf || 0);
+    if (conf > 0 && conf < PICKS_MIN_CONF) return false;
+    const entry = Number(h[hz + 'Entry'] || h.entry);
+    const tp1 = Number(h[hz + 'Target1'] || h.target1);
+    const sl = Number(h[hz + 'StopLoss'] || h.stopLoss);
+    return entry > 0 && tp1 > 0 && sl > 0;
+  }).map(function (h) {
+    const conf = Number(h[hz + 'Conf'] || h.conf || 0) || PICKS_MIN_CONF;
+    const score = Math.max(Number(h[hz + (wantSell ? 'SellScore' : 'Score')] || 0), conf, PICKS_MIN_CONF);
+    const out = Object.assign({}, h, { _openRec: true });
+    out[hz + 'Action'] = h[hz + 'Action'] || h.action;
+    out[hz + 'Conf'] = conf;
+    out[hz + 'Rating'] = h[hz + 'Rating'] || h.rating || (wantSell ? 'Sell' : 'Buy');
+    if (wantSell) out[hz + 'SellScore'] = score; else out[hz + 'Score'] = score;
+    out[hz + 'Entry'] = h[hz + 'Entry'] || h.entry;
+    out[hz + 'Target1'] = h[hz + 'Target1'] || h.target1;
+    out[hz + 'Target2'] = h[hz + 'Target2'] || h.target2;
+    out[hz + 'StopLoss'] = h[hz + 'StopLoss'] || h.stopLoss;
+    if (wantSell) {
+      out.sellEntry = out[hz + 'Entry'];
+      out.sellTarget1 = out[hz + 'Target1'];
+      out.sellTarget2 = out[hz + 'Target2'];
+      out.sellStopLoss = out[hz + 'StopLoss'];
+    } else {
+      out.entry = out[hz + 'Entry'];
+      out.target1 = out[hz + 'Target1'];
+      out.target2 = out[hz + 'Target2'];
+      out.stopLoss = out[hz + 'StopLoss'];
+    }
+    return out;
+  });
+}
+
+function mergeOpenHistoryIntoPicks(boardPicks, hz, side) {
+  const board = Array.isArray(boardPicks) ? boardPicks.slice() : [];
+  const seen = new Set(board.map(function (p) { return String(p && p.ticker || '').toUpperCase(); }));
+  openHistoryPicksForPane(hz, side).forEach(function (p) {
+    const t = String(p.ticker || '').toUpperCase();
+    if (!t || seen.has(t)) return;
+    seen.add(t);
+    board.push(p);
+  });
+  return board;
 }
 
 /** Dashboard pick card: always read horizon-specific numeric fields when present */
@@ -4435,22 +4506,23 @@ function renderPicksPane(elId,picks,hz,side){
     const action = s[hz+'Action'] || s.action || 'Hold';
     const lv = pickLevelsForDashboardPane(s, hz, action==='Sell');
     const hasPricing = lv.entry!=null && lv.sl!=null && lv.tp1!=null;
-    const conf = Number(s[hz+'Conf']||s.shortConf||0);
+    const conf = Number(s[hz+'Conf']||s.shortConf||s.conf||0);
     if(!(conf>=PICKS_MIN_CONF)) return false;
+    const openRec = !!s._openRec;
     if(isSell){
-      return action==='Sell' && (s[hz+'SellScore']||0)>=62 && hasPricing
+      return action==='Sell' && (openRec || (s[hz+'SellScore']||0)>=62) && hasPricing
         && levelsMeetMinRRDash(lv.entry, lv.tp1, lv.sl, true, PICKS_MIN_RR);
     }
-    if(/SL cooldown/i.test(String(s[hz+'Rating']||''))) return false;
-    return action==='Buy' && (s[hz+'Score']||0)>=62 && hasPricing
+    if(!openRec && /SL cooldown/i.test(String(s[hz+'Rating']||''))) return false;
+    return action==='Buy' && (openRec || (s[hz+'Score']||0)>=62) && hasPricing
       && levelsMeetMinRRDash(lv.entry, lv.tp1, lv.sl, false, PICKS_MIN_RR);
   });
   if(!picks||!picks.length){
     var emptyMsg = gated
       ? ((isSell?'Sell':'Buy')+' · '+hz+' is paused by DISABLED_BRACKETS on the server. Clear that env var (or switch timeframe) to see picks.')
       : (isSell
-        ? ((window.ST&&ST.sellPicksDisabled)?'Sell picks are reference-only: backtests show no positive expectancy on short trades (buy brackets carry the edge). Sell scores remain visible in Analysis.':'No sell setups with Conf ≥ '+PICKS_MIN_CONF+'% and RR ≥ '+PICKS_MIN_RR+':1 for this horizon. Try Medium/Long tabs, or click Refresh picks.')
-        : 'No buy setups with Conf ≥ '+PICKS_MIN_CONF+'% and RR ≥ '+PICKS_MIN_RR+':1 for this horizon. Try Medium/Long tabs, or click Refresh picks.');
+        ? ((window.ST&&ST.sellPicksDisabled)?'Sell picks are reference-only: backtests show no positive expectancy on short trades (buy brackets carry the edge). Sell scores remain visible in Analysis.':'No sell setups with Conf ≥ '+PICKS_MIN_CONF+'% and RR ≥ '+PICKS_MIN_RR+':1 for this horizon. Open History → Long/Medium if you expected a live recommendation.')
+        : 'No buy setups with Conf ≥ '+PICKS_MIN_CONF+'% and RR ≥ '+PICKS_MIN_RR+':1 on today\'s board for this horizon. Open recommendations still appear here when history has a live '+hz+' Buy — check History if empty after refresh.');
     el.innerHTML = '<div style="padding:.75rem 1rem;font-size:11px;color:var(--m1);font-family:DM Mono,monospace;border:1px dashed var(--b1);border-radius:8px;margin:.5rem 0">'
       + emptyMsg + '</div>';
     return;
@@ -4472,12 +4544,13 @@ function renderPicksPane(elId,picks,hz,side){
     const reason=formatRecommendedReason(s, hz, action==='Sell', entryP, tp1, tp2, sl);
     const pnl=calcPnl(entryP,tp1,sl,action);
     const ratingLabel=s[ratingKey]||action;
+    const rankTag = s._openRec ? 'OPEN' : (isSell?'SHORT':'PICK');
     return `<div class="pick-card ${ac}" onclick="loadPickDetail('${s.ticker}','${hz}')">
-      <div class="pc-rank">#${i+1} ${isSell?'SHORT':'PICK'} <span class="pc-score">${score}/100</span></div>
+      <div class="pc-rank">#${i+1} ${rankTag} <span class="pc-score">${score}/100</span></div>
       <div class="pc-ticker">${s.ticker}</div>
       <div class="pc-name">${s.name||s.ticker}</div>
       <div class="pc-action ${ac}">${ratingLabel}</div>
-      <div class="pc-conf">${action} setup · Conf: ${conf}%</div>
+      <div class="pc-conf">${s._openRec?'Open recommendation':'New pick'} · ${action} · Conf: ${conf}%</div>
       ${s.sectorTrend?`<div style="font-family:'DM Mono',monospace;font-size:9px;color:${s.sectorTrend.includes('↑')?'var(--buy)':s.sectorTrend.includes('↓')?'var(--sell)':'var(--m1)'};margin-top:2px" title="Sector trend via sector-ETF proxy — trade with the sector's tide">${s.sectorTrend}</div>`:''}
       <div class="pc-divider"></div>
       <div class="pc-pnl">
@@ -6955,6 +7028,9 @@ async function syncHistoryInBackground(){
   try{
     await loadHistoryFromServer();
     if(ST.history.length) renderHist();
+    if(ST.history.length && ST.dashData){
+      try{ await renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true}); }catch(e){ console.warn(e); }
+    }
   }catch(e){
     console.warn('History initial load failed:',e.message||e);
   }
@@ -7005,6 +7081,10 @@ async function syncHistoryInBackground(){
       try{ await refreshHistoryPnl(); }catch(e){ console.warn(e); }
     }
     renderHist();
+    // Re-paint dashboard panes so open long/medium Buys appear after history arrives.
+    if(ST.dashData){
+      try{ await renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true}); }catch(e){ console.warn(e); }
+    }
   }catch(e){
     console.warn('History reload after revalidate failed:',e.message||e);
   }
