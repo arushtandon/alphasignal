@@ -12888,15 +12888,18 @@ function ibkrFillRowId(r) {
 /**
  * SINGLE WRITER for the IBKR fill ledger. All mutators (recon, purge, correct-avg)
  * must go through this. GET /api/ibkr/trades is read-only and must never call it.
- * Protected synthetic/recon rows cannot be dropped by a mutation.
+ * Protected synthetic/recon rows cannot be dropped by a mutation — unless
+ * opts.mayDropProtected(row, beforeRows) returns true (void bad ghost-flats).
  */
-function mutateFillLedger(reason, fn) {
+function mutateFillLedger(reason, fn, opts) {
+  opts = opts || {};
   const before = readIbkrFillRows();
   let next = fn(before.map(r => Object.assign({}, r)));
   if (!Array.isArray(next)) throw new Error('mutateFillLedger fn must return an array');
   const nextIds = new Set(next.map(ibkrFillRowId));
   for (const r of before) {
     if (!isProtectedIbkrFillRow(r)) continue;
+    if (typeof opts.mayDropProtected === 'function' && opts.mayDropProtected(r, before)) continue;
     const id = ibkrFillRowId(r);
     if (!nextIds.has(id)) {
       next.push(r);
@@ -12910,6 +12913,22 @@ function mutateFillLedger(reason, fn) {
     after: next.length
   });
   return { before: before.length, after: next.length, rows: next };
+}
+
+/** Fake $0 closes: synthetic ghost-flat whose exit price ≈ that key's avg entry. */
+function isZeroEdgeGhostFlatFill(row, allRows) {
+  if (!row || row.role !== 'flatten' || row.recon !== 'ghost-flat') return false;
+  const px = Number(row.price);
+  if (!(px > 0)) return true;
+  const key = String(row.key || '');
+  const entries = (allRows || []).filter(r => r && r.key === key && r.role === 'entry' && Number(r.price) > 0);
+  if (!entries.length) return Math.abs(px) < 1e-9;
+  const qtySum = entries.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+  const avg = qtySum > 0
+    ? entries.reduce((s, r) => s + Number(r.price) * (Number(r.qty) || 0), 0) / qtySum
+    : Number(entries[0].price);
+  if (!(avg > 0)) return false;
+  return Math.abs(px - avg) / avg < 0.0005; // < 5 bps → invented flat at entry
 }
 
 // Boot ledger repairs — must run after mutateFillLedger / _ibkrExecIds exist.
@@ -13077,6 +13096,22 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
       }
     }
 
+    // Void invented $0 ghost-flats (e.g. AIR.PA/AIR.DE closed at exact entry).
+    {
+      const beforeVoid = readIbkrFillRows();
+      const dropIds = new Set(
+        beforeVoid.filter(r => isZeroEdgeGhostFlatFill(r, beforeVoid)).map(ibkrFillRowId)
+      );
+      if (dropIds.size) {
+        mutateFillLedger(
+          'void_zero_ghost_flat',
+          (rows) => rows.filter(r => !dropIds.has(ibkrFillRowId(r))),
+          { mayDropProtected: (r) => dropIds.has(ibkrFillRowId(r)) }
+        );
+        console.log('IBKR recon: voided', dropIds.size, 'zero-edge ghost-flat fill(s)');
+      }
+    }
+
     const rows = readIbkrFillRows();
     const opens = aggregateIbkrOpenFromFills(rows);
     const pending = loadIbkrReconPending();
@@ -13087,6 +13122,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
     const newFills = [];
     const avgCorrections = new Map(); // key -> avgEntry
     const touchedPending = new Set();
+    const dualListHandled = new Set(); // yahoo tickers already closed via alias group
 
     const asByTicker = new Map();
     for (const o of opens) {
@@ -13094,6 +13130,13 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
       asByTicker.get(o.ticker).push(o);
       const mk = Number(marksIn[o.ticker] || marksIn[o.rawTicker]);
       if (mk > 0) o.mark = mk;
+      // Dual-list marks: AIR.PA can use AIR.DE mark and vice versa
+      if (!(o.mark > 0)) {
+        for (const a of ibkrYahooAliases(o.ticker)) {
+          const am = Number(marksIn[a]);
+          if (am > 0) { o.mark = am; break; }
+        }
+      }
     }
 
     // Prefer conId→listing that already has an AS open lot (canonical dual-list).
@@ -13131,6 +13174,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
     }
 
     for (const [y, group] of asByTicker) {
+      if (dualListHandled.has(y)) continue;
       const ib = resolveIbPosForYahoo(y, ibByY, ibByConId);
       const ibQty = ib ? Number(ib.qty) || 0 : 0;
       const ibAbs = Math.abs(ibQty);
@@ -13158,10 +13202,35 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
       if (ibAbs !== asAbs) {
         delete pending[wantKey];
         if (ibAbs === 0 && asAbs > 0) {
-          // Ghost open — flatten each open key
-          for (const o of group) {
-            const px = o.mark > 0 ? o.mark : o.avgEntry;
-            if (!(px > 0) || !(o.openQty > 0)) continue;
+          // Ghost open on site while IB is flat. Never invent an exit at avg
+          // entry ($0 "flatten") — that produced fake AIR.PA/AIR.DE closes.
+          // Dual-list: merge alias lots once (one IB book, not two $0 closes).
+          const aliasYs = [...ibkrYahooAliases(y)];
+          for (const a of aliasYs) dualListHandled.add(a);
+          const mergedOpens = [];
+          for (const a of aliasYs) {
+            for (const o of (asByTicker.get(a) || [])) mergedOpens.push(o);
+          }
+          let anyFlat = false;
+          let siteOpenSum = 0;
+          for (const o of mergedOpens) {
+            if (!(o.openQty > 0)) continue;
+            siteOpenSum += o.openQty;
+            const px = o.mark > 0 ? o.mark : 0;
+            if (!(px > 0)) {
+              issues.push({
+                ticker: o.rawTicker || o.ticker || y, severity: 'pending',
+                detail: `Site open ${o.openQty} but IB flat — no live mark; not inventing exit @ entry ${o.avgEntry}`
+              });
+              continue;
+            }
+            if (o.avgEntry > 0 && Math.abs(px - o.avgEntry) / o.avgEntry < 0.0005) {
+              issues.push({
+                ticker: o.rawTicker || o.ticker || y, severity: 'pending',
+                detail: `Site open ${o.openQty} but IB flat — mark≈entry (${px}); waiting for real IB exit fill`
+              });
+              continue;
+            }
             const fillAt = new Date().toISOString();
             const phase = ibkrSessionPhase(o.rawTicker || y, fillAt);
             const execId = `recon-flat-${o.key}-q${o.openQty}`;
@@ -13173,7 +13242,17 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
               time: fillAt, session: phase, sessionLabel: ibkrSessionLabel(phase),
               errorTrade: !!o.errorTrade, synthetic: true, recon: 'ghost-flat'
             });
-            adjusted.push({ ticker: y, key: o.key, action: 'ghost-flatten', qty: o.openQty, price: px });
+            adjusted.push({
+              ticker: o.rawTicker || y, key: o.key, action: 'ghost-flatten',
+              qty: o.openQty, price: px
+            });
+            anyFlat = true;
+          }
+          if (!anyFlat) {
+            issues.push({
+              ticker: y, severity: 'pending',
+              detail: `Difference: site open ${siteOpenSum || asAbs} on ${aliasYs.join('/')} but IB flat — no real exit fill yet`
+            });
           }
         } else if (ibAbs > asAbs && primary) {
           const delta = ibAbs - asAbs;
@@ -13196,8 +13275,15 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
           avgCorrections.set(primary.key, avg);
         } else if (ibAbs < asAbs && ibAbs > 0 && primary) {
           const delta = asAbs - ibAbs;
-          const px = primary.mark > 0 ? primary.mark : primary.avgEntry;
-          if (!(px > 0) || !(delta > 0)) continue;
+          const px = primary.mark > 0 ? primary.mark : 0;
+          if (!(delta > 0)) continue;
+          if (!(px > 0) || (primary.avgEntry > 0 && Math.abs(px - primary.avgEntry) / primary.avgEntry < 0.0005)) {
+            issues.push({
+              ticker: y, severity: 'pending',
+              detail: `Qty drift AS=${asAbs} IB=${ibAbs} — no real mark to trim (won't invent exit @ entry)`
+            });
+            continue;
+          }
           const fillAt = new Date().toISOString();
           const phase = ibkrSessionPhase(primary.rawTicker || y, fillAt);
           const execId = `recon-trim-${primary.key}-q${delta}`;
@@ -13288,9 +13374,11 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
       console.log('IBKR recon sync:', stored, 'fill(s),', avgFixed, 'avg fix(es)');
     }
 
+    // Fully matched = no errors, no pending drifts, no synthetic fixes, no IB-only lots.
     const inSync = issues.filter(i => i.severity === 'error').length === 0
       && issues.filter(i => i.severity === 'pending').length === 0
-      && adjusted.length === 0;
+      && adjusted.length === 0
+      && untrackedIb.length === 0;
     const report = {
       inSync,
       ok: inSync, // UI /trades reconcile.ok
