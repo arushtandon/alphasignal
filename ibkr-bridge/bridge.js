@@ -1232,6 +1232,60 @@ async function main() {
     } catch (e) { log('sweep error', e.message); }
   }
 
+  // ── IB ↔ AlphaSignal ledger sync ───────────────────────────────────────────
+  // Posts paper positions + avgCost so the site open qty / entry avg / ghost
+  // opens match DU1764495. Untracked IB leftovers are reported, not invented.
+  let lastIbReconAt = 0;
+  async function postIbRecon() {
+    if (DRY || !ib || !positionsReady) return;
+    const positions = [];
+    const marks = {};
+    const seenCon = new Set();
+    for (const [, { pos, contract }] of posMap) {
+      if (!pos) continue;
+      const conId = contract && contract.conId != null ? Number(contract.conId) : null;
+      if (conId && seenCon.has(conId)) continue;
+      if (conId) seenCon.add(conId);
+      const y = normalizeYahooTicker(yahooFromContract(contract) || '');
+      if (!y) continue;
+      const avgCost = Number(portfolioAvgCost.get(y))
+        || Number(portfolioMarks.get(y) && portfolioMarks.get(y).avgCost)
+        || null;
+      positions.push({
+        ticker: y,
+        qty: pos,
+        avgCost: avgCost > 0 ? avgCost : null,
+        currency: contract.currency || null,
+        conId: conId || null,
+        symbol: contract.symbol || null
+      });
+      const mk = portfolioMarks.get(y);
+      if (mk && Number(mk.price) > 0) marks[y] = Number(mk.price);
+    }
+    try {
+      const resp = await postJson('/api/ibkr/recon', { positions, marks, account: ACCOUNT || '' });
+      lastIbReconAt = Date.now();
+      if (resp && resp.ok) {
+        const bits = [
+          'matched=' + (resp.matched || 0),
+          'adjusted=' + (resp.adjusted || 0),
+          'pending=' + (resp.pendingIssues || 0),
+          'untracked=' + (resp.untrackedIb || 0)
+        ];
+        if (resp.storedFills) bits.push('fills+' + resp.storedFills);
+        if (resp.avgFixed) bits.push('avgFix=' + resp.avgFixed);
+        log('RECONCILE: IB↔AS', bits.join(' '), resp.inSync ? '✓' : '…');
+        if (Array.isArray(resp.adjustedRows) && resp.adjustedRows.length) {
+          log('RECONCILE: adjustments',
+            resp.adjustedRows.map(a => a.action + ':' + a.ticker
+              + (a.qty != null ? '×' + a.qty : '')
+              + (a.to != null ? '@' + a.to : (a.price != null ? '@' + a.price : ''))
+            ).join(' '));
+        }
+      }
+    } catch (e) { log('RECONCILE: IB↔AS recon failed', e.message); }
+  }
+
   // ── Position reconciliation ─────────────────────────────────────────────────
   // The account is the source of truth for SHARES; AlphaSignal events are the
   // source of truth for which trades are model-authorized. Every sweep:
@@ -1766,56 +1820,9 @@ async function main() {
 
       // No excess-qty trim — never reduce a live model lot (9988/0005/2914).
 
-      // 1c. Push IB paper snapshot → AlphaSignal recon (qty + avgCost + ghost close).
-      // Server aligns the IBKR tab ledger to the account; untracked IB leftovers
-      // are reported only (never auto-opened as model trades).
+      // 1c. IB↔AS ledger sync (also runs on its own 60s timer — see postIbRecon).
       let serverTrades = null;
-      try {
-        const positions = [];
-        const marks = {};
-        const seenCon = new Set();
-        for (const [, { pos, contract }] of posMap) {
-          if (!pos) continue;
-          const conId = contract && contract.conId != null ? Number(contract.conId) : null;
-          if (conId && seenCon.has(conId)) continue;
-          if (conId) seenCon.add(conId);
-          const y = normalizeYahooTicker(yahooFromContract(contract) || '');
-          if (!y) continue;
-          const avgCost = Number(portfolioAvgCost.get(y))
-            || Number(portfolioMarks.get(y) && portfolioMarks.get(y).avgCost)
-            || null;
-          positions.push({
-            ticker: y,
-            qty: pos,
-            avgCost: avgCost > 0 ? avgCost : null,
-            currency: contract.currency || null,
-            conId: conId || null,
-            symbol: contract.symbol || null
-          });
-          const mk = portfolioMarks.get(y);
-          if (mk && Number(mk.price) > 0) marks[y] = Number(mk.price);
-        }
-        const resp = await postJson('/api/ibkr/recon', { positions, marks, account: ACCOUNT || '' });
-        if (resp && resp.ok) {
-          const bits = [
-            'matched=' + (resp.matched || 0),
-            'adjusted=' + (resp.adjusted || 0),
-            'pending=' + (resp.pendingIssues || 0),
-            'untracked=' + (resp.untrackedIb || 0)
-          ];
-          if (resp.storedFills) bits.push('fills+' + resp.storedFills);
-          if (resp.avgFixed) bits.push('avgFix=' + resp.avgFixed);
-          log('RECONCILE: IB↔AS', bits.join(' '),
-            resp.inSync ? '✓' : '…');
-          if (Array.isArray(resp.adjustedRows) && resp.adjustedRows.length) {
-            log('RECONCILE: adjustments',
-              resp.adjustedRows.map(a => a.action + ':' + a.ticker
-                + (a.qty != null ? '×' + a.qty : '')
-                + (a.to != null ? '@' + a.to : (a.price != null ? '@' + a.price : ''))
-              ).join(' '));
-          }
-        }
-      } catch (e) { log('RECONCILE: IB↔AS recon failed', e.message); }
+      await postIbRecon();
 
       // 2. Rows flat at IB but never closed in state (exit filled while down).
       for (const [key, row] of Object.entries(state.byKey)) {
@@ -1897,6 +1904,10 @@ async function main() {
     if (Date.now() - lastMarks > 10000) {
       lastMarks = Date.now();
       await flushMarks().catch(e => log('marks error', e.message));
+    }
+    // Ledger sync every 60s so qty/avg/PnL stay aligned without waiting for SWEEP.
+    if (positionsReady && Date.now() - lastIbReconAt > 60 * 1000) {
+      await postIbRecon().catch(e => log('recon error', e.message));
     }
     // HK afternoon reopen: chase rows that are not on a live RTH MKT yet
     if (!forceReconcile && positionsReady) {

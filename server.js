@@ -12816,19 +12816,11 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
       touchedPending.add(wantKey);
       const avgKey = y + '|avg';
 
-      // Qty sync
+      // Qty sync — IB paper snapshot is authoritative for open size.
+      // Apply immediately (bridge only posts after positionsReady).
       if (ibAbs !== asAbs) {
-        const prev = pending[wantKey] || {};
-        const streak = (prev.ibAbs === ibAbs && prev.asAbs === asAbs)
-          ? (Number(prev.streak) || 0) + 1
-          : 1;
-        pending[wantKey] = { ibAbs, asAbs, streak, at: new Date().toISOString() };
-        if (streak < 2) {
-          issues.push({
-            ticker: y, severity: 'pending',
-            detail: `Qty drift AS=${asAbs} IB=${ibAbs} (debounce ${streak}/2)`
-          });
-        } else if (ibAbs === 0 && asAbs > 0) {
+        delete pending[wantKey];
+        if (ibAbs === 0 && asAbs > 0) {
           // Ghost open — flatten each open key
           for (const o of group) {
             const px = o.mark > 0 ? o.mark : o.avgEntry;
@@ -12846,7 +12838,6 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
             });
             adjusted.push({ ticker: y, key: o.key, action: 'ghost-flatten', qty: o.openQty, price: px });
           }
-          delete pending[wantKey];
         } else if (ibAbs > asAbs && primary) {
           const delta = ibAbs - asAbs;
           const avg = ibkrAvgToFillUnit(ib && ib.avgCost, primary.ccyScale, primary.avgEntry)
@@ -12866,7 +12857,6 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
             adjusted.push({ ticker: y, key: primary.key, action: 'qty-pad', qty: delta, price: avg });
           }
           avgCorrections.set(primary.key, avg);
-          delete pending[wantKey];
         } else if (ibAbs < asAbs && ibAbs > 0 && primary) {
           const delta = asAbs - ibAbs;
           const px = primary.mark > 0 ? primary.mark : primary.avgEntry;
@@ -12887,7 +12877,11 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
               qty: Math.min(delta, primary.openQty), price: px
             });
           }
-          delete pending[wantKey];
+        } else {
+          issues.push({
+            ticker: y, severity: 'pending',
+            detail: `Qty drift AS=${asAbs} IB=${ibAbs} (unresolved)`
+          });
         }
       } else {
         delete pending[wantKey];
