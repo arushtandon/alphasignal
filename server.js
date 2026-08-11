@@ -6479,6 +6479,113 @@ function countDashPicks(dashData) {
     .reduce((n, k) => n + ((dashData[k] && dashData[k].length) || 0), 0);
 }
 
+/**
+ * Rebuild board rows from live History opens. After a deploy gutting the picks
+ * cache, open Buy/Sell names (IR/DLR/RCL…) were blocked from regen by
+ * hasOpenTradeInDirection — so panes stayed empty even though the trades were live.
+ * Put those opens back on today's board (display + cache), up to 5 per pane.
+ */
+function historyOpenToDashPick(h) {
+  if (!h || !h.ticker) return null;
+  const hz = h.hz || 'short';
+  const isSell = String(h[hz + 'Action'] || h.action || '').toLowerCase() === 'sell';
+  const entry = parseFloat(h[hz + 'Entry'] || h.entry || 0);
+  const tp1 = parseFloat(h[hz + 'Target1'] || h.target1 || 0);
+  const tp2 = parseFloat(h[hz + 'Target2'] || h.target2 || 0);
+  const sl = parseFloat(h[hz + 'StopLoss'] || h.stopLoss || 0);
+  if (!(entry > 0) || !(sl > 0)) return null;
+  const score = Number(isSell
+    ? (h[hz + 'SellScore'] || h.shortSellScore || h.conf || 0)
+    : (h[hz + 'Score'] || h.shortScore || h.conf || 0)) || 0;
+  const conf = Number(h[hz + 'Conf'] || h.conf || 0) || (score >= 62 ? score : 65);
+  if (conf < PICKS_MIN_CONF && score < 62) return null;
+  const rating = h[hz + 'Rating'] || h.rating
+    || (isSell ? (score >= 74 ? 'Strong Sell' : 'Sell') : (score >= 78 ? 'Strong Buy' : 'Buy'));
+  const action = isSell ? 'Sell' : 'Buy';
+  const row = {
+    ticker: h.ticker,
+    name: h.name || h.ticker,
+    sector: h.sector || '',
+    market: h.market || '',
+    action,
+    reason: h.reason || h.sellReason || '',
+    _fromOpenHistory: true
+  };
+  for (const z of ['short', 'medium', 'long']) {
+    row[z + 'Action'] = 'Hold';
+    row[z + 'Rating'] = 'Hold';
+    row[z + 'Conf'] = 0;
+    row[z + 'Score'] = Number(h[z + 'Score']) || 0;
+    row[z + 'SellScore'] = Number(h[z + 'SellScore']) || 0;
+  }
+  row[hz + 'Action'] = action;
+  row[hz + 'Rating'] = rating;
+  row[hz + 'Conf'] = conf;
+  if (isSell) row[hz + 'SellScore'] = score || conf;
+  else row[hz + 'Score'] = score || conf;
+  row[hz + 'Entry'] = entry;
+  row[hz + 'Target1'] = tp1 || null;
+  row[hz + 'Target2'] = tp2 || null;
+  row[hz + 'StopLoss'] = sl;
+  if (isSell) {
+    row.sellEntry = entry;
+    row.sellTarget1 = tp1 || null;
+    row.sellTarget2 = tp2 || null;
+    row.sellStopLoss = sl;
+  } else {
+    row.entry = entry;
+    row.target1 = tp1 || null;
+    row.target2 = tp2 || null;
+    row.stopLoss = sl;
+  }
+  return row;
+}
+
+function mergeLiveOpenHistoryIntoDashData(dashData) {
+  const LIVE = new Set(['open', 'partial', 'tp1_hit', 'tp1_open', 'pending', '']);
+  const paneOf = (hz, sell) => (sell
+    ? { short: 'shortSell', medium: 'medSell', long: 'longSell' }
+    : { short: 'short', medium: 'medium', long: 'long' })[hz];
+  const out = {
+    short: [...((dashData && dashData.short) || [])],
+    medium: [...((dashData && dashData.medium) || [])],
+    long: [...((dashData && dashData.long) || [])],
+    shortSell: [...((dashData && dashData.shortSell) || [])],
+    medSell: [...((dashData && dashData.medSell) || [])],
+    longSell: [...((dashData && dashData.longSell) || [])]
+  };
+  const today = singaporeToDateString();
+  const candidates = [];
+  for (const h of (Array.isArray(tradeHistory) ? tradeHistory : [])) {
+    if (!isHistoryBuySellRecord(h)) continue;
+    const hz = h.hz || 'short';
+    const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
+    if (act !== 'buy' && act !== 'sell') continue;
+    const st = String(h[hz + 'Status'] || h.status || 'open').toLowerCase();
+    if (!LIVE.has(st)) continue;
+    if (act === 'sell' && !SELL_PICKS_ENABLED) continue;
+    if (!bracketEnabled(act === 'sell' ? 'sell' : 'buy', hz)) continue;
+    const pane = paneOf(hz, act === 'sell');
+    if (!pane) continue;
+    const pick = historyOpenToDashPick(h);
+    if (!pick) continue;
+    const conf = Number(pick[hz + 'Conf'] || 0);
+    const todayBoost = historyTradeEntryDay(h) === today ? 1000 : 0;
+    candidates.push({ pane, pick, rank: todayBoost + conf });
+  }
+  candidates.sort((a, b) => b.rank - a.rank);
+  let added = 0;
+  for (const { pane, pick } of candidates) {
+    const arr = out[pane];
+    const tk = normalizeHistoryTicker(pick.ticker);
+    if (arr.some(p => normalizeHistoryTicker(p.ticker) === tk)) continue;
+    if (arr.length >= 5) continue;
+    arr.push(pick);
+    added++;
+  }
+  return { dashData: out, added };
+}
+
 function isHistoryBuySellRecord(h) {
   if (!h || !h.ticker) return false;
   const mainAct = String(h.action || '').toLowerCase();
@@ -6854,9 +6961,53 @@ app.get('/api/dashboard/picks', (req, res) => {
   const fromDisk = loadDashboardPicksFile();
   if (fromDisk) dashboardPicksCache = fromDisk;
   if (!dashboardPicksCache || !dashboardPicksCache.dashData) {
+    // Still try to surface today's open History buys if cache was wiped.
+    const seeded = mergeLiveOpenHistoryIntoDashData(null);
+    if (seeded.added > 0) {
+      const dashData = filterDashDataBySLCooldown(seeded.dashData);
+      dashboardPicksCache = {
+        version: DASHBOARD_PICKS_VERSION,
+        schemaVersion: 1,
+        dashTs: Date.now(),
+        filteredAt: Date.now(),
+        dashData: sanitizeDashDataForServer(dashData)
+      };
+      saveDashboardPicksFile(dashboardPicksCache);
+      return res.json({
+        version: DASHBOARD_PICKS_VERSION,
+        schemaVersion: 1,
+        dashTs: dashboardPicksCache.dashTs,
+        filteredAt: dashboardPicksCache.filteredAt,
+        picksAgeHours: 0,
+        sgtDay: singaporeDateKey(),
+        lastPicksDateKey: typeof _lastPicksDateKey !== 'undefined' ? _lastPicksDateKey : null,
+        summary: dashboardPicksSummary(dashData),
+        sellPicksDisabled: !SELL_PICKS_ENABLED,
+        disabledBrackets: [...DISABLED_BRACKETS],
+        restoredFromHistory: seeded.added,
+        dashData
+      });
+    }
     return res.json({ version: DASHBOARD_PICKS_VERSION, dashData: null, dashTs: null, summary: '' });
   }
-  const dashData = filterDashDataBySLCooldown(dashboardPicksCache.dashData);
+  let dashData = filterDashDataBySLCooldown(dashboardPicksCache.dashData);
+  const before = countDashPicks(dashData);
+  const merged = mergeLiveOpenHistoryIntoDashData(dashData);
+  dashData = merged.dashData;
+  if (merged.added > 0) {
+    dashboardPicksCache = {
+      version: dashboardPicksCache.version || DASHBOARD_PICKS_VERSION,
+      schemaVersion: dashboardPicksCache.schemaVersion || 1,
+      dashTs: dashboardPicksCache.dashTs || Date.now(),
+      filteredAt: Date.now(),
+      dashData: sanitizeDashDataForServer(dashData),
+      priorPickTickers: dashboardPicksCache.priorPickTickers,
+      priorPickTs: dashboardPicksCache.priorPickTs,
+      prevSummary: dashboardPicksCache.prevSummary
+    };
+    saveDashboardPicksFile(dashboardPicksCache);
+    console.log('Restored', merged.added, 'open History pick(s) onto board (was', before, '→', countDashPicks(dashData), ')');
+  }
   res.json({
     version: dashboardPicksCache.version,
     schemaVersion: dashboardPicksCache.schemaVersion || 1,
@@ -6870,6 +7021,7 @@ app.get('/api/dashboard/picks', (req, res) => {
     summary: dashboardPicksSummary(dashData),
     sellPicksDisabled: !SELL_PICKS_ENABLED, // backtest: sells have no edge — reference-only
     disabledBrackets: [...DISABLED_BRACKETS],
+    restoredFromHistory: merged.added || 0,
     dashData
   });
 });
@@ -7360,6 +7512,11 @@ async function generateServerPicksFromShortlist(opts = {}) {
     // Stamp each pane pick with a trade-specific reason that includes Entry/TP/SL.
     // Generic/empty reason fields were leaving recommended CSV Reason blanks.
     stampDashDataReasons(dashData);
+
+    // Open History buys/sells are excluded from candidate pools (no re-recommend),
+    // but they must still appear on the board — otherwise a deploy wipe leaves
+    // empty panes while IR/DLR/RCL remain live opens.
+    dashData = mergeLiveOpenHistoryIntoDashData(dashData).dashData;
 
     // Never clobber a good board with an empty/sparse one (open-trade + rotation
     // race, or a thin shortlist after deploy). A single surviving name used to
