@@ -12737,6 +12737,13 @@ function aggregateIbkrOpenFromFills(rows) {
 app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   try {
+    // Refresh dedupe set from disk (purge/other instance may have changed file).
+    try {
+      _ibkrExecIds.clear();
+      for (const r of readIbkrFillRows()) {
+        if (r && r.execId) _ibkrExecIds.add(String(r.execId));
+      }
+    } catch (_) {}
     const positions = Array.isArray(req.body && req.body.positions) ? req.body.positions : [];
     const marksIn = (req.body && req.body.marks && typeof req.body.marks === 'object') ? req.body.marks : {};
     const ibByY = new Map();
@@ -12978,8 +12985,17 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
       issues,
       untrackedIbRows: untrackedIb,
       storedFills: stored,
-      avgFixed
+      avgFixed,
+      // Snapshot used by /api/ibkr/trades to overlay live IB qty/avg on the tab
+      positions: [...ibByY.entries()].map(([ticker, v]) => ({
+        ticker, qty: v.qty, avgCost: v.avgCost, currency: v.currency || null
+      }))
     };
+    if (airIb && !report.positions.some(p => p.ticker === 'AIR.DE' || p.ticker === 'AIR.PA')) {
+      report.positions.push({
+        ticker: 'AIR.DE', qty: airIb.qty, avgCost: airIb.avgCost, currency: airIb.currency || 'EUR'
+      });
+    }
     saveIbkrReconReport(report);
     res.json({
       ok: true,
@@ -13319,6 +13335,18 @@ app.get('/api/ibkr/trades', async (req, res) => {
         recByKey.set(e.key, rec);
       }
     } catch (_) {}
+    // Overlay last IB paper snapshot so the tab matches account qty/avg even if
+    // recon fill rows were delayed or purged. IB is source of truth for opens.
+    const reconSnap = loadIbkrReconReport();
+    const ibPosByY = new Map();
+    if (reconSnap && Array.isArray(reconSnap.positions)) {
+      for (const p of reconSnap.positions) {
+        if (!p || !p.ticker) continue;
+        ibPosByY.set(normalizeIbkrYahooTicker(p.ticker), p);
+      }
+    }
+    const airIbPos = ibPosByY.get('AIR.DE') || ibPosByY.get('AIR.PA') || null;
+
     for (const t of trades) {
       const rec = recByKey.get(t.key);
       if (rec) t.rec = rec;
@@ -13340,6 +13368,40 @@ app.get('/api/ibkr/trades', async (req, res) => {
           : hasStop && hasTp1 ? 'trailing stop (post-TP1)'
           : hasStop ? 'stop-loss (full)'
           : 'tp exit';
+      }
+
+      const y = normalizeIbkrYahooTicker(t.ticker);
+      let ibp = ibPosByY.get(y);
+      if (y === 'AIR.DE' || y === 'AIR.PA') ibp = airIbPos;
+      if (!ibp || reconSnap && reconSnap.at && (Date.now() - Date.parse(reconSnap.at)) > 15 * 60 * 1000) {
+        continue; // snapshot missing/stale — keep fill-ledger view
+      }
+      const ibQty = Number(ibp.qty) || 0;
+      const ibAbs = Math.abs(ibQty);
+      const asSign = t.side === 'sell' ? -1 : 1;
+      if (ibAbs === 0 && t.openQty > 0) {
+        // Ghost open vs paper — present as closed at IB
+        t.openQty = 0;
+        t.status = 'closed';
+        t.ibReconciled = 'ghost-closed';
+        if (t.errorTrade) t.exitType = 'error flatten';
+        else if (!t.exitType) t.exitType = 'flatten exit';
+        t.unrealizedUsd = 0;
+        t.mark = null;
+      } else if (ibAbs > 0 && Math.sign(ibQty) === asSign) {
+        if (t.openQty !== ibAbs) {
+          t.openQty = ibAbs;
+          t.ibReconciled = 'qty';
+          t.status = t.exitQty > 0 ? 'partial' : 'open';
+        }
+        const avg = ibkrAvgToFillUnit(ibp.avgCost, t.ccyScale, t.avgEntry);
+        if (avg > 0) {
+          const tick = t.ccyScale === 100 ? 0.1 : (avg >= 1000 ? 1 : avg >= 100 ? 0.05 : 0.01);
+          if (Math.abs(t.avgEntry - avg) > tick) {
+            t.avgEntry = avg;
+            t.ibReconciled = (t.ibReconciled ? t.ibReconciled + '+avg' : 'avg');
+          }
+        }
       }
     }
 
