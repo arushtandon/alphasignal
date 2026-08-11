@@ -6553,7 +6553,24 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
   });
   if (shell.fmpScore) caches.fmpMap[ticker] = shell.fmpScore;
   applySLCooldownGate(ticker, shell);
+  const openActPre = String(trade[hz + 'Action'] || trade.action || '').toLowerCase();
+  const openStPre = String(trade[hz + 'Status'] || trade.status || 'open').toLowerCase();
+  const latchedPre = !!ibkrLiveEntrySide(trade.ticker, hz, trade.entryDate || trade.timestamp);
+  const freezeOpen = latchedPre || ((openActPre === 'buy' || openActPre === 'sell')
+    && (!openStPre || openStPre === 'open' || openStPre === 'tp1_open'));
+  const keepAction = freezeOpen
+    ? (openActPre === 'sell' ? 'Sell' : 'Buy')
+    : null;
+
   applyAnalyticsSnapshotToTrade(trade, shell, fund, hz);
+  // Open recommendations keep Buy/Sell — later score refresh must not → Hold.
+  if (keepAction) {
+    trade.action = keepAction;
+    trade[hz + 'Action'] = keepAction;
+    if (!trade.rating || /hold/i.test(String(trade.rating))) {
+      trade.rating = keepAction === 'Sell' ? 'Sell' : 'Buy';
+    }
+  }
   trade.quantRegime = shell.quantSignal[hz]?.regime || trade.quantRegime || null;
 
   // CRITICAL: the entry price is the price WHEN THE TRADE WAS SIGNALLED and must be
@@ -6567,39 +6584,60 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
     ? frozenEntry
     : tech.currentPrice;
   if (basePx && Number.isFinite(basePx)) {
-    const openAct = String(trade[hz + 'Action'] || trade.action || '').toLowerCase();
-    const openSt = String(trade[hz + 'Status'] || trade.status || 'open').toLowerCase();
-    const latched = !!ibkrLiveEntrySide(trade.ticker, hz, trade.entryDate || trade.timestamp);
-    const freezeOpen = latched || ((openAct === 'buy' || openAct === 'sell')
-      && (!openSt || openSt === 'open' || openSt === 'tp1_open'));
+    // Per-horizon action from the trade itself — never default long/medium to
+    // shortAction/Hold (that wiped SU.PA long Buy levels on revalidation).
+    const hzAct = (h) => {
+      const a = trade[h + 'Action'];
+      if (a) return a;
+      if (h === hz && trade.action) return trade.action;
+      return 'Hold';
+    };
     const tempRow = {
       ...trade,
-      shortAction: trade.shortAction || (String(trade.action || '').toLowerCase() === 'sell' ? 'Sell' : 'Buy'),
-      mediumAction: trade.mediumAction || trade.shortAction || 'Hold',
-      longAction: trade.longAction || trade.shortAction || 'Hold',
-      // LATCH: live emitted entry (no exit) — Conf/RR demote must not → Hold.
+      shortAction: hzAct('short'),
+      mediumAction: hzAct('medium'),
+      longAction: hzAct('long'),
+      // LATCH: open history Buy/Sell or live IBKR entry — Conf/RR demote must not → Hold.
       _freezeOpenAction: freezeOpen
     };
     applyServerPriceLevels(tempRow, basePx, tech, fund);
     ['short', 'medium', 'long'].forEach(hzKey => {
-      // Never overwrite an existing (frozen) entry — only fill it if it's missing.
-      if (!(parseFloat(trade[hzKey + 'Entry']) > 0)) trade[hzKey + 'Entry'] = tempRow[hzKey + 'Entry'];
-      trade[hzKey + 'Target1'] = tempRow[hzKey + 'Target1'];
-      trade[hzKey + 'Target2'] = tempRow[hzKey + 'Target2'];
-      trade[hzKey + 'StopLoss'] = tempRow[hzKey + 'StopLoss'];
+      const nextE = tempRow[hzKey + 'Entry'];
+      const nextT1 = tempRow[hzKey + 'Target1'];
+      const nextT2 = tempRow[hzKey + 'Target2'];
+      const nextSl = tempRow[hzKey + 'StopLoss'];
+      if (!(parseFloat(trade[hzKey + 'Entry']) > 0) && parseFloat(nextE) > 0) {
+        trade[hzKey + 'Entry'] = nextE;
+      }
+      // Never blank open-trade levels when recompute fails / wrong hz action.
+      if (parseFloat(nextT1) > 0) trade[hzKey + 'Target1'] = nextT1;
+      if (parseFloat(nextT2) > 0) trade[hzKey + 'Target2'] = nextT2;
+      if (parseFloat(nextSl) > 0) trade[hzKey + 'StopLoss'] = nextSl;
     });
-    if (!(parseFloat(trade.entry) > 0)) trade.entry = tempRow.shortEntry;
-    trade.target1 = tempRow.shortTarget1;
-    trade.target2 = tempRow.shortTarget2;
-    trade.stopLoss = tempRow.shortStopLoss;
+    if (!(parseFloat(trade.entry) > 0) && parseFloat(tempRow[hz + 'Entry'] || tempRow.shortEntry) > 0) {
+      trade.entry = tempRow[hz + 'Entry'] || tempRow.shortEntry;
+    }
+    if (hz === 'short') {
+      if (parseFloat(tempRow.shortTarget1) > 0) trade.target1 = tempRow.shortTarget1;
+      if (parseFloat(tempRow.shortTarget2) > 0) trade.target2 = tempRow.shortTarget2;
+      if (parseFloat(tempRow.shortStopLoss) > 0) trade.stopLoss = tempRow.shortStopLoss;
+    } else {
+      if (parseFloat(tempRow[hz + 'Target1']) > 0) trade.target1 = tempRow[hz + 'Target1'];
+      if (parseFloat(tempRow[hz + 'Target2']) > 0) trade.target2 = tempRow[hz + 'Target2'];
+      if (parseFloat(tempRow[hz + 'StopLoss']) > 0) trade.stopLoss = tempRow[hz + 'StopLoss'];
+    }
     if (String(trade.action || '').toLowerCase() === 'sell') {
       if (!(parseFloat(trade.sellEntry) > 0)) trade.sellEntry = tempRow.shortEntry;
-      trade.sellTarget1 = tempRow.shortTarget1;
-      trade.sellTarget2 = tempRow.shortTarget2;
-      trade.sellStopLoss = tempRow.shortStopLoss;
+      if (parseFloat(tempRow.shortTarget1) > 0) trade.sellTarget1 = tempRow.shortTarget1;
+      if (parseFloat(tempRow.shortTarget2) > 0) trade.sellTarget2 = tempRow.shortTarget2;
+      if (parseFloat(tempRow.shortStopLoss) > 0) trade.sellStopLoss = tempRow.shortStopLoss;
     }
   }
 
+  if (keepAction) {
+    trade.action = keepAction;
+    trade[hz + 'Action'] = keepAction;
+  }
   fixHistoryRecordMinRR(trade);
   return { ok: true, trade, shell };
 }
@@ -12242,6 +12280,49 @@ function repairOpenHistoryActionsFromIbkrEvents() {
 
 try { repairOpenHistoryActionsFromIbkrEvents(); } catch (e) {
   console.warn('history action repair failed:', e.message);
+}
+
+/**
+ * Restore open history rows wrongly demoted to Hold (levels wiped) when the
+ * reason string still encodes the original Buy/Sell geometry
+ * (e.g. "Buy @ 302.25 · TP1 367.01 · … · SL 247.58").
+ */
+function repairDemotedOpenHistoryFromReason() {
+  let n = 0;
+  for (const h of tradeHistory) {
+    if (!h || !h.ticker) continue;
+    const hz = h.hz || 'short';
+    const st = String(h[hz + 'Status'] || h.status || '').toLowerCase();
+    if (st !== 'open' && st !== 'tp1_open') continue;
+    const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
+    if (act === 'buy' || act === 'sell') continue;
+    const reason = String(h.reason || '');
+    const m = reason.match(/\b(Buy|Sell)\s*@\s*([0-9]+(?:\.[0-9]+)?)\s*[·|].*?TP1\s*([0-9]+(?:\.[0-9]+)?).*?TP2\s*([0-9]+(?:\.[0-9]+)?).*?SL\s*([0-9]+(?:\.[0-9]+)?)/i);
+    if (!m) continue;
+    const side = /^sell$/i.test(m[1]) ? 'Sell' : 'Buy';
+    const entry = m[2], tp1 = m[3], tp2 = m[4], sl = m[5];
+    h.action = side;
+    h[hz + 'Action'] = side;
+    h.rating = side;
+    h.entry = entry;
+    h[hz + 'Entry'] = entry;
+    h.target1 = tp1; h[hz + 'Target1'] = tp1;
+    h.target2 = tp2; h[hz + 'Target2'] = tp2;
+    h.stopLoss = sl; h[hz + 'StopLoss'] = sl;
+    if (side === 'Sell') {
+      h.sellEntry = entry; h.sellTarget1 = tp1; h.sellTarget2 = tp2; h.sellStopLoss = sl;
+    }
+    n++;
+    auditLog('history_action_repaired_from_reason', { ticker: h.ticker, hz, side, entry, tp1, sl });
+  }
+  if (n) {
+    saveHistoryFile(tradeHistory);
+    console.log('Repaired', n, 'demoted open history row(s) Hold→Buy/Sell from reason levels');
+  }
+  return n;
+}
+try { repairDemotedOpenHistoryFromReason(); } catch (e) {
+  console.warn('history reason repair failed:', e.message);
 }
 
 function readTradeEvents(sinceSeq, limit, tail) {
