@@ -2086,24 +2086,22 @@ function isStrongRecommendableRating(rating) {
   return r === 'strong buy' || r === 'strong sell';
 }
 
-/** Same display gate for tab counts and pick cards (must stay in sync). */
+/** Same display gate for tab counts and pick cards (must stay in sync).
+ *  Trust the server board: do NOT re-drop names for missing TP/RR on the client
+ *  (that hid RCL etc. while the synced summary still listed them). */
 function filterBoardPicksForUi(picks, hz, side) {
   const isSell = side === 'sell';
   return (picks || []).filter(function (s) {
     if (!s || !s.ticker) return false;
     const action = s[hz + 'Action'] || s.action || 'Hold';
-    const lv = pickLevelsForDashboardPane(s, hz, action === 'Sell');
-    const hasPricing = lv.entry != null && lv.sl != null && lv.tp1 != null;
     const conf = Number(s[hz + 'Conf'] || s.shortConf || s.conf || 0);
     if (!(conf >= PICKS_MIN_CONF)) return false;
     const rating = String(s[hz + 'Rating'] || s.rating || '');
     if (/^hold$/i.test(rating.trim()) || /SL cooldown/i.test(rating)) return false;
     if (isSell) {
-      return action === 'Sell' && (s[hz + 'SellScore'] || 0) >= 62 && hasPricing
-        && levelsMeetMinRRDash(lv.entry, lv.tp1, lv.sl, true, PICKS_MIN_RR);
+      return action === 'Sell' && (s[hz + 'SellScore'] || 0) >= 62;
     }
-    return action === 'Buy' && (s[hz + 'Score'] || 0) >= 62 && hasPricing
-      && levelsMeetMinRRDash(lv.entry, lv.tp1, lv.sl, false, PICKS_MIN_RR);
+    return action === 'Buy' && (s[hz + 'Score'] || 0) >= 62;
   });
 }
 

@@ -13139,6 +13139,46 @@ function aggregateIbkrOpenFromFills(rows) {
   return opens;
 }
 
+/** Mark for site-open / IB-flat closes — Yahoo v7 often blocked from Render. */
+async function resolveGhostFlatMark(ticker) {
+  const syms = [...new Set([String(ticker || '').toUpperCase(), ...ibkrYahooAliases(ticker)])].filter(Boolean);
+  try {
+    const qmap = await fetchQuotesV7Bulk(syms);
+    for (const s of syms) {
+      const q = qmap[s];
+      const px = Number(q && (q.price || q.regularMarketPrice || q.regularMarketPreviousClose));
+      if (px > 0) return { price: px, src: 'yahoo-v7' };
+    }
+  } catch (_) { /* next */ }
+  for (const s of syms) {
+    try {
+      const f = await fetchFmpQuotePrice(s);
+      if (f && f.price > 0) return { price: f.price, src: 'fmp' };
+    } catch (_) { /* next */ }
+  }
+  for (const s of syms) {
+    try {
+      const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(s)}?interval=1d&range=5d`;
+      const r = await fetch(chartUrl, {
+        headers: typeof YF_HEADERS !== 'undefined' ? YF_HEADERS : { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!r.ok) continue;
+      const d = await r.json().catch(() => null);
+      const meta = d && d.chart && d.chart.result && d.chart.result[0] && d.chart.result[0].meta;
+      const px = Number(meta && (meta.regularMarketPrice || meta.chartPreviousClose || meta.previousClose));
+      if (px > 0) return { price: px, src: 'yahoo-chart' };
+      const closes = (d && d.chart && d.chart.result && d.chart.result[0]
+        && d.chart.result[0].indicators && d.chart.result[0].indicators.quote
+        && d.chart.result[0].indicators.quote[0] && d.chart.result[0].indicators.quote[0].close) || [];
+      for (let i = closes.length - 1; i >= 0; i--) {
+        if (Number(closes[i]) > 0) return { price: Number(closes[i]), src: 'yahoo-chart-close' };
+      }
+    } catch (_) { /* next */ }
+  }
+  return null;
+}
+
 /**
  * POST /api/ibkr/recon
  * Body: { positions: [{ ticker, qty, avgCost, currency?, conId? }], marks?: {TICKER: price} }
@@ -13245,21 +13285,27 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         }
       }
       if (needQuote.size) {
-        try {
-          const qmap = await fetchQuotesV7Bulk([...needQuote]);
-          for (const o of opens) {
-            if (o.mark > 0) continue;
-            const syms = [o.rawTicker, o.ticker, ...ibkrYahooAliases(o.ticker)];
-            for (const s of syms) {
-              const q = qmap[s];
-              const px = Number(q && (q.price || q.regularMarketPrice || q.regularMarketPreviousClose));
-              if (px > 0) { o.mark = px; o.markSrc = 'yahoo-recon'; break; }
+        const got = [];
+        for (const t of needQuote) {
+          try {
+            const m = await resolveGhostFlatMark(t);
+            if (!(m && m.price > 0)) continue;
+            for (const o of opens) {
+              if (o.mark > 0) continue;
+              const aliases = ibkrYahooAliases(o.ticker || o.rawTicker);
+              if (!aliases.has(String(t).toUpperCase())
+                && String(o.ticker).toUpperCase() !== String(t).toUpperCase()
+                && String(o.rawTicker || '').toUpperCase() !== String(t).toUpperCase()) continue;
+              o.mark = m.price;
+              o.markSrc = m.src || 'ghost-mark';
             }
+            got.push(t + '@' + m.price + '(' + m.src + ')');
+          } catch (e) {
+            console.warn('IBKR recon ghost mark failed', t, e.message || e);
           }
-          console.log('IBKR recon: Yahoo marks for IB-flat site opens:', [...needQuote].join(','));
-        } catch (e) {
-          console.warn('IBKR recon Yahoo marks failed:', e.message || e);
         }
+        if (got.length) console.log('IBKR recon: marks for IB-flat site opens:', got.join(', '));
+        else console.warn('IBKR recon: no marks for IB-flat opens:', [...needQuote].join(','));
       }
     }
 
@@ -13294,7 +13340,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         ticker: y, qty: ib.qty, avgCost: ib.avgCost, conId: cid || null,
         note: isPositionAuthorizedByProvenance(y)
           ? 'IB position missing site fill lot (model entry exists — import/fill lag)'
-          : 'IB-only orphan — not a model recommendation (bridge flattens in RTH)',
+          : 'IB-only orphan — not a model recommendation (bridge flattens MKT/OPG)',
         authorized: isPositionAuthorizedByProvenance(y)
       });
     }
