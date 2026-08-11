@@ -12915,9 +12915,14 @@ function mutateFillLedger(reason, fn, opts) {
   return { before: before.length, after: next.length, rows: next };
 }
 
-/** Fake $0 closes: synthetic ghost-flat whose exit price ≈ that key's avg entry. */
+/** Fake $0 closes: synthetic ghost-flat with no external mark whose exit ≈ avg entry.
+ *  Quote-backed closes (yahoo-recon / ib-bridge) are kept even if PnL is near zero. */
 function isZeroEdgeGhostFlatFill(row, allRows) {
   if (!row || row.role !== 'flatten' || row.recon !== 'ghost-flat') return false;
+  const src = String(row.markSrc || '');
+  if (src === 'yahoo-recon' || src.startsWith('ib-bridge') || src === 'fmp' || src === 'ibkr') {
+    return false;
+  }
   const px = Number(row.price);
   if (!(px > 0)) return true;
   const key = String(row.key || '');
@@ -12928,7 +12933,7 @@ function isZeroEdgeGhostFlatFill(row, allRows) {
     ? entries.reduce((s, r) => s + Number(r.price) * (Number(r.qty) || 0), 0) / qtySum
     : Number(entries[0].price);
   if (!(avg > 0)) return false;
-  return Math.abs(px - avg) / avg < 0.0005; // < 5 bps → invented flat at entry
+  return Math.abs(px - avg) / avg < 0.0005; // < 5 bps with no quote src → invented
 }
 
 // Boot ledger repairs — must run after mutateFillLedger / _ibkrExecIds exist.
@@ -13053,7 +13058,7 @@ function aggregateIbkrOpenFromFills(rows) {
  * Body: { positions: [{ ticker, qty, avgCost, currency?, conId? }], marks?: {TICKER: price} }
  * Aligns AlphaSignal fill ledger to IB paper open qty + averageCost for tracked names.
  */
-app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
+app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   try {
     // Refresh dedupe set from disk (purge/other instance may have changed file).
@@ -13129,12 +13134,45 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
       if (!asByTicker.has(o.ticker)) asByTicker.set(o.ticker, []);
       asByTicker.get(o.ticker).push(o);
       const mk = Number(marksIn[o.ticker] || marksIn[o.rawTicker]);
-      if (mk > 0) o.mark = mk;
+      if (mk > 0) { o.mark = mk; o.markSrc = o.markSrc || 'ib-bridge'; }
       // Dual-list marks: AIR.PA can use AIR.DE mark and vice versa
       if (!(o.mark > 0)) {
         for (const a of ibkrYahooAliases(o.ticker)) {
           const am = Number(marksIn[a]);
-          if (am > 0) { o.mark = am; break; }
+          if (am > 0) { o.mark = am; o.markSrc = 'ib-bridge-alias'; break; }
+        }
+      }
+    }
+
+    // When IB is flat, the bridge portfolio has no mark for that name — so site
+    // ghosts (FANG/VTR/AIR) stayed open forever. Pull Yahoo for those tickers
+    // and close the ledger at a real market price (never invent exit = entry).
+    {
+      const needQuote = new Set();
+      for (const [y, group] of asByTicker) {
+        const ib = resolveIbPosForYahoo(y, ibByY, ibByConId);
+        const ibAbs = Math.abs(ib ? Number(ib.qty) || 0 : 0);
+        if (ibAbs !== 0) continue;
+        for (const o of group) {
+          if (!(o.openQty > 0)) continue;
+          if (!(o.mark > 0)) needQuote.add(o.rawTicker || o.ticker || y);
+        }
+      }
+      if (needQuote.size) {
+        try {
+          const qmap = await fetchQuotesV7Bulk([...needQuote]);
+          for (const o of opens) {
+            if (o.mark > 0) continue;
+            const syms = [o.rawTicker, o.ticker, ...ibkrYahooAliases(o.ticker)];
+            for (const s of syms) {
+              const q = qmap[s];
+              const px = Number(q && (q.price || q.regularMarketPrice || q.regularMarketPreviousClose));
+              if (px > 0) { o.mark = px; o.markSrc = 'yahoo-recon'; break; }
+            }
+          }
+          console.log('IBKR recon: Yahoo marks for IB-flat site opens:', [...needQuote].join(','));
+        } catch (e) {
+          console.warn('IBKR recon Yahoo marks failed:', e.message || e);
         }
       }
     }
@@ -13168,7 +13206,9 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
       if (cid > 0) seenUntrackedCon.add(cid);
       untrackedIb.push({
         ticker: y, qty: ib.qty, avgCost: ib.avgCost, conId: cid || null,
-        note: 'IB position with no open AlphaSignal fill lot',
+        note: isPositionAuthorizedByProvenance(y)
+          ? 'IB position missing site fill lot (model entry exists — import/fill lag)'
+          : 'IB-only orphan — not a model recommendation (bridge flattens in RTH)',
         authorized: isPositionAuthorizedByProvenance(y)
       });
     }
@@ -13220,17 +13260,12 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
             if (!(px > 0)) {
               issues.push({
                 ticker: o.rawTicker || o.ticker || y, severity: 'pending',
-                detail: `Site open ${o.openQty} but IB flat — no live mark; not inventing exit @ entry ${o.avgEntry}`
+                detail: `Site open ${o.openQty} but IB flat — no market quote yet; retry next recon`
               });
               continue;
             }
-            if (o.avgEntry > 0 && Math.abs(px - o.avgEntry) / o.avgEntry < 0.0005) {
-              issues.push({
-                ticker: o.rawTicker || o.ticker || y, severity: 'pending',
-                detail: `Site open ${o.openQty} but IB flat — mark≈entry (${px}); waiting for real IB exit fill`
-              });
-              continue;
-            }
+            // Yahoo/IB mark is a real price even if near entry — that is not the
+            // old bug (inventing exit === avgEntry with no quote).
             const fillAt = new Date().toISOString();
             const phase = ibkrSessionPhase(o.rawTicker || y, fillAt);
             const execId = `recon-flat-${o.key}-q${o.openQty}`;
@@ -13240,18 +13275,19 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
               side: o.side, role: 'flatten', qty: o.openQty, price: px,
               currency: o.currency, ccyScale: o.ccyScale, orderId: null,
               time: fillAt, session: phase, sessionLabel: ibkrSessionLabel(phase),
-              errorTrade: !!o.errorTrade, synthetic: true, recon: 'ghost-flat'
+              errorTrade: !!o.errorTrade, synthetic: true,
+              recon: 'ghost-flat', markSrc: o.markSrc || 'unknown'
             });
             adjusted.push({
               ticker: o.rawTicker || y, key: o.key, action: 'ghost-flatten',
-              qty: o.openQty, price: px
+              qty: o.openQty, price: px, markSrc: o.markSrc || 'unknown'
             });
             anyFlat = true;
           }
-          if (!anyFlat) {
+          if (!anyFlat && siteOpenSum > 0) {
             issues.push({
               ticker: y, severity: 'pending',
-              detail: `Difference: site open ${siteOpenSum || asAbs} on ${aliasYs.join('/')} but IB flat — no real exit fill yet`
+              detail: `Difference: site open ${siteOpenSum} on ${aliasYs.join('/')} but IB flat — waiting for market quote`
             });
           }
         } else if (ibAbs > asAbs && primary) {

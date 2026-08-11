@@ -1835,7 +1835,8 @@ async function renderIbkr(force){
         diffLines.push((i.ticker || '?') + ': ' + (i.detail || i.severity || 'issue'));
       });
       (rc.untrackedIbRows || []).slice(0, 8).forEach(function (u) {
-        diffLines.push('IB-only ' + u.ticker + ' × ' + u.qty + ' (not on model book)');
+        diffLines.push('IB-only ' + u.ticker + ' × ' + u.qty
+          + (u.note ? (' — ' + u.note) : ' (not on model book)'));
       });
       (rc.adjustedRows || []).slice(0, 8).forEach(function (a) {
         diffLines.push('Fixed ' + (a.ticker || '') + ' · ' + (a.action || '') + (a.qty != null ? (' ×' + a.qty) : ''));

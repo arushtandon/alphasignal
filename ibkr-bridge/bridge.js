@@ -55,7 +55,12 @@ const BASE = String(process.env.ALPHASIGNAL_URL || 'http://127.0.0.1:3000').repl
 const TOKEN = process.env.IBKR_EVENTS_TOKEN || '';
 const HOST = process.env.IBKR_HOST || '127.0.0.1';
 const PORT = parseInt(process.env.IBKR_PORT || '7497', 10);
-const CLIENT_ID = parseInt(process.env.IBKR_CLIENT_ID || '17', 10);
+/** Prefer env; else randomize per launch (avoids zombie clientId conflicts). */
+const CLIENT_ID = (() => {
+  const fromEnv = parseInt(process.env.IBKR_CLIENT_ID || '', 10);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+  return 20 + Math.floor(Math.random() * 40); // 20–59
+})();
 const ACCOUNT = process.env.IBKR_ACCOUNT || '';
 const POLL_MS = Math.max(5000, parseInt(process.env.IBKR_POLL_MS || '15000', 10));
 const NOTIONAL = Math.max(1000, parseInt(process.env.IBKR_NOTIONAL || '10000', 10));
@@ -91,6 +96,24 @@ function normalizeYahooTicker(t) {
   const m = s.match(/^(\d+)\.HK$/);
   if (m) return m[1].padStart(4, '0') + '.HK';
   return s;
+}
+
+/** Dual-list aliases — same conId identity; authorize by provenance not name. */
+const LISTING_ALIASES = {
+  'AIR.DE': ['AIR.PA'],
+  'AIR.PA': ['AIR.DE']
+};
+function yahooAliases(t) {
+  const y = normalizeYahooTicker(t);
+  const out = new Set([y]);
+  for (const a of (LISTING_ALIASES[y] || [])) out.add(normalizeYahooTicker(a));
+  return out;
+}
+function setHasYahooAlias(set, t) {
+  for (const a of yahooAliases(t)) {
+    if (set.has(a)) return true;
+  }
+  return false;
 }
 
 /**
@@ -475,10 +498,16 @@ async function main() {
   let mdFellBack = false;
   let mdCompeteLogged = false;
 
+  // Single-connection guard: reuse last successful clientId unless env pinned.
+  let activeClientId = CLIENT_ID;
+  if (!process.env.IBKR_CLIENT_ID && Number(state.clientId) > 0) {
+    activeClientId = Number(state.clientId);
+  }
+
   if (!DRY) {
     const stoqey = require('@stoqey/ib');
     EventName = stoqey.EventName;
-    ib = new stoqey.IBApi({ host: HOST, port: PORT, clientId: CLIENT_ID });
+    ib = new stoqey.IBApi({ host: HOST, port: PORT, clientId: activeClientId });
     ib.on(EventName.error, (err, code, reqId) => {
       // 2104/2106/2158 are benign "market data farm OK" notices
       if ([2104, 2106, 2107, 2158].includes(Number(code))) return;
@@ -565,22 +594,35 @@ async function main() {
     let ibReady = false;
     ib.on(EventName.disconnected, () => {
       if (!ibReady) {
-        log('IB disconnected during connect — is clientId', CLIENT_ID, 'already in use?');
+        log('IB disconnected during connect — is clientId', activeClientId, 'already in use?');
         return;
       }
       log('IB disconnected — exiting so run-forever can restart');
       process.exit(2);
     });
-    await new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error('IB connect timeout — is TWS/Gateway paper running with API enabled?')), 20000);
-      ib.once(EventName.connected, () => { clearTimeout(t); resolve(); });
-      ib.connect();
-    });
-    await new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error('IB nextValidId timeout — is another API client using clientId ' + CLIENT_ID + '?')), 20000);
-      ib.once(EventName.nextValidId, id => { clearTimeout(t); nextOrderId = id; resolve(); });
-      ib.reqIds();
-    });
+    try {
+      await new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('IB connect timeout — is TWS/Gateway paper running with API enabled?')), 20000);
+        ib.once(EventName.connected, () => { clearTimeout(t); resolve(); });
+        ib.connect();
+      });
+      await new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('IB nextValidId timeout — is another API client using clientId ' + activeClientId + '?')), 20000);
+        ib.once(EventName.nextValidId, id => { clearTimeout(t); nextOrderId = id; resolve(); });
+        ib.reqIds();
+      });
+    } catch (e1) {
+      // Probe-increment persisted clientId so run-forever restart avoids the zombie.
+      if (!process.env.IBKR_CLIENT_ID) {
+        state.clientId = activeClientId + 1;
+        saveState(state);
+        log('IB handshake failed on clientId', activeClientId, '— next launch will try', state.clientId);
+      }
+      throw e1;
+    }
+    state.clientId = activeClientId;
+    saveState(state);
+    log('IB connected with clientId', activeClientId);
     ibReady = true;
     // TWS's nextValidId can lag behind ids burned by other API clients in the
     // same TWS session (e.g. flatten-all), causing "Duplicate order id" (103).
@@ -1132,14 +1174,15 @@ async function main() {
         const hz = evt.hz || 'short';
         const keyDay = String(key.split('|')[2] || '');
         const keyDayMs = Date.parse(keyDay);
-        // Exact SGT day-key match (same helper as server tradeEventSnapshot).
+        // Same trading-day key as server; ±2h clock-skew only (no multi-day fuzzy).
         const h = rows.find(x => {
           if (!x || x.ticker !== evt.ticker) return false;
           if (String(x.hz || 'short') !== String(hz)) return false;
           const ms = Date.parse(x.entryDate || x.timestamp || 0);
           if (!Number.isFinite(ms)) return false;
-          return singaporeToDateString(ms) === keyDay
-            || (Number.isFinite(keyDayMs) && Math.abs(ms - keyDayMs) < 2 * 3600 * 1000);
+          if (singaporeToDateString(ms) === keyDay) return true;
+          return Number.isFinite(keyDayMs) && Math.abs(ms - keyDayMs) <= 2 * 3600 * 1000
+            && singaporeToDateString(ms) === singaporeToDateString(keyDayMs);
         });
         const act = String((h && (h[hz + 'Action'] || h.action)) || '').toLowerCase();
         if (act !== 'buy' && act !== 'sell') {
@@ -1401,8 +1444,9 @@ async function main() {
             if (String(x.hz || 'short') !== String(hz)) return false;
             const ms = Date.parse(x.entryDate || x.timestamp || 0);
             if (!Number.isFinite(ms)) return false;
-            return singaporeToDateString(ms) === keyDay
-              || (Number.isFinite(keyDayMs) && Math.abs(ms - keyDayMs) < 2 * 3600 * 1000);
+            if (singaporeToDateString(ms) === keyDay) return true;
+            return Number.isFinite(keyDayMs) && Math.abs(ms - keyDayMs) <= 2 * 3600 * 1000
+              && singaporeToDateString(ms) === singaporeToDateString(keyDayMs);
           });
           if (!h) continue;
           const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
@@ -1610,14 +1654,15 @@ async function main() {
         } catch (e) { log('RECONCILE: rearm failed', key, e.message); }
       }
 
-      // 0e. Never treat AIR.DE as an error flatten target — it was the real
-      // recommendation; only AIR.PA (dual-list duplicate) is unauthorized.
+      // 0e. Clear error-flatten tags when provenance says the name is authorized
+      // (open emitted entry / alias). Never flatten by ticker identity lists.
       for (const k of Object.keys(state.byKey)) {
         const row = state.byKey[k];
         if (!row) continue;
-        if (String(row.ticker || '').toUpperCase() === 'AIR.DE'
+        const yClear = normalizeYahooTicker(row.ticker || '');
+        if (setHasYahooAlias(openYahoo, yClear)
           && (row.errorTrade || row.flatReason === 'unauthorized-non-recommendation' || /\|error\|/.test(k))) {
-          log('RECONCILE: clearing AIR.DE error-flatten state (model trade)', k);
+          log('RECONCILE: clearing error-flatten state (provenance-authorized)', k);
           delete state.byKey[k];
           saveState(state);
         }
@@ -1629,9 +1674,8 @@ async function main() {
         if (!row) continue;
         if (!row.errorTrade && row.flatReason !== 'unauthorized-non-recommendation'
           && row.flatReason !== 'dual-list-duplicate-accounting') continue;
-        if (String(row.ticker || '').toUpperCase() === 'AIR.DE') continue;
         const yProt = normalizeYahooTicker(row.ticker || '');
-        if (yProt && openYahoo.has(yProt) && yProt !== 'AIR.PA') {
+        if (yProt && setHasYahooAlias(openYahoo, yProt)) {
           log('RECONCILE: skip state error-flatten — open MODEL entry', yProt, key);
           continue;
         }
@@ -1653,23 +1697,23 @@ async function main() {
         const pk = posKeyOf(contract);
         const held = posMap.get(pk);
         if (!held || !held.pos) { row.closed = true; saveState(state); continue; }
-        // Dual-list: if AIR.PA shares conId/pos with open AIR.DE model entry,
-        // only flatten shares above the model lot (keep recommended position).
+        // Dual-list: if this listing aliases an open model key, keep one model lot.
         let qty = Math.abs(held.pos);
-        if (String(row.ticker || '').toUpperCase() === 'AIR.PA') {
-          const deOpen = [...keyState.entries()].some(([ek, st]) =>
-            st === 'open' && String(ek).startsWith('AIR.DE|'));
-          if (deOpen) {
-            const modelLot = Number(row.qtyTotal) > 0 ? Number(row.qtyTotal) : 40;
-            // Keep one model lot; flatten the duplicate remainder only.
-            qty = Math.max(0, Math.abs(held.pos) - modelLot);
-            if (!(qty > 0)) {
-              log('RECONCILE: AIR.PA accounting-only — keeping AIR.DE model lot, no flatten', key, 'pos=' + held.pos);
-              row.closed = true;
-              row.flatReason = 'dual-list-duplicate-accounting';
-              saveState(state);
-              continue;
-            }
+        const aliasModelOpen = [...keyState.entries()].some(([ek, st]) => {
+          if (st !== 'open') return false;
+          const et = normalizeYahooTicker(String(ek).split('|')[0] || '');
+          return setHasYahooAlias(new Set([et]), yProt) && et !== yProt;
+        });
+        if (aliasModelOpen) {
+          const modelLot = Number(row.qtyTotal) > 0 ? Number(row.qtyTotal)
+            : (openQtyByYahoo.get([...yahooAliases(yProt)].find(a => openQtyByYahoo.has(a)) || '') || 0);
+          qty = Math.max(0, Math.abs(held.pos) - (modelLot || 0));
+          if (!(qty > 0)) {
+            log('RECONCILE: dual-list accounting-only — keeping model lot, no flatten', key, 'pos=' + held.pos);
+            row.closed = true;
+            row.flatReason = 'dual-list-duplicate-accounting';
+            saveState(state);
+            continue;
           }
         }
         const lastTry = _flattenTried.get('err|' + key) || 0;
@@ -1696,15 +1740,14 @@ async function main() {
           if (!pos) continue;
           const y = yahooFromContract(contract);
           const yU = String(y || '').toUpperCase();
-          if (yU === 'AIR.DE') continue;
+          if (y && setHasYahooAlias(openYahoo, y)) {
+            log('RECONCILE: skip ENV error-flatten — open MODEL entry', y);
+            continue;
+          }
           const symU = String(contract.symbol || '').toUpperCase();
           const isErr = ERROR_TRADE_TICKERS.has(yU) || ERROR_TRADE_TICKERS.has(symU)
             || [...ERROR_TRADE_TICKERS].some(t => t.replace(/\.(DE|PA|L|HK|T)$/i, '') === symU);
           if (!isErr) continue;
-          if (y && openYahoo.has(y)) {
-            log('RECONCILE: skip ENV error-flatten — open MODEL entry', y);
-            continue;
-          }
           if (sessionPhase(contract) === 'lunch') continue;
           if (contract.usRth && sessionPhase(contract) === 'closed') continue;
           const lastTry = _flattenTried.get('err|' + pk) || 0;
@@ -1736,15 +1779,23 @@ async function main() {
       // 1. ONLY flatten explicitly unauthorized (error-tagged) names.
       // NEVER flatten a live model recommendation (open entry / non-error state).
       // Rule: execute & keep what the model recommended; do not close 9988 etc.
+      // Recent entry events (within MAX_EVENT_AGE_MS) also protect by provenance.
+      const recentEntryYahoo = new Set();
+      for (const e of events) {
+        if (!e || e.type !== 'entry' || !e.key) continue;
+        const emitTs = Date.parse(e.t || e.entryDate || 0);
+        if (!Number.isFinite(emitTs) || (Date.now() - emitTs) > MAX_EVENT_AGE_MS) continue;
+        recentEntryYahoo.add(normalizeYahooTicker(e.key.split('|')[0]));
+      }
+
       const unauthorizedYahoo = new Set();
       for (const [key, row] of Object.entries(state.byKey)) {
         if (!row || !row.ticker) continue;
         if (!(row.errorTrade || row.flatReason === 'unauthorized-non-recommendation'
           || row.flatReason === 'env-error-ticker' || /\|error\|/.test(key))) continue;
         const y = normalizeYahooTicker(row.ticker);
-        if (y === 'AIR.DE') continue; // recommended listing (AIR.PA is the duplicate)
-        // Live open entry event = genuine model trade — never unauthorized-close.
-        if (openYahoo.has(y)) {
+        // Live open entry / alias / recent entry = genuine model trade.
+        if (setHasYahooAlias(openYahoo, y) || setHasYahooAlias(recentEntryYahoo, y)) {
           log('RECONCILE: skip error-flatten — open MODEL entry protects', y, key);
           continue;
         }
@@ -1752,10 +1803,11 @@ async function main() {
       }
 
       const protectedYahoo = new Set(openYahoo);
+      for (const a of recentEntryYahoo) protectedYahoo.add(a);
       for (const [key, row] of Object.entries(state.byKey)) {
         if (!row || row.closed || !row.ticker) continue;
         const y = normalizeYahooTicker(row.ticker);
-        if (unauthorizedYahoo.has(y)) continue;
+        if (setHasYahooAlias(unauthorizedYahoo, y)) continue;
         if (row.errorTrade || /\|error\|/.test(key)) continue;
         protectedYahoo.add(y);
       }
@@ -1764,7 +1816,7 @@ async function main() {
         for (const h of (Array.isArray(hist) ? hist : [])) {
           if (!h || !h.ticker) continue;
           const y = normalizeYahooTicker(h.ticker);
-          if (unauthorizedYahoo.has(y)) continue;
+          if (setHasYahooAlias(unauthorizedYahoo, y)) continue;
           const hz = h.hz || 'short';
           const st = String(h[hz + 'Status'] || h.status || '').toLowerCase();
           if (st && st !== 'open' && st !== 'tp1_open') continue;
@@ -1782,25 +1834,30 @@ async function main() {
         const cMeta = enrichSessionMeta(contract);
         const y = normalizeYahooTicker(yahooFromContract(cMeta) || '');
         if (!y) continue;
-        if (protectedYahoo.has(y) || openYahoo.has(y)) {
+        if (setHasYahooAlias(protectedYahoo, y) || setHasYahooAlias(openYahoo, y)
+          || setHasYahooAlias(recentEntryYahoo, y)) {
           if (state.unauthStreak[pk]) { delete state.unauthStreak[pk]; saveState(state); }
           continue;
         }
-        if (!unauthorizedYahoo.has(y)) {
-          // Not an open model trade, but also not error-tagged — do not touch.
-          if (state.unauthStreak[pk]) { delete state.unauthStreak[pk]; saveState(state); }
-          continue;
-        }
+        // Model-only book: IB position with no open model entry / history /
+        // recent emit is an orphan (shows as "IB-only" on the site recon).
+        // Flatten error-tagged names AND unprotected orphans — never 9988-style
+        // protected model lots.
+        const isErrorTagged = setHasYahooAlias(unauthorizedYahoo, y);
+        const isOrphanIbOnly = !isErrorTagged;
         const phase = sessionPhase(cMeta);
         if (phase !== 'rth') {
-          log('RECONCILE: unauthorized wait session', pk, 'ticker=' + y, 'phase=' + phase);
+          log('RECONCILE: unauthorized/orphan wait session', pk, 'ticker=' + y, 'phase=' + phase,
+            isOrphanIbOnly ? 'orphan' : 'error');
           continue;
         }
+        // Debounce: require TWO consecutive sweeps agreeing + audit before flatten.
         const streak = (Number(state.unauthStreak[pk]) || 0) + 1;
         state.unauthStreak[pk] = streak;
         saveState(state);
         if (streak < 2) {
-          log('RECONCILE: unauthorized candidate (debounce 1/2)', pk, 'pos=' + pos, 'ticker=' + y);
+          log('RECONCILE: unauthorized/orphan candidate (debounce 1/2)', pk, 'pos=' + pos,
+            'ticker=' + y, isOrphanIbOnly ? 'IB-only orphan' : 'error-tagged');
           continue;
         }
         const lastTry = _flattenTried.get(pk) || 0;
@@ -1809,13 +1866,13 @@ async function main() {
         const qty = Math.abs(pos);
         const fid = nid();
         const oc = orderContractFromPos(cMeta);
-        log('RECONCILE: flattening UNAUTHORIZED (not a model recommendation)', pk,
-          'pos=' + pos, 'ticker=' + y);
+        log('RECONCILE: flattening', isOrphanIbOnly ? 'IB-ONLY ORPHAN' : 'UNAUTHORIZED',
+          pk, 'pos=' + pos, 'ticker=' + y, 'streak=' + streak);
         if (!oc || (!oc.conId && !oc.symbol)) continue;
         transmitOrder(fid, oc, baseOrder({
           orderId: fid, action: pos > 0 ? 'SELL' : 'BUY',
           orderType: 'MKT', totalQuantity: qty, tif: 'DAY', transmit: true
-        }), 'unauthorized-flatten ' + pk);
+        }), (isOrphanIbOnly ? 'orphan-ib-only-flatten ' : 'unauthorized-flatten ') + pk);
       }
 
       // No excess-qty trim — never reduce a live model lot (9988/0005/2914).
