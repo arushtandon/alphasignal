@@ -10722,6 +10722,84 @@ function purgeOpenCooldownBuysFromHistory() {
   return removed;
 }
 
+/**
+ * History Live clutter: close open Buy/Sell rows that are neither
+ *  • still held in the latest IB paper snapshot, nor
+ *  • on today's dashboard board, nor
+ *  • still open on the IBKR fill ledger, nor
+ *  • entered today (SGT) — grace for OPG / not-yet-filled board picks.
+ */
+function pruneStaleOpenHistoryRows() {
+  const OPEN_ST = new Set(['open', 'tp1_open', 'pending', '']);
+  const todayLong = singaporeToDateString();
+
+  const keep = new Set();
+  const addKeep = (t) => {
+    for (const a of ibkrYahooAliases(t)) keep.add(String(a).toUpperCase());
+  };
+
+  try {
+    const recon = loadIbkrReconReport();
+    for (const p of (recon && recon.positions) || []) {
+      if (p && p.ticker && Number(p.qty)) addKeep(p.ticker);
+    }
+  } catch (_) { /* recon optional on first boot */ }
+
+  try {
+    const cached = loadDashboardPicksFile() || dashboardPicksCache;
+    for (const t of collectDashTickers(cached && cached.dashData)) addKeep(t);
+  } catch (_) { /* board optional */ }
+
+  try {
+    for (const o of aggregateIbkrOpenFromFills(readIbkrFillRows())) {
+      if (o && o.ticker && o.openQty > 0) addKeep(o.ticker);
+    }
+  } catch (_) { /* fills optional */ }
+
+  // If we have no keep anchors yet (no recon + empty board), do not mass-close.
+  if (keep.size === 0) return 0;
+
+  let closed = 0;
+  for (const h of tradeHistory) {
+    if (!h || !h.ticker) continue;
+    const entryDay = historyTradeEntryDay(h);
+    if (entryDay === todayLong) continue;
+
+    for (const hz of ['short', 'medium', 'long']) {
+      const act = String(h[hz + 'Action'] || (hz === (h.hz || 'short') ? h.action : '') || '').toLowerCase();
+      if (act !== 'buy' && act !== 'sell') continue;
+      const st = String(h[hz + 'Status'] || (hz === (h.hz || 'short') ? h.status : '') || 'open').toLowerCase();
+      if (!OPEN_ST.has(st)) continue;
+
+      const y = String(h.ticker || '').toUpperCase();
+      if ([...ibkrYahooAliases(y)].some(a => keep.has(String(a).toUpperCase()))) continue;
+
+      h[hz + 'Status'] = 'signal_exit';
+      h[hz + 'ExitReason'] = 'Stale open — not in IB paper and not on today\'s board';
+      if (h[hz + 'ExitPrice'] == null && h[hz + 'Entry'] != null) {
+        // No invented PnL — mark flat at entry so Realised view is honest.
+        h[hz + 'ExitPrice'] = Number(h[hz + 'Entry']) || null;
+        h[hz + 'PnlDollar'] = 0;
+        h[hz + 'PnlPct'] = 0;
+      }
+      if (!h[hz + 'ExitTs']) h[hz + 'ExitTs'] = Date.now();
+      if (!h[hz + 'SettledTs']) {
+        h[hz + 'SettledTs'] = Date.now();
+        try {
+          emitTradeEvent('exit', tradeEventSnapshot(h, hz, { exitReason: h[hz + 'ExitReason'] }));
+        } catch (_) { /* best-effort */ }
+      }
+      if (hz === (h.hz || 'short')) h.status = 'signal_exit';
+      closed++;
+    }
+  }
+  if (closed > 0) {
+    saveHistoryFile(tradeHistory);
+    console.log('Pruned', closed, 'stale History open row(s) (not IB / not today\'s board)');
+  }
+  return closed;
+}
+
 function scanHistoryForSLCooldowns() {
   for (const h of tradeHistory) {
     if (!h?.ticker) continue;
@@ -10761,6 +10839,9 @@ setTimeout(async function bootDashHistorySync() {
       console.log('Boot: dashboard picks filtered (dashTs preserved', dashboardPicksCache.dashTs, ') →', dashboardPicksSummary(dd));
     }
     purgeOpenCooldownBuysFromHistory();
+    try { pruneStaleOpenHistoryRows(); } catch (e2) {
+      console.warn('Boot history prune:', e2.message);
+    }
   } catch (e) {
     console.warn('Boot dash/history sync:', e.message);
   }
@@ -12823,7 +12904,10 @@ app.post('/api/ibkr/report', (req, res) => {
       sessionLabel: r.sessionLabel || ibkrSessionLabel(phase),
       // Tag only when bridge stamps errorTrade or optional env kill-switch.
       // Never permanently ban a ticker by legacy name list.
-      errorTrade: r.errorTrade === true || IBKR_ERROR_TRADE_TICKERS.has(String(r.ticker || '').toUpperCase())
+      errorTrade: r.errorTrade === true || IBKR_ERROR_TRADE_TICKERS.has(String(r.ticker || '').toUpperCase()),
+      synthetic: r.synthetic === true || undefined,
+      recon: r.recon ? String(r.recon) : undefined,
+      markSrc: r.markSrc ? String(r.markSrc) : undefined
     });
   }
   if (toAdd.length) {
@@ -12853,7 +12937,9 @@ app.post('/api/ibkr/report', (req, res) => {
  * pad older keys to match the live paper account).
  */
 function isPhantomIbkrKey(key, fillTime, row) {
-  if (row && (row.synthetic || row.recon || String(row.execId || '').startsWith('recon-'))) {
+  const eid = String((row && row.execId) || '');
+  if (row && (row.synthetic || row.recon
+    || eid.startsWith('recon-') || eid.startsWith('ibhist-'))) {
     return false;
   }
   const dayPart = String(key || '').split('|')[2];
@@ -13436,6 +13522,10 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       }))
     };
     saveIbkrReconReport(report);
+    // After IB snapshot lands, drop History Live ghosts not held / not on board.
+    try { pruneStaleOpenHistoryRows(); } catch (ePrune) {
+      console.warn('History prune after recon:', ePrune.message);
+    }
     res.json({
       ok: true,
       inSync,

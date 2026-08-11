@@ -483,6 +483,7 @@ async function main() {
   const portfolioAvgCost = new Map(); // normalized yahoo -> averageCost from IB
   const lotCache = new Map(); // posKey -> board lot
   let nextDetailsId = 900000;
+  let nextExecHistId = 910000;
   // Live IBKR market data for MTM (posted to AlphaSignal every ~10s).
   const mktById = new Map(); // reqId -> { ticker, last, bid, ask, close }
   const mktSubscribed = new Set(); // AlphaSignal ticker already subscribed
@@ -490,8 +491,41 @@ async function main() {
   // separate live market-data stream (avoids error 10197 competing session).
   const portfolioMarks = new Map(); // yahooTicker -> { price, at, unrealizedPNL }
   let nextMktId = 1;
+  /** Active reqExecutions id → buffer historical execs for exit recovery. */
+  let _execHistReqId = null;
+  let _execHistBuf = [];
+  let lastExecRecoverAt = 0;
 
   function nid() { return nextOrderId++; }
+
+  function ibSignedQtyForYahoo(ticker) {
+    const aliases = yahooAliases(ticker);
+    let total = 0;
+    for (const [, { pos, contract }] of posMap) {
+      const y = normalizeYahooTicker(yahooFromContract(contract) || '');
+      if (!y) continue;
+      if (aliases.has(y)) total += Number(pos) || 0;
+    }
+    return total;
+  }
+
+  function formatIbExecFilterTime(ms) {
+    const d = new Date(ms);
+    const p = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate())
+      + '  ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+
+  function parseIbExecTime(t) {
+    // IB: "yyyyMMdd  HH:mm:ss" or ISO
+    const s = String(t || '').trim();
+    if (!s) return NaN;
+    const iso = Date.parse(s);
+    if (Number.isFinite(iso)) return iso;
+    const m = s.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
+    if (!m) return NaN;
+    return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+  }
 
   // Declared before IB error handler — early connect errors must not hit a TDZ.
   let mdType = Math.max(1, Math.min(4, parseInt(process.env.IBKR_MARKET_DATA_TYPE || '3', 10) || 3));
@@ -550,6 +584,11 @@ async function main() {
         const orderId = Number(exec.orderId);
         const oa = orderAvgFill.get(orderId) || {};
         const px = pickFillPrice(exec.price, oa.avgFillPrice, oa.lastFillPrice, contract);
+        // Historical pull buffer (reqExecutions) — matched later in recoverMissingExitFills.
+        if (_execHistReqId != null && Number(reqId) === Number(_execHistReqId)) {
+          _execHistBuf.push({ contract, exec, price: px, orderId });
+          return;
+        }
         for (const [key, row] of Object.entries(state.byKey)) {
           let role = null;
           if (row.parentId === orderId) role = 'entry';
@@ -1275,6 +1314,153 @@ async function main() {
     } catch (e) { log('sweep error', e.message); }
   }
 
+  /**
+   * Site open + IB flat (FANG/VTR/AIR): pull IB execution history and post the
+   * real exit VWAP as role=flatten so the IBKR tab shows IB's exit price.
+   */
+  async function recoverMissingExitFills() {
+    if (DRY || !ib || !EventName || !positionsReady) return;
+    if (Date.now() - lastExecRecoverAt < 8 * 60 * 1000) return;
+    lastExecRecoverAt = Date.now();
+    let serverTrades = null;
+    try { serverTrades = await fetchJson('/api/ibkr/trades'); }
+    catch (e) { log('exec-history: trades fetch failed', e.message); return; }
+    const need = (serverTrades.trades || []).filter(t => {
+      if (!t || !(t.openQty > 0) || !t.key) return false;
+      return ibSignedQtyForYahoo(t.ticker) === 0;
+    });
+    if (!need.length) return;
+    log('exec-history: recovering exits for', need.map(t => t.ticker).join(','));
+
+    const earliest = Math.min(
+      ...need.map(t => Date.parse(t.entryTime || 0) || Date.now())
+    );
+    const fromMs = Math.max(earliest - 2 * 86400000, Date.now() - 14 * 86400000);
+    _execHistBuf = [];
+    const reqId = nextExecHistId++;
+    _execHistReqId = reqId;
+    await new Promise((resolve) => {
+      let done = false;
+      let timer = null;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        if (timer) clearTimeout(timer);
+        _execHistReqId = null;
+        try { ib.off(EventName.execDetailsEnd, onEnd); } catch (_) {}
+        resolve();
+      };
+      const onEnd = (id) => {
+        if (Number(id) !== reqId) return;
+        finish();
+      };
+      timer = setTimeout(finish, 20000);
+      try {
+        ib.on(EventName.execDetailsEnd, onEnd);
+        const filter = { time: formatIbExecFilterTime(fromMs) };
+        if (ACCOUNT) filter.acctCode = ACCOUNT;
+        ib.reqExecutions(reqId, filter);
+      } catch (e) {
+        log('exec-history: reqExecutions failed', e.message);
+        finish();
+      }
+    });
+    _execHistReqId = null;
+    if (!_execHistBuf.length) {
+      log('exec-history: no IB executions returned in window');
+      return;
+    }
+
+    let queued = 0;
+    const usedExecIds = new Set(); // dual-list (AIR.DE/PA) must not reuse the same IB exit
+    // Prefer non-error / model listing first so AIR.DE claims fills before AIR.PA.
+    need.sort((a, b) => Number(!!a.errorTrade) - Number(!!b.errorTrade));
+    for (const t of need) {
+      const aliases = yahooAliases(t.ticker);
+      const wantClose = t.side === 'sell' ? 'BOT' : 'SLD'; // close long → SELL
+      const entryMs = Date.parse(t.entryTime || 0) || 0;
+      const matches = _execHistBuf.filter((e) => {
+        const eid = String(e.exec.execId || '');
+        if (eid && usedExecIds.has(eid)) return false;
+        const ey = normalizeYahooTicker(yahooFromContract(e.contract) || '');
+        if (!ey || !aliases.has(ey)) {
+          // bare symbol match (IB AIR vs AIR.DE)
+          const sym = String((e.contract && e.contract.symbol) || '').toUpperCase();
+          const bare = String(t.ticker || '').toUpperCase().split('.')[0];
+          if (!(sym && bare && sym === bare)) return false;
+        }
+        const side = String(e.exec.side || '').toUpperCase();
+        const okSide = side === wantClose
+          || side === (wantClose === 'SLD' ? 'SELL' : 'BUY')
+          || side === (wantClose === 'SLD' ? 'S' : 'B');
+        if (!okSide) return false;
+        const ets = parseIbExecTime(e.exec.time || e.exec.dateTime || '');
+        if (Number.isFinite(ets) && entryMs && ets + 120000 < entryMs) return false;
+        return Number(e.exec.shares) > 0 && Number(e.price) > 0;
+      });
+      if (!matches.length) {
+        log('exec-history: no closing fills for', t.ticker, t.key);
+        continue;
+      }
+      let qSum = 0, vSum = 0;
+      let lastTs = null;
+      let lastExecId = null;
+      for (const m of matches) {
+        const q = Number(m.exec.shares) || 0;
+        const p = Number(m.price) || 0;
+        if (!(q > 0) || !(p > 0)) continue;
+        qSum += q;
+        vSum += q * p;
+        lastTs = m.exec.time || m.exec.dateTime || lastTs;
+        lastExecId = m.exec.execId || lastExecId;
+        if (m.exec.execId) usedExecIds.add(String(m.exec.execId));
+      }
+      if (!(qSum > 0) || !(vSum > 0)) continue;
+      const vwap = vSum / qSum;
+      const closeQty = Math.min(Number(t.openQty), qSum);
+      const fillAt = Number.isFinite(parseIbExecTime(lastTs))
+        ? new Date(parseIbExecTime(lastTs)).toISOString()
+        : new Date().toISOString();
+      const cMeta = enrichSessionMeta(
+        (state.byKey[t.key] && state.byKey[t.key].contract)
+          || toContract(t.ticker)
+      );
+      const phase = sessionPhase(cMeta || {}, Date.parse(fillAt));
+      state.pendingReports = state.pendingReports || [];
+      state.pendingReports.push({
+        kind: 'exec',
+        execId: 'ibhist-flat-' + t.key + '-' + String(lastExecId || Date.now()),
+        key: t.key,
+        ticker: t.ticker,
+        hz: t.hz || 'short',
+        side: t.side === 'sell' ? 'sell' : 'buy',
+        role: 'flatten',
+        orderId: matches[0].orderId || null,
+        qty: closeQty,
+        price: +vwap.toFixed(6),
+        currency: (cMeta && cMeta.currency) || t.currency || 'USD',
+        ccyScale: cMeta && cMeta.penceQuoted ? 100 : 1,
+        errorTrade: !!t.errorTrade,
+        session: phase,
+        sessionLabel: sessionLabel(phase),
+        recon: 'ib-exec-history',
+        markSrc: 'ibkr-exec',
+        time: fillAt
+      });
+      if (state.byKey[t.key]) {
+        state.byKey[t.key].closed = true;
+        state.byKey[t.key].updated = new Date().toISOString();
+      }
+      queued++;
+      log('exec-history: queued flatten', t.key, closeQty + '@' + vwap.toFixed(4),
+        '(' + matches.length + ' IB exec(s))');
+    }
+    if (queued) {
+      saveState(state);
+      await flushReports();
+    }
+  }
+
   // ── IB ↔ AlphaSignal ledger sync ───────────────────────────────────────────
   // Posts paper positions + avgCost so the site open qty / entry avg / ghost
   // opens match DU1764495. Untracked IB leftovers are reported, not invented.
@@ -1880,6 +2066,8 @@ async function main() {
       // 1c. IB↔AS ledger sync (also runs on its own 60s timer — see postIbRecon).
       let serverTrades = null;
       await postIbRecon();
+      // Prefer real IB exit prices from execution history when site is open / IB flat.
+      await recoverMissingExitFills().catch(e => log('exec-history error', e.message));
 
       // 2. Rows flat at IB but never closed in state (exit filled while down).
       for (const [key, row] of Object.entries(state.byKey)) {
@@ -1887,9 +2075,24 @@ async function main() {
         const held = posMap.get(posKeyOf(row.contract));
         const flatAtIb = held ? held.pos === 0 : !posMap.has(posKeyOf(row.contract));
         if (!flatAtIb) continue;
-        // Model still open + IB flat → leave for the re-arm loop above (Asia
-        // chase / EU-RTH / US pre gate). Do not mark closed while the signal lives.
-        if (keyState.get(key) === 'open') continue;
+        // Still model-open + IB flat: re-arm may re-enter unless this is an
+        // error trade / already recovered via exec-history. Skip re-arm block
+        // only for genuine live model names still held in thesis.
+        const modelOpen = keyState.get(key) === 'open';
+        const isErr = !!(row.errorTrade || ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase()));
+        if (modelOpen && !isErr && ibSignedQtyForYahoo(row.ticker) === 0) {
+          // Leave re-arm path for Asia chase — but still try to sync ledger if
+          // server shows open qty (exec-history above should have closed it).
+          try {
+            if (!serverTrades) serverTrades = await fetchJson('/api/ibkr/trades');
+            const t = (serverTrades.trades || []).find(x => x.key === key);
+            if (t && t.openQty > 0) {
+              // Do not invent stopPx; wait for next exec-history / yahoo recon.
+              log('RECONCILE: model-open but IB flat — waiting exec-history/recon for', key);
+            }
+          } catch (_) { /* ignore */ }
+          continue;
+        }
         row.closed = true;
         row.updated = new Date().toISOString();
         log('RECONCILE: marking', key, 'closed (flat at IB, model exited)');
@@ -1897,21 +2100,31 @@ async function main() {
           if (!serverTrades) serverTrades = await fetchJson('/api/ibkr/trades');
           const t = (serverTrades.trades || []).find(x => x.key === key);
           if (t && t.openQty > 0) {
-            state.pendingReports = state.pendingReports || [];
-            const fillAt = new Date().toISOString();
-            const cMeta = enrichSessionMeta(row.contract || toContract(row.ticker));
-            const phase = sessionPhase(cMeta || {}, Date.parse(fillAt));
-            state.pendingReports.push({
-              kind: 'exec', execId: `synth-${key}-${row.stopId}`, key,
-              ticker: row.ticker, hz: row.hz, side: row.side, role: 'stop',
-              orderId: row.stopId, qty: t.openQty, price: row.stopPx,
-              currency: row.contract.currency || 'USD',
-              ccyScale: row.contract.penceQuoted ? 100 : 1,
-              session: phase,
-              sessionLabel: sessionLabel(phase),
-              synthetic: true, time: fillAt
-            });
-            log('RECONCILE: synthetic stop exec reported for', key, t.openQty + '@' + row.stopPx, '(fill was missed while bridge was down)');
+            // Prefer portfolio / last mark over stopPx for missed fills.
+            const mk = portfolioMarks.get(normalizeYahooTicker(row.ticker));
+            const px = (mk && mk.price > 0) ? mk.price
+              : (row.ibAvgFill > 0 ? row.ibAvgFill : row.stopPx);
+            if (!(px > 0)) {
+              log('RECONCILE: skip synth stop — no price for', key);
+            } else {
+              state.pendingReports = state.pendingReports || [];
+              const fillAt = new Date().toISOString();
+              const cMeta = enrichSessionMeta(row.contract || toContract(row.ticker));
+              const phase = sessionPhase(cMeta || {}, Date.parse(fillAt));
+              state.pendingReports.push({
+                kind: 'exec', execId: `synth-${key}-${row.stopId || 'x'}`, key,
+                ticker: row.ticker, hz: row.hz, side: row.side, role: 'flatten',
+                orderId: row.stopId, qty: t.openQty, price: px,
+                currency: row.contract.currency || 'USD',
+                ccyScale: row.contract.penceQuoted ? 100 : 1,
+                session: phase,
+                sessionLabel: sessionLabel(phase),
+                synthetic: true, recon: 'bridge-missed-exit',
+                markSrc: (mk && mk.price > 0) ? 'ib-portfolio' : 'bridge-fallback',
+                time: fillAt
+              });
+              log('RECONCILE: synthetic flatten reported for', key, t.openQty + '@' + px);
+            }
           }
         } catch (e) { log('reconcile trades fetch failed:', e.message); }
         saveState(state);
@@ -1965,6 +2178,7 @@ async function main() {
     // Ledger sync every 60s so qty/avg/PnL stay aligned without waiting for SWEEP.
     if (positionsReady && Date.now() - lastIbReconAt > 60 * 1000) {
       await postIbRecon().catch(e => log('recon error', e.message));
+      await recoverMissingExitFills().catch(e => log('exec-history error', e.message));
     }
     // HK afternoon reopen: chase rows that are not on a live RTH MKT yet
     if (!forceReconcile && positionsReady) {
