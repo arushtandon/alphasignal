@@ -6966,9 +6966,6 @@ async function syncHistoryInBackground(){
   try{
     await loadHistoryFromServer();
     if(ST.history.length) renderHist();
-    if(ST.history.length && ST.dashData){
-      try{ await renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true}); }catch(e){ console.warn(e); }
-    }
   }catch(e){
     console.warn('History initial load failed:',e.message||e);
   }
@@ -7019,10 +7016,6 @@ async function syncHistoryInBackground(){
       try{ await refreshHistoryPnl(); }catch(e){ console.warn(e); }
     }
     renderHist();
-    // Re-paint dashboard panes so open long/medium Buys appear after history arrives.
-    if(ST.dashData){
-      try{ await renderDashboardWhenReady(ST.dashData,{keepSyncHeader:true}); }catch(e){ console.warn(e); }
-    }
   }catch(e){
     console.warn('History reload after revalidate failed:',e.message||e);
   }
