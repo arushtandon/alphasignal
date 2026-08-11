@@ -2805,14 +2805,22 @@ async function loadDashboard(force=false){
 async function forceRefreshPicks(opts){
   opts=opts||{};
   const forceUniverse=opts.forceUniverse!==false; // default true for button; boot may pass false
+  // Sparse/empty board (e.g. after deploy gutting): allow prior names back.
+  const paneN = ST.dashData
+    ? ['short','medium','long','shortSell','medSell','longSell']
+        .reduce((n,k)=>n+((ST.dashData[k]||[]).length),0)
+    : 0;
+  const allowRepeat = opts.allowRepeat === true || paneN < 3;
   const dashTsEl=document.getElementById('dashTs');
-  if(dashTsEl) dashTsEl.textContent='Regenerating server picks (rotating off prior board)…';
+  if(dashTsEl) dashTsEl.textContent=allowRepeat
+    ? 'Regenerating server picks (board was thin — allowing repeats)…'
+    : 'Regenerating server picks (rotating off prior board)…';
   try{
     const r=await fetch('/api/dashboard/picks/regen',{
       method:'POST',
       cache:'no-store',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ forceUniverse:!!forceUniverse })
+      body:JSON.stringify({ forceUniverse:!!forceUniverse, allowRepeat:!!allowRepeat })
     }).then(x=>x.json()).catch(()=>null);
     if(r && r.ok===false && r.reason==='no shortlist — universe scan started'){
       if(dashTsEl) dashTsEl.textContent='No shortlist yet — universe scan started. This can take 5–15 min…';

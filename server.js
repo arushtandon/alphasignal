@@ -7361,10 +7361,16 @@ async function generateServerPicksFromShortlist(opts = {}) {
     // Generic/empty reason fields were leaving recommended CSV Reason blanks.
     stampDashDataReasons(dashData);
 
-    // Never clobber a good board with an empty one (open-trade + rotation race).
+    // Never clobber a good board with an empty/sparse one (open-trade + rotation
+    // race, or a thin shortlist after deploy). A single surviving name used to
+    // overwrite a full short/medium board and blank the dashboard.
     const newCount = countDashPicks(dashData);
-    if (newCount === 0 && prevCount > 0) {
-      console.warn('Server picks regen produced 0 rows — keeping previous board (', prevCount, 'picks)');
+    const sparseCollapse = prevCount >= 3 && newCount < Math.min(3, Math.ceil(prevCount * 0.4));
+    if ((newCount === 0 && prevCount > 0) || sparseCollapse) {
+      console.warn(
+        'Server picks regen too thin (', newCount, 'vs prior', prevCount,
+        ') — keeping previous board'
+      );
       return {
         ok: true,
         keptPrevious: true,
@@ -10820,10 +10826,23 @@ setTimeout(async function bootDashHistorySync() {
     const cached = loadDashboardPicksFile() || dashboardPicksCache;
     if (cached?.dashData) {
       let dd = filterDashDataBySLCooldown(cached.dashData);
+      const beforeCount = countDashPicks(dd);
       const tickers = [...new Set(Object.keys(DASH_PANE_MAP).flatMap(k => (dd[k] || []).map(s => s.ticker).filter(Boolean)))];
       if (tickers.length) {
         const techMap = await getTechnicalsMapForSymbols(tickers, { maxMs: 45000 });
-        dd = filterDashDataByQuantTechMap(dd, techMap);
+        const filtered = filterDashDataByQuantTechMap(dd, techMap);
+        const afterCount = countDashPicks(filtered);
+        // Deploy/restart must not gut the board when Yahoo/FMP flips many names
+        // to Hold under a short time budget (looked like "no recommendations").
+        const collapsed = beforeCount >= 3 && afterCount < Math.min(3, Math.ceil(beforeCount * 0.4));
+        if (collapsed) {
+          console.warn(
+            'Boot: pick revalidation too destructive (', afterCount, 'vs', beforeCount,
+            ') — keeping pre-filter board'
+          );
+        } else {
+          dd = filtered;
+        }
       }
       // CRITICAL: do NOT stamp dashTs=Date.now() here. That made yesterday's
       // tickers look "fresh" after every deploy/restart and tricked operators
