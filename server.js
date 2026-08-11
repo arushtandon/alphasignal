@@ -12456,6 +12456,58 @@ try {
   }
 } catch (_) {}
 
+/** Listing market for Yahoo/IBKR tickers — mirrors bridge.js windows. */
+function ibkrMarketFromTicker(ticker) {
+  const t = String(ticker || '').toUpperCase();
+  if (t.endsWith('.HK')) return 'HK';
+  if (t.endsWith('.T')) return 'JP';
+  if (t.endsWith('.L')) return 'LSE';
+  if (t.endsWith('.DE') || t.endsWith('.F')) return 'XETRA';
+  if (t.endsWith('.PA') || t.endsWith('.AS') || t.endsWith('.MI') || t.endsWith('.BR')) return 'EURONEXT';
+  if (t.includes('.')) return 'OTHER';
+  return 'US';
+}
+
+/**
+ * Session at fill time. Returns 'pre' | 'rth' | 'post' | 'lunch' | 'closed'.
+ * Same UTC windows as ibkr-bridge/bridge.js (summer EU/US DST).
+ */
+function ibkrSessionPhase(ticker, timeIso) {
+  const ms = Date.parse(timeIso || '') || Date.now();
+  const d = new Date(ms);
+  const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
+  const dow = d.getUTCDay();
+  if (dow === 0 || dow === 6) return 'closed';
+  const m = ibkrMarketFromTicker(ticker);
+  const windows = {
+    US: { open: 13 * 60 + 30, close: 20 * 60, preOpen: 8 * 60, postClose: 24 * 60 },
+    JP: { open: 0, close: 6 * 60 },
+    HK: { open: 1 * 60 + 30, close: 8 * 60, lunchStart: 4 * 60, lunchEnd: 5 * 60 },
+    XETRA: { open: 7 * 60, close: 15 * 60 + 30 },
+    EURONEXT: { open: 7 * 60, close: 15 * 60 + 30 },
+    LSE: { open: 7 * 60, close: 15 * 60 + 30 }
+  };
+  const w = windows[m] || windows.XETRA;
+  if (m === 'US') {
+    if (utcMin >= w.open && utcMin < w.close) return 'rth';
+    if (utcMin >= (w.preOpen || 0) && utcMin < w.open) return 'pre';
+    if (utcMin >= w.close && utcMin < (w.postClose || 24 * 60)) return 'post';
+    return 'closed';
+  }
+  if (m === 'HK' && w.lunchStart != null
+    && utcMin >= w.lunchStart && utcMin < w.lunchEnd) return 'lunch';
+  if (utcMin >= w.open && utcMin < w.close) return 'rth';
+  if (utcMin < w.open) return 'pre';
+  return 'closed';
+}
+
+function ibkrSessionLabel(phase) {
+  return ({
+    rth: 'Market', pre: 'Pre-market', post: 'Post-market',
+    lunch: 'Lunch', closed: 'After hours'
+  })[phase] || phase || '—';
+}
+
 app.post('/api/ibkr/report', (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   const reports = Array.isArray(req.body && req.body.reports) ? req.body.reports : [];
@@ -12470,15 +12522,22 @@ app.post('/api/ibkr/report', (req, res) => {
       auditLog('ibkr_fill_rejected_stale_key', { key: r.key, execId: r.execId });
       continue;
     }
+    const fillTime = r.time || new Date().toISOString();
+    const ticker = String(r.ticker || '');
+    const phase = ['pre', 'rth', 'post', 'lunch', 'closed'].includes(r.session)
+      ? r.session
+      : ibkrSessionPhase(ticker, fillTime);
     const row = {
       execId: String(r.execId), key: String(r.key),
-      ticker: String(r.ticker || ''), hz: String(r.hz || 'short'),
+      ticker, hz: String(r.hz || 'short'),
       side: r.side === 'sell' ? 'sell' : 'buy',
       role: ['entry', 'tp1', 'stop', 'flatten'].includes(r.role) ? r.role : 'other',
       qty: Number(r.qty), price: Number(r.price),
       currency: String(r.currency || 'USD'), ccyScale: Number(r.ccyScale) || 1,
       orderId: r.orderId ?? null,
-      time: r.time || new Date().toISOString(),
+      time: fillTime,
+      session: phase,
+      sessionLabel: r.sessionLabel || ibkrSessionLabel(phase),
       // Tag only when bridge stamps errorTrade or optional env kill-switch.
       // Never permanently ban a ticker by legacy name list.
       errorTrade: r.errorTrade === true || IBKR_ERROR_TRADE_TICKERS.has(String(r.ticker || '').toUpperCase())
@@ -12595,6 +12654,357 @@ app.post('/api/ibkr/correct-avg', express.json({ limit: '64kb' }), (req, res) =>
     console.log('IBKR fill avg corrected:', n, 'fill(s) across', byKey.size, 'key(s)');
   }
   res.json({ ok: true, corrected: n, keys: byKey.size });
+});
+
+// ── IBKR ↔ AlphaSignal reconciliation ────────────────────────────────────────
+// Bridge posts the paper-account position snapshot. Server is source of truth
+// for the IBKR tab fills; IB is source of truth for open qty + avg cost.
+// Syncs: ghost opens (site open / IB flat), missing entry qty, entry avgCost.
+const IBKR_RECON_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_recon.json');
+const IBKR_RECON_PENDING_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_recon_pending.json');
+function normalizeIbkrYahooTicker(t) {
+  const s = String(t || '').toUpperCase();
+  const m = s.match(/^(\d+)\.HK$/);
+  if (m) return m[1].padStart(4, '0') + '.HK';
+  return s;
+}
+function loadIbkrReconPending() {
+  try { return JSON.parse(fs.readFileSync(IBKR_RECON_PENDING_FILE, 'utf8')) || {}; }
+  catch (_) { return {}; }
+}
+function saveIbkrReconPending(p) {
+  try { fs.writeFileSync(IBKR_RECON_PENDING_FILE, JSON.stringify(p)); } catch (_) {}
+}
+function loadIbkrReconReport() {
+  try { return JSON.parse(fs.readFileSync(IBKR_RECON_FILE, 'utf8')); }
+  catch (_) { return null; }
+}
+function saveIbkrReconReport(r) {
+  try { fs.writeFileSync(IBKR_RECON_FILE, JSON.stringify(r, null, 2)); } catch (_) {}
+}
+function ibkrAvgToFillUnit(avgCost, ccyScale, sampleEntryPx) {
+  let avg = Number(avgCost);
+  if (!(avg > 0)) return null;
+  // LSE: IB often reports pounds while fills are pence (ccyScale=100).
+  if ((Number(ccyScale) || 1) === 100 && sampleEntryPx > 50 && avg * 10 < sampleEntryPx) avg *= 100;
+  return avg;
+}
+/** Aggregate open lots from fill rows (same math as /api/ibkr/trades). */
+function aggregateIbkrOpenFromFills(rows) {
+  const byKey = new Map();
+  for (const r of rows) {
+    if (!r || !r.key) continue;
+    if (!byKey.has(r.key)) byKey.set(r.key, []);
+    byKey.get(r.key).push(r);
+  }
+  const opens = [];
+  for (const [key, fills] of byKey) {
+    const f0 = fills[0];
+    const entries = fills.filter(f => f.role === 'entry');
+    const exits = fills.filter(f => f.role !== 'entry');
+    const entryQty = entries.reduce((s, f) => s + Number(f.qty || 0), 0);
+    const exitQty = exits.reduce((s, f) => s + Number(f.qty || 0), 0);
+    if (!(entryQty > 0)) continue;
+    const openQty = Math.max(0, entryQty - exitQty);
+    if (!(openQty > 0)) continue;
+    const avgEntry = entries.reduce((s, f) => s + Number(f.price) * Number(f.qty), 0) / entryQty;
+    opens.push({
+      key, ticker: normalizeIbkrYahooTicker(f0.ticker),
+      rawTicker: f0.ticker,
+      hz: f0.hz, side: f0.side === 'sell' ? 'sell' : 'buy',
+      currency: f0.currency || 'USD',
+      ccyScale: Number(f0.ccyScale) || 1,
+      openQty, avgEntry,
+      errorTrade: !!(f0.errorTrade || fills.some(f => f.errorTrade)),
+      mark: null
+    });
+  }
+  return opens;
+}
+
+/**
+ * POST /api/ibkr/recon
+ * Body: { positions: [{ ticker, qty, avgCost, currency?, conId? }], marks?: {TICKER: price} }
+ * Aligns AlphaSignal fill ledger to IB paper open qty + averageCost for tracked names.
+ */
+app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  try {
+    const positions = Array.isArray(req.body && req.body.positions) ? req.body.positions : [];
+    const marksIn = (req.body && req.body.marks && typeof req.body.marks === 'object') ? req.body.marks : {};
+    const ibByY = new Map();
+    const airKeys = [];
+    for (const p of positions) {
+      if (!p) continue;
+      const y = normalizeIbkrYahooTicker(p.ticker || '');
+      if (!y) continue;
+      const qty = Number(p.qty) || 0;
+      if (!qty) continue;
+      const prev = ibByY.get(y) || { qty: 0, avgCost: null, currency: p.currency, conId: p.conId };
+      // Same ticker from dual aliases — keep signed qty (should match); prefer avgCost.
+      prev.qty = qty;
+      if (Number(p.avgCost) > 0) prev.avgCost = Number(p.avgCost);
+      if (p.currency) prev.currency = p.currency;
+      if (p.conId) prev.conId = p.conId;
+      ibByY.set(y, prev);
+      if (y === 'AIR.DE' || y === 'AIR.PA' || String(p.symbol || '').toUpperCase() === 'AIR') {
+        airKeys.push(y);
+      }
+    }
+    // Collapse AIR.* to one IB lot for matching (dual-list).
+    let airIb = null;
+    for (const y of ['AIR.DE', 'AIR.PA']) {
+      if (ibByY.has(y)) airIb = ibByY.get(y);
+    }
+    if (!airIb) {
+      for (const [y, v] of ibByY) {
+        if (y.startsWith('AIR')) { airIb = v; break; }
+      }
+    }
+
+    const rows = readIbkrFillRows();
+    const opens = aggregateIbkrOpenFromFills(rows);
+    const pending = loadIbkrReconPending();
+    const matched = [];
+    const adjusted = [];
+    const issues = [];
+    const untrackedIb = [];
+    const newFills = [];
+    const avgCorrections = new Map(); // key -> avgEntry
+    const touchedPending = new Set();
+
+    const asByTicker = new Map();
+    for (const o of opens) {
+      if (!asByTicker.has(o.ticker)) asByTicker.set(o.ticker, []);
+      asByTicker.get(o.ticker).push(o);
+      const mk = Number(marksIn[o.ticker] || marksIn[o.rawTicker]);
+      if (mk > 0) o.mark = mk;
+    }
+
+    const trackedYahoo = new Set(asByTicker.keys());
+    for (const [y, ib] of ibByY) {
+      if (y === 'AIR.DE' || y === 'AIR.PA') continue;
+      if (!trackedYahoo.has(y)) {
+        untrackedIb.push({
+          ticker: y, qty: ib.qty, avgCost: ib.avgCost,
+          note: 'IB position with no open AlphaSignal fill lot'
+        });
+      }
+    }
+
+    for (const [y, group] of asByTicker) {
+      let ib = ibByY.get(y);
+      if (y === 'AIR.DE' || y === 'AIR.PA') ib = airIb;
+      const ibQty = ib ? Number(ib.qty) || 0 : 0;
+      const ibAbs = Math.abs(ibQty);
+      // Net AlphaSignal open (buys positive, sells negative)
+      let asSigned = 0;
+      for (const o of group) asSigned += (o.side === 'sell' ? -1 : 1) * o.openQty;
+      const asAbs = Math.abs(asSigned);
+      const primary = group.slice().sort((a, b) => b.openQty - a.openQty)[0];
+      const ibSideOk = !ibQty || (asSigned === 0) || (Math.sign(ibQty) === Math.sign(asSigned));
+
+      if (!ibSideOk) {
+        issues.push({
+          ticker: y, severity: 'error',
+          detail: `Side mismatch: AlphaSignal net ${asSigned}, IB ${ibQty}`
+        });
+        continue;
+      }
+
+      const wantKey = y + '|qty';
+      touchedPending.add(wantKey);
+      const avgKey = y + '|avg';
+
+      // Qty sync
+      if (ibAbs !== asAbs) {
+        const prev = pending[wantKey] || {};
+        const streak = (prev.ibAbs === ibAbs && prev.asAbs === asAbs)
+          ? (Number(prev.streak) || 0) + 1
+          : 1;
+        pending[wantKey] = { ibAbs, asAbs, streak, at: new Date().toISOString() };
+        if (streak < 2) {
+          issues.push({
+            ticker: y, severity: 'pending',
+            detail: `Qty drift AS=${asAbs} IB=${ibAbs} (debounce ${streak}/2)`
+          });
+        } else if (ibAbs === 0 && asAbs > 0) {
+          // Ghost open — flatten each open key
+          for (const o of group) {
+            const px = o.mark > 0 ? o.mark : o.avgEntry;
+            if (!(px > 0) || !(o.openQty > 0)) continue;
+            const fillAt = new Date().toISOString();
+            const phase = ibkrSessionPhase(o.rawTicker || y, fillAt);
+            const execId = `recon-flat-${o.key}-${o.openQty}-${fillAt.slice(0, 13)}`;
+            if (_ibkrExecIds.has(execId)) continue;
+            newFills.push({
+              execId, key: o.key, ticker: o.rawTicker || y, hz: o.hz || 'short',
+              side: o.side, role: 'flatten', qty: o.openQty, price: px,
+              currency: o.currency, ccyScale: o.ccyScale, orderId: null,
+              time: fillAt, session: phase, sessionLabel: ibkrSessionLabel(phase),
+              errorTrade: !!o.errorTrade, synthetic: true, recon: 'ghost-flat'
+            });
+            adjusted.push({ ticker: y, key: o.key, action: 'ghost-flatten', qty: o.openQty, price: px });
+          }
+          delete pending[wantKey];
+        } else if (ibAbs > asAbs && primary) {
+          const delta = ibAbs - asAbs;
+          const avg = ibkrAvgToFillUnit(ib && ib.avgCost, primary.ccyScale, primary.avgEntry)
+            || primary.avgEntry;
+          if (!(avg > 0) || !(delta > 0)) continue;
+          const fillAt = new Date().toISOString();
+          const phase = ibkrSessionPhase(primary.rawTicker || y, fillAt);
+          const execId = `recon-entry-${primary.key}-${delta}-${fillAt.slice(0, 13)}`;
+          if (!_ibkrExecIds.has(execId)) {
+            newFills.push({
+              execId, key: primary.key, ticker: primary.rawTicker || y, hz: primary.hz || 'short',
+              side: primary.side, role: 'entry', qty: delta, price: avg,
+              currency: primary.currency, ccyScale: primary.ccyScale, orderId: null,
+              time: fillAt, session: phase, sessionLabel: ibkrSessionLabel(phase),
+              errorTrade: !!primary.errorTrade, synthetic: true, recon: 'qty-pad'
+            });
+            adjusted.push({ ticker: y, key: primary.key, action: 'qty-pad', qty: delta, price: avg });
+          }
+          avgCorrections.set(primary.key, avg);
+          delete pending[wantKey];
+        } else if (ibAbs < asAbs && ibAbs > 0 && primary) {
+          const delta = asAbs - ibAbs;
+          const px = primary.mark > 0 ? primary.mark : primary.avgEntry;
+          if (!(px > 0) || !(delta > 0)) continue;
+          const fillAt = new Date().toISOString();
+          const phase = ibkrSessionPhase(primary.rawTicker || y, fillAt);
+          const execId = `recon-trim-${primary.key}-${delta}-${fillAt.slice(0, 13)}`;
+          if (!_ibkrExecIds.has(execId)) {
+            newFills.push({
+              execId, key: primary.key, ticker: primary.rawTicker || y, hz: primary.hz || 'short',
+              side: primary.side, role: 'flatten', qty: Math.min(delta, primary.openQty), price: px,
+              currency: primary.currency, ccyScale: primary.ccyScale, orderId: null,
+              time: fillAt, session: phase, sessionLabel: ibkrSessionLabel(phase),
+              errorTrade: !!primary.errorTrade, synthetic: true, recon: 'qty-trim'
+            });
+            adjusted.push({
+              ticker: y, key: primary.key, action: 'qty-trim',
+              qty: Math.min(delta, primary.openQty), price: px
+            });
+          }
+          delete pending[wantKey];
+        }
+      } else {
+        delete pending[wantKey];
+        // Qty matches — check avg
+        if (ib && Number(ib.avgCost) > 0 && primary) {
+          const avg = ibkrAvgToFillUnit(ib.avgCost, primary.ccyScale, primary.avgEntry);
+          if (avg > 0) {
+            const tick = primary.ccyScale === 100 ? 0.1
+              : (avg >= 1000 ? 1 : avg >= 100 ? 0.05 : 0.01);
+            if (Math.abs(primary.avgEntry - avg) > tick) {
+              for (const o of group) avgCorrections.set(o.key, avg);
+              adjusted.push({
+                ticker: y, key: primary.key, action: 'avg-correct',
+                from: +primary.avgEntry.toFixed(6), to: avg
+              });
+            } else {
+              matched.push({
+                ticker: y, openQty: asAbs, avgEntry: +primary.avgEntry.toFixed(6),
+                ibQty: ibQty, ibAvg: avg
+              });
+            }
+          } else {
+            matched.push({ ticker: y, openQty: asAbs, ibQty });
+          }
+        } else if (asAbs === 0 && ibAbs === 0) {
+          /* nothing */
+        } else {
+          matched.push({ ticker: y, openQty: asAbs, ibQty });
+        }
+      }
+    }
+
+    // Drop stale pending keys
+    for (const k of Object.keys(pending)) {
+      if (!touchedPending.has(k) && k.endsWith('|qty')) delete pending[k];
+    }
+    saveIbkrReconPending(pending);
+
+    // Persist new fills
+    let stored = 0;
+    for (const row of newFills) {
+      try {
+        fs.appendFileSync(IBKR_FILLS_FILE, JSON.stringify(row) + '\n');
+        _ibkrExecIds.add(row.execId);
+        stored++;
+      } catch (_) {}
+    }
+
+    // Apply avg corrections across entry fills
+    let avgFixed = 0;
+    if (avgCorrections.size) {
+      const all = readIbkrFillRows();
+      const out = all.map(r => {
+        if (!r || r.role !== 'entry') return r;
+        const avg = avgCorrections.get(r.key);
+        if (!(avg > 0)) return r;
+        const prev = Number(r.price);
+        if (!(prev > 0) || Math.abs(prev - avg) < 1e-9) return r;
+        avgFixed++;
+        return { ...r, price: avg, priceCorrectedFrom: prev, priceCorrectedAt: new Date().toISOString(), recon: 'avg-correct' };
+      });
+      if (avgFixed) writeIbkrFillRows(out);
+    }
+
+    if (stored || avgFixed) {
+      auditLog('ibkr_recon_sync', {
+        stored, avgFixed,
+        adjusted: adjusted.map(a => a.action + ':' + a.ticker)
+      });
+      console.log('IBKR recon sync:', stored, 'fill(s),', avgFixed, 'avg fix(es)');
+    }
+
+    const inSync = issues.filter(i => i.severity === 'error').length === 0
+      && issues.filter(i => i.severity === 'pending').length === 0
+      && adjusted.length === 0;
+    const report = {
+      inSync,
+      ok: inSync, // UI /trades reconcile.ok
+      at: new Date().toISOString(),
+      matched: matched.length,
+      adjusted: adjusted.length,
+      pendingIssues: issues.filter(i => i.severity === 'pending').length,
+      errors: issues.filter(i => i.severity === 'error').length,
+      untrackedIb: untrackedIb.length,
+      matchedRows: matched,
+      adjustedRows: adjusted,
+      issues,
+      untrackedIbRows: untrackedIb,
+      storedFills: stored,
+      avgFixed
+    };
+    saveIbkrReconReport(report);
+    res.json({
+      ok: true,
+      inSync,
+      matched: report.matched,
+      adjusted: report.adjusted,
+      pendingIssues: report.pendingIssues,
+      errors: report.errors,
+      untrackedIb: report.untrackedIb,
+      matchedRows: matched,
+      adjustedRows: adjusted,
+      issues,
+      untrackedIbRows: untrackedIb,
+      storedFills: stored,
+      avgFixed,
+      at: report.at
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/ibkr/recon', (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const report = loadIbkrReconReport();
+  res.json({ ok: true, report: report || null });
 });
 
 // Live marks from the local IBKR bridge (TWS/Gateway market data) — preferred for MTM.
@@ -12802,14 +13212,45 @@ app.get('/api/ibkr/trades', async (req, res) => {
       if (!entryQty) continue;
       const scale = f0.ccyScale || 1;
       const avgEntry = entries.reduce((s, f) => s + f.price * f.qty, 0) / entryQty;
+      const avgExit = exitQty > 0
+        ? exits.reduce((s, f) => s + f.price * f.qty, 0) / exitQty
+        : null;
+      const lastExit = exitQty > 0 ? exits[exits.length - 1] : null;
       const realizedLocal = exits.reduce((s, f) => s + (f.price - avgEntry) * f.qty * dir, 0) / scale;
       const openQty = Math.max(0, entryQty - exitQty);
+      const enrichFill = (f) => {
+        const session = f.session || ibkrSessionPhase(f.ticker || f0.ticker, f.time);
+        return {
+          role: f.role, qty: f.qty, price: f.price, time: f.time,
+          errorTrade: !!f.errorTrade,
+          session,
+          sessionLabel: f.sessionLabel || ibkrSessionLabel(session)
+        };
+      };
+      const fillViews = fills.map(enrichFill);
+      const entrySessions = [...new Set(fillViews.filter(f => f.role === 'entry').map(f => f.sessionLabel))];
+      const exitSessions = [...new Set(fillViews.filter(f => f.role !== 'entry').map(f => f.sessionLabel))];
+      let sessionSummary = entrySessions[0] || '—';
+      if (exitSessions.length) {
+        const ex = exitSessions[exitSessions.length - 1];
+        sessionSummary = entrySessions[0] && entrySessions[0] !== ex
+          ? (entrySessions[0] + ' → ' + ex)
+          : ex;
+      } else if (entrySessions.length > 1) {
+        sessionSummary = entrySessions.join(' · ');
+      }
       const t = {
         key, ticker: f0.ticker, hz: f0.hz, side: f0.side,
         currency: f0.currency, ccyScale: scale,
         entryQty, exitQty, openQty, avgEntry,
+        avgExit,
+        lastExitPrice: lastExit ? lastExit.price : null,
+        lastExitTime: lastExit ? lastExit.time : null,
+        entrySession: entrySessions[0] || null,
+        exitSession: exitSessions.length ? exitSessions[exitSessions.length - 1] : null,
+        sessionSummary,
         realizedLocal,
-        fills: fills.map(f => ({ role: f.role, qty: f.qty, price: f.price, time: f.time, errorTrade: !!f.errorTrade })),
+        fills: fillViews,
         entryTime: entries[0] ? entries[0].time : f0.time,
         lastTime: fills[fills.length - 1].time,
         status: openQty > 0 ? (exitQty > 0 ? 'partial' : 'open') : 'closed',
@@ -12967,6 +13408,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       .map(([date, pnl]) => ({ date, realizedUsd: +pnl.toFixed(2) }));
     trades.sort((a, b) => (a.entryTime < b.entryTime ? 1 : -1));
 
+    const reconReport = loadIbkrReconReport();
     res.json({
       ok: true,
       trades,
@@ -12983,7 +13425,19 @@ app.get('/api/ibkr/trades', async (req, res) => {
         errorClosedCount: errClosed
       },
       fillCount: rows.length,
-      errorTickers: [...IBKR_ERROR_TRADE_TICKERS]
+      errorTickers: [...IBKR_ERROR_TRADE_TICKERS],
+      reconcile: reconReport ? {
+        ok: !!reconReport.ok,
+        at: reconReport.at,
+        matched: reconReport.matched || 0,
+        adjusted: reconReport.adjusted || 0,
+        pendingIssues: reconReport.pendingIssues || 0,
+        errors: reconReport.errors || 0,
+        untrackedIb: reconReport.untrackedIb || 0,
+        issues: (reconReport.issues || []).slice(0, 20),
+        untrackedIbRows: (reconReport.untrackedIbRows || []).slice(0, 20),
+        adjustedRows: (reconReport.adjustedRows || []).slice(0, 20)
+      } : null
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

@@ -1823,6 +1823,33 @@ async function renderIbkr(force){
     const wrColor = tt.winRate==null?'var(--m1)':tt.winRate>=55?'var(--buy)':tt.winRate>=40?'#F5C842':'var(--sell)';
     const net = tt.realizedUsd + tt.unrealizedUsd;
     const errNet = (tt.errorRealizedUsd||0) + (tt.errorUnrealizedUsd||0);
+    const rc = d.reconcile;
+    const rcOk = rc && rc.ok;
+    const rcColor = !rc ? 'var(--m1)' : rcOk ? 'var(--buy)' : ((rc.errors||0) > 0 ? 'var(--sell)' : '#F5C842');
+    const rcLabel = !rc ? 'No snapshot yet'
+      : rcOk ? 'In sync'
+      : ((rc.errors||0) > 0 ? 'Mismatch' : 'Syncing');
+    const rcSub = !rc ? 'bridge posts IB positions'
+      : (rc.matched||0)+' matched · '+(rc.adjusted||0)+' fixed · '+(rc.untrackedIb||0)+' IB-only'
+        + (rc.at ? ' · '+String(rc.at).slice(11,19)+'Z' : '');
+    const rcIssues = (rc && rc.issues && rc.issues.length)
+      ? '<div style="font-size:10px;color:var(--m2);font-family:DM Mono,monospace;margin:-6px 0 12px;padding:8px 10px;background:var(--s1);border:1px solid var(--b1);border-radius:8px">'
+        + '<span style="color:'+rcColor+';font-weight:600">IBKR recon · '+rcLabel+'</span> — '
+        + rc.issues.slice(0,8).map(i => (i.ticker||'')+': '+(i.detail||'')).join(' · ')
+        + ((rc.untrackedIbRows&&rc.untrackedIbRows.length)
+          ? '<div style="margin-top:4px;color:var(--m1)">IB-only (not model lots): '
+            + rc.untrackedIbRows.slice(0,10).map(u => u.ticker+'×'+u.qty).join(', ')
+            + '</div>'
+          : '')
+        + '</div>'
+      : (rc ? '<div style="font-size:10px;color:var(--m2);font-family:DM Mono,monospace;margin:-6px 0 12px;padding:8px 10px;background:var(--s1);border:1px solid var(--b1);border-radius:8px">'
+        + '<span style="color:'+rcColor+';font-weight:600">IBKR recon · '+rcLabel+'</span> — '+rcSub
+        + ((rc.untrackedIbRows&&rc.untrackedIbRows.length)
+          ? '<div style="margin-top:4px;color:var(--m1)">IB-only (not model lots): '
+            + rc.untrackedIbRows.slice(0,10).map(u => u.ticker+'×'+u.qty).join(', ')
+            + '</div>'
+          : '')
+        + '</div>' : '');
     const cards = '<div id="ibkrLiveRoot" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
       + tile('ibkrCardToday','Today realised', fp(todayReal), 'model · '+todayKey, pc(todayReal))
       + tile('ibkrCardReal','Total realised', fp(tt.realizedUsd), tt.closedCount+' closed (excl. errors)', pc(tt.realizedUsd))
@@ -1832,7 +1859,9 @@ async function renderIbkr(force){
       + tile('ibkrCardErr','Error trades PnL', fp(errNet),
           'real '+fp(tt.errorRealizedUsd||0)+' · open '+(tt.errorOpenCount||0)+' · today '+fp(todayErrReal),
           pc(errNet))
-      + '</div>';
+      + tile('ibkrCardRecon','IB ↔ Site', rcLabel, rcSub, rcColor)
+      + '</div>'
+      + rcIssues;
 
     const th = s => '<th style="text-align:'+s+';padding:4px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;border-bottom:1px solid var(--b1)">';
     const td = (s,c) => '<td style="text-align:'+s+';padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;color:'+(c||'var(--t1)')+'">';
@@ -1921,6 +1950,8 @@ async function renderIbkr(force){
       const markTag = _ms === 'ibkr' ? ' <span style="font-size:8px;color:var(--ac)">IB</span>'
         : (_ms === 'fmp' ? ' <span style="font-size:8px;color:var(--m1)">FMP</span>'
           : (_ms.indexOf('yahoo') === 0 || _ms === 'v7' ? ' <span style="font-size:8px;color:var(--m1)">YF</span>' : ''));
+      const exitPx = t.avgExit != null ? t.avgExit : t.lastExitPrice;
+      const sess = t.sessionSummary || t.entrySession || '—';
       return '<tr data-ibkr-key="'+t.key+'"'+(err?' style="opacity:.85"':'')+'>'
         + td('left') + '<span style="font-weight:600">'+t.ticker+'</span> <span style="font-size:8px;color:var(--m1)">'+hzTag(t.hz)+(err?' · ERR':'')+'</span></td>'
         + td('left',dirC) + t.side.toUpperCase()+'</td>'
@@ -1929,6 +1960,9 @@ async function renderIbkr(force){
             + String((t.key||'').split('|')[2]).replace(/^\w{3}\s/,'').slice(0,6)+'</span>' : '')+'</td>'
         + td('right') + t.entryQty+'</td>'
         + td('right') + fmtPx(t.avgEntry)+' <span style="font-size:8px;color:var(--m1)">'+t.currency+'</span></td>'
+        + td('right') + (exitPx!=null?fmtPx(exitPx):'—')
+          + (t.exitQty>0?' <span style="font-size:8px;color:var(--m1)">x'+t.exitQty+'</span>':'')+'</td>'
+        + td('left','var(--m2)') + '<span style="font-size:9px" title="Entry/exit session (Market = RTH)">'+sess+'</span></td>'
         + td('right','var(--m2)') + (t.rec&&t.rec.tp1?fmtPx(t.rec.tp1):'—')+'</td>'
         + td('right','var(--m2)') + (t.rec?(fmtPx(t.rec.lastTrailSl!=null?t.rec.lastTrailSl:t.rec.sl)):'—')+'</td>'
         + td('right') + (t.openQty>0?t.openQty:'—')+'</td>'
@@ -1943,18 +1977,20 @@ async function renderIbkr(force){
     const eRows = errorTrades.map(t => rowHtml(t, true)).join('');
     const tradesHtml = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;overflow-x:auto;margin-bottom:14px">'
       +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">Model trades — flatten PnL nets sibling horizons on the same ticker ('+modelTrades.length+' · '+d.fillCount+' fills)</div>'
-      +'<table style="width:100%;border-collapse:collapse;min-width:960px"><thead><tr>'
+      +'<table style="width:100%;border-collapse:collapse;min-width:1100px"><thead><tr>'
       + th('left')+'Ticker</th>'+th('left')+'Side</th>'+th('right')+'Fill date</th>'+th('right')+'Qty</th>'
-      + th('right')+'Avg fill</th>'+th('right')+'TP1</th>'+th('right')+'SL/TSL</th>'
+      + th('right')+'Avg entry</th>'+th('right')+'Avg exit</th>'+th('left')+'Session</th>'
+      + th('right')+'TP1</th>'+th('right')+'SL/TSL</th>'
       + th('right')+'Open qty</th>'+th('right')+'Mark</th>'
       + th('right')+'Realised $</th>'+th('right')+'Unrealised $</th>'+th('left')+'Status</th>'+th('left')+'Exit reasoning</th>'
       +'</tr></thead><tbody>'+tRows+'</tbody></table></div>';
     const errHtml = errorTrades.length
       ? ('<div style="background:var(--s1);border:1px solid #8B3A3A;border-radius:8px;padding:8px 4px;overflow-x:auto">'
         +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:#E88;font-family:DM Mono,monospace;padding:0 8px 5px">Error trades — unauthorized Hold→Buy / dual-list (excluded from model PnL) · '+errorTrades.length+'</div>'
-        +'<table style="width:100%;border-collapse:collapse;min-width:960px"><thead><tr>'
+        +'<table style="width:100%;border-collapse:collapse;min-width:1100px"><thead><tr>'
         + th('left')+'Ticker</th>'+th('left')+'Side</th>'+th('right')+'Fill date</th>'+th('right')+'Qty</th>'
-        + th('right')+'Avg fill</th>'+th('right')+'TP1</th>'+th('right')+'SL/TSL</th>'
+        + th('right')+'Avg entry</th>'+th('right')+'Avg exit</th>'+th('left')+'Session</th>'
+        + th('right')+'TP1</th>'+th('right')+'SL/TSL</th>'
         + th('right')+'Open qty</th>'+th('right')+'Mark</th>'
         + th('right')+'Realised $</th>'+th('right')+'Unrealised $</th>'+th('left')+'Status</th>'+th('left')+'Exit reasoning</th>'
         +'</tr></thead><tbody>'+eRows+'</tbody></table></div>')

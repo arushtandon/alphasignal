@@ -209,8 +209,8 @@ function toContract(ticker) {
 
 /**
  * Session phase for the listing. Approximate local RTH windows in UTC —
- * used only to choose MOO vs MKT (never to place a limit chase).
- * Returns 'pre' | 'rth' | 'lunch' | 'closed'.
+ * used for MOO vs MKT and to stamp fills as Market / Pre / Post.
+ * Returns 'pre' | 'rth' | 'post' | 'lunch' | 'closed'.
  */
 function sessionPhase(contract, nowMs = Date.now()) {
   const d = new Date(nowMs);
@@ -222,7 +222,8 @@ function sessionPhase(contract, nowMs = Date.now()) {
   // the default European window — winter is 60 min later, still correct for
   // "are we in cash hours?" decisions within a few minutes of the open.
   const windows = {
-    US:       { open: 13 * 60 + 30, close: 20 * 60, preOpen: 8 * 60 },   // 4am–4pm ET (UTC-4 DST)
+    // US: pre 04:00–09:30 ET, RTH 09:30–16:00, post 16:00–20:00 ET (UTC-4 DST)
+    US:       { open: 13 * 60 + 30, close: 20 * 60, preOpen: 8 * 60, postClose: 24 * 60 },
     JP:       { open: 0 * 60,       close: 6 * 60 },                     // 09:00–15:00 JST
     // HK: 09:30–12:00 & 13:00–16:00 HKT (lunch 12:00–13:00 — IB rejects many orders)
     HK:       { open: 1 * 60 + 30, close: 8 * 60, lunchStart: 4 * 60, lunchEnd: 5 * 60 },
@@ -234,8 +235,7 @@ function sessionPhase(contract, nowMs = Date.now()) {
   if (m === 'US') {
     if (utcMin >= w.open && utcMin < w.close) return 'rth';
     if (utcMin >= (w.preOpen || 0) && utcMin < w.open) return 'pre';
-    // US post-market (until 20:00 ET = 00:00 UTC DST) still outsideRth-tradable
-    if (utcMin >= w.close && utcMin < 24 * 60) return 'pre'; // treat as extended
+    if (utcMin >= w.close && utcMin < (w.postClose || 24 * 60)) return 'post';
     return 'closed';
   }
   if (m === 'HK' && w.lunchStart != null
@@ -244,6 +244,14 @@ function sessionPhase(contract, nowMs = Date.now()) {
   // Before open same calendar day → pre (MOO queues for today's auction)
   if (utcMin < w.open) return 'pre';
   return 'closed'; // after close → MOO for tomorrow's open
+}
+
+/** Human label for fill/session stamps on the IBKR tab. */
+function sessionLabel(phase) {
+  return ({
+    rth: 'Market', pre: 'Pre-market', post: 'Post-market',
+    lunch: 'Lunch', closed: 'After hours'
+  })[phase] || phase || '—';
 }
 
 /** True when extended-hours quote is at/better than the model entry. */
@@ -284,7 +292,7 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
       }
       return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MKT' };
     }
-    if (phase === 'pre') {
+    if (phase === 'pre' || phase === 'post') {
       // Premarket / post: only lift if quote is at or better than recommendation
       if (premarketFavorable(side, entryPx, quotePx)) {
         return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: true, transmit: false, entryStyle: 'MKT-EXT' };
@@ -526,6 +534,9 @@ async function main() {
               row.ibAvgFill = oa.avgFillPrice;
             }
           }
+          const fillAt = new Date().toISOString();
+          const cMeta = enrichSessionMeta(row.contract || contract || toContract(row.ticker));
+          const phase = sessionPhase(cMeta || {}, Date.parse(fillAt));
           state.pendingReports = state.pendingReports || [];
           state.pendingReports.push({
             kind: 'exec', execId: exec.execId, key,
@@ -534,7 +545,9 @@ async function main() {
             currency: row.contract && row.contract.currency || 'USD',
             ccyScale: row.contract && row.contract.penceQuoted ? 100 : 1,
             errorTrade: !!(row.errorTrade || ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())),
-            time: new Date().toISOString()
+            session: phase,
+            sessionLabel: sessionLabel(phase),
+            time: fillAt
           });
           saveState(state);
           if (Number(exec.price) !== px) {
@@ -940,7 +953,7 @@ async function main() {
     let quotePx = null;
     let quoteSrc = null;
     const usPhase = contract.usRth ? sessionPhase(contract) : null;
-    if (contract.usRth && (usPhase === 'pre' || usPhase === 'rth')) {
+    if (contract.usRth && (usPhase === 'pre' || usPhase === 'post' || usPhase === 'rth')) {
       ensureMktData(evt.ticker, contract);
       const q = await fetchEntryQuote(evt.ticker);
       quotePx = q.px;
@@ -1220,16 +1233,13 @@ async function main() {
   }
 
   // ── Position reconciliation ─────────────────────────────────────────────────
-  // The account is the source of truth for SHARES; AlphaSignal's event log is
-  // the source of truth for which trades should be open. Every sweep:
-  //   1. Any IB position in a ticker AlphaSignal has traded but no longer holds
-  //      open (entry followed by exit, or never tracked after a state reset)
-  //      is flattened at market. This catches positions orphaned by bridge
-  //      restarts, lost state files, and the old flatten-zero bug.
-  //   2. Any state row that is flat at IB with no working orders is marked
-  //      closed; if the server still counts an open quantity for it (its exit
-  //      filled while the bridge was down — e.g. a GTC stop), a synthetic
-  //      stop-price execution is reported so the IBKR tab closes the trade.
+  // The account is the source of truth for SHARES; AlphaSignal events are the
+  // source of truth for which trades are model-authorized. Every sweep:
+  //   1. Flatten ONLY error-tagged unauthorized names (Hold→Buy bugs, dual-list
+  //      duplicates). NEVER flatten a live model recommendation (e.g. 9988 short).
+  //      Untagged IB leftovers are left alone until the model exits or manual close.
+  //   2. State rows flat at IB with no model-open key are marked closed; if the
+  //      server still shows open qty, a synthetic stop exec is reported.
   async function reconcilePositions() {
     if (DRY || !ib) return;
     if (!positionsReady) { log('reconcile skipped — waiting for IB position snapshot'); return; }
@@ -1478,17 +1488,17 @@ async function main() {
         } else if (eu && phase === 'rth' && row.entryStyle === 'OPG') {
           reason = 'eu-rth-after-opg';
         } else if (us) {
-          if (phase === 'pre') {
+          if (phase === 'pre' || phase === 'post') {
             ensureMktData(row.ticker, contract);
             const q = await fetchEntryQuote(row.ticker);
             const fav = premarketFavorable(row.side, row.entry, q.px);
             if (fav && row.entryStyle !== 'MKT-EXT') {
               reason = 'us-pre-favorable';
-              log('RECONCILE: US pre gate OPEN', key, 'quote=', q.px, '(' + (q.src || '?') + ') entry=', row.entry, 'side=', row.side);
+              log('RECONCILE: US pre/post gate OPEN', key, 'phase=' + phase, 'quote=', q.px, '(' + (q.src || '?') + ') entry=', row.entry, 'side=', row.side);
             } else if (!fav && row.entryStyle === 'MKT-EXT') {
               // Was chasing extended; quote no longer good → park at next open
               reason = 'us-pre-unfavorable-to-opg';
-              log('RECONCILE: US pre gate CLOSED', key, 'quote=', q.px, 'entry=', row.entry, '→ OPG');
+              log('RECONCILE: US pre/post gate CLOSED', key, 'quote=', q.px, 'entry=', row.entry, '→ OPG');
             }
           } else if (phase === 'rth' && row.entryStyle === 'OPG') {
             reason = 'us-rth-after-opg';
@@ -1560,13 +1570,17 @@ async function main() {
       }
 
       // 0e2. Resume flattens for rows already tagged unauthorized in local state
-      // (Hold→Buy episode). Not a permanent ticker ban — only existing tags.
-      // Skip AIR.DE. Skip lunch. US DAY MKT only during pre/RTH.
+      // (Hold→Buy episode). Never flatten a ticker that still has an open MODEL entry.
       for (const [key, row] of Object.entries(state.byKey)) {
         if (!row) continue;
         if (!row.errorTrade && row.flatReason !== 'unauthorized-non-recommendation'
           && row.flatReason !== 'dual-list-duplicate-accounting') continue;
         if (String(row.ticker || '').toUpperCase() === 'AIR.DE') continue;
+        const yProt = normalizeYahooTicker(row.ticker || '');
+        if (yProt && openYahoo.has(yProt) && yProt !== 'AIR.PA') {
+          log('RECONCILE: skip state error-flatten — open MODEL entry', yProt, key);
+          continue;
+        }
         // Re-open if still held at IB (prior DAY MKT expired unfilled).
         if (row.closed) {
           const c0 = enrichSessionMeta(row.contract || toContract(row.ticker));
@@ -1633,6 +1647,10 @@ async function main() {
           const isErr = ERROR_TRADE_TICKERS.has(yU) || ERROR_TRADE_TICKERS.has(symU)
             || [...ERROR_TRADE_TICKERS].some(t => t.replace(/\.(DE|PA|L|HK|T)$/i, '') === symU);
           if (!isErr) continue;
+          if (y && openYahoo.has(y)) {
+            log('RECONCILE: skip ENV error-flatten — open MODEL entry', y);
+            continue;
+          }
           if (sessionPhase(contract) === 'lunch') continue;
           if (contract.usRth && sessionPhase(contract) === 'closed') continue;
           const lastTry = _flattenTried.get('err|' + pk) || 0;
@@ -1661,9 +1679,47 @@ async function main() {
         }
       }
 
-      // 1. Orphan POSITIONS — held at IB, no open AlphaSignal yahoo ticker.
-      // No everTraded gate (aged-out events used to permanently protect leftovers).
-      // Debounce persisted in state.unauthStreak across restarts.
+      // 1. ONLY flatten explicitly unauthorized (error-tagged) names.
+      // NEVER flatten a live model recommendation (open entry / non-error state).
+      // Rule: execute & keep what the model recommended; do not close 9988 etc.
+      const unauthorizedYahoo = new Set();
+      for (const [key, row] of Object.entries(state.byKey)) {
+        if (!row || !row.ticker) continue;
+        if (!(row.errorTrade || row.flatReason === 'unauthorized-non-recommendation'
+          || row.flatReason === 'env-error-ticker' || /\|error\|/.test(key))) continue;
+        const y = normalizeYahooTicker(row.ticker);
+        if (y === 'AIR.DE') continue; // recommended listing (AIR.PA is the duplicate)
+        // Live open entry event = genuine model trade — never unauthorized-close.
+        if (openYahoo.has(y)) {
+          log('RECONCILE: skip error-flatten — open MODEL entry protects', y, key);
+          continue;
+        }
+        unauthorizedYahoo.add(y);
+      }
+
+      const protectedYahoo = new Set(openYahoo);
+      for (const [key, row] of Object.entries(state.byKey)) {
+        if (!row || row.closed || !row.ticker) continue;
+        const y = normalizeYahooTicker(row.ticker);
+        if (unauthorizedYahoo.has(y)) continue;
+        if (row.errorTrade || /\|error\|/.test(key)) continue;
+        protectedYahoo.add(y);
+      }
+      try {
+        const hist = await fetchJson('/api/history');
+        for (const h of (Array.isArray(hist) ? hist : [])) {
+          if (!h || !h.ticker) continue;
+          const y = normalizeYahooTicker(h.ticker);
+          if (unauthorizedYahoo.has(y)) continue;
+          const hz = h.hz || 'short';
+          const st = String(h[hz + 'Status'] || h.status || '').toLowerCase();
+          if (st && st !== 'open' && st !== 'tp1_open') continue;
+          const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
+          if (act !== 'buy' && act !== 'sell') continue;
+          protectedYahoo.add(y);
+        }
+      } catch (_) { /* event/state protection still applies */ }
+
       for (const [pk, { pos, contract }] of posMap) {
         if (!pos) {
           if (state.unauthStreak[pk]) { delete state.unauthStreak[pk]; saveState(state); }
@@ -1672,20 +1728,18 @@ async function main() {
         const cMeta = enrichSessionMeta(contract);
         const y = normalizeYahooTicker(yahooFromContract(cMeta) || '');
         if (!y) continue;
-        // Never orphan-flatten AIR.DE model lot
-        if (y === 'AIR.DE') {
+        if (protectedYahoo.has(y) || openYahoo.has(y)) {
           if (state.unauthStreak[pk]) { delete state.unauthStreak[pk]; saveState(state); }
           continue;
         }
-        const hasOpenModel = openYahoo.has(y);
-        if (hasOpenModel) {
+        if (!unauthorizedYahoo.has(y)) {
+          // Not an open model trade, but also not error-tagged — do not touch.
           if (state.unauthStreak[pk]) { delete state.unauthStreak[pk]; saveState(state); }
           continue;
         }
-        // Venue session: only flatten in RTH (HK lunch skip via sessionPhase)
         const phase = sessionPhase(cMeta);
         if (phase !== 'rth') {
-          log('RECONCILE: orphan wait session', pk, 'ticker=' + y, 'phase=' + phase);
+          log('RECONCILE: unauthorized wait session', pk, 'ticker=' + y, 'phase=' + phase);
           continue;
         }
         const streak = (Number(state.unauthStreak[pk]) || 0) + 1;
@@ -1701,82 +1755,69 @@ async function main() {
         const qty = Math.abs(pos);
         const fid = nid();
         const oc = orderContractFromPos(cMeta);
-        log('RECONCILE: flattening orphan position', pk, 'pos=' + pos,
-          'ticker=' + y, 'contract=' + JSON.stringify(oc),
-          '(no open emitted entry — provenance unauthorized)');
-        if (!oc || (!oc.conId && !oc.symbol)) {
-          log('RECONCILE: skip flatten — incomplete contract for', pk);
-          continue;
-        }
+        log('RECONCILE: flattening UNAUTHORIZED (not a model recommendation)', pk,
+          'pos=' + pos, 'ticker=' + y);
+        if (!oc || (!oc.conId && !oc.symbol)) continue;
         transmitOrder(fid, oc, baseOrder({
           orderId: fid, action: pos > 0 ? 'SELL' : 'BUY',
           orderType: 'MKT', totalQuantity: qty, tif: 'DAY', transmit: true
-        }), 'reconcile-flatten ' + pk);
+        }), 'unauthorized-flatten ' + pk);
       }
 
-      // 1b. Excess qty — IB holds more than open AlphaSignal model lots.
-      for (const [pk, { pos, contract }] of posMap) {
-        if (!pos) continue;
-        const cMeta = enrichSessionMeta(contract);
-        const y = normalizeYahooTicker(yahooFromContract(cMeta) || '');
-        if (!y || !openYahoo.has(y)) continue;
-        if (y === 'AIR.DE') continue;
-        const modelQty = Number(openQtyByYahoo.get(y)) || 0;
-        if (!(modelQty > 0)) continue;
-        const ibQty = Math.abs(pos);
-        const excess = ibQty - modelQty;
-        if (!(excess > 0)) continue;
-        const phase = sessionPhase(cMeta);
-        if (phase !== 'rth') continue;
-        const lastTry = _flattenTried.get('xs|' + pk) || 0;
-        if (Date.now() - lastTry < 15 * 60 * 1000) continue;
-        _flattenTried.set('xs|' + pk, Date.now());
-        const fid = nid();
-        const oc = orderContractFromPos(cMeta);
-        if (!oc || (!oc.conId && !oc.symbol)) continue;
-        log('RECONCILE: flattening excess qty', pk, 'ticker=' + y,
-          'ib=' + ibQty, 'model=' + modelQty, 'excess=' + excess);
-        transmitOrder(fid, oc, baseOrder({
-          orderId: fid, action: pos > 0 ? 'SELL' : 'BUY',
-          orderType: 'MKT', totalQuantity: excess, tif: 'DAY', transmit: true
-        }), 'excess-flatten ' + pk);
-      }
+      // No excess-qty trim — never reduce a live model lot (9988/0005/2914).
 
-      // 1c. Correct reported entry avgs when IB averageCost drifts from site fills.
+      // 1c. Push IB paper snapshot → AlphaSignal recon (qty + avgCost + ghost close).
+      // Server aligns the IBKR tab ledger to the account; untracked IB leftovers
+      // are reported only (never auto-opened as model trades).
+      let serverTrades = null;
       try {
-        const corrections = [];
-        for (const [key, row] of Object.entries(state.byKey)) {
-          if (!row || row.closed || !row.entryFilled || !row.ticker) continue;
-          const y = normalizeYahooTicker(row.ticker);
-          const ibAvg = Number(row.ibAvgFill) > 0
-            ? Number(row.ibAvgFill)
-            : Number(portfolioAvgCost.get(y));
-          if (!(ibAvg > 0)) continue;
-          const tick = (row.contract && row.contract.market === 'HK')
-            ? hkTickSize(ibAvg)
-            : (ibAvg >= 1000 ? 1 : ibAvg >= 100 ? 0.1 : 0.01);
-          // Skip if we already corrected to this avg
-          if (row.avgCorrectedTo && Math.abs(Number(row.avgCorrectedTo) - ibAvg) <= tick) continue;
-          corrections.push({ key, avgEntry: ibAvg, ticker: row.ticker });
+        const positions = [];
+        const marks = {};
+        const seenCon = new Set();
+        for (const [, { pos, contract }] of posMap) {
+          if (!pos) continue;
+          const conId = contract && contract.conId != null ? Number(contract.conId) : null;
+          if (conId && seenCon.has(conId)) continue;
+          if (conId) seenCon.add(conId);
+          const y = normalizeYahooTicker(yahooFromContract(contract) || '');
+          if (!y) continue;
+          const avgCost = Number(portfolioAvgCost.get(y))
+            || Number(portfolioMarks.get(y) && portfolioMarks.get(y).avgCost)
+            || null;
+          positions.push({
+            ticker: y,
+            qty: pos,
+            avgCost: avgCost > 0 ? avgCost : null,
+            currency: contract.currency || null,
+            conId: conId || null,
+            symbol: contract.symbol || null
+          });
+          const mk = portfolioMarks.get(y);
+          if (mk && Number(mk.price) > 0) marks[y] = Number(mk.price);
         }
-        if (corrections.length) {
-          const resp = await postJson('/api/ibkr/correct-avg', { corrections });
-          if (resp && resp.ok) {
-            for (const c of corrections) {
-              if (state.byKey[c.key]) {
-                state.byKey[c.key].avgCorrectedTo = c.avgEntry;
-                state.byKey[c.key].ibAvgFill = c.avgEntry;
-              }
-            }
-            saveState(state);
-            log('RECONCILE: corrected fill avgs', resp.corrected || corrections.length,
-              corrections.map(c => c.ticker + '=' + c.avgEntry).join(' '));
+        const resp = await postJson('/api/ibkr/recon', { positions, marks, account: ACCOUNT || '' });
+        if (resp && resp.ok) {
+          const bits = [
+            'matched=' + (resp.matched || 0),
+            'adjusted=' + (resp.adjusted || 0),
+            'pending=' + (resp.pendingIssues || 0),
+            'untracked=' + (resp.untrackedIb || 0)
+          ];
+          if (resp.storedFills) bits.push('fills+' + resp.storedFills);
+          if (resp.avgFixed) bits.push('avgFix=' + resp.avgFixed);
+          log('RECONCILE: IB↔AS', bits.join(' '),
+            resp.inSync ? '✓' : '…');
+          if (Array.isArray(resp.adjustedRows) && resp.adjustedRows.length) {
+            log('RECONCILE: adjustments',
+              resp.adjustedRows.map(a => a.action + ':' + a.ticker
+                + (a.qty != null ? '×' + a.qty : '')
+                + (a.to != null ? '@' + a.to : (a.price != null ? '@' + a.price : ''))
+              ).join(' '));
           }
         }
-      } catch (e) { log('RECONCILE: fill avg correct failed', e.message); }
+      } catch (e) { log('RECONCILE: IB↔AS recon failed', e.message); }
 
       // 2. Rows flat at IB but never closed in state (exit filled while down).
-      let serverTrades = null;
       for (const [key, row] of Object.entries(state.byKey)) {
         if (row.closed || !row.contract) continue;
         const held = posMap.get(posKeyOf(row.contract));
@@ -1793,13 +1834,18 @@ async function main() {
           const t = (serverTrades.trades || []).find(x => x.key === key);
           if (t && t.openQty > 0) {
             state.pendingReports = state.pendingReports || [];
+            const fillAt = new Date().toISOString();
+            const cMeta = enrichSessionMeta(row.contract || toContract(row.ticker));
+            const phase = sessionPhase(cMeta || {}, Date.parse(fillAt));
             state.pendingReports.push({
               kind: 'exec', execId: `synth-${key}-${row.stopId}`, key,
               ticker: row.ticker, hz: row.hz, side: row.side, role: 'stop',
               orderId: row.stopId, qty: t.openQty, price: row.stopPx,
               currency: row.contract.currency || 'USD',
               ccyScale: row.contract.penceQuoted ? 100 : 1,
-              synthetic: true, time: new Date().toISOString()
+              session: phase,
+              sessionLabel: sessionLabel(phase),
+              synthetic: true, time: fillAt
             });
             log('RECONCILE: synthetic stop exec reported for', key, t.openQty + '@' + row.stopPx, '(fill was missed while bridge was down)');
           }
