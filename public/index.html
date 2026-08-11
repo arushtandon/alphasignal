@@ -533,40 +533,22 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
       </div>
       <div id="dashStatus"></div>
       <div id="hzShort" class="hz-pane">
-        <div class="dash-book-label" style="font-size:11px;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--m1);margin:.25rem 0 .5rem">Today's new picks · rotating top-N</div>
         <div class="side-label buy-label">▲ Long / Buy Setups</div>
         <div id="hzShortBuy"></div>
         <div class="side-label sell-label" style="margin-top:1.25rem">▼ Short / Sell Setups</div>
         <div id="hzShortSell"></div>
-        <div class="dash-book-label" style="font-size:11px;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--m1);margin:1.5rem 0 .5rem">Still open · not new picks (same name is not re-recommended until direction/regime change)</div>
-        <div class="side-label buy-label">▲ Open Buy</div>
-        <div id="hzShortBuyOpen"></div>
-        <div class="side-label sell-label" style="margin-top:1.25rem">▼ Open Sell</div>
-        <div id="hzShortSellOpen"></div>
       </div>
       <div id="hzMedium" class="hz-pane" style="display:none">
-        <div class="dash-book-label" style="font-size:11px;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--m1);margin:.25rem 0 .5rem">Today's new picks · rotating top-N</div>
         <div class="side-label buy-label">▲ Long / Buy Setups</div>
         <div id="hzMediumBuy"></div>
         <div class="side-label sell-label" style="margin-top:1.25rem">▼ Short / Sell Setups</div>
         <div id="hzMediumSell"></div>
-        <div class="dash-book-label" style="font-size:11px;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--m1);margin:1.5rem 0 .5rem">Still open · not new picks (same name is not re-recommended until direction/regime change)</div>
-        <div class="side-label buy-label">▲ Open Buy</div>
-        <div id="hzMediumBuyOpen"></div>
-        <div class="side-label sell-label" style="margin-top:1.25rem">▼ Open Sell</div>
-        <div id="hzMediumSellOpen"></div>
       </div>
       <div id="hzLong" class="hz-pane" style="display:none">
-        <div class="dash-book-label" style="font-size:11px;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--m1);margin:.25rem 0 .5rem">Today's new picks · rotating top-N</div>
         <div class="side-label buy-label">▲ Long / Buy Setups</div>
         <div id="hzLongBuy"></div>
         <div class="side-label sell-label" style="margin-top:1.25rem">▼ Short / Sell Setups</div>
         <div id="hzLongSell"></div>
-        <div class="dash-book-label" style="font-size:11px;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--m1);margin:1.5rem 0 .5rem">Still open · not new picks (same name is not re-recommended until direction/regime change)</div>
-        <div class="side-label buy-label">▲ Open Buy</div>
-        <div id="hzLongBuyOpen"></div>
-        <div class="side-label sell-label" style="margin-top:1.25rem">▼ Open Sell</div>
-        <div id="hzLongSellOpen"></div>
       </div>
       <div id="pickDetail"></div>
       </div><!-- end left picks -->
@@ -2869,8 +2851,7 @@ async function runDashScan(force){
     +'<div class="pl" id="pLog"></div>'
     +'</div>';
   // Clear only the buy/sell sub-panes, NOT the parent (which contains the sub-divs)
-  ['hzShortBuy','hzShortSell','hzMediumBuy','hzMediumSell','hzLongBuy','hzLongSell',
-   'hzShortBuyOpen','hzShortSellOpen','hzMediumBuyOpen','hzMediumSellOpen','hzLongBuyOpen','hzLongSellOpen'].forEach(id=>{
+  ['hzShortBuy','hzShortSell','hzMediumBuy','hzMediumSell','hzLongBuy','hzLongSell'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.innerHTML='';
   });
   const pickDetailEl = document.getElementById('pickDetail');
@@ -4398,12 +4379,6 @@ async function renderDashboard(data, opts){
     ST.dashData=null; ST.dashTs=null;
     await runDashScan(true); return;
   }
-  // Open history Buys (e.g. SU.PA long) must be available before panes render —
-  // boot often paints the board before syncHistoryInBackground finishes.
-  if(!(ST.history||[]).length){
-    try{ await loadHistoryFromServer(); }catch(e){ console.warn('renderDashboard history preload', e.message||e); }
-  }
-  try{ await refreshOpenEntryKeyIndex(); }catch(e){ console.warn('open entry index', e.message||e); }
   const ts=ST.dashTs?new Date(ST.dashTs).toLocaleString():'—';
   const dashTsEl=document.getElementById('dashTs');
   if(dashTsEl&&!opts.keepSyncHeader){
@@ -4412,201 +4387,23 @@ async function renderDashboard(data, opts){
     dashTsEl.textContent='Synced picks · '+ts+' · '+ST.dashSummary+' · live prices';
   }
   console.log('renderDashboard called, short picks:', data.short&&data.short.length, 'medium:', data.medium&&data.medium.length);
-  // VIEW (rotating top-N) vs BOOK OF RECORD (open history) — never merge so an
-  // open trade cannot appear to vanish when the board rotates.
-  const today={
-    short: data.short||[],
-    medium: data.medium||[],
-    long: data.long||[],
-    shortSell: data.shortSell||[],
-    medSell: data.medSell||[],
-    longSell: data.longSell||[]
-  };
-  const openBook={
-    short: openHistoryPicksForPane('short','buy'),
-    medium: openHistoryPicksForPane('medium','buy'),
-    long: openHistoryPicksForPane('long','buy'),
-    shortSell: openHistoryPicksForPane('short','sell'),
-    medSell: openHistoryPicksForPane('medium','sell'),
-    longSell: openHistoryPicksForPane('long','sell')
-  };
-  const syms=[].concat(
-    today.short,today.medium,today.long,today.shortSell,today.medSell,today.longSell,
-    openBook.short,openBook.medium,openBook.long,openBook.shortSell,openBook.medSell,openBook.longSell
-  ).map(s=>s.ticker).filter(Boolean);
+  // Dashboard shows ONLY today's rotating board. Open positions live on History / IBKR —
+  // never a "still open" recommendations pane (server no-repeat still blocks re-picks).
+  const syms=[...(data.short||[]),...(data.medium||[]),...(data.long||[]),...(data.shortSell||[]),...(data.medSell||[]),...(data.longSell||[])].map(s=>s.ticker).filter(Boolean);
   const u=[...new Set(syms)];
   if(u.length){ try{ await fetchLivePrices(u); }catch(e){} }
-  // Reprice today's board only — never rewrite frozen open-book entries.
-  Object.keys(today).forEach(function(k){ (today[k]||[]).forEach(function(s){ enrichDashPickLevels(s); }); });
+  ['short','medium','long','shortSell','medSell','longSell'].forEach(function(k){
+    (data[k]||[]).forEach(function(s){ enrichDashPickLevels(s); });
+  });
   if(u.length){ try{ updatePrices(); }catch(e){} }
-  updateHorizonTabLabels({
-    short: today.short.concat(openBook.short),
-    medium: today.medium.concat(openBook.medium),
-    long: today.long.concat(openBook.long),
-    shortSell: today.shortSell.concat(openBook.shortSell),
-    medSell: today.medSell.concat(openBook.medSell),
-    longSell: today.longSell.concat(openBook.longSell)
-  });
+  updateHorizonTabLabels(data);
   switchHz(curHz||'short');
-  renderPicksPane('hzShortBuy', today.short,'short','buy');
-  renderPicksPane('hzMediumBuy', today.medium,'medium','buy');
-  renderPicksPane('hzLongBuy', today.long,'long','buy');
-  renderPicksPane('hzShortSell', today.shortSell,'short','sell');
-  renderPicksPane('hzMediumSell', today.medSell,'medium','sell');
-  renderPicksPane('hzLongSell', today.longSell,'long','sell');
-  renderPicksPane('hzShortBuyOpen', openBook.short,'short','buy');
-  renderPicksPane('hzMediumBuyOpen', openBook.medium,'medium','buy');
-  renderPicksPane('hzLongBuyOpen', openBook.long,'long','buy');
-  renderPicksPane('hzShortSellOpen', openBook.shortSell,'short','sell');
-  renderPicksPane('hzMediumSellOpen', openBook.medSell,'medium','sell');
-  renderPicksPane('hzLongSellOpen', openBook.longSell,'long','sell');
-}
-
-/** Max age for treating an open IBKR entry event as still live (stale ghosts excluded). */
-var OPEN_REC_EVENT_MAX_DAYS = { short: 10, medium: 21, long: 60 };
-/** History opens without an emit still count if this fresh (e.g. SU.PA before emit). */
-var OPEN_REC_RECENT_DAYS = 3;
-
-/** Load open emitted entry keys → Map "TICKER|hz" -> { side, keyDayMs }. */
-async function refreshOpenEntryKeyIndex() {
-  try {
-    const r = await fetch('/api/ibkr/events?since=0&limit=2000&tail=1', { cache: 'no-store' });
-    if (!r.ok) return ST._openEntryByTh || new Map();
-    const j = await r.json();
-    const open = new Map(); // full key -> side
-    for (const e of (j.events || [])) {
-      if (!e || !e.key) continue;
-      if (e.type === 'entry' && (e.side === 'buy' || e.side === 'sell')) open.set(e.key, e.side);
-      else if (e.type === 'exit') open.delete(e.key);
-    }
-    const byTh = new Map();
-    const now = Date.now();
-    for (const [key, side] of open) {
-      const parts = String(key).split('|');
-      const t = String(parts[0] || '').toUpperCase();
-      const ehz = parts[1] || 'short';
-      const dayMs = Date.parse(parts[2] || '');
-      const maxDays = OPEN_REC_EVENT_MAX_DAYS[ehz] || 10;
-      if (!Number.isFinite(dayMs) || (now - dayMs) > maxDays * 86400000) continue; // stale ghost event
-      const th = t + '|' + ehz;
-      const prev = byTh.get(th);
-      if (!prev || dayMs > prev.keyDayMs) byTh.set(th, { side: side, keyDayMs: dayMs, key: key });
-    }
-    ST._openEntryByTh = byTh;
-    ST._openEntryByThAt = Date.now();
-    return byTh;
-  } catch (e) {
-    console.warn('refreshOpenEntryKeyIndex', e.message || e);
-    return ST._openEntryByTh || new Map();
-  }
-}
-
-/**
- * Open Buy/Sell book of record — NOT the full history dump.
- * Genuine = (live open emitted entry within age) OR (history open entered in last few days).
- * Never shows the same ticker as both Buy and Sell on one horizon.
- */
-function openHistoryPicksForPane(hz, side) {
-  const wantSell = side === 'sell';
-  const wantAct = wantSell ? 'sell' : 'buy';
-  const rows = (typeof getDisplayHistory === 'function' ? getDisplayHistory() : (ST.history || []));
-  const byTh = ST._openEntryByTh || new Map();
-  const now = Date.now();
-  const recentMs = OPEN_REC_RECENT_DAYS * 86400000;
-
-  // First pass: candidates for this hz (either side) — resolve buy/sell conflicts.
-  const bestByTicker = new Map(); // ticker -> { h, act, ms }
-  rows.forEach(function (h) {
-    if (!h || !h.ticker) return;
-    if ((h.hz || 'short') !== hz) return;
-    const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
-    if (act !== 'buy' && act !== 'sell') return;
-    const st = String(h[hz + 'Status'] || h.status || '').toLowerCase();
-    if (st !== 'open' && st !== 'tp1_open' && st !== 'pending') return;
-    const conf = Number(h[hz + 'Conf'] || h.conf || 0);
-    if (conf > 0 && conf < PICKS_MIN_CONF) return;
-    let rating = String(h[hz + 'Rating'] || h.rating || '');
-    // Restore mislabeled Hold on a latched open Buy/Sell from score (never recommend Hold).
-    if (/^hold$/i.test(rating.trim())) {
-      const sc = act === 'sell'
-        ? Number(h[hz + 'SellScore'] || 0)
-        : Number(h[hz + 'Score'] || 0);
-      rating = act === 'sell'
-        ? (sc >= 74 ? 'Strong Sell' : 'Sell')
-        : (sc >= 78 ? 'Strong Buy' : 'Buy');
-    }
-    // Plain Buy/Sell and Hold are not recommendations — Strong only.
-    if (!isStrongRecommendableRating(rating)) return;
-    const entry = Number(h[hz + 'Entry'] || h.entry);
-    const tp1 = Number(h[hz + 'Target1'] || h.target1);
-    const sl = Number(h[hz + 'StopLoss'] || h.stopLoss);
-    if (!(entry > 0 && tp1 > 0 && sl > 0)) return;
-    const ms = Date.parse(h.entryDate || h.timestamp || 0);
-    const th = String(h.ticker).toUpperCase() + '|' + hz;
-    const live = byTh.get(th);
-    const recent = Number.isFinite(ms) && (now - ms) <= recentMs;
-    if (!live && !recent) return;
-    // If a live emit exists, action must match its side (blocks INFY buy+sell ghosts).
-    if (live && live.side !== act) return;
-    const tk = String(h.ticker).toUpperCase();
-    const prev = bestByTicker.get(tk);
-    if (!prev || (Number.isFinite(ms) && ms > prev.ms)) {
-      bestByTicker.set(tk, { h: h, act: act, ms: Number.isFinite(ms) ? ms : 0, rating: rating });
-    }
-  });
-
-  const out = [];
-  bestByTicker.forEach(function (rec) {
-    if (rec.act !== wantAct) return;
-    const h = rec.h;
-    const conf = Number(h[hz + 'Conf'] || h.conf || 0) || PICKS_MIN_CONF;
-    const score = Math.max(Number(h[hz + (wantSell ? 'SellScore' : 'Score')] || 0), conf, PICKS_MIN_CONF);
-    const row = Object.assign({}, h, { _openRec: true });
-    const actionLabel = wantSell ? 'Sell' : 'Buy';
-    const ratingLabel = isStrongRecommendableRating(rec.rating)
-      ? rec.rating
-      : (wantSell ? 'Strong Sell' : 'Strong Buy');
-    row[hz + 'Action'] = actionLabel;
-    row.action = actionLabel;
-    row[hz + 'Conf'] = conf;
-    // Never show Hold on an open recommendation card.
-    row[hz + 'Rating'] = ratingLabel;
-    row.rating = ratingLabel;
-    if (wantSell) row[hz + 'SellScore'] = score; else row[hz + 'Score'] = score;
-    row[hz + 'Entry'] = h[hz + 'Entry'] || h.entry;
-    row[hz + 'Target1'] = h[hz + 'Target1'] || h.target1;
-    row[hz + 'Target2'] = h[hz + 'Target2'] || h.target2;
-    row[hz + 'StopLoss'] = h[hz + 'StopLoss'] || h.stopLoss;
-    if (wantSell) {
-      row.sellEntry = row[hz + 'Entry'];
-      row.sellTarget1 = row[hz + 'Target1'];
-      row.sellTarget2 = row[hz + 'Target2'];
-      row.sellStopLoss = row[hz + 'StopLoss'];
-    } else {
-      row.entry = row[hz + 'Entry'];
-      row.target1 = row[hz + 'Target1'];
-      row.target2 = row[hz + 'Target2'];
-      row.stopLoss = row[hz + 'StopLoss'];
-    }
-    out.push(row);
-  });
-  out.sort(function (a, b) {
-    return new Date(b.entryDate || b.timestamp || 0) - new Date(a.entryDate || a.timestamp || 0);
-  });
-  return out;
-}
-
-function mergeOpenHistoryIntoPicks(boardPicks, hz, side) {
-  // Kept for callers; dashboard now renders open book in separate panes.
-  const board = Array.isArray(boardPicks) ? boardPicks.slice() : [];
-  const seen = new Set(board.map(function (p) { return String(p && p.ticker || '').toUpperCase(); }));
-  openHistoryPicksForPane(hz, side).forEach(function (p) {
-    const t = String(p.ticker || '').toUpperCase();
-    if (!t || seen.has(t)) return;
-    seen.add(t);
-    board.push(p);
-  });
-  return board;
+  renderPicksPane('hzShortBuy', data.short||[],'short','buy');
+  renderPicksPane('hzMediumBuy', data.medium||[],'medium','buy');
+  renderPicksPane('hzLongBuy', data.long||[],'long','buy');
+  renderPicksPane('hzShortSell', data.shortSell||[],'short','sell');
+  renderPicksPane('hzMediumSell', data.medSell||[],'medium','sell');
+  renderPicksPane('hzLongSell', data.longSell||[],'long','sell');
 }
 
 /** Dashboard pick card: always read horizon-specific numeric fields when present */
@@ -4650,24 +4447,20 @@ function renderPicksPane(elId,picks,hz,side){
     const rating = String(s[hz+'Rating']||s.rating||'');
     if(/hold/i.test(rating) && !isStrongRecommendableRating(rating)) return false;
     if(!isStrongRecommendableRating(rating)) return false;
-    const openRec = !!s._openRec;
     if(isSell){
-      return action==='Sell' && (openRec || (s[hz+'SellScore']||0)>=62) && hasPricing
+      return action==='Sell' && (s[hz+'SellScore']||0)>=62 && hasPricing
         && levelsMeetMinRRDash(lv.entry, lv.tp1, lv.sl, true, PICKS_MIN_RR);
     }
-    if(!openRec && /SL cooldown/i.test(rating)) return false;
-    return action==='Buy' && (openRec || (s[hz+'Score']||0)>=62) && hasPricing
+    if(/SL cooldown/i.test(rating)) return false;
+    return action==='Buy' && (s[hz+'Score']||0)>=62 && hasPricing
       && levelsMeetMinRRDash(lv.entry, lv.tp1, lv.sl, false, PICKS_MIN_RR);
   });
   if(!picks||!picks.length){
-    var isOpenPane = /Open$/.test(elId);
     var emptyMsg = gated
       ? ((isSell?'Sell':'Buy')+' · '+hz+' is paused by DISABLED_BRACKETS on the server. Clear that env var (or switch timeframe) to see picks.')
-      : (isOpenPane
-        ? ('No open '+hz+' Strong '+(isSell?'Sell':'Buy')+' recommendations in the live book.')
-        : (isSell
-          ? ((window.ST&&ST.sellPicksDisabled)?'Sell picks are reference-only: backtests show no positive expectancy on short trades (buy brackets carry the edge). Sell scores remain visible in Analysis.':'No new Strong Sell setups today (score ≥74, Conf ≥ '+PICKS_MIN_CONF+'%, RR ≥ '+PICKS_MIN_RR+':1). Hold / plain Sell are not recommended.')
-          : 'No new Strong Buy setups today (score ≥78, Conf ≥ '+PICKS_MIN_CONF+'%, RR ≥ '+PICKS_MIN_RR+':1). Hold / plain Buy are not recommended.'));
+      : (isSell
+        ? ((window.ST&&ST.sellPicksDisabled)?'Sell picks are reference-only: backtests show no positive expectancy on short trades (buy brackets carry the edge). Sell scores remain visible in Analysis.':'No Strong Sell setups today (score ≥74, Conf ≥ '+PICKS_MIN_CONF+'%, RR ≥ '+PICKS_MIN_RR+':1). Try another horizon or Refresh picks.')
+        : 'No Strong Buy setups today (score ≥78, Conf ≥ '+PICKS_MIN_CONF+'%, RR ≥ '+PICKS_MIN_RR+':1). Try another horizon or Refresh picks.');
     el.innerHTML = '<div style="padding:.75rem 1rem;font-size:11px;color:var(--m1);font-family:DM Mono,monospace;border:1px dashed var(--b1);border-radius:8px;margin:.5rem 0">'
       + emptyMsg + '</div>';
     return;
@@ -4689,13 +4482,13 @@ function renderPicksPane(elId,picks,hz,side){
     const reason=formatRecommendedReason(s, hz, action==='Sell', entryP, tp1, tp2, sl);
     const pnl=calcPnl(entryP,tp1,sl,action);
     const ratingLabel=s[ratingKey]||action;
-    const rankTag = s._openRec ? 'OPEN' : (isSell?'SHORT':'PICK');
+    const rankTag = isSell?'SHORT':'PICK';
     return `<div class="pick-card ${ac}" onclick="loadPickDetail('${s.ticker}','${hz}')">
       <div class="pc-rank">#${i+1} ${rankTag} <span class="pc-score">${score}/100</span></div>
       <div class="pc-ticker">${s.ticker}</div>
       <div class="pc-name">${s.name||s.ticker}</div>
       <div class="pc-action ${ac}">${ratingLabel}</div>
-      <div class="pc-conf">${s._openRec?'Open recommendation':'New pick'} · ${action} · Conf: ${conf}%</div>
+      <div class="pc-conf">${action} setup · Conf: ${conf}%</div>
       ${s.sectorTrend?`<div style="font-family:'DM Mono',monospace;font-size:9px;color:${s.sectorTrend.includes('↑')?'var(--buy)':s.sectorTrend.includes('↓')?'var(--sell)':'var(--m1)'};margin-top:2px" title="Sector trend via sector-ETF proxy — trade with the sector's tide">${s.sectorTrend}</div>`:''}
       <div class="pc-divider"></div>
       <div class="pc-pnl">

@@ -13632,6 +13632,33 @@ app.get('/api/ibkr/trades', async (req, res) => {
         recByKey.set(e.key, rec);
       }
     } catch (_) {}
+
+    /** Backfill null tp1/sl from history when the emit stored incomplete levels. */
+    function historyLevelsForIbkrTrade(key, ticker, hz) {
+      const day = String(key || '').split('|')[2] || '';
+      const tk = normalizeHistoryTicker(ticker);
+      const z = hz || 'short';
+      let best = null;
+      for (const h of tradeHistory || []) {
+        if (!h || normalizeHistoryTicker(h.ticker) !== tk) continue;
+        if (String(h.hz || 'short') !== String(z)) continue;
+        const entry = parseFloat(h[z + 'Entry'] || h.entry);
+        const tp1 = parseFloat(h[z + 'Target1'] || h.target1);
+        const tp2 = parseFloat(h[z + 'Target2'] || h.target2);
+        const sl = parseFloat(h[z + 'StopLoss'] || h.stopLoss);
+        if (!(tp1 > 0) && !(sl > 0)) continue;
+        const row = { entry: entry > 0 ? entry : null, tp1: tp1 > 0 ? tp1 : null, tp2: tp2 > 0 ? tp2 : null, sl: sl > 0 ? sl : null, name: h.name || ticker };
+        if (day && historyTradeEntryDay(h) === day) return row;
+        if (!best) best = row;
+      }
+      return best;
+    }
+    function synthesizeTp1FromEntry(avgEntry, hz, isSell) {
+      const e = Number(avgEntry);
+      if (!(e > 0)) return null;
+      const pct = ({ short: 0.035, medium: 0.07, long: 0.12 })[hz || 'short'] || 0.035;
+      return +(isSell ? e * (1 - pct) : e * (1 + pct)).toFixed(4);
+    }
     // Overlay last IB paper snapshot so the tab matches account qty/avg even if
     // recon fill rows were delayed or purged. IB is source of truth for opens.
     const reconSnap = loadIbkrReconReport();
@@ -13648,8 +13675,29 @@ app.get('/api/ibkr/trades', async (req, res) => {
     }
 
     for (const t of trades) {
-      const rec = recByKey.get(t.key);
-      if (rec) t.rec = rec;
+      const rec = Object.assign({}, recByKey.get(t.key) || {});
+      // Older emits sometimes stored tp1:null — fill from history, then synthesize.
+      if (!(Number(rec.tp1) > 0) || !(Number(rec.sl) > 0) || !(Number(rec.entry) > 0)) {
+        const histLv = historyLevelsForIbkrTrade(t.key, t.ticker, t.hz);
+        if (histLv) {
+          if (!(Number(rec.tp1) > 0) && histLv.tp1 > 0) rec.tp1 = histLv.tp1;
+          if (!(Number(rec.tp2) > 0) && histLv.tp2 > 0) rec.tp2 = histLv.tp2;
+          if (!(Number(rec.sl) > 0) && histLv.sl > 0) rec.sl = histLv.sl;
+          if (!(Number(rec.entry) > 0) && histLv.entry > 0) rec.entry = histLv.entry;
+          if (!rec.name && histLv.name) rec.name = histLv.name;
+        }
+      }
+      if (!(Number(rec.tp1) > 0) && Number(t.avgEntry) > 0) {
+        rec.tp1 = synthesizeTp1FromEntry(t.avgEntry, t.hz, t.side === 'sell');
+        rec.tp1Synthesized = true;
+      }
+      if (!(Number(rec.sl) > 0) && Number(t.avgEntry) > 0) {
+        const e = Number(t.avgEntry);
+        const pct = ({ short: 0.025, medium: 0.05, long: 0.08 })[t.hz || 'short'] || 0.025;
+        rec.sl = +((t.side === 'sell' ? e * (1 + pct) : e * (1 - pct)).toFixed(4));
+        rec.slSynthesized = true;
+      }
+      t.rec = rec;
       // Exit type from the actual fills (what really closed the trade at IB).
       const hasTp1 = t.fills.some(f => f.role === 'tp1');
       const hasStop = t.fills.some(f => f.role === 'stop');
@@ -13658,7 +13706,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       // Prefer the AlphaSignal exit reason when present; only fall back to
       // fill-role heuristics. Flatten fills used to be mislabeled "signal/time
       // exit" even when the bridge force-closed on a Hold rewrite.
-      const modelReason = (rec && (rec.exitReason || rec.exitStatus)) || null;
+      const modelReason = (rec.exitReason || rec.exitStatus) || null;
       if (t.errorTrade && (t.status === 'closed' || hasFlat)) {
         t.exitType = 'error flatten';
       } else {
