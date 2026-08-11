@@ -2082,6 +2082,11 @@ const DASH_HORIZON_MIN_PCT = {
 const PICKS_MIN_RR = 1.1;
 /** Must match server PICKS_MIN_CONF — confidence % below this is never recommended. */
 const PICKS_MIN_CONF = 62;
+/** Board / open book: Strong Buy or Strong Sell only — never Hold or plain Buy/Sell. */
+function isStrongRecommendableRating(rating) {
+  const r = String(rating || '').trim().toLowerCase();
+  return r === 'strong buy' || r === 'strong sell';
+}
 
 function rewardRiskRatioDash(entry, tp1, sl, isSell) {
   var e = parseFloat(entry), t = parseFloat(tp1), s = parseFloat(sl);
@@ -4520,6 +4525,18 @@ function openHistoryPicksForPane(hz, side) {
     if (st !== 'open' && st !== 'tp1_open' && st !== 'pending') return;
     const conf = Number(h[hz + 'Conf'] || h.conf || 0);
     if (conf > 0 && conf < PICKS_MIN_CONF) return;
+    let rating = String(h[hz + 'Rating'] || h.rating || '');
+    // Restore mislabeled Hold on a latched open Buy/Sell from score (never recommend Hold).
+    if (/^hold$/i.test(rating.trim())) {
+      const sc = act === 'sell'
+        ? Number(h[hz + 'SellScore'] || 0)
+        : Number(h[hz + 'Score'] || 0);
+      rating = act === 'sell'
+        ? (sc >= 74 ? 'Strong Sell' : 'Sell')
+        : (sc >= 78 ? 'Strong Buy' : 'Buy');
+    }
+    // Plain Buy/Sell and Hold are not recommendations — Strong only.
+    if (!isStrongRecommendableRating(rating)) return;
     const entry = Number(h[hz + 'Entry'] || h.entry);
     const tp1 = Number(h[hz + 'Target1'] || h.target1);
     const sl = Number(h[hz + 'StopLoss'] || h.stopLoss);
@@ -4534,7 +4551,7 @@ function openHistoryPicksForPane(hz, side) {
     const tk = String(h.ticker).toUpperCase();
     const prev = bestByTicker.get(tk);
     if (!prev || (Number.isFinite(ms) && ms > prev.ms)) {
-      bestByTicker.set(tk, { h: h, act: act, ms: Number.isFinite(ms) ? ms : 0 });
+      bestByTicker.set(tk, { h: h, act: act, ms: Number.isFinite(ms) ? ms : 0, rating: rating });
     }
   });
 
@@ -4546,12 +4563,15 @@ function openHistoryPicksForPane(hz, side) {
     const score = Math.max(Number(h[hz + (wantSell ? 'SellScore' : 'Score')] || 0), conf, PICKS_MIN_CONF);
     const row = Object.assign({}, h, { _openRec: true });
     const actionLabel = wantSell ? 'Sell' : 'Buy';
+    const ratingLabel = isStrongRecommendableRating(rec.rating)
+      ? rec.rating
+      : (wantSell ? 'Strong Sell' : 'Strong Buy');
     row[hz + 'Action'] = actionLabel;
     row.action = actionLabel;
     row[hz + 'Conf'] = conf;
-    // Always show Buy/Sell — never a demoted Hold rating on an open book card.
-    row[hz + 'Rating'] = actionLabel;
-    row.rating = actionLabel;
+    // Never show Hold on an open recommendation card.
+    row[hz + 'Rating'] = ratingLabel;
+    row.rating = ratingLabel;
     if (wantSell) row[hz + 'SellScore'] = score; else row[hz + 'Score'] = score;
     row[hz + 'Entry'] = h[hz + 'Entry'] || h.entry;
     row[hz + 'Target1'] = h[hz + 'Target1'] || h.target1;
@@ -4627,12 +4647,15 @@ function renderPicksPane(elId,picks,hz,side){
     const hasPricing = lv.entry!=null && lv.sl!=null && lv.tp1!=null;
     const conf = Number(s[hz+'Conf']||s.shortConf||s.conf||0);
     if(!(conf>=PICKS_MIN_CONF)) return false;
+    const rating = String(s[hz+'Rating']||s.rating||'');
+    if(/hold/i.test(rating) && !isStrongRecommendableRating(rating)) return false;
+    if(!isStrongRecommendableRating(rating)) return false;
     const openRec = !!s._openRec;
     if(isSell){
       return action==='Sell' && (openRec || (s[hz+'SellScore']||0)>=62) && hasPricing
         && levelsMeetMinRRDash(lv.entry, lv.tp1, lv.sl, true, PICKS_MIN_RR);
     }
-    if(!openRec && /SL cooldown/i.test(String(s[hz+'Rating']||''))) return false;
+    if(!openRec && /SL cooldown/i.test(rating)) return false;
     return action==='Buy' && (openRec || (s[hz+'Score']||0)>=62) && hasPricing
       && levelsMeetMinRRDash(lv.entry, lv.tp1, lv.sl, false, PICKS_MIN_RR);
   });
@@ -4641,10 +4664,10 @@ function renderPicksPane(elId,picks,hz,side){
     var emptyMsg = gated
       ? ((isSell?'Sell':'Buy')+' · '+hz+' is paused by DISABLED_BRACKETS on the server. Clear that env var (or switch timeframe) to see picks.')
       : (isOpenPane
-        ? ('No open '+hz+' '+(isSell?'Sell':'Buy')+' recommendations in the book of record.')
+        ? ('No open '+hz+' Strong '+(isSell?'Sell':'Buy')+' recommendations in the live book.')
         : (isSell
-          ? ((window.ST&&ST.sellPicksDisabled)?'Sell picks are reference-only: backtests show no positive expectancy on short trades (buy brackets carry the edge). Sell scores remain visible in Analysis.':'No new sell setups today with Conf ≥ '+PICKS_MIN_CONF+'% and RR ≥ '+PICKS_MIN_RR+':1. See Open recommendations below.')
-          : 'No new buy setups today with Conf ≥ '+PICKS_MIN_CONF+'% and RR ≥ '+PICKS_MIN_RR+':1. Open recommendations (book of record) are listed separately below.'));
+          ? ((window.ST&&ST.sellPicksDisabled)?'Sell picks are reference-only: backtests show no positive expectancy on short trades (buy brackets carry the edge). Sell scores remain visible in Analysis.':'No new Strong Sell setups today (score ≥74, Conf ≥ '+PICKS_MIN_CONF+'%, RR ≥ '+PICKS_MIN_RR+':1). Hold / plain Sell are not recommended.')
+          : 'No new Strong Buy setups today (score ≥78, Conf ≥ '+PICKS_MIN_CONF+'%, RR ≥ '+PICKS_MIN_RR+':1). Hold / plain Buy are not recommended.'));
     el.innerHTML = '<div style="padding:.75rem 1rem;font-size:11px;color:var(--m1);font-family:DM Mono,monospace;border:1px dashed var(--b1);border-radius:8px;margin:.5rem 0">'
       + emptyMsg + '</div>';
     return;

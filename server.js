@@ -6563,12 +6563,22 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
     : null;
 
   applyAnalyticsSnapshotToTrade(trade, shell, fund, hz);
-  // Open recommendations keep Buy/Sell — later score refresh must not → Hold.
+  // Open recommendations keep Buy/Sell — single writer refuses Hold demote.
+  // Also restore rating so a latched Buy is never displayed as Hold.
   if (keepAction) {
-    trade.action = keepAction;
-    trade[hz + 'Action'] = keepAction;
+    writeOpenRowAction(trade, hz, keepAction);
+    trade._freezeOpenAction = true;
+    const score = keepAction === 'Sell'
+      ? Number(trade[hz + 'SellScore'] || trade.sellScore || 0)
+      : Number(trade[hz + 'Score'] || trade.score || 0);
+    const restoredRating = keepAction === 'Sell'
+      ? (score >= 74 ? 'Strong Sell' : 'Sell')
+      : (score >= 78 ? 'Strong Buy' : 'Buy');
+    if (!trade[hz + 'Rating'] || /hold/i.test(String(trade[hz + 'Rating']))) {
+      trade[hz + 'Rating'] = restoredRating;
+    }
     if (!trade.rating || /hold/i.test(String(trade.rating))) {
-      trade.rating = keepAction === 'Sell' ? 'Sell' : 'Buy';
+      trade.rating = trade[hz + 'Rating'] || restoredRating;
     }
   }
   trade.quantRegime = shell.quantSignal[hz]?.regime || trade.quantRegime || null;
@@ -6584,13 +6594,22 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
     ? frozenEntry
     : tech.currentPrice;
   if (basePx && Number.isFinite(basePx)) {
-    // Per-horizon action from the trade itself — never default long/medium to
-    // shortAction/Hold (that wiped SU.PA long Buy levels on revalidation).
+    // Per-horizon action from the trade itself — never invent Hold for an open status.
     const hzAct = (h) => {
       const a = trade[h + 'Action'];
       if (a) return a;
       if (h === hz && trade.action) return trade.action;
-      return 'Hold';
+      const st = String(trade[h + 'Status'] || (h === hz ? trade.status : '') || '').toLowerCase();
+      if (st === 'open' || st === 'tp1_open' || st === 'pending') {
+        if (trade.action) return trade.action;
+        const side = typeof ibkrLiveEntrySide === 'function'
+          ? ibkrLiveEntrySide(trade.ticker, h, trade.entryDate || trade.timestamp)
+          : null;
+        if (side === 'sell') return 'Sell';
+        if (side === 'buy') return 'Buy';
+        return a || trade.action || '';
+      }
+      return a || 'Hold';
     };
     const tempRow = {
       ...trade,
@@ -6635,8 +6654,8 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
   }
 
   if (keepAction) {
-    trade.action = keepAction;
-    trade[hz + 'Action'] = keepAction;
+    writeOpenRowAction(trade, hz, keepAction);
+    trade._freezeOpenAction = true;
   }
   fixHistoryRecordMinRR(trade);
   return { ok: true, trade, shell };
@@ -7129,13 +7148,20 @@ async function generateServerPicksFromShortlist(opts = {}) {
         row[hz + 'Score'] = buy;
         row[hz + 'SellScore'] = sell;
         // sig.action / sig.rating are now canonical (set by applyTierScoreCaps from final score).
-        row[hz + 'Action'] = cooled ? 'Hold' : (sig.action || 'Hold');
+        // New picks only — writeOpenRowAction refuses Hold if this row were latched open.
+        writeOpenRowAction(row, hz, cooled ? 'Hold' : (sig.action || 'Hold'));
         row[hz + 'Rating'] = cooled ? 'SL cooldown' : (sig.rating || 'Hold');
         row[hz + 'Conf'] = sig.winRateHint || Math.max(buy, sell);
         // Hard floor: never recommend when displayed confidence is below 62%.
         if (!cooled && (row[hz + 'Action'] === 'Buy' || row[hz + 'Action'] === 'Sell')
           && (Number(row[hz + 'Conf']) || 0) < PICKS_MIN_CONF) {
-          row[hz + 'Action'] = 'Hold';
+          writeOpenRowAction(row, hz, 'Hold');
+          row[hz + 'Rating'] = 'Hold';
+        }
+        // Board only surfaces Strong Buy / Strong Sell — plain Buy/Sell and Hold are not recommendations.
+        if (!cooled && (row[hz + 'Action'] === 'Buy' || row[hz + 'Action'] === 'Sell')
+          && !isStrongRecommendableRating(row[hz + 'Rating'])) {
+          writeOpenRowAction(row, hz, 'Hold');
           row[hz + 'Rating'] = 'Hold';
         }
         const condTxt = (sig.conditions || []).slice(0, 4).join('; ');
@@ -7765,6 +7791,12 @@ async function addTradesToHistory(trades) {
         const rr = rewardRiskRatio(e, tp1, sl, isSell);
         console.log('History add skipped (RR <', PICKS_MIN_RR + '):', trade.ticker, hz, 'RR=', rr != null ? rr.toFixed(2) : 'n/a');
         auditLog('entry_blocked_min_rr', { ticker: trade.ticker, hz, rr });
+        continue;
+      }
+      const rating = trade[hz + 'Rating'] || trade.rating || '';
+      if (!isStrongRecommendableRating(rating)) {
+        console.log('History add skipped (not Strong Buy/Sell):', trade.ticker, hz, 'rating=', rating);
+        auditLog('entry_blocked_not_strong', { ticker: trade.ticker, hz, rating });
         continue;
       }
       // Earnings blackout for brand-new entries: a quarterly report inside the
@@ -10220,6 +10252,12 @@ const PICKS_MIN_RR = Math.max(1.1, parseFloat(process.env.PICKS_MIN_RR || '1.1')
 /** UI "confidence %" (= winRateHint). Below this → never Buy/Sell / never IBKR. */
 const PICKS_MIN_CONF = Math.max(62, parseInt(process.env.PICKS_MIN_CONF || '62', 10) || 62);
 
+/** Recommended board / IBKR / open-book: Strong Buy or Strong Sell only — never Hold or plain Buy/Sell. */
+function isStrongRecommendableRating(rating) {
+  const r = String(rating || '').trim().toLowerCase();
+  return r === 'strong buy' || r === 'strong sell';
+}
+
 function rewardRiskRatio(entry, tp1, sl, isSell) {
   const e = parseFloat(entry), t = parseFloat(tp1), s = parseFloat(sl);
   if (!(e > 0) || !(t > 0) || !(s > 0)) return null;
@@ -10421,10 +10459,12 @@ function filterDashDataBySLCooldown(dashData) {
       if (side === 'buy') {
         if (isSLCooldownActive(pick.ticker, hz)) return false;
         if (/SL cooldown/i.test(rating)) return false;
-        // Only genuine Buy setups with score + confidence ≥ 62 belong in a buy pane.
-        if (!(action === 'Buy' && (pick[hz + 'Score'] || 0) >= 62
+        // Strong Buy only — Hold / plain Buy are never recommended.
+        if (!(action === 'Buy' && isStrongRecommendableRating(rating)
+          && (pick[hz + 'Score'] || 0) >= 62
           && (Number(pick[hz + 'Conf']) || 0) >= PICKS_MIN_CONF)) return false;
-      } else if (!(action === 'Sell' && (pick[hz + 'SellScore'] || 0) >= 62
+      } else if (!(action === 'Sell' && isStrongRecommendableRating(rating)
+        && (pick[hz + 'SellScore'] || 0) >= 62
         && (Number(pick[hz + 'Conf']) || 0) >= PICKS_MIN_CONF)) {
         return false;
       }
@@ -11067,6 +11107,61 @@ function injectAnalyzeRowFromServerTech(row, tech) {
 }
 
 /** SD channel + volume S/R entry / TP / SL (aligned with dashboard client math). */
+/**
+ * SINGLE WRITER for an open row's Buy/Sell action. Refuses Hold/blank when the
+ * row is latched (open history Buy/Sell OR live emitted entry). New non-open
+ * picks may still demote to Hold via Conf/RR gates.
+ * @returns {boolean} true if the desired action was applied; false if refused.
+ */
+function isOpenRowLatched(row, hz) {
+  if (!row || !hz) return false;
+  if (row._freezeOpenAction) return true;
+  if (row.ticker && typeof ibkrLiveEntrySide === 'function'
+    && ibkrLiveEntrySide(row.ticker, hz, row.entryDate || row.timestamp)) {
+    return true;
+  }
+  const openAct = String(row[hz + 'Action'] || ((row.hz || 'short') === hz ? row.action : '') || '').toLowerCase();
+  // Explicit open status only — empty status = new board pick (may demote to Hold).
+  const openSt = String(row[hz + 'Status'] || ((row.hz || 'short') === hz ? row.status : '') || '').toLowerCase();
+  if ((openAct === 'buy' || openAct === 'sell')
+    && (openSt === 'open' || openSt === 'tp1_open' || openSt === 'pending')) {
+    return true;
+  }
+  return false;
+}
+
+function writeOpenRowAction(row, hz, desired) {
+  if (!row || !hz) return false;
+  const wantRaw = desired == null ? '' : String(desired);
+  const want = wantRaw.toLowerCase();
+  const isHoldOrBlank = !want || want === 'hold';
+  const latched = isOpenRowLatched(row, hz);
+  if (latched && isHoldOrBlank) {
+    let keep = String(row[hz + 'Action'] || row.action || '');
+    if (!/^buy$/i.test(keep) && !/^sell$/i.test(keep) && row.ticker
+      && typeof ibkrLiveEntrySide === 'function') {
+      const side = ibkrLiveEntrySide(row.ticker, hz, row.entryDate || row.timestamp);
+      if (side === 'buy' || side === 'sell') keep = side === 'sell' ? 'Sell' : 'Buy';
+    }
+    if (/^buy$/i.test(keep) || /^sell$/i.test(keep)) {
+      const keepAction = /^sell$/i.test(keep) ? 'Sell' : 'Buy';
+      row[hz + 'Action'] = keepAction;
+      if (String(row.hz || 'short') === hz) row.action = keepAction;
+      row._freezeOpenAction = true;
+    }
+    return false;
+  }
+  const next = want === 'sell' ? 'Sell' : want === 'buy' ? 'Buy' : 'Hold';
+  row[hz + 'Action'] = next;
+  if (String(row.hz || 'short') === hz || (!row.hz && hz === 'short')) {
+    row.action = next;
+  }
+  if (next === 'Buy' || next === 'Sell') {
+    if (isOpenRowLatched(row, hz)) row._freezeOpenAction = true;
+  }
+  return true;
+}
+
 function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
   if (!row || !livePrice || livePrice <= 0) return row;
   const e = livePrice;
@@ -11091,27 +11186,21 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
   for (const hz of ['short', 'medium', 'long']) {
     const act = String(row[actionKeys[hz]] || row.action || '').toLowerCase();
     if (act !== 'buy' && act !== 'sell') {
+      // Never blank levels on a latched open horizon (even if action momentarily empty).
+      if (isOpenRowLatched(row, hz)) continue;
       row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = '';
       continue;
     }
     const isSell = act === 'sell';
     // All horizons: TP1/TP2 from ATR + momentum + structure; SL from trail/structure.
     // If TP1/SL cannot clear PICKS_MIN_RR (1.1:1), or confidence < 62%, do not recommend.
-    // Auto-latch: live emitted entry (no exit) skips Conf/RR demote to Hold.
-    if (!row._freezeOpenAction && row.ticker
-      && ibkrLiveEntrySide(row.ticker, hz, row.entryDate || row.timestamp)) {
-      row._freezeOpenAction = true;
-    }
+    // Demote only via writeOpenRowAction (refuses Hold on latched open rows).
     const clearHz = () => {
-      // Dashboard / new-pick path: drop levels + demote. Latched / frozen open
-      // rows — never rewrite those to Hold (IBKR already authorized).
-      if (row._freezeOpenAction) {
+      if (!writeOpenRowAction(row, hz, 'Hold')) {
         row[hz + 'Entry'] = row[hz + 'Entry'] || '';
         return;
       }
       row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = '';
-      row[actionKeys[hz]] = 'Hold';
-      if (String(row.action || '').toLowerCase() === act) row.action = 'Hold';
     };
     const conf = Number(row[hz + 'Conf'] || row.conf || 0);
     if (conf > 0 && conf < PICKS_MIN_CONF) { clearHz(); continue; }
@@ -12103,11 +12192,68 @@ try {
   }
 } catch (_) {}
 
-/** Dual-listed names that must not open two IBKR brackets for the same thesis. */
+/** Dual-listed names that must not open two IBKR brackets for the same thesis.
+ *  Resolved once via aliases + IB conId — not per-endpoint name collapses. */
 const IBKR_LISTING_ALIASES = {
   'AIR.DE': ['AIR.PA'],
   'AIR.PA': ['AIR.DE']
 };
+
+function ibkrYahooAliases(ticker) {
+  const y = String(ticker || '').toUpperCase();
+  const out = new Set([y]);
+  for (const a of (IBKR_LISTING_ALIASES[y] || [])) out.add(String(a).toUpperCase());
+  return out;
+}
+
+/** Resolve IB position for a yahoo ticker via exact match, listing alias, or conId. */
+function resolveIbPosForYahoo(yahoo, ibByY, ibByConId) {
+  const y = String(yahoo || '').toUpperCase();
+  if (ibByY && ibByY.has(y)) return ibByY.get(y);
+  for (const a of ibkrYahooAliases(y)) {
+    if (a !== y && ibByY && ibByY.has(a)) return ibByY.get(a);
+  }
+  if (ibByConId && ibByConId.size) {
+    for (const [cid, canonY] of ibByConId) {
+      if (!ibkrYahooAliases(y).has(String(canonY || '').toUpperCase())) continue;
+      if (ibByY && ibByY.has(canonY)) return ibByY.get(canonY);
+      // conId map may store yahoo string; look up any alias row with that conId
+      for (const [ty, row] of ibByY || []) {
+        if (Number(row && row.conId) === Number(cid)) return row;
+        if (ibkrYahooAliases(ty).has(String(canonY || '').toUpperCase())) return row;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * AUTHORIZATION BY PROVENANCE: a position is authorized iff it maps to an open
+ * emitted `entry` key (no `exit`) in trade_events — never by ticker identity lists.
+ */
+function hasOpenEmittedEntryForTicker(ticker) {
+  const aliases = ibkrYahooAliases(ticker);
+  try {
+    if (!fs.existsSync(TRADE_EVENTS_FILE)) return false;
+    const open = new Set();
+    for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
+      let e; try { e = JSON.parse(line); } catch (_) { continue; }
+      if (!e || !e.key) continue;
+      const t = String(e.key.split('|')[0] || '').toUpperCase();
+      if (!aliases.has(t)) continue;
+      if (e.type === 'entry') open.add(e.key);
+      else if (e.type === 'exit') open.delete(e.key);
+    }
+    return open.size > 0;
+  } catch (_) { return false; }
+}
+
+function isPositionAuthorizedByProvenance(ticker, hz, entryDate) {
+  if (hz != null) {
+    if (ibkrLiveEntrySide(ticker, hz, entryDate)) return true;
+  }
+  return hasOpenEmittedEntryForTicker(ticker);
+}
 
 function ibkrHzAction(h, hz) {
   const z = hz || h.hz || 'short';
@@ -12194,6 +12340,11 @@ function shouldEmitIbkrEntry(trade, hz) {
   if (snap.side !== 'buy' && snap.side !== 'sell') return false;
   if (!(snap.entry > 0) || !(snap.sl > 0)) return false;
   const z = hz || trade.hz || 'short';
+  const rating = trade[z + 'Rating'] || trade.rating || '';
+  if (!isStrongRecommendableRating(rating)) {
+    console.log('IBKR entry skipped (not Strong Buy/Sell):', snap.key, 'rating=', rating);
+    return false;
+  }
   const conf = Number(trade[z + 'Conf'] || trade.conf || 0);
   if (!(conf >= PICKS_MIN_CONF)) {
     console.log('IBKR entry skipped (Conf <', PICKS_MIN_CONF + '%):', snap.key, 'conf=', conf);
@@ -12428,67 +12579,56 @@ function loadIbkrErrorTradeExtra() {
 function isIbkrErrorTrade(t, extra) {
   if (!t) return false;
   const tk = String(t.ticker || '').toUpperCase();
-  // Never classify AIR.DE as error — recommended listing (AIR.PA was the duplicate).
-  if (IBKR_UNSTAMP_ERROR_TICKERS.has(tk)) return false;
+  // Provenance wins: open emitted entry ⇒ never classify as error/unauthorized.
+  if (isPositionAuthorizedByProvenance(tk)) return false;
   if (t.errorTrade === true) return true;
-  // Env kill-switch + explicit key list only — NOT a permanent ticker ban.
+  // Optional env kill-switch only — not a permanent ticker ban list.
   if (IBKR_ERROR_TRADE_TICKERS.has(tk)) return true;
+  // Historical key stamps (past episodes) — key identity, not ticker bans.
   if (extra && extra.keys.has(t.key)) return true;
   if (IBKR_LEGACY_ERROR_KEYS.has(t.key)) return true;
-  if ((t.fills || []).some(f => f.errorTrade && !IBKR_UNSTAMP_ERROR_TICKERS.has(String(f.ticker || tk).toUpperCase()))) {
-    return true;
-  }
+  if ((t.fills || []).some(f => f.errorTrade)) return true;
   return false;
 }
-/** Stamp historical unauthorized fills; never stamp AIR.DE (model trade). */
+/** Stamp historical unauthorized fills by KEY only (no ticker-name bans). */
 function stampLegacyIbkrErrorFills() {
   try {
     if (!fs.existsSync(IBKR_FILLS_FILE)) return 0;
-    const lines = fs.readFileSync(IBKR_FILLS_FILE, 'utf8').trim().split('\n').filter(Boolean);
     let n = 0;
-    const out = lines.map(line => {
-      let r; try { r = JSON.parse(line); } catch (_) { return line; }
-      if (!r) return line;
-      const tk = String(r.ticker || '').toUpperCase();
-      if (IBKR_UNSTAMP_ERROR_TICKERS.has(tk)) return line; // handled by unstamp
-      if (r.errorTrade) return line;
-      const byKey = IBKR_LEGACY_ERROR_KEYS.has(String(r.key || ''));
-      const byTicker = IBKR_LEGACY_ERROR_TICKERS.has(tk);
-      if (!byKey && !byTicker) return line;
-      r.errorTrade = true;
+    const next = readIbkrFillRows().map(r => {
+      if (!r || r.errorTrade) return r;
+      if (isPositionAuthorizedByProvenance(r.ticker)) return r;
+      if (!IBKR_LEGACY_ERROR_KEYS.has(String(r.key || ''))) return r;
       n++;
-      return JSON.stringify(r);
+      return Object.assign({}, r, { errorTrade: true });
     });
-    if (n) {
-      fs.writeFileSync(IBKR_FILLS_FILE, out.join('\n') + '\n');
-      console.log('Stamped', n, 'legacy IBKR fill(s) as errorTrade (past unauthorized episode)');
-    }
+    if (!n) return 0;
+    mutateFillLedger('stamp_legacy_error_keys', () => next);
+    console.log('Stamped', n, 'legacy IBKR fill(s) as errorTrade (past unauthorized episode)');
     return n;
   } catch (e) {
     console.warn('legacy error-trade stamp failed:', e.message);
     return 0;
   }
 }
-/** Move AIR.DE fills from Error → Model (recommended listing, not the dual-list bug). */
+/** Clear errorTrade on fills that are still provenance-authorized (model open). */
 function unstampModelIbkrFills() {
   try {
     if (!fs.existsSync(IBKR_FILLS_FILE)) return 0;
-    const lines = fs.readFileSync(IBKR_FILLS_FILE, 'utf8').trim().split('\n').filter(Boolean);
     let n = 0;
-    const out = lines.map(line => {
-      let r; try { r = JSON.parse(line); } catch (_) { return line; }
-      if (!r || !r.errorTrade) return line;
-      const tk = String(r.ticker || '').toUpperCase();
-      if (!IBKR_UNSTAMP_ERROR_TICKERS.has(tk)) return line;
-      r.errorTrade = false;
+    const next = readIbkrFillRows().map(r => {
+      if (!r || !r.errorTrade) return r;
+      if (!isPositionAuthorizedByProvenance(r.ticker)
+        && !IBKR_UNSTAMP_ERROR_TICKERS.has(String(r.ticker || '').toUpperCase())) {
+        return r;
+      }
       n++;
-      return JSON.stringify(r);
+      return Object.assign({}, r, { errorTrade: false });
     });
-    if (n) {
-      fs.writeFileSync(IBKR_FILLS_FILE, out.join('\n') + '\n');
-      console.log('Unstamped', n, 'AIR.DE fill(s) → model trades (recommended listing)');
-      auditLog('ibkr_unstamp_model_fills', { tickers: [...IBKR_UNSTAMP_ERROR_TICKERS], count: n });
-    }
+    if (!n) return 0;
+    mutateFillLedger('unstamp_authorized_model_fills', () => next);
+    console.log('Unstamped', n, 'fill(s) → model trades (provenance-authorized)');
+    auditLog('ibkr_unstamp_model_fills', { count: n });
     return n;
   } catch (e) {
     console.warn('model fill unstamp failed:', e.message);
@@ -12525,9 +12665,6 @@ function emitExitsForLegacyUnauthorizedKeys() {
   if (n) console.log('Emitted', n, 'exit event(s) for legacy unauthorized IBKR keys');
   return n;
 }
-stampLegacyIbkrErrorFills();
-unstampModelIbkrFills();
-emitExitsForLegacyUnauthorizedKeys();
 let _ibkrExecIds = new Set();
 try {
   if (fs.existsSync(IBKR_FILLS_FILE)) {
@@ -12593,9 +12730,10 @@ app.post('/api/ibkr/report', (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   const reports = Array.isArray(req.body && req.body.reports) ? req.body.reports : [];
   let stored = 0, skipped = 0;
+  const toAdd = [];
   for (const r of reports) {
     if (!r || !r.execId || !r.key || !(Number(r.qty) > 0) || !(Number(r.price) > 0)) { skipped++; continue; }
-    if (_ibkrExecIds.has(r.execId)) { skipped++; continue; }
+    if (_ibkrExecIds.has(r.execId) || toAdd.some(x => x.execId === r.execId)) { skipped++; continue; }
     // Reject fills for recommendations whose entry day is ancient vs the fill
     // time (stale history re-emit → phantom paper trade).
     if (isPhantomIbkrKey(r.key, r.time || new Date().toISOString(), r)) {
@@ -12608,7 +12746,7 @@ app.post('/api/ibkr/report', (req, res) => {
     const phase = ['pre', 'rth', 'post', 'lunch', 'closed'].includes(r.session)
       ? r.session
       : ibkrSessionPhase(ticker, fillTime);
-    const row = {
+    toAdd.push({
       execId: String(r.execId), key: String(r.key),
       ticker, hz: String(r.hz || 'short'),
       side: r.side === 'sell' ? 'sell' : 'buy',
@@ -12622,12 +12760,24 @@ app.post('/api/ibkr/report', (req, res) => {
       // Tag only when bridge stamps errorTrade or optional env kill-switch.
       // Never permanently ban a ticker by legacy name list.
       errorTrade: r.errorTrade === true || IBKR_ERROR_TRADE_TICKERS.has(String(r.ticker || '').toUpperCase())
-    };
+    });
+  }
+  if (toAdd.length) {
     try {
-      fs.appendFileSync(IBKR_FILLS_FILE, JSON.stringify(row) + '\n');
-      _ibkrExecIds.add(row.execId);
-      stored++;
-    } catch (e) { skipped++; }
+      mutateFillLedger('bridge_report', (rows) => {
+        const have = new Set(rows.map(r => r.execId).filter(Boolean));
+        for (const row of toAdd) {
+          if (have.has(row.execId)) { skipped++; continue; }
+          rows.push(row);
+          have.add(row.execId);
+          stored++;
+        }
+        return rows;
+      });
+    } catch (e) {
+      skipped += toAdd.length;
+      stored = 0;
+    }
   }
   if (stored) auditLog('ibkr_fills', { stored, skipped });
   res.json({ ok: true, stored, skipped, totalExecs: _ibkrExecIds.size });
@@ -12662,48 +12812,60 @@ function writeIbkrFillRows(rows) {
   _ibkrExecIds = new Set(rows.map(r => r.execId).filter(Boolean));
 }
 
-/** One-shot: coarse integer exec.price → IB portfolio averageCost (9988 @124 → ~123.8). */
-(function correctKnownCoarseIbkrFills() {
-  const KNOWN = {
-    '9988.HK|short|Wed Aug 05 2026': 123.7965
-  };
-  try {
-    if (!fs.existsSync(IBKR_FILLS_FILE)) return;
-    const rows = readIbkrFillRows();
-    let n = 0;
-    const out = rows.map(r => {
-      if (!r || r.role !== 'entry') return r;
-      const avg = KNOWN[r.key];
-      if (!(avg > 0) || !(Number(r.price) > 0)) return r;
-      if (Math.abs(Number(r.price) - avg) < 0.01) return r;
-      if (!Number.isInteger(Number(r.price))) return r;
-      n++;
-      return { ...r, price: avg, priceCorrectedFrom: Number(r.price), priceCorrectedAt: new Date().toISOString() };
-    });
-    if (n) {
-      writeIbkrFillRows(out);
-      console.log('Corrected', n, 'coarse IBKR fill price(s) (known IB avgCost)');
-      auditLog('ibkr_correct_avg_boot', { correctedFills: n, keys: Object.keys(KNOWN) });
+/** Synthetic / recon rows are never deleted by purge/phantom filters. */
+function isProtectedIbkrFillRow(r) {
+  return !!(r && (r.synthetic || r.recon || String(r.execId || '').startsWith('recon-')));
+}
+
+function ibkrFillRowId(r) {
+  return String(r && r.execId || '') + '|' + String(r && r.key || '') + '|' + String(r && r.time || '') + '|' + String(r && r.role || '');
+}
+
+/**
+ * SINGLE WRITER for the IBKR fill ledger. All mutators (recon, purge, correct-avg)
+ * must go through this. GET /api/ibkr/trades is read-only and must never call it.
+ * Protected synthetic/recon rows cannot be dropped by a mutation.
+ */
+function mutateFillLedger(reason, fn) {
+  const before = readIbkrFillRows();
+  let next = fn(before.map(r => Object.assign({}, r)));
+  if (!Array.isArray(next)) throw new Error('mutateFillLedger fn must return an array');
+  const nextIds = new Set(next.map(ibkrFillRowId));
+  for (const r of before) {
+    if (!isProtectedIbkrFillRow(r)) continue;
+    const id = ibkrFillRowId(r);
+    if (!nextIds.has(id)) {
+      next.push(r);
+      nextIds.add(id);
     }
-  } catch (e) {
-    console.warn('known fill avg correct failed:', e.message);
   }
-})();
+  writeIbkrFillRows(next);
+  auditLog('ibkr_fill_ledger_mutate', {
+    reason: String(reason || 'unspecified'),
+    before: before.length,
+    after: next.length
+  });
+  return { before: before.length, after: next.length, rows: next };
+}
+
+// Boot ledger repairs — must run after mutateFillLedger / _ibkrExecIds exist.
+stampLegacyIbkrErrorFills();
+unstampModelIbkrFills();
+emitExitsForLegacyUnauthorizedKeys();
 
 /** Drop phantom/stale fills (and optional explicit keys) from the durable log. */
 app.post('/api/ibkr/purge', express.json({ limit: '32kb' }), (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   const keys = new Set((req.body && req.body.keys) || []);
   const dropStale = req.body && req.body.stale !== false; // default: purge phantoms
-  const before = readIbkrFillRows();
-  const after = before.filter(r => {
+  const beforeLen = readIbkrFillRows().length;
+  const { after } = mutateFillLedger('purge', (rows) => rows.filter(r => {
+    if (isProtectedIbkrFillRow(r)) return true; // never delete synthetic/recon
     if (keys.has(r.key)) return false;
     if (dropStale && isPhantomIbkrKey(r.key, r.time, r)) return false;
     return true;
-  });
-  writeIbkrFillRows(after);
-  auditLog('ibkr_purge', { before: before.length, after: after.length, removed: before.length - after.length });
-  res.json({ ok: true, before: before.length, after: after.length, removed: before.length - after.length });
+  }));
+  res.json({ ok: true, before: beforeLen, after, removed: beforeLen - after });
 });
 
 /**
@@ -12721,9 +12883,8 @@ app.post('/api/ibkr/correct-avg', express.json({ limit: '64kb' }), (req, res) =>
     byKey.set(String(c.key), Number(c.avgEntry));
   }
   if (!byKey.size) return res.json({ ok: true, corrected: 0 });
-  const rows = readIbkrFillRows();
   let n = 0;
-  const out = rows.map(r => {
+  mutateFillLedger('correct-avg', (rows) => rows.map(r => {
     if (!r || r.role !== 'entry') return r;
     const avg = byKey.get(r.key);
     if (!(avg > 0)) return r;
@@ -12731,14 +12892,8 @@ app.post('/api/ibkr/correct-avg', express.json({ limit: '64kb' }), (req, res) =>
     if (!(prev > 0) || Math.abs(prev - avg) < 1e-9) return r;
     n++;
     return { ...r, price: avg, priceCorrectedFrom: prev, priceCorrectedAt: new Date().toISOString() };
-  });
+  }));
   if (n) {
-    writeIbkrFillRows(out);
-    auditLog('ibkr_correct_avg', {
-      correctedFills: n,
-      keys: [...byKey.keys()],
-      avgs: Object.fromEntries(byKey)
-    });
     console.log('IBKR fill avg corrected:', n, 'fill(s) across', byKey.size, 'key(s)');
   }
   res.json({ ok: true, corrected: n, keys: byKey.size });
@@ -12828,7 +12983,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
     const positions = Array.isArray(req.body && req.body.positions) ? req.body.positions : [];
     const marksIn = (req.body && req.body.marks && typeof req.body.marks === 'object') ? req.body.marks : {};
     const ibByY = new Map();
-    const airKeys = [];
+    const ibByConId = new Map(); // conId → canonical yahoo (dual-list identity)
     for (const p of positions) {
       if (!p) continue;
       const y = normalizeIbkrYahooTicker(p.ticker || '');
@@ -12836,24 +12991,25 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
       const qty = Number(p.qty) || 0;
       if (!qty) continue;
       const prev = ibByY.get(y) || { qty: 0, avgCost: null, currency: p.currency, conId: p.conId };
-      // Same ticker from dual aliases — keep signed qty (should match); prefer avgCost.
       prev.qty = qty;
       if (Number(p.avgCost) > 0) prev.avgCost = Number(p.avgCost);
       if (p.currency) prev.currency = p.currency;
       if (p.conId) prev.conId = p.conId;
       ibByY.set(y, prev);
-      if (y === 'AIR.DE' || y === 'AIR.PA' || String(p.symbol || '').toUpperCase() === 'AIR') {
-        airKeys.push(y);
+      const cid = Number(p.conId);
+      if (cid > 0) {
+        const existing = ibByConId.get(cid);
+        // Prefer the listing that already has an AlphaSignal open lot / emitted entry.
+        if (!existing) ibByConId.set(cid, y);
       }
     }
-    // Collapse AIR.* to one IB lot for matching (dual-list).
-    let airIb = null;
-    for (const y of ['AIR.DE', 'AIR.PA']) {
-      if (ibByY.has(y)) airIb = ibByY.get(y);
-    }
-    if (!airIb) {
-      for (const [y, v] of ibByY) {
-        if (y.startsWith('AIR')) { airIb = v; break; }
+
+    // SINGLE reconcile writer: drop stale phantoms here (never on GET /trades).
+    {
+      const beforePurge = readIbkrFillRows();
+      const afterPurge = beforePurge.filter(r => !isPhantomIbkrKey(r.key, r.time, r));
+      if (afterPurge.length !== beforePurge.length) {
+        mutateFillLedger('recon_phantom_purge', () => afterPurge);
       }
     }
 
@@ -12876,20 +13032,42 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
       if (mk > 0) o.mark = mk;
     }
 
-    const trackedYahoo = new Set(asByTicker.keys());
-    for (const [y, ib] of ibByY) {
-      if (y === 'AIR.DE' || y === 'AIR.PA') continue;
-      if (!trackedYahoo.has(y)) {
-        untrackedIb.push({
-          ticker: y, qty: ib.qty, avgCost: ib.avgCost,
-          note: 'IB position with no open AlphaSignal fill lot'
-        });
+    // Prefer conId→listing that already has an AS open lot (canonical dual-list).
+    for (const [cid, y0] of [...ibByConId.entries()]) {
+      const aliases = ibkrYahooAliases(y0);
+      let preferred = null;
+      for (const a of aliases) {
+        if (asByTicker.has(a)) { preferred = a; break; }
       }
+      if (!preferred) {
+        for (const a of aliases) {
+          if (hasOpenEmittedEntryForTicker(a)) { preferred = a; break; }
+        }
+      }
+      if (preferred) ibByConId.set(cid, preferred);
+    }
+
+    const trackedYahoo = new Set(asByTicker.keys());
+    const seenUntrackedCon = new Set();
+    for (const [y, ib] of ibByY) {
+      const cid = Number(ib.conId) || 0;
+      if (cid > 0 && seenUntrackedCon.has(cid)) continue;
+      // Dual-list: if any alias is tracked, this IB lot is accounted for.
+      const aliases = ibkrYahooAliases(y);
+      if ([...aliases].some(a => trackedYahoo.has(a))) {
+        if (cid > 0) seenUntrackedCon.add(cid);
+        continue;
+      }
+      if (cid > 0) seenUntrackedCon.add(cid);
+      untrackedIb.push({
+        ticker: y, qty: ib.qty, avgCost: ib.avgCost, conId: cid || null,
+        note: 'IB position with no open AlphaSignal fill lot',
+        authorized: isPositionAuthorizedByProvenance(y)
+      });
     }
 
     for (const [y, group] of asByTicker) {
-      let ib = ibByY.get(y);
-      if (y === 'AIR.DE' || y === 'AIR.PA') ib = airIb;
+      const ib = resolveIbPosForYahoo(y, ibByY, ibByConId);
       const ibQty = ib ? Number(ib.qty) || 0 : 0;
       const ibAbs = Math.abs(ibQty);
       // Net AlphaSignal open (buys positive, sells negative)
@@ -13015,36 +13193,33 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
     }
     saveIbkrReconPending(pending);
 
-    // Persist new fills
+    // Persist new fills + avg corrections through the single ledger writer.
     let stored = 0;
-    for (const row of newFills) {
-      try {
-        fs.appendFileSync(IBKR_FILLS_FILE, JSON.stringify(row) + '\n');
-        _ibkrExecIds.add(row.execId);
-        stored++;
-      } catch (_) {}
-    }
-
-    // Apply avg corrections across entry fills
     let avgFixed = 0;
-    if (avgCorrections.size) {
-      const all = readIbkrFillRows();
-      const out = all.map(r => {
-        if (!r || r.role !== 'entry') return r;
-        const avg = avgCorrections.get(r.key);
-        if (!(avg > 0)) return r;
-        const prev = Number(r.price);
-        if (!(prev > 0) || Math.abs(prev - avg) < 1e-9) return r;
-        avgFixed++;
-        return { ...r, price: avg, priceCorrectedFrom: prev, priceCorrectedAt: new Date().toISOString(), recon: 'avg-correct' };
-      });
-      if (avgFixed) writeIbkrFillRows(out);
-    }
-
-    if (stored || avgFixed) {
-      auditLog('ibkr_recon_sync', {
-        stored, avgFixed,
-        adjusted: adjusted.map(a => a.action + ':' + a.ticker)
+    if (newFills.length || avgCorrections.size) {
+      mutateFillLedger('recon_sync', (all) => {
+        let out = all.slice();
+        for (const row of newFills) {
+          if (!row || !row.execId) continue;
+          if (out.some(r => r.execId === row.execId)) continue;
+          out.push(row);
+          stored++;
+        }
+        if (avgCorrections.size) {
+          out = out.map(r => {
+            if (!r || r.role !== 'entry') return r;
+            const avg = avgCorrections.get(r.key);
+            if (!(avg > 0)) return r;
+            const prev = Number(r.price);
+            if (!(prev > 0) || Math.abs(prev - avg) < 1e-9) return r;
+            avgFixed++;
+            return {
+              ...r, price: avg, priceCorrectedFrom: prev,
+              priceCorrectedAt: new Date().toISOString(), recon: 'avg-correct'
+            };
+          });
+        }
+        return out;
       });
       console.log('IBKR recon sync:', stored, 'fill(s),', avgFixed, 'avg fix(es)');
     }
@@ -13069,14 +13244,9 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), (req, res) => {
       avgFixed,
       // Snapshot used by /api/ibkr/trades to overlay live IB qty/avg on the tab
       positions: [...ibByY.entries()].map(([ticker, v]) => ({
-        ticker, qty: v.qty, avgCost: v.avgCost, currency: v.currency || null
+        ticker, qty: v.qty, avgCost: v.avgCost, currency: v.currency || null, conId: v.conId || null
       }))
     };
-    if (airIb && !report.positions.some(p => p.ticker === 'AIR.DE' || p.ticker === 'AIR.PA')) {
-      report.positions.push({
-        ticker: 'AIR.DE', qty: airIb.qty, avgCost: airIb.avgCost, currency: airIb.currency || 'EUR'
-      });
-    }
     saveIbkrReconReport(report);
     res.json({
       ok: true,
@@ -13279,16 +13449,12 @@ async function ibkrUsdPerCcy(ccy) {
 }
 
 // Aggregated per-trade view of the paper account, built purely from real fills.
+// READ-ONLY: never mutate ibkr_fills.jsonl here (phantom drop runs inside recon).
 app.get('/api/ibkr/trades', async (req, res) => {
   try {
-    let rows = readIbkrFillRows();
-    // Auto-drop phantom fills (stale recommendation key vs fill time) so the
-    // IBKR tab never shows error trades like the Jun-09 AZN.L re-emit.
-    const clean = rows.filter(r => !isPhantomIbkrKey(r.key, r.time, r));
-    if (clean.length !== rows.length) {
-      try { writeIbkrFillRows(clean); auditLog('ibkr_auto_purge_stale', { before: rows.length, after: clean.length }); } catch (_) {}
-      rows = clean;
-    }
+    const allRows = readIbkrFillRows();
+    // In-memory view only — do not writeIbkrFillRows / mutateFillLedger.
+    const rows = allRows.filter(r => !isPhantomIbkrKey(r.key, r.time, r));
     const errExtra = loadIbkrErrorTradeExtra();
     const byKey = new Map();
     for (const r of rows) {
@@ -13420,13 +13586,16 @@ app.get('/api/ibkr/trades', async (req, res) => {
     // recon fill rows were delayed or purged. IB is source of truth for opens.
     const reconSnap = loadIbkrReconReport();
     const ibPosByY = new Map();
+    const ibPosByConId = new Map();
     if (reconSnap && Array.isArray(reconSnap.positions)) {
       for (const p of reconSnap.positions) {
         if (!p || !p.ticker) continue;
-        ibPosByY.set(normalizeIbkrYahooTicker(p.ticker), p);
+        const yt = normalizeIbkrYahooTicker(p.ticker);
+        ibPosByY.set(yt, p);
+        const cid = Number(p.conId);
+        if (cid > 0) ibPosByConId.set(cid, yt);
       }
     }
-    const airIbPos = ibPosByY.get('AIR.DE') || ibPosByY.get('AIR.PA') || null;
 
     for (const t of trades) {
       const rec = recByKey.get(t.key);
@@ -13452,8 +13621,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       }
 
       const y = normalizeIbkrYahooTicker(t.ticker);
-      let ibp = ibPosByY.get(y);
-      if (y === 'AIR.DE' || y === 'AIR.PA') ibp = airIbPos;
+      const ibp = resolveIbPosForYahoo(y, ibPosByY, ibPosByConId);
       if (!ibp || reconSnap && reconSnap.at && (Date.now() - Date.parse(reconSnap.at)) > 15 * 60 * 1000) {
         continue; // snapshot missing/stale — keep fill-ledger view
       }
@@ -14626,6 +14794,23 @@ module.exports = {
   ACCEPTANCE_DEFAULT_TICKERS,
   runBracketAcceptance,
   emitTradeEvent,
+  tradeEventSnapshot,
+  writeOpenRowAction,
+  isOpenRowLatched,
+  isStrongRecommendableRating,
+  deriveActionRating,
+  applyServerPriceLevels,
+  mutateFillLedger,
+  isPhantomIbkrKey,
+  readIbkrFillRows,
+  writeIbkrFillRows,
+  isProtectedIbkrFillRow,
+  hasOpenEmittedEntryForTicker,
+  isPositionAuthorizedByProvenance,
+  ibkrLiveEntrySide,
+  aggregateIbkrOpenFromFills,
+  IBKR_FILLS_FILE,
+  TRADE_EVENTS_FILE,
   sectorEtfForSymbol,
   countryOfSymbol,
   sectorKeyForSymbol,
