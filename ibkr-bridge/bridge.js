@@ -1997,20 +1997,21 @@ async function main() {
         if (row.errorTrade || /\|error\|/.test(key)) continue;
         protectedYahoo.add(y);
       }
+      // Today's board also protects (OPG not-yet-filled picks). Stale History
+      // opens must NOT shield IB-only orphans from flatten.
       try {
-        const hist = await fetchJson('/api/history');
-        for (const h of (Array.isArray(hist) ? hist : [])) {
-          if (!h || !h.ticker) continue;
-          const y = normalizeYahooTicker(h.ticker);
-          if (setHasYahooAlias(unauthorizedYahoo, y)) continue;
-          const hz = h.hz || 'short';
-          const st = String(h[hz + 'Status'] || h.status || '').toLowerCase();
-          if (st && st !== 'open' && st !== 'tp1_open') continue;
-          const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
-          if (act !== 'buy' && act !== 'sell') continue;
-          protectedYahoo.add(y);
+        const picks = await fetchJson('/api/dashboard/picks');
+        const dd = picks && picks.dashData;
+        if (dd) {
+          for (const k of ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell']) {
+            for (const r of (dd[k] || [])) {
+              if (r && r.ticker) protectedYahoo.add(normalizeYahooTicker(r.ticker));
+            }
+          }
         }
-      } catch (_) { /* event/state protection still applies */ }
+      } catch (_) { /* board optional */ }
+      // History-only opens (not on board / not in openYahoo) intentionally do
+      // NOT protect — otherwise stale History rows blocked IB-only orphan closes.
 
       for (const [pk, { pos, contract }] of posMap) {
         if (!pos) {
@@ -2029,21 +2030,18 @@ async function main() {
         // recent emit is an orphan (shows as "IB-only" on the site recon).
         // Flatten error-tagged names AND unprotected orphans — never 9988-style
         // protected model lots.
+        // When the market is closed / pre-open, queue MKT+OPG so the close
+        // hits tomorrow's opening auction (HK/JP/EU/US as each session opens).
         const isErrorTagged = setHasYahooAlias(unauthorizedYahoo, y);
         const isOrphanIbOnly = !isErrorTagged;
         const phase = sessionPhase(cMeta);
-        if (phase !== 'rth') {
-          log('RECONCILE: unauthorized/orphan wait session', pk, 'ticker=' + y, 'phase=' + phase,
-            isOrphanIbOnly ? 'orphan' : 'error');
-          continue;
-        }
         // Debounce: require TWO consecutive sweeps agreeing + audit before flatten.
         const streak = (Number(state.unauthStreak[pk]) || 0) + 1;
         state.unauthStreak[pk] = streak;
         saveState(state);
         if (streak < 2) {
           log('RECONCILE: unauthorized/orphan candidate (debounce 1/2)', pk, 'pos=' + pos,
-            'ticker=' + y, isOrphanIbOnly ? 'IB-only orphan' : 'error-tagged');
+            'ticker=' + y, 'phase=' + phase, isOrphanIbOnly ? 'IB-only orphan' : 'error-tagged');
           continue;
         }
         const lastTry = _flattenTried.get(pk) || 0;
@@ -2052,13 +2050,20 @@ async function main() {
         const qty = Math.abs(pos);
         const fid = nid();
         const oc = orderContractFromPos(cMeta);
-        log('RECONCILE: flattening', isOrphanIbOnly ? 'IB-ONLY ORPHAN' : 'UNAUTHORIZED',
-          pk, 'pos=' + pos, 'ticker=' + y, 'streak=' + streak);
         if (!oc || (!oc.conId && !oc.symbol)) continue;
+        const action = pos > 0 ? 'SELL' : 'BUY';
+        // RTH → market day order. Otherwise → opening auction (next session).
+        const useOpg = phase !== 'rth';
+        const tif = useOpg ? 'OPG' : 'DAY';
+        log('RECONCILE: flattening', isOrphanIbOnly ? 'IB-ONLY ORPHAN' : 'UNAUTHORIZED',
+          pk, 'pos=' + pos, 'ticker=' + y, 'streak=' + streak,
+          useOpg ? ('OPG→next open (' + phase + ')') : 'MKT RTH');
         transmitOrder(fid, oc, baseOrder({
-          orderId: fid, action: pos > 0 ? 'SELL' : 'BUY',
-          orderType: 'MKT', totalQuantity: qty, tif: 'DAY', transmit: true
-        }), (isOrphanIbOnly ? 'orphan-ib-only-flatten ' : 'unauthorized-flatten ') + pk);
+          orderId: fid, action,
+          orderType: 'MKT', totalQuantity: qty, tif, transmit: true,
+          outsideRth: false
+        }), (isOrphanIbOnly ? 'orphan-ib-only-flatten ' : 'unauthorized-flatten ') + pk
+          + (useOpg ? ' OPG' : ' MKT'));
       }
 
       // No excess-qty trim — never reduce a live model lot (9988/0005/2914).
