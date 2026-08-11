@@ -6365,20 +6365,66 @@ async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
 
 // ── No-repeat filter: is this ticker ALREADY open in the given direction? ──────
 // A name that's already an open Buy should not be re-recommended as a Buy; only a
-// DIRECTION CHANGE (Buy↔Sell) makes it eligible again. Looks across all horizons —
-// once a trader holds a direction on a name, we don't spam the same call daily.
-const LIVE_STATUSES = new Set(['open', 'tp1_open', 'n/a', '']);
+// DIRECTION CHANGE (Buy↔Sell) / regime flip that closes the open makes it eligible
+// again. Looks across all horizons + dual-list aliases (AIR.DE≡AIR.PA).
+const LIVE_STATUSES = new Set(['open', 'tp1_open', 'pending', 'n/a', '']);
+function normalizeHistoryTicker(t) {
+  const s = String(t || '').toUpperCase();
+  const m = s.match(/^(\d+)\.HK$/);
+  if (m) return m[1].padStart(4, '0') + '.HK';
+  return s;
+}
+function historyTickerMatchSet(ticker) {
+  const y = normalizeHistoryTicker(ticker);
+  const out = new Set([y]);
+  // Dual-list aliases (AIR.DE ≡ AIR.PA). Keep local map so this works before
+  // IBKR_LISTING_ALIASES is initialized at module load.
+  const LOCAL_ALIASES = { 'AIR.DE': ['AIR.PA'], 'AIR.PA': ['AIR.DE'] };
+  for (const a of (LOCAL_ALIASES[y] || [])) out.add(normalizeHistoryTicker(a));
+  try {
+    if (typeof IBKR_LISTING_ALIASES !== 'undefined' && IBKR_LISTING_ALIASES[y]) {
+      for (const a of IBKR_LISTING_ALIASES[y]) out.add(normalizeHistoryTicker(a));
+    }
+  } catch (_) { /* TDZ — local aliases suffice */ }
+  return out;
+}
+/** Open emitted entry sides for ticker (any SGT day, no exit yet). */
+function openEmittedSidesForTicker(ticker) {
+  const aliases = historyTickerMatchSet(ticker);
+  const open = new Map(); // key -> side
+  try {
+    if (!fs.existsSync(TRADE_EVENTS_FILE)) return new Set();
+    for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
+      let e; try { e = JSON.parse(line); } catch (_) { continue; }
+      if (!e || !e.key) continue;
+      const t = normalizeHistoryTicker(e.key.split('|')[0]);
+      if (!aliases.has(t)) continue;
+      if (e.type === 'entry' && (e.side === 'buy' || e.side === 'sell')) open.set(e.key, e.side);
+      else if (e.type === 'exit') open.delete(e.key);
+    }
+  } catch (_) { return new Set(); }
+  return new Set([...open.values()]);
+}
 function hasOpenTradeInDirection(ticker, wantSell) {
-  if (!Array.isArray(tradeHistory) || !ticker) return false;
-  const tk = String(ticker).toUpperCase();
-  for (const h of tradeHistory) {
-    if (!h || String(h.ticker || '').toUpperCase() !== tk) continue;
-    const hz = h.hz || 'short';
-    const status = String(h[hz + 'Status'] || h.status || 'open');
-    if (!LIVE_STATUSES.has(status)) continue; // fully closed — eligible again
-    const isSell = String(h.action || '').toLowerCase() === 'sell';
-    if (isSell === !!wantSell) return true; // same direction already live
+  if (!ticker) return false;
+  const aliases = historyTickerMatchSet(ticker);
+  if (Array.isArray(tradeHistory)) {
+    for (const h of tradeHistory) {
+      if (!h || !aliases.has(normalizeHistoryTicker(h.ticker))) continue;
+      const hz = h.hz || 'short';
+      const status = String(h[hz + 'Status'] || h.status || 'open').toLowerCase();
+      if (!LIVE_STATUSES.has(status)) continue; // fully closed — eligible again
+      const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
+      if (act !== 'buy' && act !== 'sell') continue;
+      if ((act === 'sell') === !!wantSell) return true; // same direction already live
+    }
   }
+  // Provenance: open emitted entry in the same direction also blocks re-recommend.
+  try {
+    const sides = openEmittedSidesForTicker(ticker);
+    if (wantSell && sides.has('sell')) return true;
+    if (!wantSell && sides.has('buy')) return true;
+  } catch (_) { /* history check is enough */ }
   return false;
 }
 
@@ -6413,16 +6459,11 @@ function priorBoardCooldownSet(opts = {}) {
 function topNRotating(arr, key, cooldownSet, n = 5) {
   const sorted = (arr || []).slice().sort((a, b) => (b[key] || 0) - (a[key] || 0));
   const cool = cooldownSet || new Set();
-  const fresh = sorted.filter(r => !cool.has(String(r.ticker || '').toUpperCase()));
-  const out = fresh.slice(0, n);
-  // Always soft-fill from the full ranked list — an empty pane is worse than a repeat.
-  if (out.length < n) {
-    for (const r of sorted) {
-      if (out.length >= n) break;
-      if (!out.some(x => String(x.ticker).toUpperCase() === String(r.ticker).toUpperCase())) out.push(r);
-    }
-  }
-  return out.map(r => ({ ...r }));
+  // Never soft-fill from cooldown / already-shown names — empty pane beats a repeat.
+  return sorted
+    .filter(r => !cool.has(normalizeHistoryTicker(r.ticker)))
+    .slice(0, n)
+    .map(r => ({ ...r }));
 }
 
 function countDashPicks(dashData) {
@@ -7189,50 +7230,52 @@ async function generateServerPicksFromShortlist(opts = {}) {
       ? JSON.parse(JSON.stringify(dashboardPicksCache.dashData)) : null;
     const prevCount = countDashPicks(prevDash);
 
-    // Build candidate pools. Prefer names that are NOT already live — but DO keep
-    // a fallback pool of live same-direction names so panes never go blank just
-    // because yesterday's board was written into history.
+    // Candidate pools: NEVER include names already open in the same direction.
+    // Re-recommend only on direction change (Buy↔Sell) after the prior open exits /
+    // regime flip closes it. Empty pane > repeating AIR / 9988 etc.
     const buyAssign = { short: [], medium: [], long: [] };
     const sellAssign = { short: [], medium: [], long: [] };
-    const buyFallback = { short: [], medium: [], long: [] };
-    const sellFallback = { short: [], medium: [], long: [] };
 
     for (const r of rows) {
       let bBuyHz = null, bBuyScore = -1;
       let bSellHz = null, bSellScore = -1;
-      let fBuyHz = null, fBuyScore = -1;
-      let fSellHz = null, fSellScore = -1;
       const alreadyLong  = hasOpenTradeInDirection(r.ticker, false);
       const alreadyShort = hasOpenTradeInDirection(r.ticker, true);
       for (const hz of HZS) {
-        const buyBase = bracketEnabled('buy', hz) && r[hz + 'Action'] === 'Buy' && (r[hz + 'Score'] || 0) >= 62
+        const buyBase = bracketEnabled('buy', hz) && r[hz + 'Action'] === 'Buy'
+          && isStrongRecommendableRating(r[hz + 'Rating'])
+          && (r[hz + 'Score'] || 0) >= 62
           && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r, hz);
-        if (buyBase && (r[hz + 'Score'] || 0) > fBuyScore) { fBuyScore = r[hz + 'Score'] || 0; fBuyHz = hz; }
-        if (buyBase && !alreadyLong && (r[hz + 'Score'] || 0) > bBuyScore) { bBuyScore = r[hz + 'Score'] || 0; bBuyHz = hz; }
-        const sellBase = bracketEnabled('sell', hz) && SELL_PICKS_ENABLED && r[hz + 'Action'] === 'Sell' && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r, hz);
-        if (sellBase && (r[hz + 'SellScore'] || 0) > fSellScore) { fSellScore = r[hz + 'SellScore'] || 0; fSellHz = hz; }
-        if (sellBase && !alreadyShort && (r[hz + 'SellScore'] || 0) > bSellScore) { bSellScore = r[hz + 'SellScore'] || 0; bSellHz = hz; }
+        if (buyBase && !alreadyLong && (r[hz + 'Score'] || 0) > bBuyScore) {
+          bBuyScore = r[hz + 'Score'] || 0; bBuyHz = hz;
+        }
+        const sellBase = bracketEnabled('sell', hz) && SELL_PICKS_ENABLED && r[hz + 'Action'] === 'Sell'
+          && isStrongRecommendableRating(r[hz + 'Rating'])
+          && (r[hz + 'SellScore'] || 0) >= 62 && hasPx(r, hz);
+        if (sellBase && !alreadyShort && (r[hz + 'SellScore'] || 0) > bSellScore) {
+          bSellScore = r[hz + 'SellScore'] || 0; bSellHz = hz;
+        }
+      }
+      // One direction per ticker on the board; prefer the stronger side.
+      if (bBuyHz && bSellHz) {
+        if (bBuyScore >= bSellScore) bSellHz = null;
+        else bBuyHz = null;
       }
       if (bBuyHz) buyAssign[bBuyHz].push(r);
       else if (bSellHz) sellAssign[bSellHz].push(r);
-      if (fBuyHz) buyFallback[fBuyHz].push(r);
-      else if (fSellHz) sellFallback[fSellHz].push(r);
     }
 
-    function pane(primary, fallback, key) {
-      let list = topNRotating(primary, key, cooldown, 5);
-      if (list.length < 3) list = topNRotating(fallback, key, cooldown, 5);
-      if (list.length < 1) list = topNRotating(fallback, key, new Set(), 5); // last resort: allow repeats
-      return list;
+    function pane(primary, key) {
+      return topNRotating(primary, key, cooldown, 5);
     }
 
     let dashData = {
-      short: pane(buyAssign.short, buyFallback.short, 'shortScore'),
-      medium: pane(buyAssign.medium, buyFallback.medium, 'mediumScore'),
-      long: pane(buyAssign.long, buyFallback.long, 'longScore'),
-      shortSell: pane(sellAssign.short, sellFallback.short, 'shortSellScore'),
-      medSell: pane(sellAssign.medium, sellFallback.medium, 'mediumSellScore'),
-      longSell: pane(sellAssign.long, sellFallback.long, 'longSellScore')
+      short: pane(buyAssign.short, 'shortScore'),
+      medium: pane(buyAssign.medium, 'mediumScore'),
+      long: pane(buyAssign.long, 'longScore'),
+      shortSell: pane(sellAssign.short, 'shortSellScore'),
+      medSell: pane(sellAssign.medium, 'mediumSellScore'),
+      longSell: pane(sellAssign.long, 'longSellScore')
     };
 
     // Re-price the FINAL picks with LIVE quotes so the recorded entry (and the
@@ -7797,6 +7840,13 @@ async function addTradesToHistory(trades) {
       if (!isStrongRecommendableRating(rating)) {
         console.log('History add skipped (not Strong Buy/Sell):', trade.ticker, hz, 'rating=', rating);
         auditLog('entry_blocked_not_strong', { ticker: trade.ticker, hz, rating });
+        continue;
+      }
+      // No-repeat: same name already open in this direction — only direction/regime
+      // change (prior open closed) may re-enter.
+      if (hasOpenTradeInDirection(trade.ticker, isSell)) {
+        console.log('History add skipped (already open same direction):', trade.ticker, hz, isSell ? 'Sell' : 'Buy');
+        auditLog('entry_blocked_already_open', { ticker: trade.ticker, hz, side: isSell ? 'sell' : 'buy' });
         continue;
       }
       // Earnings blackout for brand-new entries: a quarterly report inside the
