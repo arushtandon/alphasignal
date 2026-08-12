@@ -65,6 +65,12 @@ Position size = `IBKR_NOTIONAL` (default $10k) **converted to the local currency
 (¥ / HK$ / € / £ / ₹) so every market gets a genuine ~$10k position, rounded to
 exchange lots (100 for SEHK/TSEJ).
 
+**Futures (`GC=F`, `HG=F`, `CL=F`, …)** and **crypto (`BTC-USD`, `ETH-USD`)** are
+executable. Front-month futures are resolved via IB `reqContractDetails`. When
+$10k is below one contract’s notional value (e.g. copper HG), the bridge still
+places **1 contract** so the signal is not skipped. Crypto uses fractional qty
+on PAXOS.
+
 | Leg | IB order | Size | Notes |
 |-----|----------|------|-------|
 | Parent | LMT @ recommended entry, `DAY` | full | `outsideRth` for US so the entry works pre-market / regular / post-market. Unfilled at session end → IB cancels parent **and** children (no orphans) |
@@ -83,9 +89,9 @@ exchange lots (100 for SEHK/TSEJ).
 - **Orphan sweep** every 5 minutes: any open IB order belonging to a closed
   trade key is cancelled (belt and braces).
 
-Skipped instruments (logged, never half-placed): futures (`=F`), crypto
-(`-USD`), NSE/BSE stocks unless `IBKR_ALLOW_NSE=1` (IB restricts Indian
-exchanges for most non-India accounts).
+Skipped instruments (logged, never half-placed): NSE/BSE stocks unless
+`IBKR_ALLOW_NSE=1` (IB restricts Indian exchanges for most non-India accounts).
+Futures (`=F`) and crypto (`-USD`) **are supported** (front-month / PAXOS).
 
 Entry events older than `IBKR_MAX_EVENT_AGE_H` (default 24h) are skipped so a
 fresh cursor never replays weeks of history as live orders.

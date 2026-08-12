@@ -247,12 +247,67 @@ function postJson(urlPath, body) {
 }
 
 // ── Contract mapping ─────────────────────────────────────────────────────────
-/** Yahoo-style ticker → IB stock contract. Returns null for unsupported
- *  instruments (futures, crypto, NSE unless enabled) — those are LOGGED and
- *  skipped, never half-placed. */
+/**
+ * Yahoo continuous futures (=F) → IB root + exchange + default multiplier.
+ * Front month is resolved live via reqContractDetails.
+ */
+const YAHOO_FUTURES = {
+  'GC=F': { symbol: 'GC', exchange: 'COMEX', currency: 'USD', multiplier: 100,   tick: 0.1,    market: 'GLOBE' },
+  'SI=F': { symbol: 'SI', exchange: 'COMEX', currency: 'USD', multiplier: 5000,  tick: 0.005,  market: 'GLOBE' },
+  'HG=F': { symbol: 'HG', exchange: 'COMEX', currency: 'USD', multiplier: 25000, tick: 0.0005, market: 'GLOBE' },
+  'PL=F': { symbol: 'PL', exchange: 'NYMEX', currency: 'USD', multiplier: 50,    tick: 0.1,    market: 'GLOBE' },
+  'PA=F': { symbol: 'PA', exchange: 'NYMEX', currency: 'USD', multiplier: 100,   tick: 0.05,   market: 'GLOBE' },
+  'CL=F': { symbol: 'CL', exchange: 'NYMEX', currency: 'USD', multiplier: 1000,  tick: 0.01,   market: 'GLOBE' },
+  'BZ=F': { symbol: 'BZ', exchange: 'NYMEX', currency: 'USD', multiplier: 1000,  tick: 0.01,   market: 'GLOBE' },
+  'NG=F': { symbol: 'NG', exchange: 'NYMEX', currency: 'USD', multiplier: 10000, tick: 0.001,  market: 'GLOBE' },
+  'ES=F': { symbol: 'ES', exchange: 'CME',   currency: 'USD', multiplier: 50,    tick: 0.25,   market: 'GLOBE' },
+  'NQ=F': { symbol: 'NQ', exchange: 'CME',   currency: 'USD', multiplier: 20,    tick: 0.25,   market: 'GLOBE' },
+  'YM=F': { symbol: 'YM', exchange: 'CBOT',  currency: 'USD', multiplier: 5,     tick: 1,      market: 'GLOBE' },
+  'RTY=F':{ symbol: 'RTY',exchange: 'CME',   currency: 'USD', multiplier: 50,    tick: 0.1,    market: 'GLOBE' },
+  'ZN=F': { symbol: 'ZN', exchange: 'CBOT',  currency: 'USD', multiplier: 1000,  tick: 0.015625, market: 'GLOBE' }
+};
+
+/** Yahoo crypto → IB CRYPTO (PAXOS). */
+const YAHOO_CRYPTO = {
+  'BTC-USD': { symbol: 'BTC', exchange: 'PAXOS', currency: 'USD', market: 'CRYPTO', lotHint: 0.0001 },
+  'ETH-USD': { symbol: 'ETH', exchange: 'PAXOS', currency: 'USD', market: 'CRYPTO', lotHint: 0.001 }
+};
+
+/** Yahoo-style ticker → IB contract stub. Futures/crypto need resolveInstrument(). */
 function toContract(ticker) {
   const t = String(ticker || '').toUpperCase();
-  if (t.includes('=F') || t.endsWith('-USD')) return null;           // futures / crypto
+  if (YAHOO_FUTURES[t]) {
+    const f = YAHOO_FUTURES[t];
+    return {
+      yahooTicker: t,
+      symbol: f.symbol,
+      secType: 'FUT',
+      exchange: f.exchange,
+      currency: f.currency,
+      multiplier: f.multiplier,
+      tick: f.tick,
+      market: f.market,
+      lotHint: 1,
+      needsFrontMonth: true
+    };
+  }
+  if (YAHOO_CRYPTO[t]) {
+    const c = YAHOO_CRYPTO[t];
+    return {
+      yahooTicker: t,
+      symbol: c.symbol,
+      secType: 'CRYPTO',
+      exchange: c.exchange,
+      currency: c.currency,
+      market: c.market,
+      lotHint: c.lotHint || 0.0001,
+      crypto: true
+    };
+  }
+  if (t.includes('=F') || t.endsWith('-USD')) {
+    // Unknown continuous future / crypto pair — leave null (logged at place).
+    return null;
+  }
   if (t.endsWith('.NS') || t.endsWith('.BO')) {
     if (!ALLOW_NSE) return null;                                      // IB NSE restriction
     return { symbol: t.replace(/\.(NS|BO)$/, ''), secType: 'STK', exchange: 'NSE', currency: 'INR' };
@@ -293,9 +348,18 @@ function sessionPhase(contract, nowMs = Date.now()) {
     HK:       { open: 1 * 60 + 30, close: 8 * 60, lunchStart: 4 * 60, lunchEnd: 5 * 60 },
     XETRA:    { open: 7 * 60,       close: 15 * 60 + 30 },               // 09:00–17:30 CEST
     EURONEXT: { open: 7 * 60,       close: 15 * 60 + 30 },
-    LSE:      { open: 7 * 60,       close: 15 * 60 + 30 }                // 08:00–16:30 BST
+    LSE:      { open: 7 * 60,       close: 15 * 60 + 30 },               // 08:00–16:30 BST
+    // CME Globex / crypto: nearly 24h Sun–Fri. Treat weekday as RTH; Sat closed;
+    // Sun before ~22:00 UTC still closed (Globex reopen ~6pm ET Sunday).
+    GLOBE:    { open: 0, close: 24 * 60 },
+    CRYPTO:   { open: 0, close: 24 * 60 }
   };
   const w = windows[m] || windows.XETRA;
+  if (m === 'GLOBE' || m === 'CRYPTO') {
+    if (dow === 6) return 'closed';
+    if (dow === 0 && utcMin < 22 * 60) return 'closed';
+    return 'rth';
+  }
   if (m === 'US') {
     if (utcMin >= w.open && utcMin < w.close) return 'rth';
     if (utcMin >= (w.preOpen || 0) && utcMin < w.open) return 'pre';
@@ -336,6 +400,16 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
   const side = opts.side || (String(action).toUpperCase() === 'SELL' ? 'sell' : 'buy');
   const entryPx = Number(opts.entryPx);
   const quotePx = Number(opts.quotePx);
+  // Futures / crypto on Globex & PAXOS — MKT while the venue is open.
+  if (contract.secType === 'FUT' || contract.secType === 'CRYPTO' || contract.market === 'GLOBE' || contract.market === 'CRYPTO') {
+    if (phase === 'closed') {
+      return { defer: true, entryStyle: 'DEFER-GLOBE-CLOSED', action, totalQuantity: qty };
+    }
+    return {
+      orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY',
+      outsideRth: true, transmit: false, entryStyle: 'MKT-GLOBE'
+    };
+  }
   // IB SMART often rejects orderType 'MOO' (error 321). The portable form is
   // MKT + tif OPG (submit to the opening auction).
   if (contract.usRth) {
@@ -406,13 +480,47 @@ async function usdToCurrency(ccy) {
   }
 }
 
-/** Whole-share split of the FX-adjusted notional; respects exchange lot hints. */
+/** Whole-share / contract / crypto-qty split of the FX-adjusted notional. */
 async function shareSplit(entry, contract, lotOverride) {
   const e = Number(entry);
   if (!(e > 0)) return { total: 0, sold: 0, runner: 0 };
+  const lot = Math.max(Number(lotOverride || contract.lotHint) || 1, contract.secType === 'CRYPTO' ? 1e-8 : 1);
+
+  // Futures: size by contract value (price × multiplier). Paper always takes at
+  // least 1 contract so HG/CL etc. still execute when $10k < 1 contract value.
+  if (contract.secType === 'FUT') {
+    const mult = Math.max(1, Number(contract.multiplier) || 1);
+    const contractUsd = e * mult;
+    let total = Math.floor(NOTIONAL / contractUsd);
+    if (total < 1) {
+      total = 1;
+      log('futures sizing: notional $' + NOTIONAL + ' < 1×' + contract.symbol
+        + ' (~$' + Math.round(contractUsd) + ') — forcing 1 contract');
+    }
+    let sold = Math.floor(total / 2);
+    if (sold < 1 && total >= 2) sold = 1;
+    if (total === 1) sold = 0; // whole position is the runner
+    return { total, sold, runner: total - sold };
+  }
+
+  // Crypto: fractional qty allowed on PAXOS.
+  if (contract.secType === 'CRYPTO') {
+    const raw = NOTIONAL / e;
+    const step = lot > 0 && lot < 1 ? lot : 0.0001;
+    let total = Math.floor(raw / step) * step;
+    total = +total.toFixed(8);
+    if (total < step) {
+      total = step;
+      log('crypto sizing: forcing min lot', step, 'for', contract.symbol);
+    }
+    let sold = Math.floor((total / 2) / step) * step;
+    sold = +sold.toFixed(8);
+    if (sold < step) sold = 0;
+    return { total, sold, runner: +(total - sold).toFixed(8) };
+  }
+
   let localNotional = NOTIONAL * await usdToCurrency(contract.currency);
   if (contract.penceQuoted) localNotional *= 100; // LSE quotes in pence
-  const lot = Math.max(1, Number(lotOverride || contract.lotHint) || 1);
   let total = Math.floor(localNotional / e);
   total = Math.floor(total / lot) * lot;
   if (total < lot) return { total: 0, sold: 0, runner: 0 };
@@ -440,6 +548,15 @@ function hkTickSize(px) {
 function roundPx(x, contract, dir) {
   const n = Number(x);
   if (!Number.isFinite(n)) return n;
+  if (contract && (contract.secType === 'FUT' || contract.tick > 0)) {
+    const tick = Number(contract.tick) || 0.01;
+    const dp = tick >= 1 ? 0 : Math.min(8, (String(tick).split('.')[1] || '').length);
+    let stepped;
+    if (dir === 'down') stepped = Math.floor(n / tick + 1e-12) * tick;
+    else if (dir === 'up') stepped = Math.ceil(n / tick - 1e-12) * tick;
+    else stepped = Math.round(n / tick) * tick;
+    return +stepped.toFixed(dp);
+  }
   if (contract && contract.market === 'HK') {
     const tick = hkTickSize(n);
     const dp = tick >= 1 ? 0 : (String(tick).split('.')[1] || '').length;
@@ -460,6 +577,16 @@ function roundPx(x, contract, dir) {
 /** Attach market/usRth so sessionPhase does not fall through to XETRA for US names. */
 function enrichSessionMeta(c) {
   if (!c) return c;
+  if (c.secType === 'FUT' || c.market === 'GLOBE') {
+    c.market = 'GLOBE';
+    c.usRth = false;
+    return c;
+  }
+  if (c.secType === 'CRYPTO' || c.market === 'CRYPTO') {
+    c.market = 'CRYPTO';
+    c.usRth = false;
+    return c;
+  }
   const ccy = String(c.currency || '');
   if (ccy === 'USD' || c.usRth) {
     c.usRth = true;
@@ -475,6 +602,32 @@ function enrichSessionMeta(c) {
 
 function orderContractFromPos(c) {
   if (!c) return null;
+  if (c.secType === 'FUT') {
+    const out = {
+      secType: 'FUT',
+      symbol: String(c.symbol || ''),
+      exchange: c.exchange || 'COMEX',
+      currency: c.currency || 'USD',
+      lastTradeDateOrContractMonth: c.lastTradeDateOrContractMonth,
+      multiplier: c.multiplier != null ? String(c.multiplier) : undefined,
+      tradingClass: c.tradingClass || undefined,
+      localSymbol: c.localSymbol || undefined
+    };
+    const conId = Number(c.conId);
+    if (conId > 0) out.conId = conId;
+    return enrichSessionMeta(Object.assign({}, c, out));
+  }
+  if (c.secType === 'CRYPTO') {
+    const out = {
+      secType: 'CRYPTO',
+      symbol: String(c.symbol || ''),
+      exchange: c.exchange || 'PAXOS',
+      currency: c.currency || 'USD'
+    };
+    const conId = Number(c.conId);
+    if (conId > 0) out.conId = conId;
+    return enrichSessionMeta(Object.assign({}, c, out));
+  }
   const out = {
     secType: c.secType || 'STK',
     exchange: 'SMART',
@@ -488,7 +641,6 @@ function orderContractFromPos(c) {
     out.primaryExch = c.primaryExch;
   } else if (out.currency === 'HKD') {
     out.primaryExch = 'SEHK';
-    // IB often wants the numeric code as-is; keep symbol from the position
   } else if (out.currency === 'JPY') {
     out.primaryExch = 'TSEJ';
   } else if (out.currency === 'EUR') {
@@ -499,6 +651,47 @@ function orderContractFromPos(c) {
     out.primaryExch = 'NASDAQ';
   }
   return enrichSessionMeta(out);
+}
+
+/** Placeable IB contract object for placeOrder. */
+function placeableContract(contract) {
+  if (!contract) return null;
+  if (contract.secType === 'FUT') {
+    const oc = {
+      symbol: String(contract.symbol),
+      secType: 'FUT',
+      exchange: contract.exchange || 'COMEX',
+      currency: contract.currency || 'USD',
+      lastTradeDateOrContractMonth: contract.lastTradeDateOrContractMonth,
+      multiplier: contract.multiplier != null ? String(contract.multiplier) : undefined
+    };
+    if (contract.conId > 0) oc.conId = Number(contract.conId);
+    if (contract.localSymbol) oc.localSymbol = String(contract.localSymbol);
+    if (contract.tradingClass) oc.tradingClass = String(contract.tradingClass);
+    return oc;
+  }
+  if (contract.secType === 'CRYPTO') {
+    const oc = {
+      symbol: String(contract.symbol),
+      secType: 'CRYPTO',
+      exchange: contract.exchange || 'PAXOS',
+      currency: contract.currency || 'USD'
+    };
+    if (contract.conId > 0) oc.conId = Number(contract.conId);
+    return oc;
+  }
+  if (contract.conId > 0) {
+    return {
+      conId: Number(contract.conId),
+      symbol: contract.symbol != null ? String(contract.symbol) : undefined,
+      localSymbol: contract.localSymbol || undefined,
+      secType: contract.secType || 'STK',
+      exchange: contract.market === 'HK' ? 'SEHK' : 'SMART',
+      primaryExch: contract.primaryExch,
+      currency: contract.currency
+    };
+  }
+  return orderContractFromPos(contract) || contract;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -520,7 +713,16 @@ async function main() {
   const posMap = new Map();
   let positionsReady = false; // set once IB's initial position snapshot lands
   let forceReconcile = false; // set on positionEnd so Asia re-arms don't wait 5m
-  const posKeyOf = c => `${String(c.symbol).toUpperCase()}|${c.currency}`;
+  const posKeyOf = c => {
+    if (!c) return '';
+    if (c.secType === 'FUT' && c.lastTradeDateOrContractMonth) {
+      return `${String(c.symbol).toUpperCase()}|${c.lastTradeDateOrContractMonth}|${c.currency || 'USD'}`;
+    }
+    if (c.secType === 'CRYPTO') {
+      return `${String(c.symbol).toUpperCase()}|CRYPTO|${c.currency || 'USD'}`;
+    }
+    return `${String(c.symbol).toUpperCase()}|${c.currency}`;
+  };
   const _flattenTried = new Map(); // pk -> last reconcile-flatten attempt ts
   // Persist debounce across restarts (in-memory Map was resetting to 1/2 every boot).
   if (!state.unauthStreak || typeof state.unauthStreak !== 'object') state.unauthStreak = {};
@@ -995,6 +1197,21 @@ async function main() {
 
   function yahooFromContract(c) {
     if (!c) return null;
+    if (c.yahooTicker) return String(c.yahooTicker).toUpperCase();
+    if (c.secType === 'FUT') {
+      const sym = String(c.symbol || '').toUpperCase();
+      for (const [y, meta] of Object.entries(YAHOO_FUTURES)) {
+        if (meta.symbol === sym) return y;
+      }
+      return sym ? sym + '=F' : null;
+    }
+    if (c.secType === 'CRYPTO') {
+      const sym = String(c.symbol || '').toUpperCase();
+      for (const [y, meta] of Object.entries(YAHOO_CRYPTO)) {
+        if (meta.symbol === sym) return y;
+      }
+      return sym ? sym + '-USD' : null;
+    }
     const sym = String(c.symbol || '');
     const ccy = c.currency;
     if (ccy === 'HKD') {
@@ -1016,6 +1233,10 @@ async function main() {
   /** Board lot from IB contract details (critical for HK — 0005 is 400, not 100). */
   function resolveLot(contract) {
     if (!contract) return Promise.resolve(1);
+    if (contract.secType === 'FUT') return Promise.resolve(1);
+    if (contract.secType === 'CRYPTO') {
+      return Promise.resolve(Math.max(1e-8, Number(contract.lotHint) || 0.0001));
+    }
     const key = posKeyOf(contract);
     if (lotCache.has(key)) return Promise.resolve(lotCache.get(key));
     const fallback = Math.max(1, Number(contract.lotHint) || 1);
@@ -1072,6 +1293,160 @@ async function main() {
     });
   }
 
+  /**
+   * Resolve futures front-month (or crypto conId) via IB contract details.
+   * Mutates and returns the contract stub.
+   */
+  const _futFrontCache = new Map(); // yahooTicker -> { at, contract }
+  async function resolveInstrument(contract) {
+    if (!contract) return null;
+    enrichSessionMeta(contract);
+    if (contract.secType === 'CRYPTO') {
+      if (contract.conId > 0 || DRY || !ib || !EventName) return contract;
+      return new Promise(resolve => {
+        const reqId = nextDetailsId++;
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          try { ib.off(EventName.contractDetails, onDet); } catch (_) {}
+          try { ib.off(EventName.contractDetailsEnd, onEnd); } catch (_) {}
+          resolve(contract);
+        };
+        const t = setTimeout(finish, 6000);
+        const onDet = (id, details) => {
+          if (Number(id) !== reqId) return;
+          const c = (details && details.contract) || {};
+          const conId = Number(c.conId);
+          if (conId > 0) contract.conId = conId;
+          if (c.localSymbol) contract.localSymbol = String(c.localSymbol);
+        };
+        const onEnd = (id) => {
+          if (Number(id) !== reqId) return;
+          clearTimeout(t);
+          finish();
+        };
+        ib.on(EventName.contractDetails, onDet);
+        ib.on(EventName.contractDetailsEnd, onEnd);
+        try {
+          ib.reqContractDetails(reqId, {
+            symbol: String(contract.symbol),
+            secType: 'CRYPTO',
+            exchange: contract.exchange || 'PAXOS',
+            currency: contract.currency || 'USD'
+          });
+        } catch (e) {
+          clearTimeout(t);
+          finish();
+        }
+      });
+    }
+    if (contract.secType !== 'FUT' || !contract.needsFrontMonth) return contract;
+    const yKey = contract.yahooTicker || contract.symbol;
+    const cached = _futFrontCache.get(yKey);
+    if (cached && (Date.now() - cached.at) < 6 * 3600 * 1000 && cached.contract) {
+      Object.assign(contract, cached.contract);
+      contract.needsFrontMonth = false;
+      return contract;
+    }
+    if (DRY || !ib || !EventName) {
+      // Offline / dry: next calendar month YYYYMM as a best-effort stub.
+      const d = new Date();
+      d.setUTCMonth(d.getUTCMonth() + 1);
+      const yyyymm = String(d.getUTCFullYear()) + String(d.getUTCMonth() + 1).padStart(2, '0');
+      contract.lastTradeDateOrContractMonth = yyyymm;
+      contract.needsFrontMonth = false;
+      return contract;
+    }
+    return new Promise(resolve => {
+      const reqId = nextDetailsId++;
+      const cands = [];
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        try { ib.off(EventName.contractDetails, onDet); } catch (_) {}
+        try { ib.off(EventName.contractDetailsEnd, onEnd); } catch (_) {}
+        const today = new Date();
+        const todayKey = String(today.getUTCFullYear())
+          + String(today.getUTCMonth() + 1).padStart(2, '0')
+          + String(today.getUTCDate()).padStart(2, '0');
+        const live = cands
+          .filter(x => String(x.month || '') >= todayKey.slice(0, 6))
+          .sort((a, b) => String(a.month).localeCompare(String(b.month)));
+        const pick = live[0] || cands.sort((a, b) => String(a.month).localeCompare(String(b.month)))[0];
+        if (pick) {
+          contract.lastTradeDateOrContractMonth = pick.month;
+          if (pick.conId > 0) contract.conId = pick.conId;
+          if (pick.localSymbol) contract.localSymbol = pick.localSymbol;
+          if (pick.tradingClass) contract.tradingClass = pick.tradingClass;
+          if (pick.multiplier > 0) contract.multiplier = pick.multiplier;
+          if (pick.exchange) contract.exchange = pick.exchange;
+          contract.needsFrontMonth = false;
+          _futFrontCache.set(yKey, {
+            at: Date.now(),
+            contract: {
+              lastTradeDateOrContractMonth: contract.lastTradeDateOrContractMonth,
+              conId: contract.conId,
+              localSymbol: contract.localSymbol,
+              tradingClass: contract.tradingClass,
+              multiplier: contract.multiplier,
+              exchange: contract.exchange,
+              tick: contract.tick,
+              symbol: contract.symbol,
+              secType: 'FUT',
+              currency: contract.currency,
+              market: 'GLOBE',
+              yahooTicker: contract.yahooTicker
+            }
+          });
+          log('futures front month', contract.yahooTicker || contract.symbol,
+            '→', contract.lastTradeDateOrContractMonth,
+            'mult=' + contract.multiplier, 'conId=' + (contract.conId || 'n/a'));
+        } else {
+          log('futures front month NOT FOUND for', contract.yahooTicker || contract.symbol,
+            '(', cands.length, 'candidates)');
+        }
+        resolve(contract);
+      };
+      const t = setTimeout(finish, 8000);
+      const onDet = (id, details) => {
+        if (Number(id) !== reqId) return;
+        const d = details || {};
+        const c = d.contract || {};
+        const month = String(c.lastTradeDateOrContractMonth || '');
+        if (!month) return;
+        cands.push({
+          month,
+          conId: Number(c.conId) || 0,
+          localSymbol: c.localSymbol ? String(c.localSymbol) : null,
+          tradingClass: c.tradingClass ? String(c.tradingClass) : null,
+          multiplier: Number(c.multiplier || d.multiplier || contract.multiplier) || contract.multiplier,
+          exchange: c.exchange || contract.exchange
+        });
+      };
+      const onEnd = (id) => {
+        if (Number(id) !== reqId) return;
+        clearTimeout(t);
+        finish();
+      };
+      ib.on(EventName.contractDetails, onDet);
+      ib.on(EventName.contractDetailsEnd, onEnd);
+      try {
+        ib.reqContractDetails(reqId, {
+          symbol: String(contract.symbol),
+          secType: 'FUT',
+          exchange: contract.exchange,
+          currency: contract.currency || 'USD'
+        });
+      } catch (e) {
+        clearTimeout(t);
+        log('reqContractDetails FUT failed', e.message);
+        finish();
+      }
+    });
+  }
+
   /** Subscribe to IB market data for an AlphaSignal ticker (idempotent). */
   function ensureMktData(ticker, contract) {
     if (DRY || !ib || !ticker || !contract || mktSubscribed.has(ticker)) return;
@@ -1081,11 +1456,13 @@ async function main() {
       lastTickAt: null, lastAt: null, contract
     });
     mktSubscribed.add(ticker);
-    const oc = orderContractFromPos(contract) || {
-      symbol: contract.symbol, secType: contract.secType || 'STK',
-      exchange: 'SMART', currency: contract.currency,
-      primaryExch: contract.primaryExch, conId: contract.conId
-    };
+    const oc = (contract.secType === 'FUT' || contract.secType === 'CRYPTO')
+      ? placeableContract(contract)
+      : (orderContractFromPos(contract) || {
+        symbol: contract.symbol, secType: contract.secType || 'STK',
+        exchange: 'SMART', currency: contract.currency,
+        primaryExch: contract.primaryExch, conId: contract.conId
+      });
     try {
       ib.reqMktData(id, oc, '', false, false);
       log('mktData subscribed', ticker, 'reqId=' + id);
@@ -1258,16 +1635,21 @@ async function main() {
 
   // ── Entry: full bracket ────────────────────────────────────────────────────
   async function placeBracket(evt) {
-    const contract = toContract(evt.ticker);
+    let contract = toContract(evt.ticker);
     if (!contract) {
       log('skip entry (unsupported instrument for IB paper):', evt.ticker);
+      return null;
+    }
+    contract = await resolveInstrument(contract);
+    if (contract.secType === 'FUT' && !contract.lastTradeDateOrContractMonth && !contract.conId) {
+      log('skip entry (futures front month unresolved):', evt.ticker);
       return null;
     }
     const isSell = evt.side === 'sell';
     const lot = await resolveLot(contract);
     contract.lotHint = lot;
     const split = await shareSplit(evt.entry, contract, lot);
-    if (split.total < 1) { log('skip entry — zero shares for', evt.ticker, 'entry', evt.entry, 'lot', lot); return null; }
+    if (!(split.total > 0)) { log('skip entry — zero size for', evt.ticker, 'entry', evt.entry, 'lot', lot); return null; }
     const openAction = isSell ? 'SELL' : 'BUY';
     const closeAction = isSell ? 'BUY' : 'SELL';
     // Stops: round away from the market so STP is valid on SEHK tick grid.
@@ -1281,7 +1663,7 @@ async function main() {
     }
     const tp1Px = roundPx(evt.tp1, contract, isSell ? 'down' : 'up');
     if (!(stopPx > 0)) { log('skip entry — no stop level for', evt.ticker); return null; }
-    const rthOk = !!contract.usRth; // outsideRth only meaningful for US SMART
+    const rthOk = !!(contract.usRth || contract.secType === 'FUT' || contract.secType === 'CRYPTO');
     const parentId = nid(), stopId = nid(), tp1Id = tp1Px > 0 && split.sold > 0 ? nid() : null;
 
     // US pre/extended + RTH chase: gate on live quote vs recommended entry.
@@ -1308,7 +1690,8 @@ async function main() {
     const stopOrder = baseOrder({
       orderId: stopId, action: closeAction, orderType: 'STP',
       auxPrice: stopPx, totalQuantity: split.total,
-      parentId, transmit: tp1Id == null
+      parentId, transmit: tp1Id == null,
+      outsideRth: rthOk
     });
     // TP1 child: partial quantity. NOT OCA with the stop — a TP1 fill must not
     // cancel the stop; instead onOrderStatus resizes the stop to the runner.
@@ -1321,27 +1704,18 @@ async function main() {
     if (DRY || !ib) {
       log('DRY bracket', evt.ticker, evt.side, JSON.stringify({ contract, parent, stopOrder, tp1Order, split, entryStyle, phase: sessionPhase(contract), quotePx, quoteSrc }, null, 1));
     } else {
-      // Prefer conId when resolved — HK SMART+symbol alone often hits error 200.
-      // Pin SEHK for Hong Kong; SMART for everything else.
-      const oc = (contract.conId > 0)
-        ? {
-            conId: Number(contract.conId),
-            symbol: contract.symbol != null ? String(contract.symbol) : undefined,
-            localSymbol: contract.localSymbol || undefined,
-            secType: 'STK',
-            exchange: contract.market === 'HK' ? 'SEHK' : 'SMART',
-            primaryExch: contract.primaryExch,
-            currency: contract.currency
-          }
-        : (orderContractFromPos(contract) || contract);
+      const oc = placeableContract(contract);
       ib.placeOrder(parentId, oc, parent);
       ib.placeOrder(stopId, oc, stopOrder);
       if (tp1Order) ib.placeOrder(tp1Id, oc, tp1Order);
       const gateNote = contract.usRth && sessionPhase(contract) === 'pre'
         ? ` quote=${quotePx != null ? quotePx : 'n/a'}(${quoteSrc || 'none'}) vs entry=${roundPx(evt.entry)} → ${entryStyle}`
         : '';
+      const sizeNote = contract.secType === 'FUT'
+        ? ` futMonth=${contract.lastTradeDateOrContractMonth} mult=${contract.multiplier}`
+        : (contract.secType === 'CRYPTO' ? ' crypto' : '');
       log('Placed bracket', evt.ticker, evt.side,
-        `style=${entryStyle} phase=${sessionPhase(contract)} qty=${split.total} sizePx=${roundPx(evt.entry)} stop=${stopPx}(full) tp1=${tp1Px}x${split.sold} runner=${split.runner}${gateNote}`);
+        `style=${entryStyle} phase=${sessionPhase(contract)} qty=${split.total} sizePx=${roundPx(evt.entry, contract)} stop=${stopPx}(full) tp1=${tp1Px}x${split.sold} runner=${split.runner}${sizeNote}${gateNote}`);
     }
     return {
       parentId, stopId, tp1Id,
@@ -2559,17 +2933,23 @@ async function main() {
           log('RECONCILE: skip orphan flatten — no conId', pk, y);
           continue;
         }
-        const isHk = String(rawOc.currency || cMeta.currency || '') === 'HKD'
-          || cMeta.market === 'HK' || /\.HK$/i.test(y);
-        const oc = {
-          conId,
-          symbol: rawOc.symbol != null ? String(rawOc.symbol) : undefined,
-          localSymbol: rawOc.localSymbol || undefined,
-          secType: 'STK',
-          exchange: isHk ? 'SEHK' : 'SMART',
-          primaryExch: rawOc.primaryExch || (isHk ? 'SEHK' : undefined),
-          currency: rawOc.currency || cMeta.currency || 'USD'
-        };
+        const sec = String(rawOc.secType || cMeta.secType || 'STK').toUpperCase();
+        let oc;
+        if (sec === 'FUT' || sec === 'CRYPTO') {
+          oc = placeableContract(Object.assign({}, cMeta, rawOc, { conId }));
+        } else {
+          const isHk = String(rawOc.currency || cMeta.currency || '') === 'HKD'
+            || cMeta.market === 'HK' || /\.HK$/i.test(y);
+          oc = {
+            conId,
+            symbol: rawOc.symbol != null ? String(rawOc.symbol) : undefined,
+            localSymbol: rawOc.localSymbol || undefined,
+            secType: 'STK',
+            exchange: isHk ? 'SEHK' : 'SMART',
+            primaryExch: rawOc.primaryExch || (isHk ? 'SEHK' : undefined),
+            currency: rawOc.currency || cMeta.currency || 'USD'
+          };
+        }
         const action = pos > 0 ? 'SELL' : 'BUY';
         // RTH → market day order. Otherwise → opening auction (next session).
         const useOpg = phase !== 'rth';
