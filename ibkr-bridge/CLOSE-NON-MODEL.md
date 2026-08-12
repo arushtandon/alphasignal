@@ -1,6 +1,6 @@
 # Close IB paper trades that AlphaSignal did **not** recommend
 
-The bridge does this automatically on every reconcile sweep (~5 min):
+The bridge does this automatically on every reconcile sweep (~15 min, `IBKR_RECON_MS`):
 
 | Position type | Action |
 |---------------|--------|

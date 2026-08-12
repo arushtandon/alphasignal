@@ -90,7 +90,42 @@ exchanges for most non-India accounts).
 Entry events older than `IBKR_MAX_EVENT_AGE_H` (default 24h) are skipped so a
 fresh cursor never replays weeks of history as live orders.
 
-## 6. Keeping it running 24/7 (Windows)
+## 6. Reconciliation + Telegram risk alerts
+
+Every **15 minutes** (`IBKR_RECON_MS`, default `900000`) the bridge runs a full reconcile:
+
+- IB ↔ AlphaSignal ledger sync (matched / adjusted / untracked)
+- Re-arm unfilled model entries still live on the board
+- Flatten IB-only orphans / error tickers
+- Risk digest → **Telegram** when something needs attention
+
+| Alert | When |
+|-------|------|
+| Untracked IB | Position at IB with no model book row |
+| Unfilled RTH | Model entry still open in regular hours and not filled (≥10 min, `IBKR_UNFILLED_ALERT_MIN_MS`) |
+| Missing stop | Filled lot with no stop order id |
+| Recon errors / pending | Server reported ledger issues |
+| All-clear | Sent once when a prior alert state returns to fully matched |
+
+### Setup Telegram
+
+1. In Telegram, talk to [@BotFather](https://t.me/BotFather) → `/newbot` → copy the **bot token**.
+2. Open a chat with your bot (or add it to a group) and send any message.
+3. Open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy your **chat id** (`message.chat.id`).
+4. In `run-forever.ps1` (or your shell env):
+
+```powershell
+$env:TELEGRAM_BOT_TOKEN = "123456:ABC..."
+$env:TELEGRAM_CHAT_ID   = "123456789"
+$env:TELEGRAM_ALERTS    = "1"          # set 0 to mute
+$env:IBKR_RECON_MS      = "900000"     # 15 minutes
+```
+
+5. Restart the bridge supervisor (`restart-bridge.ps1`). On the next reconcile with issues you get a Telegram message; when everything matches again you get a single ✅ all-clear.
+
+Ledger posts still run about every **60s** for qty/avg/PnL; the heavier flatten/re-arm/alert sweep is the 15‑minute cadence.
+
+## 7. Keeping it running 24/7 (Windows)
 
 **Bridge** — `run-forever.ps1` restarts it on any crash and logs to `logs\`.
 Register it to start at logon (run once in an elevated PowerShell):
@@ -107,7 +142,7 @@ schtasks /Create /TN "AlphaSignal IBKR Bridge" /SC ONLOGON /RL HIGHEST `
 **PC** — stop it sleeping: `powercfg /change standby-timeout-ac 0`
 and enable automatic Windows login if you want it to survive reboots unattended.
 
-## 7. Sequencing recommendation
+## 8. Sequencing recommendation
 
 1. Run bracket acceptance (`npm run acceptance` in repo root) — gate failing sides/horizons.
 2. Wire paper in **dry-run** and confirm event flow.

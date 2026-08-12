@@ -1,4 +1,4 @@
-﻿# Keeps the AlphaSignal -> IBKR bridge running: restarts it automatically if it
+# Keeps the AlphaSignal -> IBKR bridge running: restarts it automatically if it
 # crashes or the PC reboots (when registered as a scheduled task - see README).
 #
 #   powershell -ExecutionPolicy Bypass -File run-forever.ps1
@@ -18,6 +18,14 @@ $env:IBKR_CLIENT_ID  = "27"
 # Portfolio marks (updatePortfolio) are the primary MTM source. Tick MD type
 # is secondary — 3=delayed is fine when TWS already holds the live MD slot.
 $env:IBKR_MARKET_DATA_TYPE = "3"
+# Full IB↔AS reconcile + Telegram risk digest (default 15 minutes).
+$env:IBKR_RECON_MS = "900000"
+# Telegram risk alerts (untracked IB, unfilled RTH orders, recon errors).
+# Create a bot via @BotFather, DM it once, then get chat id from getUpdates.
+# Uncomment and fill:
+# $env:TELEGRAM_BOT_TOKEN = "123456:ABC..."
+# $env:TELEGRAM_CHAT_ID   = "123456789"
+# $env:TELEGRAM_ALERTS    = "1"
 
 New-Item -ItemType Directory -Force -Path "$PSScriptRoot\logs" | Out-Null
 

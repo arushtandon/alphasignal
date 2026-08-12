@@ -44,11 +44,18 @@
  *   IBKR_ALLOW_NSE       1 = attempt NSE orders (default skip — IB restricts
  *                        NSE for most non-India accounts)
  *   STATE_FILE           cursor + order map path (default ./bridge-state.json)
+ *   IBKR_RECON_MS        full reconcile sweep interval (default 900000 = 15 min)
+ *   TELEGRAM_BOT_TOKEN   BotFather token — risk alerts when recon finds issues
+ *   TELEGRAM_CHAT_ID     chat/group id to receive alerts
+ *   TELEGRAM_ALERTS      set 0 to disable (default on when token+chat set)
+ *   IBKR_ALERT_MIN_MS    min gap between identical alerts (default = IBKR_RECON_MS)
+ *   IBKR_UNFILLED_ALERT_MIN_MS  unfilled RTH entry age before alert (default 10 min)
  */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const { telegramConfigured, sendTelegramAlert } = require('./telegram');
 
 const DRY = process.env.IBKR_DRY_RUN !== '0';
 const BASE = String(process.env.ALPHASIGNAL_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
@@ -67,7 +74,19 @@ const NOTIONAL = Math.max(1000, parseInt(process.env.IBKR_NOTIONAL || '10000', 1
 const MAX_EVENT_AGE_MS = Math.max(1, parseFloat(process.env.IBKR_MAX_EVENT_AGE_H || '24')) * 3600 * 1000;
 const ALLOW_NSE = process.env.IBKR_ALLOW_NSE === '1';
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, 'bridge-state.json');
-const SWEEP_MS = 5 * 60 * 1000;
+/** Full reconcile + risk-alert cadence (default 15 min). */
+const SWEEP_MS = Math.max(
+  60 * 1000,
+  parseInt(process.env.IBKR_RECON_MS || String(15 * 60 * 1000), 10) || (15 * 60 * 1000)
+);
+const ALERT_MIN_MS = Math.max(
+  60 * 1000,
+  parseInt(process.env.IBKR_ALERT_MIN_MS || String(SWEEP_MS), 10) || SWEEP_MS
+);
+const UNFILLED_ALERT_MIN_MS = Math.max(
+  60 * 1000,
+  parseInt(process.env.IBKR_UNFILLED_ALERT_MIN_MS || String(10 * 60 * 1000), 10) || (10 * 60 * 1000)
+);
 /** Force-error tickers: env + error-tickers.txt (AIR.DE / AIR.PA dual-list, etc.).
  *  These win over provenance for flatten + UI classification. */
 function loadErrorTradeTickers() {
@@ -486,6 +505,10 @@ function orderContractFromPos(c) {
 async function main() {
   const state = loadState();
   log(`Bridge start | AlphaSignal=${BASE} | IB=${HOST}:${PORT} clientId=${CLIENT_ID} | dryRun=${DRY} | notional=$${NOTIONAL}`);
+  log(`Reconcile every ${(SWEEP_MS / 60000).toFixed(0)}m | Telegram alerts=${telegramConfigured() ? 'ON' : 'OFF (set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)'}`);
+  if (!state.alertMeta || typeof state.alertMeta !== 'object') {
+    state.alertMeta = { lastFp: '', lastAt: 0, lastHadIssues: false };
+  }
 
   let ib = null;
   let EventName = null;
@@ -1487,8 +1510,9 @@ async function main() {
   // Posts paper positions + avgCost so the site open qty / entry avg / ghost
   // opens match DU1764495. Untracked IB leftovers are reported, not invented.
   let lastIbReconAt = 0;
+  let lastIbReconResp = null;
   async function postIbRecon() {
-    if (DRY || !ib || !positionsReady) return;
+    if (DRY || !ib || !positionsReady) return null;
     const positions = [];
     const marks = {};
     const seenCon = new Set();
@@ -1516,6 +1540,7 @@ async function main() {
     try {
       const resp = await postJson('/api/ibkr/recon', { positions, marks, account: ACCOUNT || '' });
       lastIbReconAt = Date.now();
+      lastIbReconResp = resp;
       if (resp && resp.ok) {
         const bits = [
           'matched=' + (resp.matched || 0),
@@ -1534,7 +1559,167 @@ async function main() {
             ).join(' '));
         }
       }
-    } catch (e) { log('RECONCILE: IB↔AS recon failed', e.message); }
+      return resp;
+    } catch (e) {
+      log('RECONCILE: IB↔AS recon failed', e.message);
+      lastIbReconResp = { ok: false, error: e.message, inSync: false };
+      return lastIbReconResp;
+    }
+  }
+
+  /**
+   * Risk digest for Telegram: untracked IB lots, ledger errors, and model
+   * entries still unfilled during RTH (order not executed).
+   */
+  function collectRiskFindings(keyState, reconResp) {
+    const findings = [];
+    const resp = reconResp || lastIbReconResp;
+    if (!positionsReady) {
+      findings.push({ sev: 'warn', code: 'positions-not-ready', text: 'IB position snapshot not ready — reconcile deferred' });
+    }
+    if (resp && resp.ok === false && resp.error) {
+      findings.push({ sev: 'error', code: 'recon-http', text: 'IB↔AS recon failed: ' + resp.error });
+    }
+    if (resp && resp.ok !== false) {
+      if ((resp.untrackedIb || 0) > 0) {
+        const rows = (resp.untrackedIbRows || []).slice(0, 8)
+          .map(r => `${r.ticker || '?'}×${r.qty != null ? r.qty : '?'}`).join(', ');
+        findings.push({
+          sev: 'error',
+          code: 'untracked',
+          text: `Untracked IB position(s): ${resp.untrackedIb}${rows ? ' (' + rows + ')' : ''}`
+        });
+      }
+      if ((resp.errors || 0) > 0) {
+        const errs = (resp.issues || []).filter(i => i && i.severity === 'error').slice(0, 6)
+          .map(i => `${i.ticker || '?'}: ${i.message || i.code || 'error'}`).join('; ');
+        findings.push({
+          sev: 'error',
+          code: 'recon-errors',
+          text: `Recon errors: ${resp.errors}${errs ? ' — ' + errs : ''}`
+        });
+      }
+      if ((resp.pendingIssues || 0) > 0) {
+        const pend = (resp.issues || []).filter(i => i && i.severity === 'pending').slice(0, 6)
+          .map(i => `${i.ticker || '?'}: ${i.message || i.code || 'pending'}`).join('; ');
+        findings.push({
+          sev: 'warn',
+          code: 'recon-pending',
+          text: `Pending execution / drift: ${resp.pendingIssues}${pend ? ' — ' + pend : ''}`
+        });
+      }
+      if ((resp.adjusted || 0) > 0) {
+        const adj = (resp.adjustedRows || []).slice(0, 6)
+          .map(a => `${a.action || 'adj'}:${a.ticker || '?'}`
+            + (a.qty != null ? '×' + a.qty : '')).join(', ');
+        findings.push({
+          sev: 'warn',
+          code: 'recon-adjusted',
+          text: `Ledger adjustments: ${resp.adjusted}${adj ? ' (' + adj + ')' : ''}`
+        });
+      }
+    }
+
+    // Model-open entries still not filled while the market is in RTH.
+    const now = Date.now();
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (!row || row.closed || row.entryFilled) continue;
+      if (keyState && keyState.get(key) !== 'open') continue;
+      if (!row.contract) continue;
+      const phase = sessionPhase(row.contract);
+      if (phase !== 'rth') continue;
+      const ageMs = row.updated ? (now - Date.parse(row.updated)) : (row.placedAt ? (now - Date.parse(row.placedAt)) : 0);
+      const ageOk = Number.isFinite(ageMs) ? ageMs : 0;
+      // Alert once the working order has had enough RTH time (or re-arm age).
+      const rearmAge = row.lastRearmAt ? (now - Number(row.lastRearmAt)) : ageOk;
+      const waitMs = Math.max(ageOk, rearmAge || 0);
+      if (waitMs < UNFILLED_ALERT_MIN_MS) continue;
+      const mins = Math.round(waitMs / 60000);
+      findings.push({
+        sev: 'error',
+        code: 'unfilled-rth',
+        text: `Order NOT executed (RTH ${mins}m): ${key} style=${row.entryStyle || '?'} side=${row.side || '?'}`
+      });
+    }
+
+    // Filled model lot with no protective stop id (bracket missing).
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (!row || row.closed || !row.entryFilled) continue;
+      if (keyState && keyState.get(key) !== 'open') continue;
+      if (row.stopId != null) continue;
+      const pos = row.contract ? (posMap.get(posKeyOf(row.contract)) || {}).pos : 0;
+      if (!pos) continue;
+      findings.push({
+        sev: 'error',
+        code: 'missing-stop',
+        text: `Risk: filled but no stop order id — ${key} IB pos=${pos}`
+      });
+    }
+    return findings;
+  }
+
+  async function maybeSendRiskAlert(findings, { force = false } = {}) {
+    if (!telegramConfigured() || DRY) return;
+    const list = Array.isArray(findings) ? findings : [];
+    const fp = list.map(f => f.code + ':' + f.text).sort().join('|') || 'ok';
+    const now = Date.now();
+    const meta = state.alertMeta || (state.alertMeta = {});
+    const hadIssues = list.length > 0;
+    const sameFp = meta.lastFp === fp;
+    const withinGap = (now - (Number(meta.lastAt) || 0)) < ALERT_MIN_MS;
+
+    // All-clear once when we recover from a prior alert state.
+    if (!hadIssues) {
+      if (meta.lastHadIssues) {
+        try {
+          await sendTelegramAlert(
+            '✅ AlphaSignal IBKR risk check OK\n'
+            + `Account: ${ACCOUNT || 'paper'}\n`
+            + `Time: ${new Date().toISOString()}\n`
+            + 'All trades matched — no untracked / unfilled RTH / recon errors.'
+          );
+          log('TELEGRAM: all-clear sent');
+        } catch (e) { log('TELEGRAM: all-clear failed', e.message); }
+        meta.lastHadIssues = false;
+        meta.lastFp = 'ok';
+        meta.lastAt = now;
+        saveState(state);
+      }
+      return;
+    }
+
+    if (!force && sameFp && withinGap) return;
+
+    const errors = list.filter(f => f.sev === 'error');
+    const warns = list.filter(f => f.sev !== 'error');
+    const lines = [
+      '🚨 AlphaSignal IBKR risk alert',
+      `Account: ${ACCOUNT || 'paper'}`,
+      `Time: ${new Date().toISOString()}`,
+      `Reconcile cadence: every ${(SWEEP_MS / 60000).toFixed(0)} min`,
+      ''
+    ];
+    if (errors.length) {
+      lines.push('ERRORS:');
+      for (const f of errors.slice(0, 12)) lines.push('• ' + f.text);
+    }
+    if (warns.length) {
+      lines.push('WARNINGS:');
+      for (const f of warns.slice(0, 12)) lines.push('• ' + f.text);
+    }
+    lines.push('');
+    lines.push('Bridge will keep reconciling / re-arming / flattening orphans. Check TWS + History if this repeats.');
+
+    try {
+      await sendTelegramAlert(lines.join('\n'));
+      log('TELEGRAM: risk alert sent (', list.length, 'finding(s))');
+      meta.lastFp = fp;
+      meta.lastAt = now;
+      meta.lastHadIssues = true;
+      saveState(state);
+    } catch (e) {
+      log('TELEGRAM: send failed', e.message);
+    }
   }
 
   // ── Position reconciliation ─────────────────────────────────────────────────
@@ -2250,6 +2435,12 @@ async function main() {
         } catch (e) { log('reconcile trades fetch failed:', e.message); }
         saveState(state);
       }
+
+      // 15‑min risk digest → Telegram (untracked / unfilled RTH / recon errors).
+      try {
+        const findings = collectRiskFindings(keyState, lastIbReconResp);
+        await maybeSendRiskAlert(findings);
+      } catch (e) { log('TELEGRAM: risk check failed', e.message); }
     } catch (e) { log('reconcile error', e.message); }
   }
 
