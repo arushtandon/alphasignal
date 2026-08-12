@@ -112,22 +112,24 @@ Every **15 minutes** (`IBKR_RECON_MS`, default `900000`) the bridge runs a full 
 | Missing stop | Filled lot with no stop order id |
 | Recon errors / pending | Server reported ledger issues |
 | All-clear | Sent once when a prior alert state returns to fully matched |
+| EOD performance | Once per US session after **post-market close** (~20:00 ET): day realised, totals, win rate, balance / margin / liquidity |
 
 ### Setup Telegram
 
 1. In Telegram, talk to [@BotFather](https://t.me/BotFather) → `/newbot` → copy the **bot token**.
 2. Open a chat with your bot (or add it to a group) and send any message.
 3. Open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy your **chat id** (`message.chat.id`).
-4. In `run-forever.ps1` (or your shell env):
+4. Prefer `local-secrets.ps1` (gitignored) or set in `run-forever.ps1`:
 
 ```powershell
 $env:TELEGRAM_BOT_TOKEN = "123456:ABC..."
 $env:TELEGRAM_CHAT_ID   = "123456789"
-$env:TELEGRAM_ALERTS    = "1"          # set 0 to mute
+$env:TELEGRAM_ALERTS    = "1"          # set 0 to mute all Telegram
+$env:IBKR_EOD_ALERTS    = "1"          # set 0 to mute EOD summary only
 $env:IBKR_RECON_MS      = "900000"     # 15 minutes
 ```
 
-5. Restart the bridge supervisor (`restart-bridge.ps1`). On the next reconcile with issues you get a Telegram message; when everything matches again you get a single ✅ all-clear.
+5. Restart the bridge supervisor (`restart-bridge.ps1`). Risk issues → Telegram alert; recovery → single ✅ all-clear; after US post-market close → 📊 EOD performance once per session.
 
 Ledger posts still run about every **60s** for qty/avg/PnL; the heavier flatten/re-arm/alert sweep is the 15‑minute cadence.
 

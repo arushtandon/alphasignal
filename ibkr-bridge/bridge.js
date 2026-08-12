@@ -45,9 +45,10 @@
  *                        NSE for most non-India accounts)
  *   STATE_FILE           cursor + order map path (default ./bridge-state.json)
  *   IBKR_RECON_MS        full reconcile sweep interval (default 900000 = 15 min)
- *   TELEGRAM_BOT_TOKEN   BotFather token — risk alerts when recon finds issues
+ *   TELEGRAM_BOT_TOKEN   BotFather token — risk alerts + US EOD performance summary
  *   TELEGRAM_CHAT_ID     chat/group id to receive alerts
  *   TELEGRAM_ALERTS      set 0 to disable (default on when token+chat set)
+ *   IBKR_EOD_ALERTS      set 0 to disable EOD summary only (default on with Telegram)
  *   IBKR_ALERT_MIN_MS    min gap between identical alerts (default = IBKR_RECON_MS)
  *   IBKR_UNFILLED_ALERT_MIN_MS  unfilled RTH entry age before alert (default 10 min)
  */
@@ -87,6 +88,10 @@ const UNFILLED_ALERT_MIN_MS = Math.max(
   60 * 1000,
   parseInt(process.env.IBKR_UNFILLED_ALERT_MIN_MS || String(10 * 60 * 1000), 10) || (10 * 60 * 1000)
 );
+/** EOD Telegram summary after US post-market close (default on with Telegram). */
+const EOD_ALERTS = process.env.IBKR_EOD_ALERTS !== '0';
+/** Minutes after US post close (20:00 ET / 00:00 UTC DST) to attempt EOD send. */
+const EOD_WINDOW_MIN = Math.max(30, parseInt(process.env.IBKR_EOD_WINDOW_MIN || '120', 10) || 120);
 /** Force-error tickers: env + error-tickers.txt (AIR.DE / AIR.PA dual-list, etc.).
  *  These win over provenance for flatten + UI classification. */
 function loadErrorTradeTickers() {
@@ -698,9 +703,10 @@ function placeableContract(contract) {
 async function main() {
   const state = loadState();
   log(`Bridge start | AlphaSignal=${BASE} | IB=${HOST}:${PORT} clientId=${CLIENT_ID} | dryRun=${DRY} | notional=$${NOTIONAL}`);
-  log(`Reconcile every ${(SWEEP_MS / 60000).toFixed(0)}m | Telegram alerts=${telegramConfigured() ? 'ON' : 'OFF (set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)'}`);
+  log(`Reconcile every ${(SWEEP_MS / 60000).toFixed(0)}m | Telegram alerts=${telegramConfigured() ? 'ON' : 'OFF (set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)'}`
+    + (telegramConfigured() && EOD_ALERTS ? ' | EOD summary after US post-close' : ''));
   if (!state.alertMeta || typeof state.alertMeta !== 'object') {
-    state.alertMeta = { lastFp: '', lastAt: 0, lastHadIssues: false };
+    state.alertMeta = { lastFp: '', lastAt: 0, lastHadIssues: false, eodSentDay: '' };
   }
 
   let ib = null;
@@ -2419,6 +2425,112 @@ async function main() {
     }
   }
 
+  /** US post-market ends 20:00 ET ≈ 00:00 UTC (EDT). Return ET session date key once in the send window. */
+  function usEodSummaryDayKey(nowMs = Date.now()) {
+    const d = new Date(nowMs);
+    const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
+    const dow = d.getUTCDay(); // 0=Sun … 6=Sat
+    // First ~EOD_WINDOW_MIN after post close: Tue–Sat 00:00–window UTC
+    // (covers Mon–Fri ET sessions that just finished extended hours).
+    if (!(dow >= 2 && dow <= 6)) return null;
+    if (!(utcMin >= 0 && utcMin < EOD_WINDOW_MIN)) return null;
+    // ET ≈ UTC-4 (DST window used elsewhere in this bridge).
+    const et = new Date(nowMs - 4 * 3600 * 1000);
+    return et.toISOString().slice(0, 10);
+  }
+
+  function fmtUsdSigned(n) {
+    if (n == null || !Number.isFinite(Number(n))) return '—';
+    const v = Number(n);
+    const sign = v > 0 ? '+' : (v < 0 ? '-' : '');
+    return sign + '$' + Math.abs(v).toFixed(2);
+  }
+
+  function fmtUsdPlain(n) {
+    if (n == null || !Number.isFinite(Number(n))) return '—';
+    return '$' + Number(n).toFixed(2);
+  }
+
+  async function buildEodPerformanceMessage(dayKey) {
+    let tradesPayload = null;
+    try { tradesPayload = await fetchJson('/api/ibkr/trades'); }
+    catch (e) { log('TELEGRAM EOD: trades fetch failed', e.message); }
+    const tt = (tradesPayload && tradesPayload.totals) || {};
+    const acct = (tradesPayload && tradesPayload.account) || {};
+    const daily = Array.isArray(tradesPayload && tradesPayload.daily) ? tradesPayload.daily : [];
+    // Prefer the ET session day just closed; fall back to latest daily row.
+    let dayRow = daily.find(x => x && x.date === dayKey) || null;
+    if (!dayRow && daily.length) dayRow = daily[daily.length - 1];
+    const dayReal = dayRow && dayRow.realizedUsd != null ? Number(dayRow.realizedUsd) : null;
+    const dayLabel = (dayRow && dayRow.date) || dayKey;
+
+    const closedToday = ((tradesPayload && tradesPayload.trades) || [])
+      .filter(t => {
+        if (!t || t.errorTrade) return false;
+        if (t.status !== 'closed' && t.status !== 'tp1_open') return false;
+        const exitDay = String(t.exitTime || t.exitTs || t.closedAt || t.updatedAt || '').slice(0, 10);
+        const entryDay = String(t.entryTime || t.entryDate || '').slice(0, 10);
+        return exitDay === dayLabel || (!exitDay && entryDay === dayLabel && Number(t.realizedUsd));
+      })
+      .sort((a, b) => Math.abs(Number(b.realizedUsd) || 0) - Math.abs(Number(a.realizedUsd) || 0))
+      .slice(0, 8);
+
+    const openN = Number(tt.openCount) || 0;
+    const closedN = Number(tt.closedCount) || 0;
+    const lines = [
+      '📊 AlphaSignal IBKR — end of day',
+      `Session: ${dayLabel} (after US post-market close)`,
+      `Account: ${acct.account || ACCOUNT || 'paper'}`,
+      `Sent: ${new Date().toISOString()}`,
+      '',
+      '— Performance —',
+      `Today realised: ${fmtUsdSigned(dayReal)}`,
+      `Total realised (net): ${fmtUsdSigned(tt.realizedUsd)}`,
+      `Unrealised: ${fmtUsdSigned(tt.unrealizedUsd)}`,
+      `Net PnL: ${fmtUsdSigned((Number(tt.realizedUsd) || 0) + (Number(tt.unrealizedUsd) || 0))}`,
+      `Win rate: ${tt.winRate != null ? tt.winRate + '%' : '—'} (${tt.wins || 0}W / ${tt.losses || 0}L)`,
+      `Trades: ${openN} open · ${closedN} closed`,
+      '',
+      '— Account —',
+      `Balance: ${fmtUsdPlain(acct.currentBalance != null ? acct.currentBalance : acct.netLiquidation)}`,
+      `Net liquidity avail: ${fmtUsdPlain(acct.netLiquidityAvailable != null ? acct.netLiquidityAvailable : acct.availableFunds)}`,
+      `Margin used: ${fmtUsdPlain(acct.marginsUsed)}`,
+      `Liquidity: ${acct.liquidityPct != null ? Number(acct.liquidityPct).toFixed(1) + '%' : '—'}`
+        + (acct.liquidityRiskOff ? ' · NEW ENTRIES PAUSED' : '')
+    ];
+    if (accountSnap.dailyPnl != null && Number.isFinite(Number(accountSnap.dailyPnl))) {
+      lines.push(`IB daily PnL: ${fmtUsdSigned(accountSnap.dailyPnl)}`);
+    }
+    if (closedToday.length) {
+      lines.push('');
+      lines.push('— Notable closes —');
+      for (const t of closedToday) {
+        lines.push(
+          `• ${t.ticker || '?'} ${t.side || ''} ${t.hz || ''}: ${fmtUsdSigned(t.realizedUsd)}`
+        );
+      }
+    }
+    return lines.join('\n');
+  }
+
+  async function maybeSendEodPerformanceSummary() {
+    if (!telegramConfigured() || DRY || !EOD_ALERTS) return;
+    const dayKey = usEodSummaryDayKey();
+    if (!dayKey) return;
+    const meta = state.alertMeta || (state.alertMeta = {});
+    if (meta.eodSentDay === dayKey) return;
+    try {
+      const text = await buildEodPerformanceMessage(dayKey);
+      await sendTelegramAlert(text);
+      meta.eodSentDay = dayKey;
+      meta.eodSentAt = new Date().toISOString();
+      saveState(state);
+      log('TELEGRAM: EOD performance summary sent for', dayKey);
+    } catch (e) {
+      log('TELEGRAM: EOD summary failed', e.message);
+    }
+  }
+
   // ── Position reconciliation ─────────────────────────────────────────────────
   // The account is the source of truth for SHARES; AlphaSignal events are the
   // source of truth for which trades are model-authorized. Every sweep:
@@ -3144,6 +3256,9 @@ async function main() {
         const findings = collectRiskFindings(keyState, lastIbReconResp);
         await maybeSendRiskAlert(findings);
       } catch (e) { log('TELEGRAM: risk check failed', e.message); }
+      // Once per US session after post-market close (≈20:00 ET / 00:00 UTC EDT).
+      try { await maybeSendEodPerformanceSummary(); }
+      catch (e) { log('TELEGRAM: EOD check failed', e.message); }
     } catch (e) { log('reconcile error', e.message); }
   }
 
@@ -3211,6 +3326,9 @@ async function main() {
       sweepOrphans();
       await reconcilePositions().catch(e => log('reconcile error', e.message));
     }
+    // EOD summary is time-gated + once-per-day; cheap to check every poll.
+    try { await maybeSendEodPerformanceSummary(); }
+    catch (e) { log('TELEGRAM: EOD check failed', e.message); }
     await new Promise(r => setTimeout(r, POLL_MS));
   }
 }
