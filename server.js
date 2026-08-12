@@ -6515,8 +6515,10 @@ function stripPriorDayOpenPicksFromDashData(dashData) {
     const wantSell = !!paneSell[pane];
     out[pane] = arr.filter((r) => {
       if (!r || !r.ticker) return false;
-      if (hasPriorDayOpenInDirection(r.ticker, wantSell)) {
-        console.log('Board strip prior-day open:', r.ticker, pane);
+      // Only drop History-restored ghosts — not a same-day regenerated pick that
+      // happens to share a ticker with an older open (e.g. long copper HG=F).
+      if (r._fromOpenHistory && hasPriorDayOpenInDirection(r.ticker, wantSell)) {
+        console.log('Board strip prior-day open-history row:', r.ticker, pane);
         return false;
       }
       return true;
@@ -7576,6 +7578,26 @@ async function generateServerPicksFromShortlist(opts = {}) {
     const cleanPrev = stripPriorDayOpenPicksFromDashData(prevDash);
     const cleanPrevCount = countDashPicks(cleanPrev);
     const newCount = countDashPicks(dashData);
+
+    // Same SGT-day board lock: once today's board is published, do not silently
+    // swap copper → AFL/SU.PA mid-session. Morning new-day regen still runs;
+    // explicit force / allowRepeat unlocks (Refresh with force).
+    const prevTs = Number(dashboardPicksCache && dashboardPicksCache.dashTs) || 0;
+    const sameSgtDay = prevTs > 0 && singaporeDateKey(prevTs) === singaporeDateKey();
+    const forceBoard = opts.force === true || opts.allowRepeat === true || opts.unlockBoard === true;
+    if (sameSgtDay && !forceBoard && cleanPrevCount > 0) {
+      console.log('Same-day board lock — keeping', dashboardPicksSummary(cleanPrev || prevDash));
+      return {
+        ok: true,
+        keptPrevious: true,
+        reason: 'same-day-lock',
+        summary: dashboardPicksSummary(cleanPrev || prevDash),
+        prevSummary,
+        dashTs: dashboardPicksCache && dashboardPicksCache.dashTs,
+        cooldownSize: cooldown.size
+      };
+    }
+
     const sparseCollapse = cleanPrevCount >= 3 && newCount < Math.min(3, Math.ceil(cleanPrevCount * 0.4));
     if ((newCount === 0 && cleanPrevCount > 0) || sparseCollapse) {
       console.warn(
@@ -8120,10 +8142,17 @@ async function addTradesToHistory(trades) {
       auditLog('ingest_keep_settled', { ticker: trade.ticker, hz, status: prev[hz + 'Status'] });
       continue;
     }
-    // PORTFOLIO RISK-OFF: pause brand-new entries while drawdown ≥15% from peak.
-    if (!prev && isToday && riskState.riskOff) {
-      console.log('History add skipped (portfolio risk-off):', trade.ticker, hz);
-      auditLog('entry_blocked_risk_off', { ticker: trade.ticker, hz });
+    // PORTFOLIO RISK-OFF: pause brand-new entries while drawdown ≥15% from peak
+    // OR IB available liquidity ≤15% of account (resume only above 20%).
+    if (!prev && isToday && isNewEntryRiskBlocked()) {
+      console.log('History add skipped (risk-off):', trade.ticker, hz,
+        riskState.liquidityRiskOff ? ('liq=' + riskState.liquidityPct + '%') : ('dd=' + riskState.drawdownPct + '%'));
+      auditLog('entry_blocked_risk_off', {
+        ticker: trade.ticker, hz,
+        drawdown: riskState.riskOff,
+        liquidity: riskState.liquidityRiskOff,
+        liquidityPct: riskState.liquidityPct
+      });
       continue;
     }
     if (prev) {
@@ -11179,7 +11208,10 @@ async function scanSchedulerTick(boot = false) {
           rotationH: PICKS_ROTATION_HOURS
         })
       );
-      const r = await generateServerPicksFromShortlist().catch(e => ({ ok: false, error: e.message }));
+      const r = await generateServerPicksFromShortlist({
+        force: newSgtDay || overdue,
+        unlockBoard: newSgtDay || overdue
+      }).catch(e => ({ ok: false, error: e.message }));
       if (r && r.ok) {
         _lastPicksDateKey = todayKey;
         console.log('Scheduler: picks regenerated OK →', r.summary, r.prevSummary ? `| was: ${r.prevSummary}` : '');
@@ -11213,7 +11245,9 @@ app.post('/api/dashboard/picks/regen', express.json({ limit: '32kb' }), async (r
     }
     const r = await generateServerPicksFromShortlist({
       maxMs: 240000,
-      allowRepeat: body.allowRepeat === true
+      allowRepeat: body.allowRepeat === true,
+      force: body.force === true || body.unlockBoard === true,
+      unlockBoard: body.unlockBoard === true
     });
     if (r && r.ok) _lastPicksDateKey = singaporeDateKey();
     const d = dashboardPicksCache;
@@ -12719,6 +12753,11 @@ function ibkrLiveEntrySide(ticker, hz, entryDate) {
 
 function shouldEmitIbkrEntry(trade, hz) {
   if (!trade || !isHistoryBuySellRecord(trade)) return false;
+  if (isNewEntryRiskBlocked()) {
+    console.log('IBKR entry skipped (risk-off / liquidity gate):', trade.ticker,
+      riskState.liquidityRiskOff ? ('liq=' + riskState.liquidityPct + '%') : ('dd=' + riskState.drawdownPct + '%'));
+    return false;
+  }
   if (isForceIbkrErrorTicker(trade.ticker)) {
     console.log('IBKR entry skipped (error-trade blocklist):', trade.ticker);
     return false;
@@ -13501,12 +13540,23 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       const snap = req.body && req.body.accountSnapshot;
       if (snap && typeof snap === 'object') {
         const prev = loadIbkrAccountSnapshot() || {};
-        saveIbkrAccountSnapshot({
+        const merged = {
           ...prev,
           ...snap,
           account: snap.account || req.body.account || prev.account || null,
           at: snap.at || new Date().toISOString()
-        });
+        };
+        // Canonical display fields.
+        if (merged.netLiquidation != null) merged.currentBalance = Number(merged.netLiquidation);
+        if (merged.availableFunds != null) merged.netLiquidityAvailable = Number(merged.availableFunds);
+        if (merged.currentBalance != null && merged.netLiquidityAvailable != null) {
+          const bal = Number(merged.currentBalance);
+          const avail = Number(merged.netLiquidityAvailable);
+          merged.marginsUsed = +(bal - avail).toFixed(2);
+          merged.liquidityPct = bal > 0 ? +((avail / bal) * 100).toFixed(2) : null;
+        }
+        saveIbkrAccountSnapshot(merged);
+        try { updateLiquidityRiskGate(merged); } catch (_) { /* best-effort */ }
       }
     } catch (_) { /* best-effort */ }
     const ibByY = new Map();
@@ -13930,12 +13980,22 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
     const snap = req.body && req.body.accountSnapshot;
     if (snap && typeof snap === 'object') {
       const prev = loadIbkrAccountSnapshot() || {};
-      saveIbkrAccountSnapshot({
+      const merged = {
         ...prev,
         ...snap,
         account: snap.account || prev.account || null,
         at: snap.at || new Date().toISOString()
-      });
+      };
+      if (merged.netLiquidation != null) merged.currentBalance = Number(merged.netLiquidation);
+      if (merged.availableFunds != null) merged.netLiquidityAvailable = Number(merged.availableFunds);
+      if (merged.currentBalance != null && merged.netLiquidityAvailable != null) {
+        const bal = Number(merged.currentBalance);
+        const avail = Number(merged.netLiquidityAvailable);
+        merged.marginsUsed = +(bal - avail).toFixed(2);
+        merged.liquidityPct = bal > 0 ? +((avail / bal) * 100).toFixed(2) : null;
+      }
+      saveIbkrAccountSnapshot(merged);
+      try { updateLiquidityRiskGate(merged); } catch (_) { /* best-effort */ }
     }
   } catch (_) { /* best-effort */ }
   let n = 0;
@@ -14511,19 +14571,71 @@ app.get('/api/ibkr/trades', async (req, res) => {
 
     const reconReport = loadIbkrReconReport();
     const accountSnap = loadIbkrAccountSnapshot();
+    const currentBalance = accountSnap
+      ? Number(accountSnap.currentBalance != null ? accountSnap.currentBalance : accountSnap.netLiquidation)
+      : null;
+    const netLiqAvail = accountSnap
+      ? Number(accountSnap.netLiquidityAvailable != null
+        ? accountSnap.netLiquidityAvailable : accountSnap.availableFunds)
+      : null;
+    const liquidityPct = (currentBalance > 0 && Number.isFinite(netLiqAvail))
+      ? +((netLiqAvail / currentBalance) * 100).toFixed(2) : null;
+    // Expense ledger: every commission + accrued cash (IB account charges).
+    const expenses = [];
+    let expenseTotalUsd = 0;
+    for (const r of rows) {
+      const c = Number(r.commission);
+      if (!(c > 0) && !(c < 0)) continue;
+      const ccy = String(r.commissionCcy || r.currency || 'USD');
+      const cFx = await ibkrUsdPerCcy(ccy);
+      const usd = +(Math.abs(c) * cFx).toFixed(4);
+      expenseTotalUsd += usd;
+      expenses.push({
+        type: 'commission',
+        label: 'Brokerage · ' + (r.ticker || '?') + ' · ' + (r.role || 'fill'),
+        ticker: r.ticker || null,
+        role: r.role || null,
+        execId: r.execId || null,
+        amount: Math.abs(c),
+        currency: ccy,
+        amountUsd: +usd.toFixed(2),
+        time: r.time || null,
+        errorTrade: !!r.errorTrade
+      });
+    }
+    if (accountSnap && accountSnap.accruedCash != null && Number(accountSnap.accruedCash) !== 0) {
+      const ac = Number(accountSnap.accruedCash);
+      expenses.push({
+        type: 'accrued',
+        label: 'Accrued cash / account charges (IB)',
+        amount: ac,
+        currency: accountSnap.currency || 'USD',
+        amountUsd: +ac.toFixed(2),
+        time: accountSnap.at || null
+      });
+      expenseTotalUsd += Math.abs(ac);
+    }
+    expenses.sort((a, b) => String(b.time || '').localeCompare(String(a.time || '')));
     const account = accountSnap ? {
       account: accountSnap.account || null,
       currency: accountSnap.currency || 'USD',
       at: accountSnap.at || accountSnap.savedAt || null,
+      currentBalance: Number.isFinite(currentBalance) ? currentBalance : null,
+      netLiquidityAvailable: Number.isFinite(netLiqAvail) ? netLiqAvail : null,
+      marginsUsed: (Number.isFinite(currentBalance) && Number.isFinite(netLiqAvail))
+        ? +(currentBalance - netLiqAvail).toFixed(2)
+        : (accountSnap.marginsUsed != null ? Number(accountSnap.marginsUsed) : null),
+      liquidityPct,
+      liquidityRiskOff: !!riskState.liquidityRiskOff,
+      liquidityPausePct: LIQ_PAUSE_PCT,
+      liquidityResumePct: LIQ_RESUME_PCT,
+      // Kept for bridge/debug; UI no longer shows these as primary cards.
       startingBalance: accountSnap.startingBalance != null ? Number(accountSnap.startingBalance)
         : (accountSnap.previousDayEquity != null ? Number(accountSnap.previousDayEquity) : null),
-      availableFunds: accountSnap.availableFunds != null ? Number(accountSnap.availableFunds) : null,
-      netLiquidation: accountSnap.netLiquidation != null ? Number(accountSnap.netLiquidation) : null,
+      availableFunds: netLiqAvail,
+      netLiquidation: currentBalance,
       totalCashValue: accountSnap.totalCashValue != null ? Number(accountSnap.totalCashValue) : null,
       buyingPower: accountSnap.buyingPower != null ? Number(accountSnap.buyingPower) : null,
-      equityWithLoan: accountSnap.equityWithLoan != null ? Number(accountSnap.equityWithLoan) : null,
-      grossPositionValue: accountSnap.grossPositionValue != null ? Number(accountSnap.grossPositionValue) : null,
-      // IB account-window PnL (source of truth for "does it match TWS?")
       ibDailyPnl: accountSnap.dailyPnl != null ? Number(accountSnap.dailyPnl) : null,
       ibRealizedPnl: accountSnap.realizedPnl != null ? Number(accountSnap.realizedPnl) : null,
       ibUnrealizedPnl: accountSnap.unrealizedPnl != null ? Number(accountSnap.unrealizedPnl) : null
@@ -14534,6 +14646,20 @@ app.get('/api/ibkr/trades', async (req, res) => {
       daily: dailyArr,
       dailyError: dailyErrorArr,
       account,
+      expenses: {
+        totalUsd: +expenseTotalUsd.toFixed(2),
+        commissionUsd: +totCommissionUsd.toFixed(2),
+        rows: expenses.slice(0, 200)
+      },
+      risk: {
+        riskOff: !!riskState.riskOff,
+        liquidityRiskOff: !!riskState.liquidityRiskOff,
+        blocked: isNewEntryRiskBlocked(),
+        drawdownPct: riskState.drawdownPct,
+        liquidityPct: riskState.liquidityPct != null ? riskState.liquidityPct : liquidityPct,
+        pausePct: LIQ_PAUSE_PCT,
+        resumePct: LIQ_RESUME_PCT
+      },
       totals: {
         realizedUsd: +totRealUsd.toFixed(2),
         realizedUsdGross: +totRealGrossUsd.toFixed(2),
@@ -14580,14 +14706,66 @@ app.get('/api/history/audit', (req, res) => {
 // peak (on the $700k notional pool), NEW entries pause. Existing positions keep
 // managing their exits normally — this throttles fresh risk, it never touches
 // open trades. State survives deploys on /var/data.
+//
+// ADDITIONAL: IB available-liquidity gate — when AvailableFunds / NetLiquidation
+// drops to ≤15%, pause NEW model entries until liquidity recovers above 20%.
 const RISK_STATE_FILE = path.join(path.dirname(HISTORY_FILE), 'risk_state.json');
 const RISK_POOL = 700000;
 const RISK_MAX_DD = 0.15;
-let riskState = { peakEquity: RISK_POOL, equity: RISK_POOL, drawdownPct: 0, riskOff: false, updated: null };
+const LIQ_PAUSE_PCT = Math.max(1, parseFloat(process.env.IBKR_LIQ_PAUSE_PCT || '15') || 15);
+const LIQ_RESUME_PCT = Math.max(LIQ_PAUSE_PCT + 1, parseFloat(process.env.IBKR_LIQ_RESUME_PCT || '20') || 20);
+let riskState = {
+  peakEquity: RISK_POOL, equity: RISK_POOL, drawdownPct: 0, riskOff: false, updated: null,
+  liquidityPct: null, liquidityRiskOff: false, currentBalance: null, netLiquidityAvailable: null
+};
 try {
   const loaded = JSON.parse(fs.readFileSync(RISK_STATE_FILE, 'utf8'));
   riskState = { ...riskState, ...loaded };
 } catch (_) {}
+
+/** True when either equity drawdown OR IB liquidity gate blocks new entries. */
+function isNewEntryRiskBlocked() {
+  return !!(riskState.riskOff || riskState.liquidityRiskOff);
+}
+
+/**
+ * Pause new trades when available liquidity ≤15% of account equity; resume only
+ * after it climbs back above 20% (hysteresis — no flip-flop at the boundary).
+ */
+function updateLiquidityRiskGate(accountSnap) {
+  if (!accountSnap || typeof accountSnap !== 'object') return riskState;
+  const bal = Number(accountSnap.currentBalance != null ? accountSnap.currentBalance : accountSnap.netLiquidation);
+  const avail = Number(accountSnap.netLiquidityAvailable != null
+    ? accountSnap.netLiquidityAvailable : accountSnap.availableFunds);
+  if (!(bal > 0) || !Number.isFinite(avail)) return riskState;
+  const pct = (avail / bal) * 100;
+  const was = !!riskState.liquidityRiskOff;
+  if (riskState.liquidityRiskOff) {
+    if (pct > LIQ_RESUME_PCT) riskState.liquidityRiskOff = false;
+  } else if (pct <= LIQ_PAUSE_PCT) {
+    riskState.liquidityRiskOff = true;
+  }
+  riskState.liquidityPct = +pct.toFixed(2);
+  riskState.currentBalance = +bal.toFixed(2);
+  riskState.netLiquidityAvailable = +avail.toFixed(2);
+  riskState.marginsUsed = +((bal - avail).toFixed(2));
+  riskState.updated = new Date().toISOString();
+  if (was !== riskState.liquidityRiskOff) {
+    auditLog(riskState.liquidityRiskOff ? 'liquidity_risk_off' : 'liquidity_risk_cleared', {
+      liquidityPct: riskState.liquidityPct,
+      currentBalance: riskState.currentBalance,
+      available: riskState.netLiquidityAvailable,
+      pauseAt: LIQ_PAUSE_PCT,
+      resumeAt: LIQ_RESUME_PCT
+    });
+    console.log(
+      'Liquidity risk gate:', riskState.liquidityRiskOff ? 'PAUSE new entries' : 'RESUME',
+      'avail=', riskState.liquidityPct + '% of NLV'
+    );
+  }
+  persistRiskState();
+  return riskState;
+}
 
 /** Marked PnL once per trade (primary horizon only — never sum short+medium+long).
  *  Hardened against corrupt history: de-dupes by trade key and clamps each trade's

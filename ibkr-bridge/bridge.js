@@ -768,6 +768,8 @@ async function main() {
       GrossPositionValue: 'grossPositionValue',
       ExcessLiquidity: 'excessLiquidity',
       FullExcessLiquidity: 'excessLiquidity',
+      InitMarginReq: 'initMarginReq',
+      MaintMarginReq: 'maintMarginReq',
       RealizedPnL: 'realizedPnl',
       UnrealizedPnL: 'unrealizedPnl',
       AccruedCash: 'accruedCash'
@@ -782,18 +784,93 @@ async function main() {
     ib.on(EventName.updateAccountValue, (key, value, currency, accountName) => {
       try {
         if (ACCOUNT && accountName && accountName !== ACCOUNT) return;
+        if (!accountSnap._tagLog) accountSnap._tagLog = 0;
+        if (accountSnap._tagLog < 40) {
+          accountSnap._tagLog++;
+          log('acctVal', key, value, currency || '(blank)', accountName || '');
+        }
         const field = ACCOUNT_VALUE_TAGS[key];
         if (!field) return;
-        // Aggregates: prefer BASE / USD (ignore per-ccy cash lines).
-        const ccy = String(currency || '');
-        if (ccy && ccy !== 'BASE' && ccy !== 'USD' && ccy.toUpperCase() !== 'BASE') return;
+        // Prefer BASE/USD; if only a local ccy line exists, still accept NetLiquidation /
+        // AvailableFunds so the IBKR tab is never blank.
+        const ccy = String(currency || '').toUpperCase();
+        const prefer = !ccy || ccy === 'BASE' || ccy === 'USD';
         const n = parseFloat(value);
         if (!Number.isFinite(n)) return;
-        accountSnap[field] = n;
-        accountSnap.currency = ccy === 'BASE' ? 'USD' : (ccy || 'USD');
+        const prev = accountSnap[field];
+        if (prev != null && !prefer) return; // keep BASE/USD if we already have it
+        if (prev != null && prefer && accountSnap['_' + field + 'Ccy'] === 'BASE' && ccy === 'USD') {
+          // keep BASE over USD when both present
+        } else {
+          accountSnap[field] = n;
+          accountSnap['_' + field + 'Ccy'] = ccy || 'BASE';
+        }
+        accountSnap.currency = (!ccy || ccy === 'BASE') ? 'USD' : (prefer ? ccy : (accountSnap.currency || 'USD'));
         accountSnap.account = accountName || ACCOUNT || accountSnap.account;
         accountSnap.at = new Date().toISOString();
+        // Current balance = equity (NLV). Net liquidity available = AvailableFunds.
+        if (accountSnap.netLiquidation != null) accountSnap.currentBalance = accountSnap.netLiquidation;
+        if (accountSnap.availableFunds != null) accountSnap.netLiquidityAvailable = accountSnap.availableFunds;
+        if (accountSnap.netLiquidation != null && accountSnap.availableFunds != null) {
+          accountSnap.marginsUsed = +(accountSnap.netLiquidation - accountSnap.availableFunds).toFixed(2);
+        }
         refreshStartingBalance();
+        if (accountSnap.netLiquidation != null && !accountSnap._loggedOnce) {
+          accountSnap._loggedOnce = true;
+          log('account values live',
+            'NLV=' + accountSnap.netLiquidation,
+            'Avail=' + accountSnap.availableFunds,
+            'Cash=' + accountSnap.totalCashValue);
+        }
+      } catch (_) { /* ignore */ }
+    });
+    // AccountSummary is a second path — some Gateway sessions only fill this.
+    const ACC_SUMMARY_REQ = 870001;
+    const ACC_SUMMARY_TAGS = [
+      'NetLiquidation', 'AvailableFunds', 'FullAvailableFunds', 'BuyingPower',
+      'TotalCashValue', 'PreviousDayEquityWithLoanValue', 'EquityWithLoanValue',
+      'GrossPositionValue', 'ExcessLiquidity', 'InitMarginReq', 'MaintMarginReq',
+      'RealizedPnL', 'UnrealizedPnL', 'AccruedCash', 'Cushion'
+    ].join(',');
+    try {
+      ib.reqAccountSummary(ACC_SUMMARY_REQ, 'All', ACC_SUMMARY_TAGS);
+      log('reqAccountSummary subscribed');
+    } catch (e) { log('reqAccountSummary failed', e.message); }
+    ib.on(EventName.accountSummary, (reqId, account, tag, value, currency) => {
+      try {
+        if (ACCOUNT && account && account !== ACCOUNT) return;
+        if (!accountSnap._sumLog) accountSnap._sumLog = 0;
+        if (accountSnap._sumLog < 30) {
+          accountSnap._sumLog++;
+          log('acctSum', tag, value, currency || '(blank)', account || '');
+        }
+        const field = ACCOUNT_VALUE_TAGS[tag];
+        if (!field) {
+          if (tag === 'Cushion') accountSnap.cushion = parseFloat(value);
+          else return;
+        } else {
+          const ccy = String(currency || '').toUpperCase();
+          const prefer = !ccy || ccy === 'BASE' || ccy === 'USD';
+          const n = parseFloat(value);
+          if (!Number.isFinite(n)) return;
+          const prev = accountSnap[field];
+          if (prev != null && !prefer) return;
+          accountSnap[field] = n;
+        }
+        accountSnap.account = account || ACCOUNT || accountSnap.account;
+        accountSnap.at = new Date().toISOString();
+        if (accountSnap.netLiquidation != null) accountSnap.currentBalance = accountSnap.netLiquidation;
+        if (accountSnap.availableFunds != null) accountSnap.netLiquidityAvailable = accountSnap.availableFunds;
+        if (accountSnap.netLiquidation != null && accountSnap.availableFunds != null) {
+          accountSnap.marginsUsed = +(accountSnap.netLiquidation - accountSnap.availableFunds).toFixed(2);
+        }
+        refreshStartingBalance();
+        if (accountSnap.netLiquidation != null && !accountSnap._loggedOnce) {
+          accountSnap._loggedOnce = true;
+          log('account values live (summary)',
+            'NLV=' + accountSnap.netLiquidation,
+            'Avail=' + accountSnap.availableFunds);
+        }
       } catch (_) { /* ignore */ }
     });
     try {

@@ -1779,7 +1779,7 @@ async function tickIbkrMtm(){
     if (uEl) { uEl.textContent = ibkrFp(d.totals.unrealizedUsd); uEl.style.color = ibkrPc(d.totals.unrealizedUsd); }
     if (rEl) { rEl.textContent = ibkrFp(d.totals.realizedUsd); rEl.style.color = ibkrPc(d.totals.realizedUsd); }
     if (cEl) {
-      const comm = d.totals.commissionUsd;
+      const comm = (d.expenses && d.expenses.totalUsd != null) ? d.expenses.totalUsd : d.totals.commissionUsd;
       cEl.textContent = comm == null ? '—' : '-$'+Math.abs(comm).toFixed(0);
       cEl.style.color = (comm > 0) ? 'var(--sell)' : 'var(--m1)';
     }
@@ -1787,11 +1787,14 @@ async function tickIbkrMtm(){
       const net = (d.totals.realizedUsd || 0) + (d.totals.unrealizedUsd || 0);
       nEl.textContent = ibkrFp(net); nEl.style.color = ibkrPc(net);
     }
-    setTxt('ibkrCardStart', ibkrBal(a.startingBalance), 'var(--t1)');
-    setTxt('ibkrCardAvail', ibkrBal(a.availableFunds), 'var(--t1)');
-    setTxt('ibkrCardNlv', ibkrBal(a.netLiquidation), 'var(--t1)');
-    if (a.ibDailyPnl != null) setTxt('ibkrCardIbDaily', ibkrFp(a.ibDailyPnl), ibkrPc(a.ibDailyPnl));
-    if (a.ibUnrealizedPnl != null) setTxt('ibkrCardIbUnreal', ibkrFp(a.ibUnrealizedPnl), ibkrPc(a.ibUnrealizedPnl));
+    setTxt('ibkrCardBalance', ibkrBal(a.currentBalance), 'var(--t1)');
+    setTxt('ibkrCardLiq', ibkrBal(a.netLiquidityAvailable), 'var(--t1)');
+    const liqEl = document.getElementById('ibkrCardLiqSub');
+    if (liqEl && a.liquidityPct != null) {
+      liqEl.textContent = a.liquidityPct.toFixed(1) + '% of balance'
+        + (a.liquidityRiskOff ? ' · NEW ENTRIES PAUSED' : '');
+      liqEl.style.color = a.liquidityRiskOff ? 'var(--sell)' : 'var(--m2)';
+    }
     for (const t of (d.trades || [])) {
       if (!(t.openQty > 0)) continue;
       const markEl = document.querySelector('[data-ibkr-mark="'+CSS.escape(t.key)+'"]');
@@ -1885,24 +1888,47 @@ async function renderIbkr(force){
           + '</div>');
     const acct = d.account || {};
     const balSub = acct.account ? ('IB '+acct.account+(acct.at ? ' · '+String(acct.at).slice(11,19)+'Z' : '')) : 'from TWS account window';
-    const comm = tt.commissionUsd || 0;
+    const expTotal = (d.expenses && d.expenses.totalUsd != null) ? d.expenses.totalUsd : (tt.commissionUsd || 0);
+    const liqPct = acct.liquidityPct;
+    const liqSub = liqPct != null
+      ? (liqPct.toFixed(1) + '% of balance · cash − margins'
+        + (acct.liquidityRiskOff ? ' · PAUSED <'+(acct.liquidityPausePct||15)+'%' : ' · pause ≤'+(acct.liquidityPausePct||15)+'%'))
+      : 'cash available − margins used';
+    const tileClick = (id,l,v,sub,c,onclick) =>
+      '<div '+(onclick?'onclick="'+onclick+'" title="Click for details" style="cursor:pointer;':'style="')
+      +'background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-height:80px;flex:1;min-width:130px;display:flex;flex-direction:column;justify-content:center;gap:5px">'
+      +'<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace">'+l+'</div>'
+      +'<div id="'+id+'" style="font-size:21px;font-weight:600;font-family:DM Mono,monospace;color:'+(c||'var(--t1)')+'">'+v+'</div>'
+      +(sub?'<div id="'+id+'Sub" style="font-size:10px;color:var(--m2)">'+sub+'</div>':'')
+      +'</div>';
+    const riskBanner = (d.risk && d.risk.blocked)
+      ? '<div style="font-size:11px;color:var(--sell);font-family:DM Mono,monospace;margin:-6px 0 12px;padding:10px 12px;background:rgba(200,40,40,0.12);border:1px solid #8B3A3A;border-radius:8px">'
+        + '<strong>NEW ENTRIES PAUSED</strong> — '
+        + (d.risk.liquidityRiskOff
+          ? ('available liquidity '+(d.risk.liquidityPct!=null?d.risk.liquidityPct.toFixed(1)+'%':'≤15%')
+            + ' of account (resume above '+(d.risk.resumePct||20)+'%)')
+          : ('portfolio drawdown '+(d.risk.drawdownPct!=null?d.risk.drawdownPct+'%':'≥15%')+' from peak'))
+        + '. Open positions still manage exits.'
+        + '</div>'
+      : '';
     const cards = '<div id="ibkrLiveRoot" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
-      + tile('ibkrCardStart','Starting balance', ibkrBal(acct.startingBalance), balSub, 'var(--t1)')
-      + tile('ibkrCardAvail','Available funds', ibkrBal(acct.availableFunds), 'can open new risk', 'var(--t1)')
-      + tile('ibkrCardNlv','Net liquidation', ibkrBal(acct.netLiquidation), 'equity now', 'var(--t1)')
-      + tile('ibkrCardIbDaily','IB daily PnL', acct.ibDailyPnl!=null?fp(acct.ibDailyPnl):'—', 'TWS account daily', acct.ibDailyPnl!=null?pc(acct.ibDailyPnl):'var(--m1)')
+      + tile('ibkrCardBalance','Current balance', ibkrBal(acct.currentBalance), balSub, 'var(--t1)')
+      + tile('ibkrCardLiq','Net liquidity available', ibkrBal(acct.netLiquidityAvailable), liqSub,
+          acct.liquidityRiskOff ? 'var(--sell)' : 'var(--t1)')
       + tile('ibkrCardToday','Today realised', fp(todayReal), 'fills · '+todayKey, pc(todayReal))
       + tile('ibkrCardReal','Total realised (net)', fp(tt.realizedUsd),
           'gross '+(tt.realizedUsdGross!=null?fp(tt.realizedUsdGross):'—')+' · '+tt.closedCount+' closed', pc(tt.realizedUsd))
-      + tile('ibkrCardComm','Brokerage', comm?('-$'+Math.abs(comm).toFixed(0)):'—', 'IB commissions (USD)', comm?'var(--sell)':'var(--m1)')
+      + tileClick('ibkrCardComm','Brokerage & expenses',
+          expTotal?('-$'+Math.abs(expTotal).toFixed(0)):'—',
+          'click for commission detail',
+          expTotal?'var(--sell)':'var(--m1)',
+          'showIbkrExpenses()')
       + tile('ibkrCardUnreal','Unrealised', fp(tt.unrealizedUsd), tt.openCount+' open', pc(tt.unrealizedUsd))
       + tile('ibkrCardNet','Net PnL', fp(net), 'net realised + unrealised', pc(net))
       + tile('ibkrCardWR','Win rate', tt.winRate!=null?tt.winRate+'%':'—', tt.wins+'W / '+tt.losses+'L', wrColor)
-      + tile('ibkrCardErr','Error trades PnL', fp(errNet),
-          'real '+fp(tt.errorRealizedUsd||0)+' · open '+(tt.errorOpenCount||0)+' · today '+fp(todayErrReal),
-          pc(errNet))
       + tile('ibkrCardRecon','IB ↔ Site', rcLabel, rcOk ? 'all matched' : 'see differences below', rcColor)
       + '</div>'
+      + riskBanner
       + rcBanner;
 
     const th = s => '<th style="text-align:'+s+';padding:4px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;border-bottom:1px solid var(--b1)">';
@@ -2043,7 +2069,10 @@ async function renderIbkr(force){
       + '</details>';
     const errHtml = '<details style="background:var(--s1);border:1px solid #8B3A3A;border-radius:8px;padding:8px 4px;margin-bottom:14px">'
       +'<summary style="cursor:pointer;font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:#E88;font-family:DM Mono,monospace;padding:4px 8px">'
-      +'Error trades · '+errorTrades.length+' (unauthorized / dual-list — excluded from model PnL)</summary>'
+      +'Error trades · '+errorTrades.length
+      +' · PnL '+fp(errNet)
+      +' (real '+fp(tt.errorRealizedUsd||0)+' · open '+(tt.errorOpenCount||0)+' · today '+fp(todayErrReal)+')'
+      +' — excluded from model PnL</summary>'
       + (errorTrades.length
         ? ('<div style="overflow-x:auto;margin-top:6px">' + tradeTableHead + eRows + '</tbody></table></div>')
         : '<div style="padding:10px 12px;font-size:11px;color:var(--m2);font-family:DM Mono,monospace">No error trades</div>')
@@ -2060,6 +2089,46 @@ async function renderIbkr(force){
       setTimeout(tickIbkrMtm, 200);
     }
   }
+}
+
+/** Interactive brokerage / expenses breakdown (from IB commission reports). */
+function showIbkrExpenses(){
+  const d = _ibkrLastPayload;
+  if (!d) { alert('IBKR data not loaded yet'); return; }
+  const rows = (d.expenses && d.expenses.rows) || [];
+  const total = (d.expenses && d.expenses.totalUsd != null)
+    ? d.expenses.totalUsd : (d.totals && d.totals.commissionUsd) || 0;
+  const existing = document.getElementById('ibkrExpenseModal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'ibkrExpenseModal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.onclick = function(ev){ if (ev.target === modal) modal.remove(); };
+  const bodyRows = rows.length
+    ? rows.map(function(r){
+        const amt = r.amountUsd != null ? r.amountUsd : r.amount;
+        return '<tr>'
+          + '<td style="padding:6px 8px;font-size:10px;color:var(--m2);font-family:DM Mono,monospace">'+(r.time?String(r.time).slice(0,19):'—')+'</td>'
+          + '<td style="padding:6px 8px;font-size:11px;color:var(--t1)">'+(r.label||r.type||'expense')+'</td>'
+          + '<td style="padding:6px 8px;font-size:10px;color:var(--m2);text-align:right;font-family:DM Mono,monospace">'+(r.currency||'USD')+' '+(r.amount!=null?Number(r.amount).toFixed(2):'—')+'</td>'
+          + '<td style="padding:6px 8px;font-size:11px;color:var(--sell);text-align:right;font-family:DM Mono,monospace;font-weight:600">-$'+Math.abs(Number(amt)||0).toFixed(2)+'</td>'
+          + '</tr>';
+      }).join('')
+    : '<tr><td colspan="4" style="padding:16px;color:var(--m2);font-size:12px">No commission / expense rows yet. New fills will populate this as IB reports brokerage.</td></tr>';
+  modal.innerHTML = '<div style="background:var(--s0,#111);border:1px solid var(--b1);border-radius:12px;max-width:720px;width:100%;max-height:80vh;overflow:auto;padding:18px 16px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+    + '<div><div style="font-size:13px;font-weight:600;color:var(--t1)">Brokerage & account expenses</div>'
+    + '<div style="font-size:10px;color:var(--m2);font-family:DM Mono,monospace;margin-top:4px">Total -$'+Math.abs(total).toFixed(2)+' USD · IB commissionReport + accrued</div></div>'
+    + '<button onclick="document.getElementById(\'ibkrExpenseModal\').remove()" style="background:transparent;border:1px solid var(--b1);color:var(--m1);border-radius:6px;padding:4px 10px;cursor:pointer">Close</button>'
+    + '</div>'
+    + '<table style="width:100%;border-collapse:collapse">'
+    + '<thead><tr>'
+    + '<th style="text-align:left;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Time</th>'
+    + '<th style="text-align:left;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Item</th>'
+    + '<th style="text-align:right;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Native</th>'
+    + '<th style="text-align:right;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">USD</th>'
+    + '</tr></thead><tbody>'+bodyRows+'</tbody></table></div>';
+  document.body.appendChild(modal);
 }
 
 // ══════════════════════════════════════════════
@@ -2857,7 +2926,7 @@ async function forceRefreshPicks(opts){
       method:'POST',
       cache:'no-store',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ forceUniverse:!!forceUniverse, allowRepeat:!!allowRepeat })
+      body:JSON.stringify({ forceUniverse:!!forceUniverse, allowRepeat:!!allowRepeat, force:true })
     }).then(x=>x.json()).catch(()=>null);
     if(r && r.ok===false && r.reason==='no shortlist — universe scan started'){
       if(dashTsEl) dashTsEl.textContent='No shortlist yet — universe scan started. This can take 5–15 min…';
