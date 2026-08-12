@@ -7346,6 +7346,9 @@ function serverPicksToHistoryRecords(dashData) {
       entrySource: s.entrySource || null,
       entry, target1: tp1 || null, target2: tp2 || null, stopLoss: sl,
       [hz + 'Entry']: entry, [hz + 'Target1']: tp1 || null, [hz + 'Target2']: tp2 || null, [hz + 'StopLoss']: sl,
+      [hz + 'Action']: isSell ? 'Sell' : 'Buy',
+      [hz + 'Rating']: rating,
+      [hz + 'Conf']: s[hz + 'Conf'] || 0,
       [hz + 'TrailingSL']: true,
       sellEntry: entry, sellTarget1: isSell ? tp1 : null, sellTarget2: isSell ? tp2 : null, sellStopLoss: isSell ? sl : null,
       reason: isSell ? (s.sellReason || s.reason || '') : (s.reason || ''),
@@ -7452,9 +7455,8 @@ async function generateServerPicksFromShortlist(opts = {}) {
       const alreadyLong  = hasOpenTradeInDirection(r.ticker, false);
       const alreadyShort = hasOpenTradeInDirection(r.ticker, true);
       for (const hz of HZS) {
-        // Prefer Strong Buy/Sell (+1000 sort boost); allow plain Buy/Sell that
-        // still meet Conf≥62 / score≥62 so the board is not empty when no Strong
-        // names clear the bars (empty cache → client "rescans every refresh").
+        // Prefer Strong Buy/Sell (+1000 sort boost); plain Buy/Sell that meet
+        // Conf≥62 still qualify for the board and IBKR (Strong is preference only).
         const buyBase = bracketEnabled('buy', hz) && r[hz + 'Action'] === 'Buy'
           && (r[hz + 'Score'] || 0) >= 62
           && (Number(r[hz + 'Conf']) || 0) >= PICKS_MIN_CONF
@@ -7651,6 +7653,7 @@ async function generateServerPicksFromShortlist(opts = {}) {
         const h = await addTradesToHistory(recs);
         console.log('Server scan recorded history:', h.accepted, 'added,', h.skipped, 'skipped, total', h.total);
       }
+      try { backfillIbkrEntriesFromOpenBoard(); } catch (_) {}
     } catch (e) {
       console.warn('Server history record failed:', e.message);
     }
@@ -8099,10 +8102,17 @@ async function addTradesToHistory(trades) {
         auditLog('entry_blocked_min_rr', { ticker: trade.ticker, hz, rr });
         continue;
       }
+      const conf = Number(trade[hz + 'Conf'] || trade.conf || 0);
+      if (!(conf >= PICKS_MIN_CONF)) {
+        console.log('History add skipped (Conf <', PICKS_MIN_CONF + '%):', trade.ticker, hz, 'conf=', conf);
+        auditLog('entry_blocked_min_conf', { ticker: trade.ticker, hz, conf });
+        continue;
+      }
       const rating = trade[hz + 'Rating'] || trade.rating || '';
-      if (!isStrongRecommendableRating(rating)) {
-        console.log('History add skipped (not Strong Buy/Sell):', trade.ticker, hz, 'rating=', rating);
-        auditLog('entry_blocked_not_strong', { ticker: trade.ticker, hz, rating });
+      const action = trade[hz + 'Action'] || trade.action || '';
+      if (!isExecutableRecommendRating(rating) && !isExecutableRecommendRating(action)) {
+        console.log('History add skipped (not Buy/Sell):', trade.ticker, hz, 'rating=', rating, 'action=', action);
+        auditLog('entry_blocked_not_buysell', { ticker: trade.ticker, hz, rating, action });
         continue;
       }
       // No-repeat: same name already open in this direction — only direction/regime
@@ -10572,10 +10582,16 @@ const PICKS_MIN_RR = Math.max(1.1, parseFloat(process.env.PICKS_MIN_RR || '1.1')
 /** UI "confidence %" (= winRateHint). Below this → never Buy/Sell / never IBKR. */
 const PICKS_MIN_CONF = Math.max(62, parseInt(process.env.PICKS_MIN_CONF || '62', 10) || 62);
 
-/** Strong Buy / Strong Sell — preferred on the board; required for history emit & IBKR. */
+/** Strong Buy / Strong Sell — preferred on the board (sort boost); not required to trade. */
 function isStrongRecommendableRating(rating) {
   const r = String(rating || '').trim().toLowerCase();
   return r === 'strong buy' || r === 'strong sell';
+}
+
+/** Any model Buy/Sell (incl. Strong) that cleared Conf/RR — eligible for history + IBKR. */
+function isExecutableRecommendRating(ratingOrAction) {
+  const r = String(ratingOrAction || '').trim().toLowerCase();
+  return r === 'buy' || r === 'sell' || r === 'strong buy' || r === 'strong sell';
 }
 
 function rewardRiskRatio(entry, tp1, sl, isSell) {
@@ -10779,9 +10795,8 @@ function filterDashDataBySLCooldown(dashData) {
       if (/^hold$/i.test(String(rating).trim()) || /SL cooldown/i.test(rating)) return false;
       if (side === 'buy') {
         if (isSLCooldownActive(pick.ticker, hz)) return false;
-        // Serve cached board: Buy + Conf/score floor. Strong-only is enforced at
-        // generation — re-applying it on every GET emptied the board and forced
-        // a full client universe rescan on each page refresh.
+        // Serve cached board: Buy + Conf/score floor. Strong is preference-only
+        // at generation — Buy/Sell that clear Conf/RR must stay executable.
         if (!(action === 'Buy'
           && (pick[hz + 'Score'] || 0) >= 62
           && (Number(pick[hz + 'Conf']) || 0) >= PICKS_MIN_CONF)) return false;
@@ -12767,8 +12782,9 @@ function shouldEmitIbkrEntry(trade, hz) {
   if (!(snap.entry > 0) || !(snap.sl > 0)) return false;
   const z = hz || trade.hz || 'short';
   const rating = trade[z + 'Rating'] || trade.rating || '';
-  if (!isStrongRecommendableRating(rating)) {
-    console.log('IBKR entry skipped (not Strong Buy/Sell):', snap.key, 'rating=', rating);
+  const action = trade[z + 'Action'] || trade.action || '';
+  if (!isExecutableRecommendRating(rating) && !isExecutableRecommendRating(action)) {
+    console.log('IBKR entry skipped (not Buy/Sell):', snap.key, 'rating=', rating, 'action=', action);
     return false;
   }
   const conf = Number(trade[z + 'Conf'] || trade.conf || 0);
@@ -12786,6 +12802,38 @@ function shouldEmitIbkrEntry(trade, hz) {
     return false;
   }
   return true;
+}
+
+/**
+ * Board already shows Buy/Sell that passed Conf/RR — emit any missing IBKR entry
+ * events (e.g. previously blocked by Strong-only gate, or same-day board lock).
+ */
+function backfillIbkrEntriesFromOpenBoard() {
+  const dash = dashboardPicksCache && dashboardPicksCache.dashData;
+  if (!dash || typeof dash !== 'object') return 0;
+  if (isNewEntryRiskBlocked()) {
+    console.log('IBKR board backfill skipped (risk-off / liquidity gate)');
+    return 0;
+  }
+  let n = 0;
+  const recs = serverPicksToHistoryRecords(dash);
+  for (const trade of recs) {
+    if (!trade || !trade.ticker) continue;
+    const hz = trade.hz || 'short';
+    try {
+      if (!shouldEmitIbkrEntry(trade, hz)) continue;
+      const evt = emitTradeEvent('entry', tradeEventSnapshot(trade, hz));
+      if (evt) {
+        n++;
+        console.log('IBKR entry backfill from board:', trade.ticker, hz, 'rating=', trade.rating || trade[hz + 'Rating']);
+        auditLog('ibkr_entry_backfill_board', { ticker: trade.ticker, hz, key: evt.key, rating: trade.rating });
+      }
+    } catch (e) {
+      console.warn('IBKR board backfill failed:', trade.ticker, e && e.message);
+    }
+  }
+  if (n) console.log('IBKR board backfill emitted', n, 'entry event(s)');
+  return n;
 }
 
 function emitTradeEvent(type, payload) {
@@ -14866,6 +14914,12 @@ function isNewEntryRiskBlocked() {
   return !!(riskState.riskOff || riskState.liquidityRiskOff);
 }
 
+// After risk state is live: emit Buy/Sell board picks that never got IBKR events
+// (e.g. previously Strong-only gated). Safe no-op when board empty / already emitted.
+try { backfillIbkrEntriesFromOpenBoard(); } catch (e) {
+  console.warn('IBKR board backfill failed:', e.message);
+}
+
 /**
  * Pause new trades when available liquidity ≤15% of account equity; resume only
  * after it climbs back above 20% (hysteresis — no flip-flop at the boundary).
@@ -15925,6 +15979,7 @@ module.exports = {
   writeOpenRowAction,
   isOpenRowLatched,
   isStrongRecommendableRating,
+  isExecutableRecommendRating,
   deriveActionRating,
   applyServerPriceLevels,
   mutateFillLedger,
