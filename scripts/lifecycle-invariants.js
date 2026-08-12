@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AlphaSignal recommendation-lifecycle invariants (T1–T18).
+ * AlphaSignal recommendation-lifecycle invariants (T1–T19).
  * Uses an isolated DATA_DIR so production disk is untouched.
  */
 'use strict';
@@ -419,11 +419,43 @@ function ok(name, cond, detail) {
         S.shouldAbandonUnfilledEntry({ force: true, stillLive: true, hasFill: false }) === true);
     })();
 
+    // ── T19 Excess model entries vs IB → orphan to cursor-err (SU.PA 28+27) ───
+    (function t19() {
+      const liveKey = 'SU.PA|long|Wed Aug 12 2026';
+      S.mutateFillLedger('t19_seed', (rows) => {
+        rows.push(
+          {
+            execId: 't19-orphan-28', key: liveKey, ticker: 'SU.PA', hz: 'long', side: 'buy',
+            role: 'entry', qty: 28, price: 309.9, currency: 'EUR', ccyScale: 1,
+            time: '2026-08-12T08:53:25.407Z'
+          },
+          {
+            execId: 't19-live-27', key: liveKey, ticker: 'SU.PA', hz: 'long', side: 'buy',
+            role: 'entry', qty: 27, price: 309.9, currency: 'EUR', ccyScale: 1,
+            time: '2026-08-12T11:18:33.971Z'
+          }
+        );
+        return rows;
+      });
+      fs.writeFileSync(path.join(process.env.DATA_DIR, 'ibkr_recon.json'), JSON.stringify({
+        at: new Date().toISOString(),
+        positions: [{ ticker: 'SU.PA', qty: 27, avgCost: 309.9, currency: 'EUR' }]
+      }));
+      const moved = S.quarantineExcessModelEntriesVsIb();
+      const live = S.readIbkrFillRows().filter(r => r.key === liveKey && r.role === 'entry');
+      const err = S.readIbkrFillRows().filter(r => String(r.key || '').startsWith(liveKey + '|cursor-err'));
+      const liveQty = live.reduce((s, r) => s + Number(r.qty || 0), 0);
+      ok('T19 moved excess orphan', moved >= 1, 'moved=' + moved);
+      ok('T19 live entry qty 27', liveQty === 27 && live.length === 1, 'qty=' + liveQty + ' n=' + live.length);
+      ok('T19 orphan on cursor-err', err.some(r => Number(r.qty) === 28 && r.errorTrade),
+        'errN=' + err.length);
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T18 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T19 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();

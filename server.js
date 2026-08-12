@@ -13446,6 +13446,90 @@ function quarantineErrorFillsOffModelKeys() {
   }
 }
 
+/**
+ * Live model entry fills can exceed IB open qty after orphan+re-arm (SU.PA:
+ * 28 orphan + 27 live = 55 while IB=27). Move oldest surplus entry fills to
+ * |cursor-err until fill-open <= IB. Never splits a fill; never removes the
+ * sole remaining entry on a key.
+ */
+function quarantineExcessModelEntriesVsIb() {
+  try {
+    const snap = loadIbkrReconReport();
+    if (!snap || !Array.isArray(snap.positions) || !snap.positions.length) return 0;
+    const ibAbsByYSign = new Map();
+    for (const p of snap.positions) {
+      if (!p || !p.ticker) continue;
+      const qty = Number(p.qty) || 0;
+      if (!qty) continue;
+      const y = normalizeIbkrYahooTicker(p.ticker);
+      const sign = Math.sign(qty) || 1;
+      ibAbsByYSign.set(y + '|' + sign, Math.abs(qty));
+    }
+    if (!ibAbsByYSign.size) return 0;
+
+    const before = readIbkrFillRows();
+    const out = before.slice();
+    let moved = 0;
+    for (let pass = 0; pass < 40; pass++) {
+      const opens = aggregateIbkrOpenFromFills(
+        out.filter(r => r && r.key && !isCursorErrIbkrKey(r.key)),
+        {}
+      ).filter(o => !o.errorTrade);
+      const byYSign = new Map();
+      for (const o of opens) {
+        const y = normalizeIbkrYahooTicker(o.ticker);
+        const sign = o.side === 'sell' ? -1 : 1;
+        const k = y + '|' + sign;
+        if (!byYSign.has(k)) byYSign.set(k, []);
+        byYSign.get(k).push(o);
+      }
+      let did = false;
+      for (const [ys, group] of byYSign) {
+        const ibAbs = ibAbsByYSign.get(ys);
+        if (!(ibAbs > 0)) continue;
+        const sum = group.reduce((s, o) => s + Number(o.openQty || 0), 0);
+        if (!(sum > ibAbs)) continue;
+        const keySet = new Set(group.map(o => o.key));
+        const entries = out
+          .map((r, idx) => ({ r, idx }))
+          .filter(x => x.r && keySet.has(String(x.r.key)) && x.r.role === 'entry')
+          .sort((a, b) => String(a.r.time || '').localeCompare(String(b.r.time || '')));
+        if (entries.length < 2) continue;
+        let pick = null;
+        for (const e of entries) {
+          const q = Number(e.r.qty) || 0;
+          if (sum - q >= ibAbs) { pick = e; break; }
+        }
+        if (!pick) pick = entries[0];
+        const r = pick.r;
+        const toKey = toCursorErrIbkrKey(r.key);
+        try {
+          auditLog('ibkr_fill_rekey', {
+            execId: r.execId || null, fromKey: r.key, toKey, reason: 'excess-vs-ib'
+          });
+        } catch (_) {}
+        out[pick.idx] = Object.assign({}, r, {
+          key: toKey,
+          errorTrade: true,
+          note: (r.note ? String(r.note) + ' ' : '') + '[excess-vs-ib → Error]'
+        });
+        moved++;
+        did = true;
+        break;
+      }
+      if (!did) break;
+    }
+    if (!moved) return 0;
+    mutateFillLedger('quarantine_excess_vs_ib', () => out);
+    console.log('Quarantined', moved, 'excess model entry fill(s) vs IB → |cursor-err');
+    auditLog('ibkr_quarantine_excess_vs_ib', { moved });
+    return moved;
+  } catch (e) {
+    console.warn('quarantineExcessModelEntriesVsIb failed:', e.message);
+    return 0;
+  }
+}
+
 /** Move ALL fills on a live model key to |cursor-err (same-day re-entry hygiene). */
 function quarantineKeyFillsToCursorErr(liveKey, reason) {
   const key = String(liveKey || '');
@@ -14039,6 +14123,7 @@ try { restoreFilledEntriesFalselyAbandoned(); } catch (e) {
   console.warn('boot restore false stale-abandon failed:', e.message);
 }
 // Re-arm is on-demand only: POST /api/ibkr/rearm { key } — never auto at boot.
+// excess-vs-ib runs after loadIbkrReconReport is defined (below).
 
 /** Drop phantom/stale fills (and optional explicit keys) from the durable log. */
 app.post('/api/ibkr/purge', express.json({ limit: '32kb' }), (req, res) => {
@@ -14234,6 +14319,9 @@ function loadIbkrReconReport() {
 function saveIbkrReconReport(r) {
   try { fs.writeFileSync(IBKR_RECON_FILE, JSON.stringify(r, null, 2)); } catch (_) {}
 }
+try { quarantineExcessModelEntriesVsIb(); } catch (e) {
+  console.warn('boot quarantine excess-vs-ib failed:', e.message);
+}
 function ibkrAvgToFillUnit(avgCost, ccyScale, sampleEntryPx) {
   let avg = Number(avgCost);
   if (!(avg > 0)) return null;
@@ -14327,6 +14415,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   try {
     try { quarantineErrorFillsOffModelKeys(); } catch (_) {}
+    try { quarantineExcessModelEntriesVsIb(); } catch (_) {}
     // Refresh dedupe set from disk (purge/other instance may have changed file).
     try {
       _ibkrExecIds.clear();
@@ -16807,6 +16896,7 @@ module.exports = {
   aggregateIbkrOpenFromFills,
   quarantineFillForLedger,
   quarantineErrorFillsOffModelKeys,
+  quarantineExcessModelEntriesVsIb,
   quarantineKeyFillsToCursorErr,
   reArmModelEntry,
   isNewEntryRiskBlocked,
