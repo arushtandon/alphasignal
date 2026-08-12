@@ -12924,6 +12924,17 @@ function emitTradeEvent(type, payload) {
       }
     } catch (_) { /* continue emit */ }
   }
+  // Same-day re-entry hygiene: never let a new entry inherit prior-cycle fills.
+  if (type === 'entry' && payload && payload.key) {
+    try {
+      const liveKey = String(payload.key);
+      if (!isCursorErrIbkrKey(liveKey) && typeof readIbkrFillRows === 'function'
+        && typeof quarantineKeyFillsToCursorErr === 'function') {
+        const hasPrior = readIbkrFillRows().some(r => r && String(r.key || '') === liveKey);
+        if (hasPrior) quarantineKeyFillsToCursorErr(liveKey, 'entry-prior-cycle');
+      }
+    } catch (_) { /* non-fatal */ }
+  }
   _tradeEventSeq += 1;
   const evt = { seq: _tradeEventSeq, t: new Date().toISOString(), type, ...(payload || {}) };
   try {

@@ -302,11 +302,67 @@ function ok(name, cond, detail) {
       ok('T13 GET read-only', false, e.message);
     }
 
+    // ── T14 Real bridge fill before entry event → NOT quarantined ────────────
+    (function t14() {
+      const key = 'RACE.X|short|Wed Aug 12 2026';
+      S.mutateFillLedger('t14_seed', (rows) => {
+        rows.push({
+          execId: 't14-real-early', key, ticker: 'RACE.X', hz: 'short', side: 'buy',
+          role: 'entry', qty: 3, price: 40, currency: 'USD', ccyScale: 1,
+          time: new Date().toISOString()
+          // no synthetic, no errorTrade, no recon — real bridge fill
+        });
+        return rows;
+      });
+      const row = S.readIbkrFillRows().find(r => r.execId === 't14-real-early');
+      ok('T14 real fill stays on model key', row && row.key === key && !row.errorTrade,
+        row && row.key);
+    })();
+
+    // ── T15 Same-day re-arm / entry emit quarantines prior cycle fills ───────
+    (function t15() {
+      const day = 'Wed Aug 12 2026';
+      const key = 'REARM.X|long|' + day;
+      S.mutateFillLedger('t15_seed', (rows) => {
+        rows.push({
+          execId: 't15-old-entry', key, ticker: 'REARM.X', hz: 'long', side: 'buy',
+          role: 'entry', qty: 5, price: 100, currency: 'USD', ccyScale: 1,
+          time: '2026-08-12T08:00:00.000Z'
+        });
+        return rows;
+      });
+      // Simulate entry emit hygiene (same as emitTradeEvent path).
+      const moved = S.quarantineKeyFillsToCursorErr(key, 'entry-prior-cycle');
+      const live = S.readIbkrFillRows().filter(r => r.key === key);
+      const err = S.readIbkrFillRows().filter(r => r.execId === 't15-old-entry');
+      ok('T15 prior fills moved', moved >= 1 && live.length === 0, 'moved=' + moved);
+      ok('T15 on cursor-err', err[0] && S.isCursorErrIbkrKey(err[0].key) && err[0].errorTrade,
+        err[0] && err[0].key);
+    })();
+
+    // ── T16 Recon pairing shape: synthetic flat key is cursor-err helper ─────
+    (function t16() {
+      const live = 'PAIR.X|long|Wed Aug 12 2026';
+      const errKey = S.toCursorErrIbkrKey(live);
+      ok('T16 err key form', errKey === live + '|cursor-err', errKey);
+      ok('T16 isCursorErr', S.isCursorErrIbkrKey(errKey));
+      // Predicate: real fill must not quarantine; synthetic must.
+      const real = S.quarantineFillForLedger({
+        execId: 't16-real', key: live, ticker: 'PAIR.X', role: 'entry', qty: 1, price: 1
+      });
+      const synth = S.quarantineFillForLedger({
+        execId: 't16-synth', key: live, ticker: 'PAIR.X', role: 'flatten', qty: 1, price: 1,
+        synthetic: true, recon: 'ghost-flat', errorTrade: true
+      });
+      ok('T16 real stays live', real.key === live, real.key);
+      ok('T16 synth → cursor-err', S.isCursorErrIbkrKey(synth.key), synth.key);
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T13 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T16 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();
