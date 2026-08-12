@@ -13128,10 +13128,23 @@ function ibkrSessionLabel(phase) {
 app.post('/api/ibkr/report', (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   const reports = Array.isArray(req.body && req.body.reports) ? req.body.reports : [];
-  let stored = 0, skipped = 0;
+  let stored = 0, skipped = 0, commissionsPatched = 0;
   const toAdd = [];
+  const commissionPatches = [];
   for (const r of reports) {
-    if (!r || !r.execId || !r.key || !(Number(r.qty) > 0) || !(Number(r.price) > 0)) { skipped++; continue; }
+    if (!r || !r.execId) { skipped++; continue; }
+    // Late commissionReport (arrives after execDetails) — patch existing fill.
+    if (r.kind === 'commission' || (r.commission != null && !(Number(r.qty) > 0))) {
+      if (!(Number(r.commission) >= 0) && !(Number(r.commission) < 0)) { skipped++; continue; }
+      commissionPatches.push({
+        execId: String(r.execId),
+        commission: Number(r.commission),
+        commissionCcy: String(r.commissionCcy || r.currency || 'USD'),
+        ibRealizedPnl: r.ibRealizedPnl != null ? Number(r.ibRealizedPnl) : null
+      });
+      continue;
+    }
+    if (!r.key || !(Number(r.qty) > 0) || !(Number(r.price) > 0)) { skipped++; continue; }
     if (_ibkrExecIds.has(r.execId) || toAdd.some(x => x.execId === r.execId)) { skipped++; continue; }
     // Reject fills for recommendations whose entry day is ancient vs the fill
     // time (stale history re-emit → phantom paper trade).
@@ -13145,7 +13158,7 @@ app.post('/api/ibkr/report', (req, res) => {
     const phase = ['pre', 'rth', 'post', 'lunch', 'closed'].includes(r.session)
       ? r.session
       : ibkrSessionPhase(ticker, fillTime);
-    toAdd.push({
+    const row = {
       execId: String(r.execId), key: String(r.key),
       ticker, hz: String(r.hz || 'short'),
       side: r.side === 'sell' ? 'sell' : 'buy',
@@ -13161,9 +13174,17 @@ app.post('/api/ibkr/report', (req, res) => {
       synthetic: r.synthetic === true || undefined,
       recon: r.recon ? String(r.recon) : undefined,
       markSrc: r.markSrc ? String(r.markSrc) : undefined
-    });
+    };
+    if (r.commission != null && Number.isFinite(Number(r.commission))) {
+      row.commission = Number(r.commission);
+      row.commissionCcy = String(r.commissionCcy || r.currency || 'USD');
+    }
+    if (r.ibRealizedPnl != null && Number.isFinite(Number(r.ibRealizedPnl))) {
+      row.ibRealizedPnl = Number(r.ibRealizedPnl);
+    }
+    toAdd.push(row);
   }
-  if (toAdd.length) {
+  if (toAdd.length || commissionPatches.length) {
     try {
       mutateFillLedger('bridge_report', (rows) => {
         const have = new Set(rows.map(r => r.execId).filter(Boolean));
@@ -13173,15 +13194,28 @@ app.post('/api/ibkr/report', (req, res) => {
           have.add(row.execId);
           stored++;
         }
+        for (const p of commissionPatches) {
+          let hit = false;
+          for (const row of rows) {
+            if (String(row.execId) !== p.execId) continue;
+            row.commission = p.commission;
+            row.commissionCcy = p.commissionCcy;
+            if (p.ibRealizedPnl != null) row.ibRealizedPnl = p.ibRealizedPnl;
+            hit = true;
+            commissionsPatched++;
+          }
+          if (!hit) skipped++;
+        }
         return rows;
       });
     } catch (e) {
-      skipped += toAdd.length;
+      skipped += toAdd.length + commissionPatches.length;
       stored = 0;
+      commissionsPatched = 0;
     }
   }
-  if (stored) auditLog('ibkr_fills', { stored, skipped });
-  res.json({ ok: true, stored, skipped, totalExecs: _ibkrExecIds.size });
+  if (stored || commissionsPatched) auditLog('ibkr_fills', { stored, skipped, commissionsPatched });
+  res.json({ ok: true, stored, skipped, commissionsPatched, totalExecs: _ibkrExecIds.size });
 });
 
 /**
@@ -13332,6 +13366,18 @@ app.post('/api/ibkr/correct-avg', express.json({ limit: '64kb' }), (req, res) =>
 // Syncs: ghost opens (site open / IB flat), missing entry qty, entry avgCost.
 const IBKR_RECON_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_recon.json');
 const IBKR_RECON_PENDING_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_recon_pending.json');
+const IBKR_ACCOUNT_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_account.json');
+
+function loadIbkrAccountSnapshot() {
+  try { return JSON.parse(fs.readFileSync(IBKR_ACCOUNT_FILE, 'utf8')); }
+  catch (_) { return null; }
+}
+function saveIbkrAccountSnapshot(snap) {
+  if (!snap || typeof snap !== 'object') return;
+  try {
+    fs.writeFileSync(IBKR_ACCOUNT_FILE, JSON.stringify({ ...snap, savedAt: new Date().toISOString() }, null, 2));
+  } catch (_) {}
+}
 function normalizeIbkrYahooTicker(t) {
   const s = String(t || '').toUpperCase();
   const m = s.match(/^(\d+)\.HK$/);
@@ -13434,7 +13480,8 @@ async function resolveGhostFlatMark(ticker) {
 
 /**
  * POST /api/ibkr/recon
- * Body: { positions: [{ ticker, qty, avgCost, currency?, conId? }], marks?: {TICKER: price} }
+ * Body: { positions: [{ ticker, qty, avgCost, currency?, conId? }], marks?: {TICKER: price},
+ *         accountSnapshot?: { startingBalance, availableFunds, netLiquidation, ... } }
  * Aligns AlphaSignal fill ledger to IB paper open qty + averageCost for tracked names.
  */
 app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) => {
@@ -13449,6 +13496,19 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     } catch (_) {}
     const positions = Array.isArray(req.body && req.body.positions) ? req.body.positions : [];
     const marksIn = (req.body && req.body.marks && typeof req.body.marks === 'object') ? req.body.marks : {};
+    // Persist TWS account window numbers for the IBKR tab (starting / available).
+    try {
+      const snap = req.body && req.body.accountSnapshot;
+      if (snap && typeof snap === 'object') {
+        const prev = loadIbkrAccountSnapshot() || {};
+        saveIbkrAccountSnapshot({
+          ...prev,
+          ...snap,
+          account: snap.account || req.body.account || prev.account || null,
+          at: snap.at || new Date().toISOString()
+        });
+      }
+    } catch (_) { /* best-effort */ }
     const ibByY = new Map();
     const ibByConId = new Map(); // conId → canonical yahoo (dual-list identity)
     for (const p of positions) {
@@ -13866,6 +13926,18 @@ try {
 app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   const marks = Array.isArray(req.body && req.body.marks) ? req.body.marks : [];
+  try {
+    const snap = req.body && req.body.accountSnapshot;
+    if (snap && typeof snap === 'object') {
+      const prev = loadIbkrAccountSnapshot() || {};
+      saveIbkrAccountSnapshot({
+        ...prev,
+        ...snap,
+        account: snap.account || prev.account || null,
+        at: snap.at || new Date().toISOString()
+      });
+    }
+  } catch (_) { /* best-effort */ }
   let n = 0;
   const now = Date.now();
   for (const m of marks) {
@@ -14065,6 +14137,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
         return {
           role: f.role, qty: f.qty, price: f.price, time: f.time,
           errorTrade: !!f.errorTrade,
+          commission: f.commission != null ? Number(f.commission) : null,
+          commissionCcy: f.commissionCcy || null,
+          ibRealizedPnl: f.ibRealizedPnl != null ? Number(f.ibRealizedPnl) : null,
           session,
           sessionLabel: f.sessionLabel || ibkrSessionLabel(session)
         };
@@ -14334,12 +14409,26 @@ app.get('/api/ibkr/trades', async (req, res) => {
 
     const daily = new Map();
     const dailyError = new Map();
-    let totRealUsd = 0, totUnrealUsd = 0, wins = 0, losses = 0, openCount = 0, closedCount = 0;
-    let errRealUsd = 0, errUnrealUsd = 0, errOpen = 0, errClosed = 0;
+    let totRealUsd = 0, totRealGrossUsd = 0, totCommissionUsd = 0;
+    let totUnrealUsd = 0, wins = 0, losses = 0, openCount = 0, closedCount = 0;
+    let errRealUsd = 0, errUnrealUsd = 0, errOpen = 0, errClosed = 0, errCommissionUsd = 0;
     for (const t of trades) {
       const fx = await ibkrUsdPerCcy(t.currency);
-      t.realizedUsd = +(t.realizedLocal * fx).toFixed(2);
       const dir = t.side === 'sell' ? -1 : 1;
+      // Brokerage: sum IB commissionReport amounts (convert each fill's ccy → USD).
+      let commissionUsd = 0;
+      for (const f of t.fills) {
+        const c = Number(f.commission);
+        if (!(c > 0) && !(c < 0)) continue;
+        const ccy = String(f.commissionCcy || t.currency || 'USD');
+        const cFx = await ibkrUsdPerCcy(ccy);
+        commissionUsd += Math.abs(c) * cFx;
+      }
+      t.commissionUsd = +commissionUsd.toFixed(2);
+      const realizedGrossUsd = +(t.realizedLocal * fx).toFixed(2);
+      t.realizedUsdGross = realizedGrossUsd;
+      // Net of brokerage so site PnL lines up with IB (commissions are costs).
+      t.realizedUsd = +(realizedGrossUsd - commissionUsd).toFixed(2);
       let mark = markMap[t.ticker] && Number(markMap[t.ticker].price) > 0 ? Number(markMap[t.ticker].price) : null;
       // LSE fills are in pence (ccyScale=100); IB sometimes ticks in pounds.
       if (mark != null && t.ccyScale === 100 && t.avgEntry > 0 && mark * 10 < t.avgEntry) mark *= 100;
@@ -14351,23 +14440,45 @@ app.get('/api/ibkr/trades', async (req, res) => {
 
       if (t.errorTrade) {
         errRealUsd += t.realizedUsd;
+        errCommissionUsd += t.commissionUsd;
         if (t.unrealizedUsd != null) errUnrealUsd += t.unrealizedUsd;
         if (t.status === 'closed') errClosed++; else errOpen++;
       } else {
         totRealUsd += t.realizedUsd;
+        totRealGrossUsd += t.realizedUsdGross;
+        totCommissionUsd += t.commissionUsd;
         if (t.unrealizedUsd != null) totUnrealUsd += t.unrealizedUsd;
         if (t.status === 'closed') {
           closedCount++;
           if (t.realizedUsd > 0) wins++; else if (t.realizedUsd < 0) losses++;
         } else openCount++;
       }
-      // Daily realized: attribute each exit fill's PnL (vs avg entry) to its day.
+      // Daily realized: attribute each exit fill's PnL (vs avg entry) to its day,
+      // minus that fill's commission (entry commissions attributed on first exit day).
       for (const f of t.fills) {
         if (f.role === 'entry') continue;
         const day = String(f.time).slice(0, 10);
-        const pnlUsd = ((f.price - t.avgEntry) * f.qty * dir / (t.ccyScale || 1)) * fx;
+        const c = Number(f.commission);
+        const cFx = (c > 0 || c < 0)
+          ? await ibkrUsdPerCcy(String(f.commissionCcy || t.currency || 'USD'))
+          : 0;
+        const pnlUsd = ((f.price - t.avgEntry) * f.qty * dir / (t.ccyScale || 1)) * fx
+          - ((c > 0 || c < 0) ? Math.abs(c) * cFx : 0);
         if (t.errorTrade) dailyError.set(day, (dailyError.get(day) || 0) + pnlUsd);
         else daily.set(day, (daily.get(day) || 0) + pnlUsd);
+      }
+      // Entry commissions with no exits yet — count toward open trade costs on entry day.
+      if (t.exitQty === 0) {
+        for (const f of t.fills) {
+          if (f.role !== 'entry') continue;
+          const c = Number(f.commission);
+          if (!(c > 0) && !(c < 0)) continue;
+          const day = String(f.time).slice(0, 10);
+          const cFx = await ibkrUsdPerCcy(String(f.commissionCcy || t.currency || 'USD'));
+          const cost = -Math.abs(c) * cFx;
+          if (t.errorTrade) dailyError.set(day, (dailyError.get(day) || 0) + cost);
+          else daily.set(day, (daily.get(day) || 0) + cost);
+        }
       }
     }
 
@@ -14399,18 +14510,40 @@ app.get('/api/ibkr/trades', async (req, res) => {
     trades.sort((a, b) => (a.entryTime < b.entryTime ? 1 : -1));
 
     const reconReport = loadIbkrReconReport();
+    const accountSnap = loadIbkrAccountSnapshot();
+    const account = accountSnap ? {
+      account: accountSnap.account || null,
+      currency: accountSnap.currency || 'USD',
+      at: accountSnap.at || accountSnap.savedAt || null,
+      startingBalance: accountSnap.startingBalance != null ? Number(accountSnap.startingBalance)
+        : (accountSnap.previousDayEquity != null ? Number(accountSnap.previousDayEquity) : null),
+      availableFunds: accountSnap.availableFunds != null ? Number(accountSnap.availableFunds) : null,
+      netLiquidation: accountSnap.netLiquidation != null ? Number(accountSnap.netLiquidation) : null,
+      totalCashValue: accountSnap.totalCashValue != null ? Number(accountSnap.totalCashValue) : null,
+      buyingPower: accountSnap.buyingPower != null ? Number(accountSnap.buyingPower) : null,
+      equityWithLoan: accountSnap.equityWithLoan != null ? Number(accountSnap.equityWithLoan) : null,
+      grossPositionValue: accountSnap.grossPositionValue != null ? Number(accountSnap.grossPositionValue) : null,
+      // IB account-window PnL (source of truth for "does it match TWS?")
+      ibDailyPnl: accountSnap.dailyPnl != null ? Number(accountSnap.dailyPnl) : null,
+      ibRealizedPnl: accountSnap.realizedPnl != null ? Number(accountSnap.realizedPnl) : null,
+      ibUnrealizedPnl: accountSnap.unrealizedPnl != null ? Number(accountSnap.unrealizedPnl) : null
+    } : null;
     res.json({
       ok: true,
       trades,
       daily: dailyArr,
       dailyError: dailyErrorArr,
+      account,
       totals: {
         realizedUsd: +totRealUsd.toFixed(2),
+        realizedUsdGross: +totRealGrossUsd.toFixed(2),
+        commissionUsd: +totCommissionUsd.toFixed(2),
         unrealizedUsd: +totUnrealUsd.toFixed(2),
         openCount, closedCount, wins, losses,
         winRate: (wins + losses) ? Math.round(wins / (wins + losses) * 100) : null,
         errorRealizedUsd: +errRealUsd.toFixed(2),
         errorUnrealizedUsd: +errUnrealUsd.toFixed(2),
+        errorCommissionUsd: +errCommissionUsd.toFixed(2),
         errorOpenCount: errOpen,
         errorClosedCount: errClosed
       },

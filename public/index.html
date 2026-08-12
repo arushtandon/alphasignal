@@ -1743,6 +1743,14 @@ function ibkrFmtPx(p){
 }
 function ibkrFp(v){ return v==null ? '—' : (v>=0?'+':'-')+'$'+Math.abs(v).toFixed(0); }
 function ibkrPc(v){ return v==null ? 'var(--m1)' : v>=0 ? 'var(--buy)' : 'var(--sell)'; }
+/** Absolute USD balance (no +/-), for starting / available / NLV. */
+function ibkrBal(v){
+  if(v==null||!Number.isFinite(Number(v))) return '—';
+  const n=Number(v);
+  const abs=Math.abs(n);
+  const body = abs>=1000 ? abs.toLocaleString(undefined,{maximumFractionDigits:0}) : abs.toFixed(2);
+  return (n<0?'-$':'$')+body;
+}
 
 /** Wall-clock style: fetch fresh marks and patch DOM cells without rebuild. */
 async function tickIbkrMtm(){
@@ -1759,11 +1767,31 @@ async function tickIbkrMtm(){
     setIbkrMtmStamp('MTM live · ' + openN + ' open · auto every 5s');
     const uEl = document.getElementById('ibkrCardUnreal');
     const nEl = document.getElementById('ibkrCardNet');
+    const rEl = document.getElementById('ibkrCardReal');
+    const cEl = document.getElementById('ibkrCardComm');
+    const a = d.account || {};
+    const setTxt = (id, txt, col) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = txt;
+      if (col) el.style.color = col;
+    };
     if (uEl) { uEl.textContent = ibkrFp(d.totals.unrealizedUsd); uEl.style.color = ibkrPc(d.totals.unrealizedUsd); }
+    if (rEl) { rEl.textContent = ibkrFp(d.totals.realizedUsd); rEl.style.color = ibkrPc(d.totals.realizedUsd); }
+    if (cEl) {
+      const comm = d.totals.commissionUsd;
+      cEl.textContent = comm == null ? '—' : '-$'+Math.abs(comm).toFixed(0);
+      cEl.style.color = (comm > 0) ? 'var(--sell)' : 'var(--m1)';
+    }
     if (nEl) {
       const net = (d.totals.realizedUsd || 0) + (d.totals.unrealizedUsd || 0);
       nEl.textContent = ibkrFp(net); nEl.style.color = ibkrPc(net);
     }
+    setTxt('ibkrCardStart', ibkrBal(a.startingBalance), 'var(--t1)');
+    setTxt('ibkrCardAvail', ibkrBal(a.availableFunds), 'var(--t1)');
+    setTxt('ibkrCardNlv', ibkrBal(a.netLiquidation), 'var(--t1)');
+    if (a.ibDailyPnl != null) setTxt('ibkrCardIbDaily', ibkrFp(a.ibDailyPnl), ibkrPc(a.ibDailyPnl));
+    if (a.ibUnrealizedPnl != null) setTxt('ibkrCardIbUnreal', ibkrFp(a.ibUnrealizedPnl), ibkrPc(a.ibUnrealizedPnl));
     for (const t of (d.trades || [])) {
       if (!(t.openQty > 0)) continue;
       const markEl = document.querySelector('[data-ibkr-mark="'+CSS.escape(t.key)+'"]');
@@ -1855,11 +1883,20 @@ async function renderIbkr(force){
             ? '<ul style="margin:0;padding-left:18px;line-height:1.55">' + diffLines.map(function (l) { return '<li>' + l + '</li>'; }).join('') + '</ul>'
             : '<div>Site and IB disagree — check bridge / paper positions.</div>')
           + '</div>');
+    const acct = d.account || {};
+    const balSub = acct.account ? ('IB '+acct.account+(acct.at ? ' · '+String(acct.at).slice(11,19)+'Z' : '')) : 'from TWS account window';
+    const comm = tt.commissionUsd || 0;
     const cards = '<div id="ibkrLiveRoot" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
-      + tile('ibkrCardToday','Today realised', fp(todayReal), 'model · '+todayKey, pc(todayReal))
-      + tile('ibkrCardReal','Total realised', fp(tt.realizedUsd), tt.closedCount+' closed (excl. errors)', pc(tt.realizedUsd))
+      + tile('ibkrCardStart','Starting balance', ibkrBal(acct.startingBalance), balSub, 'var(--t1)')
+      + tile('ibkrCardAvail','Available funds', ibkrBal(acct.availableFunds), 'can open new risk', 'var(--t1)')
+      + tile('ibkrCardNlv','Net liquidation', ibkrBal(acct.netLiquidation), 'equity now', 'var(--t1)')
+      + tile('ibkrCardIbDaily','IB daily PnL', acct.ibDailyPnl!=null?fp(acct.ibDailyPnl):'—', 'TWS account daily', acct.ibDailyPnl!=null?pc(acct.ibDailyPnl):'var(--m1)')
+      + tile('ibkrCardToday','Today realised', fp(todayReal), 'fills · '+todayKey, pc(todayReal))
+      + tile('ibkrCardReal','Total realised (net)', fp(tt.realizedUsd),
+          'gross '+(tt.realizedUsdGross!=null?fp(tt.realizedUsdGross):'—')+' · '+tt.closedCount+' closed', pc(tt.realizedUsd))
+      + tile('ibkrCardComm','Brokerage', comm?('-$'+Math.abs(comm).toFixed(0)):'—', 'IB commissions (USD)', comm?'var(--sell)':'var(--m1)')
       + tile('ibkrCardUnreal','Unrealised', fp(tt.unrealizedUsd), tt.openCount+' open', pc(tt.unrealizedUsd))
-      + tile('ibkrCardNet','Net PnL', fp(net), 'model realised + unrealised', pc(net))
+      + tile('ibkrCardNet','Net PnL', fp(net), 'net realised + unrealised', pc(net))
       + tile('ibkrCardWR','Win rate', tt.winRate!=null?tt.winRate+'%':'—', tt.wins+'W / '+tt.losses+'L', wrColor)
       + tile('ibkrCardErr','Error trades PnL', fp(errNet),
           'real '+fp(tt.errorRealizedUsd||0)+' · open '+(tt.errorOpenCount||0)+' · today '+fp(todayErrReal),

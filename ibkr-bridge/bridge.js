@@ -529,6 +529,27 @@ async function main() {
   const lotCache = new Map(); // posKey -> board lot
   let nextDetailsId = 900000;
   let nextExecHistId = 910000;
+  let nextPnlReqId = 880001;
+  // Paper account cash / equity from IB (updateAccountValue + reqPnL).
+  const accountSnap = {
+    account: ACCOUNT || '',
+    currency: 'USD',
+    at: null,
+    netLiquidation: null,
+    availableFunds: null,
+    buyingPower: null,
+    totalCashValue: null,
+    previousDayEquity: null,
+    startingBalance: null,
+    equityWithLoan: null,
+    grossPositionValue: null,
+    excessLiquidity: null,
+    realizedPnl: null,
+    unrealizedPnl: null,
+    dailyPnl: null,
+    accruedCash: null
+  };
+  const commissionByExec = new Map(); // execId -> { commission, currency, realizedPNL }
   // Live IBKR market data for MTM (posted to AlphaSignal every ~10s).
   const mktById = new Map(); // reqId -> { ticker, last, bid, ask, close }
   const mktSubscribed = new Set(); // AlphaSignal ticker already subscribed
@@ -651,7 +672,8 @@ async function main() {
           const cMeta = enrichSessionMeta(row.contract || contract || toContract(row.ticker));
           const phase = sessionPhase(cMeta || {}, Date.parse(fillAt));
           state.pendingReports = state.pendingReports || [];
-          state.pendingReports.push({
+          const comm = commissionByExec.get(String(exec.execId));
+          const report = {
             kind: 'exec', execId: exec.execId, key,
             ticker: row.ticker, hz: row.hz, side: row.side, role,
             orderId, qty: Number(exec.shares), price: px,
@@ -661,7 +683,13 @@ async function main() {
             session: phase,
             sessionLabel: sessionLabel(phase),
             time: fillAt
-          });
+          };
+          if (comm) {
+            report.commission = comm.commission;
+            report.commissionCcy = comm.currency;
+            if (comm.realizedPNL != null) report.ibRealizedPnl = comm.realizedPNL;
+          }
+          state.pendingReports.push(report);
           saveState(state);
           if (Number(exec.price) !== px) {
             log('exec captured', role, key, exec.shares + '@' + px,
@@ -728,6 +756,99 @@ async function main() {
       log('IB position snapshot ready —', posMap.size, 'symbol(s)');
     });
     ib.reqPositions();
+    // Account values (cash, equity, available) — same numbers TWS Account window shows.
+    const ACCOUNT_VALUE_TAGS = {
+      NetLiquidation: 'netLiquidation',
+      AvailableFunds: 'availableFunds',
+      FullAvailableFunds: 'availableFunds',
+      BuyingPower: 'buyingPower',
+      TotalCashValue: 'totalCashValue',
+      PreviousDayEquityWithLoanValue: 'previousDayEquity',
+      EquityWithLoanValue: 'equityWithLoan',
+      GrossPositionValue: 'grossPositionValue',
+      ExcessLiquidity: 'excessLiquidity',
+      FullExcessLiquidity: 'excessLiquidity',
+      RealizedPnL: 'realizedPnl',
+      UnrealizedPnL: 'unrealizedPnl',
+      AccruedCash: 'accruedCash'
+    };
+    function refreshStartingBalance() {
+      if (accountSnap.previousDayEquity != null) {
+        accountSnap.startingBalance = accountSnap.previousDayEquity;
+      } else if (accountSnap.netLiquidation != null && accountSnap.dailyPnl != null) {
+        accountSnap.startingBalance = +(accountSnap.netLiquidation - accountSnap.dailyPnl).toFixed(2);
+      }
+    }
+    ib.on(EventName.updateAccountValue, (key, value, currency, accountName) => {
+      try {
+        if (ACCOUNT && accountName && accountName !== ACCOUNT) return;
+        const field = ACCOUNT_VALUE_TAGS[key];
+        if (!field) return;
+        // Aggregates: prefer BASE / USD (ignore per-ccy cash lines).
+        const ccy = String(currency || '');
+        if (ccy && ccy !== 'BASE' && ccy !== 'USD' && ccy.toUpperCase() !== 'BASE') return;
+        const n = parseFloat(value);
+        if (!Number.isFinite(n)) return;
+        accountSnap[field] = n;
+        accountSnap.currency = ccy === 'BASE' ? 'USD' : (ccy || 'USD');
+        accountSnap.account = accountName || ACCOUNT || accountSnap.account;
+        accountSnap.at = new Date().toISOString();
+        refreshStartingBalance();
+      } catch (_) { /* ignore */ }
+    });
+    try {
+      ib.reqPnL(nextPnlReqId++, ACCOUNT || '', '');
+      log('reqPnL subscribed for daily account PnL', ACCOUNT || '(default)');
+    } catch (e) { log('reqPnL failed', e.message); }
+    ib.on(EventName.pnl, (reqId, dailyPnL, unrealizedPnL, realizedPnL) => {
+      if (Number.isFinite(Number(dailyPnL))) accountSnap.dailyPnl = Number(dailyPnL);
+      if (unrealizedPnL != null && Number.isFinite(Number(unrealizedPnL))) {
+        accountSnap.unrealizedPnl = Number(unrealizedPnL);
+      }
+      if (realizedPnL != null && Number.isFinite(Number(realizedPnL))) {
+        accountSnap.realizedPnl = Number(realizedPnL);
+      }
+      accountSnap.at = new Date().toISOString();
+      refreshStartingBalance();
+    });
+    // Brokerage — attach to the matching exec report (or patch later).
+    ib.on(EventName.commissionReport, (cr) => {
+      try {
+        if (!cr || !cr.execId) return;
+        const commission = Number(cr.commission);
+        if (!Number.isFinite(commission)) return;
+        const payload = {
+          commission,
+          currency: cr.currency || 'USD',
+          realizedPNL: cr.realizedPNL != null && Number.isFinite(Number(cr.realizedPNL))
+            ? Number(cr.realizedPNL) : null
+        };
+        commissionByExec.set(String(cr.execId), payload);
+        // Patch any queued exec report waiting for commission.
+        let patched = false;
+        for (const r of (state.pendingReports || [])) {
+          if (r && String(r.execId) === String(cr.execId)) {
+            r.commission = payload.commission;
+            r.commissionCcy = payload.currency;
+            if (payload.realizedPNL != null) r.ibRealizedPnl = payload.realizedPNL;
+            patched = true;
+          }
+        }
+        if (!patched) {
+          state.pendingReports = state.pendingReports || [];
+          state.pendingReports.push({
+            kind: 'commission',
+            execId: String(cr.execId),
+            commission: payload.commission,
+            commissionCcy: payload.currency,
+            ibRealizedPnl: payload.realizedPNL,
+            time: new Date().toISOString()
+          });
+        }
+        saveState(state);
+        log('commission', cr.execId, payload.commission, payload.currency);
+      } catch (e) { log('commissionReport error', e.message); }
+    });
     // Account portfolio stream — IB's own mark + averageCost (true fill avg).
     ib.on(EventName.updatePortfolio, (contract, position, marketPrice, marketValue, averageCost) => {
       const pos = Number(position) || 0;
@@ -971,10 +1092,21 @@ async function main() {
       }
     }
     const marks = [...byTicker.values()];
-    if (!marks.length) return;
     try {
-      const resp = await postJson('/api/ibkr/marks', { marks });
-      if (resp && resp.ok) log('marks posted', marks.length, '→', marks.map(m => m.ticker + '=' + m.price).join(' '));
+      const body = {
+        marks,
+        accountSnapshot: {
+          ...accountSnap,
+          startingBalance: accountSnap.startingBalance,
+          availableFunds: accountSnap.availableFunds,
+          netLiquidation: accountSnap.netLiquidation
+        }
+      };
+      if (!marks.length && accountSnap.netLiquidation == null && accountSnap.availableFunds == null) return;
+      const resp = await postJson('/api/ibkr/marks', body);
+      if (resp && resp.ok && marks.length) {
+        log('marks posted', marks.length, '→', marks.map(m => m.ticker + '=' + m.price).join(' '));
+      }
     } catch (e) { log('marks flush failed:', e.message); }
   }
 
@@ -1538,7 +1670,17 @@ async function main() {
       if (mk && Number(mk.price) > 0) marks[y] = Number(mk.price);
     }
     try {
-      const resp = await postJson('/api/ibkr/recon', { positions, marks, account: ACCOUNT || '' });
+      const resp = await postJson('/api/ibkr/recon', {
+        positions,
+        marks,
+        account: ACCOUNT || accountSnap.account || '',
+        accountSnapshot: {
+          ...accountSnap,
+          startingBalance: accountSnap.startingBalance,
+          availableFunds: accountSnap.availableFunds,
+          netLiquidation: accountSnap.netLiquidation
+        }
+      });
       lastIbReconAt = Date.now();
       lastIbReconResp = resp;
       if (resp && resp.ok) {
