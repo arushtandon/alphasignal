@@ -2130,10 +2130,16 @@ function showIbkrExpenses(){
   };
   const sectionOrder = ['commission', 'accrued', 'dividend', 'other'];
   const sectionTitle = {
-    commission: 'Brokerage commissions',
-    accrued: 'Accrued cash / interest & fees',
+    commission: 'Brokerage commissions (per fill / ticker)',
+    accrued: 'Account interest & borrow fees (IB AccruedCash — not per equity)',
     dividend: 'Dividends',
     other: 'Other charges'
+  };
+  const sectionNote = {
+    commission: 'Each row is a specific equity fill from IB commissionReport.',
+    accrued: 'IB reports one portfolio AccruedCash figure (credit interest / borrow fees). It is not broken down by ticker in the API we use — only the live account total is shown (tiny ±$0.01 ticks are hidden).',
+    dividend: 'Accrued / receivable dividends from IB account tags.',
+    other: ''
   };
   const bySec = {};
   for (const r of rows) {
@@ -2147,6 +2153,9 @@ function showIbkrExpenses(){
     if (!list.length) continue;
     bodyHtml += '<div style="margin:14px 0 6px;font-size:11px;font-weight:600;color:var(--t1);text-transform:uppercase;letter-spacing:.06em">'
       + (sectionTitle[sec] || sec) + ' · ' + list.length + '</div>';
+    if (sectionNote[sec]) {
+      bodyHtml += '<div style="font-size:10px;color:var(--m2);padding:0 8px 6px;line-height:1.4">' + sectionNote[sec] + '</div>';
+    }
     bodyHtml += '<table style="width:100%;border-collapse:collapse;margin-bottom:4px"><thead><tr>'
       + '<th style="text-align:left;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Time</th>'
       + '<th style="text-align:left;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Item</th>'

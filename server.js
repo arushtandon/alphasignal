@@ -14864,16 +14864,19 @@ app.get('/api/ibkr/trades', async (req, res) => {
       });
     }
     // Durable IB charge / dividend deltas posted by the bridge.
+    // Skip AccruedCash micro-ticks (historical spam of ±$0.01 rows).
     for (const ch of chargeLedger) {
       const amt = Number(ch.amount);
       if (!Number.isFinite(amt) || amt === 0) continue;
+      const isAccrued = /accrued_cash|accrued/i.test(String(ch.type || ''))
+        && !/dividend/i.test(String(ch.type || ''));
+      if (isAccrued && Math.abs(amt) < 1) continue;
       const ccy = String(ch.currency || 'USD');
       const cFx = await ibkrUsdPerCcy(ccy);
       const usd = +(Math.abs(amt) * cFx).toFixed(4);
       const income = !!ch.income || /dividend/i.test(String(ch.type || ''))
         || /dividend/i.test(String(ch.label || ''));
-      const section = income ? 'dividend' : (/accrued|interest|fee|cash/i.test(String(ch.type || ''))
-        ? 'accrued' : 'other');
+      const section = income ? 'dividend' : (isAccrued ? 'accrued' : 'other');
       expenses.push({
         type: ch.type || 'charge',
         section,
@@ -14882,6 +14885,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
         currency: ccy,
         amountUsd: +(income ? (amt >= 0 ? usd : -usd) : usd).toFixed(2),
         income,
+        accountLevel: !!ch.accountLevel || isAccrued,
         time: ch.time || null,
         id: ch.id || null
       });
@@ -14895,12 +14899,13 @@ app.get('/api/ibkr/trades', async (req, res) => {
       expenses.push({
         type: 'accrued_balance',
         section: 'accrued',
-        label: 'Accrued cash / interest & fees (current IB balance)',
+        label: 'Accrued cash / interest & borrow fees — account total (IB AccruedCash; not per equity)',
         amount: ac,
         currency: accountSnap.currency || 'USD',
         amountUsd: +ac.toFixed(2),
         income: false,
         balance: true,
+        accountLevel: true,
         time: accountSnap.at || null
       });
     }

@@ -787,16 +787,26 @@ async function main() {
     const delta = +(n - prev).toFixed(6);
     _lastChargeVal[key] = n;
     if (Math.abs(delta) < 1e-6) return;
+    // AccruedCash is an ACCOUNT-level IB tag (interest/borrow fees on the whole
+    // portfolio). It ticks every few seconds with $0.00–$0.04 noise — never
+    // attribute to a ticker (IB does not send per-name AccruedCash). Only log
+    // material moves (≥ $1). Dividends: ignore sub-cent jitter.
+    if (type === 'accrued_cash' && Math.abs(delta) < 1) return;
+    if ((type === 'dividend' || type === 'dividend_receivable') && Math.abs(delta) < 0.05) return;
     const isIncome = type === 'dividend' || type === 'dividend_receivable'
       || (signHint === 'income');
+    const scopeNote = (type === 'accrued_cash')
+      ? ' · account-level (not per ticker)'
+      : '';
     state.pendingCharges = state.pendingCharges || [];
     state.pendingCharges.push({
       id: type + '-' + Date.now() + '-' + Math.abs(delta).toFixed(4),
       type,
-      label: label + ' (Δ)',
+      label: label + ' (Δ)' + scopeNote,
       amount: delta,
       currency: currency || 'USD',
       income: !!isIncome,
+      accountLevel: type === 'accrued_cash',
       time: new Date().toISOString()
     });
     saveState(state);
