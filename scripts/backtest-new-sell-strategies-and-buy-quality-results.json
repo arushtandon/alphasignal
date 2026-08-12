@@ -1,0 +1,154 @@
+{
+  "runAt": "2026-07-07T06:52:31.832Z",
+  "windowBars": 252,
+  "rewardRisk": 2,
+  "universeSize": 609,
+  "symbolsWithData": 594,
+  "symbolsSkipped": 15,
+  "sellResults": [
+    {
+      "strategy": "short_rejected_extension",
+      "trades": 2229,
+      "winRate": 34.9,
+      "avgReturnPct": -0.26,
+      "avgWinPct": 4.98,
+      "avgLossPct": 3.07,
+      "winLossRatio": 1.62,
+      "profitFactor": 0.87,
+      "byStatus": {
+        "time_exit": 369,
+        "tp_hit": 525,
+        "sl_hit": 1335
+      }
+    },
+    {
+      "strategy": "failed_retest_breakdown",
+      "trades": 2533,
+      "winRate": 31,
+      "avgReturnPct": -0.3,
+      "avgWinPct": 7.2,
+      "avgLossPct": 3.67,
+      "winLossRatio": 1.96,
+      "profitFactor": 0.88,
+      "byStatus": {
+        "sl_hit": 1687,
+        "time_exit": 143,
+        "tp_hit": 703
+      }
+    },
+    {
+      "strategy": "relative_weakness_short",
+      "trades": 2194,
+      "winRate": 33.9,
+      "avgReturnPct": 0,
+      "avgWinPct": 7.79,
+      "avgLossPct": 4,
+      "winLossRatio": 1.95,
+      "profitFactor": 1,
+      "byStatus": {
+        "sl_hit": 1398,
+        "tp_hit": 677,
+        "time_exit": 119
+      }
+    },
+    {
+      "strategy": "pair_relative_weakness",
+      "trades": 2194,
+      "winRate": 39.5,
+      "avgReturnPct": 0.42,
+      "avgWinPct": 6.53,
+      "avgLossPct": 3.56,
+      "winLossRatio": 1.83,
+      "profitFactor": 1.2,
+      "byStatus": {
+        "sl_hit": 1398,
+        "tp_hit": 677,
+        "time_exit": 119
+      }
+    },
+    {
+      "strategy": "risk_off_breakdown",
+      "trades": 300,
+      "winRate": 29.7,
+      "avgReturnPct": -0.8,
+      "avgWinPct": 9.71,
+      "avgLossPct": 5.24,
+      "winLossRatio": 1.85,
+      "profitFactor": 0.78,
+      "byStatus": {
+        "tp_hit": 73,
+        "sl_hit": 194,
+        "time_exit": 33
+      }
+    },
+    {
+      "strategy": "pair_risk_off_breakdown",
+      "trades": 300,
+      "winRate": 42.3,
+      "avgReturnPct": 0.59,
+      "avgWinPct": 6.92,
+      "avgLossPct": 4.06,
+      "winLossRatio": 1.71,
+      "profitFactor": 1.25,
+      "byStatus": {
+        "tp_hit": 73,
+        "sl_hit": 194,
+        "time_exit": 33
+      }
+    }
+  ],
+  "buyResults": [
+    {
+      "bracket": "buy_short",
+      "trades": 6900,
+      "winRate": 69.4,
+      "avgReturnPct": 0.32,
+      "avgWinPct": 2.31,
+      "avgLossPct": 4.19,
+      "winLossRatio": 0.55,
+      "profitFactor": 1.25,
+      "byStatus": {
+        "signal_exit": 4626,
+        "sl_hit": 2074,
+        "tp1_hit": 158,
+        "time_limit": 17,
+        "open": 25
+      }
+    },
+    {
+      "bracket": "buy_medium",
+      "trades": 3726,
+      "winRate": 57.8,
+      "avgReturnPct": 1.53,
+      "avgWinPct": 6.98,
+      "avgLossPct": 5.93,
+      "winLossRatio": 1.18,
+      "profitFactor": 1.61,
+      "byStatus": {
+        "signal_exit": 2648,
+        "sl_hit": 754,
+        "tp1_then_sl": 175,
+        "open": 131,
+        "time_limit": 10,
+        "tp1_then_time": 4,
+        "tp1_open": 4
+      }
+    },
+    {
+      "bracket": "buy_long",
+      "trades": 4985,
+      "winRate": 64.9,
+      "avgReturnPct": 1.32,
+      "avgWinPct": 4.95,
+      "avgLossPct": 5.4,
+      "winLossRatio": 0.92,
+      "profitFactor": 1.7,
+      "byStatus": {
+        "signal_exit": 4796,
+        "sl_hit": 74,
+        "open": 112,
+        "tp1_then_sl": 3
+      }
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "runAt": "2026-07-07T08:54:56.853Z",
+  "universeSource": "NasdaqTrader filtered common stocks",
+  "requestedUniverseLimit": 1200,
+  "universeSize": 1200,
+  "symbolsWithData": 1133,
+  "symbolsSkipped": 67,
+  "candidatesNeedingFundamentals": 1133,
+  "rewardRisk": 2,
+  "windowBars": 252,
+  "results": [
+    {
+      "strategy": "rich_naked_sell_balanced",
+      "trades": 719,
+      "winRate": 18.2,
+      "avgReturnPct": -2.31,
+      "avgWinPct": 12.52,
+      "avgLossPct": 5.62,
+      "winLossRatio": 2.23,
+      "profitFactor": 0.5,
+      "byStatus": {
+        "sl_hit": 584,
+        "tp_hit": 122,
+        "time_exit": 13
+      }
+    },
+    {
+      "strategy": "rich_naked_sell_strict",
+      "trades": 0,
+      "winRate": null,
+      "avgReturnPct": null,
+      "avgWinPct": null,
+      "avgLossPct": null,
+      "winLossRatio": null,
+      "profitFactor": null,
+      "byStatus": {}
+    }
+  ]
+}

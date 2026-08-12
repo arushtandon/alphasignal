@@ -1,0 +1,100 @@
+{
+  "runAt": "2026-07-07T11:23:13.087Z",
+  "universe": "buildFullUniverse excluding COMMODITIES",
+  "universeSize": 599,
+  "symbolsWithData": 584,
+  "symbolsSkipped": 15,
+  "fundHits": 0,
+  "fmpHits": 0,
+  "windowBars": 252,
+  "results": [
+    {
+      "variant": "balanced",
+      "hz": "short",
+      "trades": 1511,
+      "winRate": 72,
+      "avgReturnPct": 0.04,
+      "avgWinPct": 1.89,
+      "avgLossPct": 4.73,
+      "winLossRatio": 0.4,
+      "profitFactor": 1.03,
+      "byStatus": {
+        "signal_exit": 1071,
+        "sl_hit": 405,
+        "tp1_hit": 15,
+        "time_limit": 9,
+        "open": 11
+      }
+    },
+    {
+      "variant": "balanced",
+      "hz": "medium",
+      "trades": 2108,
+      "winRate": 37,
+      "avgReturnPct": -0.52,
+      "avgWinPct": 3.31,
+      "avgLossPct": 2.76,
+      "winLossRatio": 1.2,
+      "profitFactor": 0.7,
+      "byStatus": {
+        "signal_exit": 2051,
+        "sl_hit": 26,
+        "open": 15,
+        "tp1_open": 6,
+        "tp1_then_sl": 10
+      }
+    },
+    {
+      "variant": "balanced",
+      "hz": "long",
+      "trades": 2269,
+      "winRate": 40.2,
+      "avgReturnPct": -0.32,
+      "avgWinPct": 2.62,
+      "avgLossPct": 2.3,
+      "winLossRatio": 1.14,
+      "profitFactor": 0.77,
+      "byStatus": {
+        "signal_exit": 2265,
+        "sl_hit": 1,
+        "open": 3
+      }
+    },
+    {
+      "variant": "strict",
+      "hz": "short",
+      "trades": 0,
+      "winRate": null,
+      "avgReturnPct": null,
+      "avgWinPct": null,
+      "avgLossPct": null,
+      "winLossRatio": null,
+      "profitFactor": null,
+      "byStatus": {}
+    },
+    {
+      "variant": "strict",
+      "hz": "medium",
+      "trades": 0,
+      "winRate": null,
+      "avgReturnPct": null,
+      "avgWinPct": null,
+      "avgLossPct": null,
+      "winLossRatio": null,
+      "profitFactor": null,
+      "byStatus": {}
+    },
+    {
+      "variant": "strict",
+      "hz": "long",
+      "trades": 0,
+      "winRate": null,
+      "avgReturnPct": null,
+      "avgWinPct": null,
+      "avgLossPct": null,
+      "winLossRatio": null,
+      "profitFactor": null,
+      "byStatus": {}
+    }
+  ]
+}

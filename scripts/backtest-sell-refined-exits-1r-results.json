@@ -1,0 +1,204 @@
+{
+  "runAt": "2026-07-07T13:05:17.024Z",
+  "universeSize": 599,
+  "symbolsWithData": 584,
+  "symbolsSkipped": 15,
+  "fundHits": 0,
+  "fmpHits": 0,
+  "fmpKeyPresent": false,
+  "windowBars": 252,
+  "results": [
+    {
+      "engine": "refined",
+      "variant": "balanced",
+      "hz": "short",
+      "trades": 1315,
+      "winRate": 62.4,
+      "avgReturnPct": -0.51,
+      "avgWinPct": 2.46,
+      "avgLossPct": 5.46,
+      "winLossRatio": 0.45,
+      "profitFactor": 0.75,
+      "byStatus": {
+        "sl_hit": 463,
+        "signal_exit": 500,
+        "tp1_then_sl": 317,
+        "time_limit": 11,
+        "open": 23,
+        "tp1_then_time": 1
+      }
+    },
+    {
+      "engine": "refined",
+      "variant": "balanced",
+      "hz": "medium",
+      "trades": 1191,
+      "winRate": 54.7,
+      "avgReturnPct": -1.78,
+      "avgWinPct": 5.03,
+      "avgLossPct": 10,
+      "winLossRatio": 0.5,
+      "profitFactor": 0.61,
+      "byStatus": {
+        "sl_hit": 420,
+        "signal_exit": 447,
+        "open": 115,
+        "tp1_then_sl": 171,
+        "time_limit": 29,
+        "tp1_open": 9
+      }
+    },
+    {
+      "engine": "refined",
+      "variant": "balanced",
+      "hz": "long",
+      "trades": 938,
+      "winRate": 55.4,
+      "avgReturnPct": -3.64,
+      "avgWinPct": 5.21,
+      "avgLossPct": 14.65,
+      "winLossRatio": 0.36,
+      "profitFactor": 0.44,
+      "byStatus": {
+        "sl_hit": 243,
+        "signal_exit": 441,
+        "open": 223,
+        "tp1_then_sl": 22,
+        "tp1_open": 8,
+        "time_limit": 1
+      }
+    },
+    {
+      "engine": "refined",
+      "variant": "strict",
+      "hz": "short",
+      "trades": 0,
+      "winRate": null,
+      "avgReturnPct": null,
+      "avgWinPct": null,
+      "avgLossPct": null,
+      "winLossRatio": null,
+      "profitFactor": null,
+      "byStatus": {}
+    },
+    {
+      "engine": "refined",
+      "variant": "strict",
+      "hz": "medium",
+      "trades": 0,
+      "winRate": null,
+      "avgReturnPct": null,
+      "avgWinPct": null,
+      "avgLossPct": null,
+      "winLossRatio": null,
+      "profitFactor": null,
+      "byStatus": {}
+    },
+    {
+      "engine": "refined",
+      "variant": "strict",
+      "hz": "long",
+      "trades": 0,
+      "winRate": null,
+      "avgReturnPct": null,
+      "avgWinPct": null,
+      "avgLossPct": null,
+      "winLossRatio": null,
+      "profitFactor": null,
+      "byStatus": {}
+    },
+    {
+      "engine": "hybrid",
+      "variant": "balanced",
+      "hz": "short",
+      "trades": 1315,
+      "winRate": 71.5,
+      "avgReturnPct": -0.01,
+      "avgWinPct": 1.86,
+      "avgLossPct": 4.72,
+      "winLossRatio": 0.4,
+      "profitFactor": 0.99,
+      "byStatus": {
+        "signal_exit": 923,
+        "sl_hit": 359,
+        "tp1_hit": 15,
+        "open": 11,
+        "time_limit": 7
+      }
+    },
+    {
+      "engine": "hybrid",
+      "variant": "balanced",
+      "hz": "medium",
+      "trades": 1191,
+      "winRate": 37.4,
+      "avgReturnPct": -0.46,
+      "avgWinPct": 3.39,
+      "avgLossPct": 2.76,
+      "winLossRatio": 1.23,
+      "profitFactor": 0.73,
+      "byStatus": {
+        "signal_exit": 1162,
+        "sl_hit": 15,
+        "open": 3,
+        "tp1_open": 3,
+        "tp1_then_sl": 8
+      }
+    },
+    {
+      "engine": "hybrid",
+      "variant": "balanced",
+      "hz": "long",
+      "trades": 938,
+      "winRate": 40.1,
+      "avgReturnPct": -0.31,
+      "avgWinPct": 2.82,
+      "avgLossPct": 2.41,
+      "winLossRatio": 1.17,
+      "profitFactor": 0.78,
+      "byStatus": {
+        "signal_exit": 937,
+        "sl_hit": 1
+      }
+    },
+    {
+      "engine": "hybrid",
+      "variant": "strict",
+      "hz": "short",
+      "trades": 0,
+      "winRate": null,
+      "avgReturnPct": null,
+      "avgWinPct": null,
+      "avgLossPct": null,
+      "winLossRatio": null,
+      "profitFactor": null,
+      "byStatus": {}
+    },
+    {
+      "engine": "hybrid",
+      "variant": "strict",
+      "hz": "medium",
+      "trades": 0,
+      "winRate": null,
+      "avgReturnPct": null,
+      "avgWinPct": null,
+      "avgLossPct": null,
+      "winLossRatio": null,
+      "profitFactor": null,
+      "byStatus": {}
+    },
+    {
+      "engine": "hybrid",
+      "variant": "strict",
+      "hz": "long",
+      "trades": 0,
+      "winRate": null,
+      "avgReturnPct": null,
+      "avgWinPct": null,
+      "avgLossPct": null,
+      "winLossRatio": null,
+      "profitFactor": null,
+      "byStatus": {}
+    }
+  ]
+}

@@ -10,7 +10,8 @@
     "start": "node server.js",
     "acceptance": "node scripts/run-bracket-acceptance.js",
     "acceptance:sell": "node scripts/run-bracket-acceptance.js --sides=sell",
-    "acceptance:buy": "node scripts/run-bracket-acceptance.js --sides=buy"
+    "acceptance:buy": "node scripts/run-bracket-acceptance.js --sides=buy",
+    "lifecycle": "node scripts/lifecycle-invariants.js"
   },
   "dependencies": {
     "express": "^4.18.2"
