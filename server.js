@@ -13393,16 +13393,23 @@ function repairSuPaLiveOpenWhenIbAlreadyFlat() {
 /**
  * Re-arm SU.PA long Buy after the erroneous orphan flatten. History still has
  * open long Buy (Conf≥62, RR ok) — emit a fresh entry so the bridge places
- * MKT + TP/SL. Prior fills stay on the closed Error ledger.
+ * MKT/OPG + TP/SL. Prior fills stay on the closed Error ledger.
+ *
+ * MUST run only after `riskState` is initialized (boot TDZ used to throw inside
+ * shouldEmitIbkrEntry and leave history entryDate updated with no entry event).
+ * Force-emits levels when the model still shows open long Buy — do not depend
+ * on shouldEmitIbkrEntry for this intentional repair path.
  */
-function rearmSuPaLongBuyEntry() {
+function rearmSuPaLongBuyEntry(opts) {
+  const force = !!(opts && opts.force);
   const LIVE_KEY = 'SU.PA|long|Wed Aug 12 2026';
   try {
     if (hasOpenEmittedEntryForTicker('SU.PA')) {
       console.log('SU.PA re-arm skipped — entry event already open');
-      return 0;
+      return { ok: true, emitted: 0, reason: 'already-open' };
     }
-    // Move any leftover LIVE_KEY open fills to cursor-err so re-entry is clean.
+    // Move any leftover LIVE_KEY fills to cursor-err so re-entry is clean and
+    // recon cannot ghost-flatten stale orphan lots as "site open".
     const before = readIbkrFillRows();
     let moved = 0;
     const next = before.map(r => {
@@ -13414,7 +13421,10 @@ function rearmSuPaLongBuyEntry() {
         note: (r.note ? String(r.note) + ' ' : '') + '[prior orphan cycle — re-arm model entry]'
       });
     });
-    if (moved) mutateFillLedger('su_pa_rearm_quarantine', () => next);
+    if (moved) {
+      mutateFillLedger('su_pa_rearm_quarantine', () => next);
+      console.log('SU.PA re-arm quarantined', moved, 'fill row(s) → cursor-err');
+    }
 
     const h = (tradeHistory || []).find(x =>
       x && String(x.ticker || '').toUpperCase() === 'SU.PA'
@@ -13424,13 +13434,13 @@ function rearmSuPaLongBuyEntry() {
     );
     if (!h) {
       console.warn('SU.PA re-arm: no open long Buy in history');
-      return 0;
+      return { ok: false, emitted: 0, reason: 'no-open-history' };
     }
-    // Ensure levels present for shouldEmit / placeBracket
-    if (!(Number(h.longEntry || h.entry) > 0)) h.longEntry = 302.25;
-    if (!(Number(h.longTarget1 || h.target1) > 0)) h.longTarget1 = 367.07;
-    if (!(Number(h.longTarget2 || h.target2) > 0)) h.longTarget2 = 404.11;
-    if (!(Number(h.longStopLoss || h.stopLoss) > 0)) h.longStopLoss = 255.38;
+    // Ensure levels present for placeBracket
+    if (!(Number(h.longEntry || h.entry) > 0)) h.longEntry = 309.55;
+    if (!(Number(h.longTarget1 || h.target1) > 0)) h.longTarget1 = 374.73;
+    if (!(Number(h.longTarget2 || h.target2) > 0)) h.longTarget2 = 411.97;
+    if (!(Number(h.longStopLoss || h.stopLoss) > 0)) h.longStopLoss = 254.53;
     if (!(Number(h.longConf || h.conf) >= 62)) h.longConf = 65;
     h.longAction = 'Buy';
     h.longRating = 'Buy';
@@ -13441,23 +13451,42 @@ function rearmSuPaLongBuyEntry() {
     h.status = 'open';
     // Fresh entryDate → same SGT day key (Wed Aug 12) so bridge matches today.
     h.entryDate = new Date().toISOString();
-    if (!shouldEmitIbkrEntry(h, 'long')) {
-      console.warn('SU.PA re-arm blocked by shouldEmitIbkrEntry');
-      return 0;
+    const snap = tradeEventSnapshot(h, 'long', { reason: 'rearm-after-orphan-flatten' });
+    if (snap.side !== 'buy' && snap.side !== 'sell') {
+      console.warn('SU.PA re-arm blocked — snapshot side not Buy/Sell');
+      return { ok: false, emitted: 0, reason: 'bad-side' };
     }
-    const evt = emitTradeEvent('entry', tradeEventSnapshot(h, 'long', {
-      reason: 'rearm-after-orphan-flatten'
-    }));
+    if (!(snap.entry > 0) || !(snap.sl > 0) || !(snap.tp1 > 0)) {
+      console.warn('SU.PA re-arm blocked — missing levels', snap);
+      return { ok: false, emitted: 0, reason: 'missing-levels' };
+    }
+    // Soft gate only (log); intentional repair still emits unless force=false and gate fails.
+    let gateOk = true;
+    try {
+      gateOk = shouldEmitIbkrEntry(h, 'long');
+    } catch (gateErr) {
+      gateOk = false;
+      console.warn('SU.PA re-arm shouldEmit threw (continuing force path):', gateErr && gateErr.message);
+    }
+    if (!gateOk && !force) {
+      console.warn('SU.PA re-arm blocked by shouldEmitIbkrEntry (pass force=true to override)');
+      return { ok: false, emitted: 0, reason: 'shouldEmit-blocked' };
+    }
+    if (!gateOk && force) {
+      console.warn('SU.PA re-arm: shouldEmit blocked — forcing entry emit anyway');
+    }
+    const evt = emitTradeEvent('entry', snap);
     if (evt) {
-      console.log('SU.PA long Buy re-armed — entry event', evt.key, 'TP/SL for bridge');
-      auditLog('ibkr_su_pa_rearm', { key: evt.key, entry: evt.entry, tp1: evt.tp1, sl: evt.sl });
+      console.log('SU.PA long Buy re-armed — entry event', evt.key, 'TP/SL for bridge',
+        'entry=', evt.entry, 'tp1=', evt.tp1, 'sl=', evt.sl);
+      auditLog('ibkr_su_pa_rearm', { key: evt.key, entry: evt.entry, tp1: evt.tp1, sl: evt.sl, force: !!force });
       try { saveHistoryFile(tradeHistory); } catch (_) {}
-      return 1;
+      return { ok: true, emitted: 1, key: evt.key, seq: evt.seq, reason: 'emitted' };
     }
-    return 0;
+    return { ok: false, emitted: 0, reason: 'emit-null' };
   } catch (e) {
     console.warn('SU.PA re-arm failed:', e.message);
-    return 0;
+    return { ok: false, emitted: 0, reason: 'exception', error: e.message };
   }
 }
 /**
@@ -13837,9 +13866,8 @@ try { stampGhostFlatFillsAsErrorTrade(); } catch (e) {
 try { repairSuPaLiveOpenWhenIbAlreadyFlat(); } catch (e) {
   console.warn('boot SU.PA ib-flat repair failed:', e.message);
 }
-try { rearmSuPaLongBuyEntry(); } catch (e) {
-  console.warn('boot SU.PA re-arm failed:', e.message);
-}
+// NOTE: rearmSuPaLongBuyEntry() must NOT run here — riskState is declared later
+// and shouldEmitIbkrEntry → isNewEntryRiskBlocked() hits TDZ (silent re-arm fail).
 
 /** Drop phantom/stale fills (and optional explicit keys) from the durable log. */
 app.post('/api/ibkr/purge', express.json({ limit: '32kb' }), (req, res) => {
@@ -13854,6 +13882,25 @@ app.post('/api/ibkr/purge', express.json({ limit: '32kb' }), (req, res) => {
     return true;
   }));
   res.json({ ok: true, before: beforeLen, after, removed: beforeLen - after });
+});
+
+/**
+ * Force re-arm a model entry after orphan/error close (SU.PA Aug 12).
+ * Body: { ticker?: 'SU.PA', force?: true }
+ */
+app.post('/api/ibkr/rearm-entry', express.json({ limit: '16kb' }), (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const ticker = String((req.body && req.body.ticker) || 'SU.PA').toUpperCase();
+  const force = req.body && req.body.force === false ? false : true;
+  if (ticker !== 'SU.PA') {
+    return res.status(400).json({ error: 'only SU.PA re-arm is supported right now', ticker });
+  }
+  try {
+    const result = rearmSuPaLongBuyEntry({ force });
+    res.json({ ok: !!(result && result.ok), ...result });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 /**
@@ -14318,12 +14365,29 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
               return Number.isFinite(ts) && (Date.now() - ts) < GHOST_FLAT_GRACE_MS;
             });
           });
-          if (recentEntry) {
+          // Also grace on a freshly emitted model entry (re-arm before first fill).
+          let recentModelEntry = false;
+          if (!recentEntry && hasOpenEmittedEntryForTicker(y) && fs.existsSync(TRADE_EVENTS_FILE)) {
+            try {
+              const aliases = ibkrYahooAliases(y);
+              let lastEntryMs = 0;
+              for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
+                let e; try { e = JSON.parse(line); } catch (_) { continue; }
+                if (!e || !e.key || e.type !== 'entry') continue;
+                const t = String(e.key.split('|')[0] || '').toUpperCase();
+                if (!aliases.has(t)) continue;
+                const ts = Date.parse(e.t || e.entryDate || 0);
+                if (Number.isFinite(ts) && ts > lastEntryMs) lastEntryMs = ts;
+              }
+              recentModelEntry = lastEntryMs > 0 && (Date.now() - lastEntryMs) < GHOST_FLAT_GRACE_MS;
+            } catch (_) {}
+          }
+          if (recentEntry || recentModelEntry) {
             issues.push({
               ticker: y, severity: 'pending',
               detail: hasOpenEmittedEntryForTicker(y)
-                ? `Site open ${asAbs} but IB flat — entry fill <45m old / open model entry; defer close`
-                : `Site open ${asAbs} but IB flat — entry fill <45m old; defer ghost-flatten`
+                ? `Site open ${asAbs} but IB flat — fresh entry/fill grace; defer close`
+                : `Site open ${asAbs} but IB flat — entry fill <15m old; defer ghost-flatten`
             });
             continue;
           }
@@ -15479,6 +15543,15 @@ try {
 /** True when either equity drawdown OR IB liquidity gate blocks new entries. */
 function isNewEntryRiskBlocked() {
   return !!(riskState.riskOff || riskState.liquidityRiskOff);
+}
+
+// After riskState is live: force-rearm SU.PA long Buy (orphan flatten recovery).
+// force=true so a soft shouldEmit miss cannot block the intentional repair.
+try {
+  const rearm = rearmSuPaLongBuyEntry({ force: true });
+  console.log('boot SU.PA re-arm:', rearm && rearm.reason, 'emitted=', rearm && rearm.emitted);
+} catch (e) {
+  console.warn('boot SU.PA re-arm failed:', e.message);
 }
 
 // After risk state is live: emit Buy/Sell board picks that never got IBKR events
