@@ -456,14 +456,10 @@ function enrichSessionMeta(c) {
 
 function orderContractFromPos(c) {
   if (!c) return null;
-  const ccy = String(c.currency || 'USD');
-  const isHk = ccy === 'HKD' || String(c.primaryExch || '').toUpperCase() === 'SEHK'
-    || String(c.market || '') === 'HK';
   const out = {
     secType: c.secType || 'STK',
-    // HK SMART+bare numeric symbol often returns IB error 200. Pin SEHK.
-    exchange: isHk ? 'SEHK' : 'SMART',
-    currency: ccy
+    exchange: 'SMART',
+    currency: c.currency || 'USD'
   };
   const conId = Number(c.conId);
   if (conId > 0) out.conId = conId;
@@ -471,8 +467,9 @@ function orderContractFromPos(c) {
   if (c.localSymbol) out.localSymbol = String(c.localSymbol);
   if (c.primaryExch) {
     out.primaryExch = c.primaryExch;
-  } else if (isHk) {
+  } else if (out.currency === 'HKD') {
     out.primaryExch = 'SEHK';
+    // IB often wants the numeric code as-is; keep symbol from the position
   } else if (out.currency === 'JPY') {
     out.primaryExch = 'TSEJ';
   } else if (out.currency === 'EUR') {
@@ -483,28 +480,6 @@ function orderContractFromPos(c) {
     out.primaryExch = 'NASDAQ';
   }
   return enrichSessionMeta(out);
-}
-
-/** Prefer conId + listing exchange (same shape as placeBracket) for reliable MKT. */
-function placeableContract(c) {
-  if (!c) return null;
-  const base = orderContractFromPos(c) || c;
-  const conId = Number(base.conId || c.conId);
-  const isHk = String(base.currency || '') === 'HKD' || base.market === 'HK'
-    || String(base.primaryExch || '').toUpperCase() === 'SEHK';
-  if (conId > 0) {
-    return enrichSessionMeta({
-      conId,
-      symbol: base.symbol != null ? String(base.symbol) : undefined,
-      localSymbol: base.localSymbol || undefined,
-      secType: 'STK',
-      exchange: isHk ? 'SEHK' : (base.exchange || 'SMART'),
-      primaryExch: base.primaryExch || (isHk ? 'SEHK' : undefined),
-      currency: base.currency || 'USD',
-      market: base.market
-    });
-  }
-  return base;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -862,13 +837,12 @@ async function main() {
       ib.on(EventName.contractDetails, onDet);
       ib.on(EventName.contractDetailsEnd, onEnd);
       try {
-        const isHk = String(contract.currency || '') === 'HKD' || contract.market === 'HK';
         ib.reqContractDetails(reqId, {
           symbol: String(contract.symbol),
           secType: contract.secType || 'STK',
-          exchange: isHk ? 'SEHK' : 'SMART',
+          exchange: 'SMART',
           currency: contract.currency,
-          primaryExch: contract.primaryExch || (isHk ? 'SEHK' : undefined)
+          primaryExch: contract.primaryExch
         });
       } catch (e) {
         clearTimeout(t);
@@ -1735,6 +1709,22 @@ async function main() {
             contract: c, qtyTotal: posInDir, updated: new Date().toISOString(),
             recoveredFromPosition: true
           };
+          const avg = Number(portfolioAvgCost.get(normalizeYahooTicker(src.ticker)))
+            || Number(src.entry) || 0;
+          if (avg > 0) {
+            state.pendingReports = state.pendingReports || [];
+            state.pendingReports.push({
+              kind: 'exec',
+              execId: `recover-entry-${key}-q${posInDir}`,
+              key, ticker: src.ticker, hz: src.hz || 'short',
+              side: src.side === 'sell' ? 'sell' : 'buy', role: 'entry',
+              orderId: null, qty: posInDir, price: avg,
+              currency: c.currency || 'USD',
+              ccyScale: c.penceQuoted ? 100 : 1,
+              errorTrade: false, synthetic: true, recon: 'recover-entry',
+              time: new Date().toISOString()
+            });
+          }
           log('RECONCILE: recovered filled Asia row from IB position', key, 'qty', posInDir);
           saveState(state);
           continue;
@@ -1748,6 +1738,57 @@ async function main() {
         log('RECONCILE: seeded missing Asia state row', key);
         saveState(state);
       }
+
+      // 0z2. Any market: model-open + IB holds shares but site has no fill →
+      // report synthetic entry (fixes KHC "import/fill lag" untracked).
+      try {
+        const trFill = await fetchJson('/api/ibkr/trades');
+        const siteOpen = new Set();
+        for (const t of (trFill && trFill.trades) || []) {
+          if (t && t.openQty > 0 && t.ticker) siteOpen.add(normalizeYahooTicker(t.ticker));
+        }
+        for (const [key, stOpen] of keyState) {
+          if (stOpen !== 'open') continue;
+          const src = entryByKey.get(key);
+          if (!src || !src.ticker) continue;
+          const y = normalizeYahooTicker(src.ticker);
+          if (setHasYahooAlias(siteOpen, y)) continue;
+          const c0 = toContract(src.ticker);
+          if (!c0) continue;
+          const held0 = posMap.get(posKeyOf(c0));
+          const posInDir0 = held0 ? (src.side === 'sell' ? -held0.pos : held0.pos) : 0;
+          if (!(posInDir0 > 0)) continue;
+          const avg0 = Number(portfolioAvgCost.get(y)) || Number(src.entry) || 0;
+          if (!(avg0 > 0)) continue;
+          if (!state.byKey[key]) {
+            state.byKey[key] = {
+              ticker: src.ticker, hz: src.hz, side: src.side,
+              entry: src.entry, stopPx: src.sl || src.trailSl, tp1Px: src.tp1 || 0,
+              entryStyle: 'MKT', entryFilled: true, closed: false,
+              contract: c0, qtyTotal: posInDir0, updated: new Date().toISOString(),
+              recoveredFromPosition: true
+            };
+          } else {
+            state.byKey[key].entryFilled = true;
+            state.byKey[key].qtyTotal = posInDir0;
+            state.byKey[key].recoveredFromPosition = true;
+          }
+          const execId0 = `recover-entry-${key}-q${posInDir0}`;
+          state.pendingReports = state.pendingReports || [];
+          if (!state.pendingReports.some(r => r.execId === execId0)) {
+            state.pendingReports.push({
+              kind: 'exec', execId: execId0, key, ticker: src.ticker, hz: src.hz || 'short',
+              side: src.side === 'sell' ? 'sell' : 'buy', role: 'entry',
+              orderId: null, qty: posInDir0, price: avg0,
+              currency: c0.currency || 'USD', ccyScale: c0.penceQuoted ? 100 : 1,
+              errorTrade: false, synthetic: true, recon: 'recover-entry',
+              time: new Date().toISOString()
+            });
+            log('RECONCILE: import missing entry fill from IB', key, 'qty', posInDir0, '@', avg0);
+          }
+          saveState(state);
+        }
+      } catch (e) { log('RECONCILE: recover-entry import failed', e.message); }
 
       // 0. Re-arm unfilled parents still open on the model.
       //   • HK / JP: chase while model open (missed OPG must not stay dead)
@@ -1958,8 +1999,7 @@ async function main() {
         if (Date.now() - lastTry < 15 * 60 * 1000) continue;
         _flattenTried.set('err|' + key, Date.now());
         const fid = nid();
-        try { await resolveLot(held.contract || contract); } catch (_) { /* best-effort */ }
-        const oc = placeableContract(held.contract || contract);
+        const oc = orderContractFromPos(held.contract || contract);
         if (!oc || (!oc.conId && !oc.symbol)) continue;
         row.errorTrade = true;
         row.flatReason = row.flatReason || 'unauthorized-non-recommendation';
@@ -1994,8 +2034,7 @@ async function main() {
           _flattenTried.set('err|' + pk, Date.now());
           const qty = Math.abs(pos);
           const fid = nid();
-          try { await resolveLot(contract); } catch (_) { /* best-effort */ }
-          const oc = placeableContract(contract);
+          const oc = orderContractFromPos(contract);
           if (!oc || (!oc.conId && !oc.symbol)) continue;
           const ticker = y || symU;
           const errKey = `${ticker}|error|${singaporeToDateString()}`;
@@ -2051,15 +2090,20 @@ async function main() {
         if (row.errorTrade || /\|error\|/.test(key)) continue;
         protectedYahoo.add(y);
       }
-      // Today's board also protects (OPG not-yet-filled picks). Stale History
-      // opens must NOT shield IB-only orphans from flatten.
+      // Today's board protects ONLY names that also have a live model entry
+      // (OPG not-yet-filled). Board/history ghosts (e.g. 0001.HK restored onto
+      // the board with no open entry event) must NOT block IB-only orphan closes.
       try {
         const picks = await fetchJson('/api/dashboard/picks');
         const dd = picks && picks.dashData;
         if (dd) {
           for (const k of ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell']) {
             for (const r of (dd[k] || [])) {
-              if (r && r.ticker) protectedYahoo.add(normalizeYahooTicker(r.ticker));
+              if (!r || !r.ticker) continue;
+              const by = normalizeYahooTicker(r.ticker);
+              if (setHasYahooAlias(openYahoo, by) || setHasYahooAlias(recentEntryYahoo, by)) {
+                protectedYahoo.add(by);
+              }
             }
           }
         }
@@ -2103,9 +2147,7 @@ async function main() {
         _flattenTried.set(pk, Date.now());
         const qty = Math.abs(pos);
         const fid = nid();
-        // Resolve conId when missing — SMART+numeric HK without conId → error 200.
-        try { await resolveLot(cMeta); } catch (_) { /* best-effort */ }
-        const oc = placeableContract(cMeta);
+        const oc = orderContractFromPos(cMeta);
         if (!oc || (!oc.conId && !oc.symbol)) continue;
         const action = pos > 0 ? 'SELL' : 'BUY';
         // RTH → market day order. Otherwise → opening auction (next session).
@@ -2113,7 +2155,6 @@ async function main() {
         const tif = useOpg ? 'OPG' : 'DAY';
         log('RECONCILE: flattening', isOrphanIbOnly ? 'IB-ONLY ORPHAN' : 'UNAUTHORIZED',
           pk, 'pos=' + pos, 'ticker=' + y, 'streak=' + streak,
-          'exch=' + (oc.exchange || '?'), 'conId=' + (oc.conId || 'none'),
           useOpg ? ('OPG→next open (' + phase + ')') : 'MKT RTH');
         transmitOrder(fid, oc, baseOrder({
           orderId: fid, action,
