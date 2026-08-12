@@ -136,42 +136,13 @@ function singaporeToDateString(ms = Date.now()) {
   return `${get('weekday')} ${get('month')} ${get('day')} ${get('year')}`;
 }
 
-/** Normalize Yahoo tickers so 5.HK ≡ 0005.HK for open-lot / orphan matching. */
-function normalizeYahooTicker(t) {
-  const s = String(t || '').toUpperCase();
-  const m = s.match(/^(\d+)\.HK$/);
-  if (m) return m[1].padStart(4, '0') + '.HK';
-  return s;
-}
-
 /** Dual-list aliases — same conId identity; authorize by provenance not name. */
-const LISTING_ALIASES = {
-  'AIR.DE': ['AIR.PA', 'AIR'],
-  'AIR.PA': ['AIR.DE', 'AIR'],
-  'SU.PA': ['SU.DE', 'SU'],
-  'SU.DE': ['SU.PA', 'SU'],
-  'DHL.PA': ['DHL.DE', 'DHL'],
-  'DHL.DE': ['DHL.PA', 'DHL']
-};
-function yahooAliases(t) {
-  const y = normalizeYahooTicker(t);
-  const out = new Set([y]);
-  for (const a of (LISTING_ALIASES[y] || [])) out.add(normalizeYahooTicker(a));
-  // Bare IB portfolio symbol ("SU") must match Yahoo "SU.PA" / "SU.DE"
-  if (y.includes('.')) out.add(y.split('.')[0]);
-  else {
-    for (const k of Object.keys(LISTING_ALIASES)) {
-      if (k.split('.')[0] === y) out.add(k);
-    }
-  }
-  return out;
-}
-function setHasYahooAlias(set, t) {
-  for (const a of yahooAliases(t)) {
-    if (set.has(a)) return true;
-  }
-  return false;
-}
+const {
+  LISTING_ALIASES,
+  normalizeYahooTicker,
+  yahooAliases,
+  setHasYahooAlias
+} = require('./listing-aliases.js');
 
 /**
  * IB execDetails sometimes returns coarse integer prices (9988 @124) while
@@ -3221,6 +3192,8 @@ async function main() {
         if (!y) continue;
         if (setHasYahooAlias(protectedYahoo, y) || setHasYahooAlias(openYahoo, y)
           || setHasYahooAlias(recentEntryYahoo, y)) {
+          const aliases = [...yahooAliases(y)];
+          log('RECONCILE: skip orphan flatten — alias protected', y, 'aliases=', aliases.join(','));
           if (state.unauthStreak[pk]) { delete state.unauthStreak[pk]; saveState(state); }
           continue;
         }

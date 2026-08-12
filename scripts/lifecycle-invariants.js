@@ -144,10 +144,169 @@ function ok(name, cond, detail) {
       'site=' + siteOpenQty + ' ib=' + ibQty);
   })();
 
-  if (failed) {
-    console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
-    process.exit(1);
-  }
-  console.log('\nAll T1–T6 invariants passed. DATA_DIR=' + tmp);
-  process.exit(0);
+  // ── T7 Live model-only fills → not Error, realised 0 ───────────────────────
+  (function t7() {
+    const day = 'Wed Aug 12 2026';
+    const key = 'MODEL.X|long|' + day;
+    fs.appendFileSync(S.TRADE_EVENTS_FILE, JSON.stringify({
+      seq: 910001, t: new Date().toISOString(), type: 'entry',
+      key, ticker: 'MODEL.X', hz: 'long', side: 'buy', entry: 100, sl: 90, tp1: 120
+    }) + '\n');
+    S.mutateFillLedger('t7_seed', (rows) => {
+      rows.push({
+        execId: 't7-live-entry', key, ticker: 'MODEL.X', hz: 'long', side: 'buy',
+        role: 'entry', qty: 10, price: 100, currency: 'USD', ccyScale: 1,
+        time: new Date().toISOString(), errorTrade: false
+      });
+      return rows;
+    });
+    const opens = S.aggregateIbkrOpenFromFills(S.readIbkrFillRows());
+    const o = opens.find(x => String(x.key) === key);
+    const t = {
+      key, ticker: 'MODEL.X', openQty: o ? o.openQty : 0,
+      fills: S.readIbkrFillRows().filter(r => r.key === key),
+      errorTrade: false
+    };
+    t.errorTrade = S.isIbkrErrorTrade(t);
+    ok('T7 open qty 10', o && o.openQty === 10, o && o.openQty);
+    ok('T7 not Error trade', t.errorTrade === false, t.errorTrade);
+  })();
+
+  // ── T8 Unauthorized/synthetic ingest on model key → auto |cursor-err ───────
+  (function t8() {
+    const day = 'Wed Aug 12 2026';
+    const key = 'ORPH.X|short|' + day;
+    S.mutateFillLedger('t8_seed', (rows) => {
+      rows.push({
+        execId: 't8-ghost', key, ticker: 'ORPH.X', hz: 'short', side: 'buy',
+        role: 'flatten', qty: 5, price: 50, currency: 'USD', ccyScale: 1,
+        time: new Date().toISOString(), errorTrade: true, synthetic: true, recon: 'ghost-flat'
+      });
+      return rows;
+    });
+    const rows = S.readIbkrFillRows().filter(r => r.execId === 't8-ghost');
+    ok('T8 re-keyed to cursor-err', rows.length === 1 && S.isCursorErrIbkrKey(rows[0].key),
+      rows[0] && rows[0].key);
+    ok('T8 stamped errorTrade', rows[0] && rows[0].errorTrade === true);
+  })();
+
+  // ── T9 Error realised isolated from model totals (bucket closure) ──────────
+  (function t9() {
+    const liveKey = 'BUCK.X|long|Wed Aug 12 2026';
+    const errKey = liveKey + '|cursor-err';
+    S.mutateFillLedger('t9_seed', (rows) => {
+      rows.push(
+        {
+          execId: 't9-model-e', key: liveKey, ticker: 'BUCK.X', hz: 'long', side: 'buy',
+          role: 'entry', qty: 2, price: 100, currency: 'USD', ccyScale: 1,
+          time: new Date().toISOString()
+        },
+        {
+          execId: 't9-err-e', key: errKey, ticker: 'BUCK.X', hz: 'long', side: 'buy',
+          role: 'entry', qty: 8, price: 100, currency: 'USD', ccyScale: 1,
+          time: new Date().toISOString(), errorTrade: true
+        },
+        {
+          execId: 't9-err-x', key: errKey, ticker: 'BUCK.X', hz: 'long', side: 'buy',
+          role: 'flatten', qty: 8, price: 99, currency: 'USD', ccyScale: 1,
+          time: new Date().toISOString(), errorTrade: true, synthetic: true, recon: 'ghost-flat'
+        }
+      );
+      return rows;
+    });
+    const byKey = new Map();
+    for (const r of S.readIbkrFillRows()) {
+      if (!String(r.key || '').includes('BUCK.X')) continue;
+      if (!byKey.has(r.key)) byKey.set(r.key, []);
+      byKey.get(r.key).push(r);
+    }
+    let modelReal = 0, errReal = 0;
+    for (const [key, fills] of byKey) {
+      const entries = fills.filter(f => f.role === 'entry');
+      const exits = fills.filter(f => f.role !== 'entry');
+      const entryQty = entries.reduce((s, f) => s + f.qty, 0);
+      if (!entryQty) continue;
+      const avgEntry = entries.reduce((s, f) => s + f.price * f.qty, 0) / entryQty;
+      const realized = exits.reduce((s, f) => s + (f.price - avgEntry) * f.qty, 0);
+      const t = { key, ticker: 'BUCK.X', openQty: Math.max(0, entryQty - exits.reduce((s, f) => s + f.qty, 0)), fills, realizedUsd: realized };
+      t.errorTrade = S.isIbkrErrorTrade(t);
+      if (t.errorTrade) errReal += realized;
+      else modelReal += realized;
+    }
+    ok('T9 model realised 0 (no exits on live)', Math.abs(modelReal) < 1e-9, modelReal);
+    ok('T9 error realised negative', errReal < 0, errReal);
+  })();
+
+  // ── T10 Alias SU / SU.DE authorized while SU.PA entry open ─────────────────
+  (function t10() {
+    const day = 'Wed Aug 12 2026';
+    const key = 'SU.PA|long|' + day;
+    fs.appendFileSync(S.TRADE_EVENTS_FILE, JSON.stringify({
+      seq: 910010, t: new Date().toISOString(), type: 'entry',
+      key, ticker: 'SU.PA', hz: 'long', side: 'buy', entry: 309, sl: 250, tp1: 370
+    }) + '\n');
+    ok('T10 SU.PA authorized', S.isPositionAuthorizedByProvenance('SU.PA'));
+    ok('T10 bare SU authorized via alias', S.isPositionAuthorizedByProvenance('SU'));
+    ok('T10 SU.DE authorized via alias', S.isPositionAuthorizedByProvenance('SU.DE'));
+    const aliases = S.ibkrYahooAliases('SU');
+    ok('T10 aliases include SU.PA', aliases.has('SU.PA'), [...aliases].join(','));
+  })();
+
+  // ── T11 Boot: isNewEntryRiskBlocked null-safe / riskState ready ────────────
+  (function t11() {
+    ok('T11 riskState ready', S.assertRiskStateReady('t11') === true);
+    const blocked = S.isNewEntryRiskBlocked();
+    ok('T11 isNewEntryRiskBlocked returns boolean', typeof blocked === 'boolean', blocked);
+  })();
+
+  // ── T12 Recon normalize twice → byte-identical after quarantine ────────────
+  (function t12() {
+    const before = Buffer.from(JSON.stringify(S.readIbkrFillRows()));
+    S.quarantineErrorFillsOffModelKeys();
+    const mid = Buffer.from(JSON.stringify(S.readIbkrFillRows()));
+    S.quarantineErrorFillsOffModelKeys();
+    const after = Buffer.from(JSON.stringify(S.readIbkrFillRows()));
+    ok('T12 second quarantine idempotent', Buffer.compare(mid, after) === 0,
+      'len ' + mid.length + ' vs ' + after.length);
+    void before;
+  })();
+
+  // ── T13 GET /api/ibkr/trades does not mutate ledger ─────────────────────────
+  (async function t13() {
+    const before = fs.existsSync(S.IBKR_FILLS_FILE)
+      ? fs.readFileSync(S.IBKR_FILLS_FILE) : Buffer.alloc(0);
+    function getTrades() {
+      return new Promise((resolve, reject) => {
+        const server = http.createServer(S.app);
+        server.listen(0, '127.0.0.1', () => {
+          const port = server.address().port;
+          http.get({ host: '127.0.0.1', port, path: '/api/ibkr/trades' }, (res) => {
+            let b = '';
+            res.on('data', c => b += c);
+            res.on('end', () => {
+              server.close();
+              resolve({ status: res.statusCode, body: b });
+            });
+          }).on('error', (e) => { server.close(); reject(e); });
+        });
+      });
+    }
+    try {
+      const r = await getTrades();
+      const after = fs.existsSync(S.IBKR_FILLS_FILE)
+        ? fs.readFileSync(S.IBKR_FILLS_FILE) : Buffer.alloc(0);
+      ok('T13 GET ok', r.status === 200, 'status ' + r.status);
+      ok('T13 GET read-only ledger', Buffer.compare(before, after) === 0,
+        'len ' + before.length + '→' + after.length);
+    } catch (e) {
+      ok('T13 GET read-only', false, e.message);
+    }
+
+    if (failed) {
+      console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
+      process.exit(1);
+    }
+    console.log('\nAll T1–T13 invariants passed. DATA_DIR=' + tmp);
+    process.exit(0);
+  })();
 })();
