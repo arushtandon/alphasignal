@@ -13110,6 +13110,11 @@ function isIbkrErrorTrade(t, extra) {
   if (isCursorErrIbkrKey(t.key)) return true;
   if (extra && extra.keys.has(t.key)) return true;
   if (IBKR_LEGACY_ERROR_KEYS.has(t.key)) return true;
+  // Open model lot with an emitted entry → Open trades (orphan fills must live on |cursor-err).
+  if ((Number(t.openQty) || 0) > 0 && isPositionAuthorizedByProvenance(tk)) {
+    const modelFills = (t.fills || []).filter(f => !f.errorTrade);
+    if (modelFills.length) return false;
+  }
   if (t.errorTrade === true) return true;
   if ((t.fills || []).some(f => f.errorTrade)) return true;
   // Provenance wins for everything else: open emitted entry ⇒ not an error.
@@ -13245,6 +13250,9 @@ function seedSuPaCursorReconErrorTrade() {
     let movedCcy = 'EUR';
     const next = before.map(r => {
       if (!r || String(r.key || '') !== LIVE_KEY || r.role !== 'entry') return r;
+      // Do not strip commission from the live re-arm fill (27 @ ~11:18Z).
+      const ts = Date.parse(r.time || 0);
+      if (Number.isFinite(ts) && ts >= Date.parse('2026-08-12T11:18:00.000Z')) return r;
       if (r._commissionMovedToCursorErr) return r;
       const c = Number(r.commission);
       if (!(c > 0) && !(c < 0)) return r;
@@ -13316,7 +13324,56 @@ function seedSuPaCursorReconErrorTrade() {
     return 0;
   }
 }
-/** @deprecated name kept for call sites — quarantines instead of stamp-only. */
+/**
+ * After re-arm fill (27 @ ~11:18Z), orphan morning entry+ghost-flatten still sat
+ * on the LIVE key and painted the whole lot as Error trades (any errorTrade fill
+ * ⇒ trade.errorTrade). Move pre-rearm LIVE fills to |cursor-err; keep post-rearm
+ * IB fills as the model Open trade.
+ */
+function splitSuPaOrphanCycleFromLiveModel(opts) {
+  const LIVE_KEY = 'SU.PA|long|Wed Aug 12 2026';
+  const ERR_KEY = LIVE_KEY + '|cursor-err';
+  const REARM_CUTOFF_MS = Date.parse('2026-08-12T11:18:00.000Z');
+  const FLAG = path.join(path.dirname(HISTORY_FILE), 'su_pa_split_orphan_live.flag');
+  try {
+    if (!fs.existsSync(IBKR_FILLS_FILE)) return 0;
+    const before = readIbkrFillRows();
+    let moved = 0;
+    const next = before.map(r => {
+      if (!r || String(r.key || '') !== LIVE_KEY) return r;
+      const ts = Date.parse(r.time || 0);
+      const preRearm = Number.isFinite(ts) && ts < REARM_CUTOFF_MS;
+      const orphanFlat = r.role === 'flatten' && (r.errorTrade || r.recon === 'ghost-flat'
+        || String(r.execId || '').startsWith('recon-flat-'));
+      if (!preRearm && !orphanFlat) {
+        // Ensure live model fill is not stamped error.
+        if (r.errorTrade) {
+          moved++;
+          return Object.assign({}, r, { errorTrade: false });
+        }
+        return r;
+      }
+      moved++;
+      return Object.assign({}, r, {
+        key: ERR_KEY,
+        errorTrade: true,
+        note: (r.note ? String(r.note) + ' ' : '') + '[orphan cycle split off live model 27]'
+      });
+    });
+    if (!moved) {
+      try { fs.writeFileSync(FLAG, new Date().toISOString()); } catch (_) {}
+      return 0;
+    }
+    mutateFillLedger('su_pa_split_orphan_from_live', () => next);
+    try { fs.writeFileSync(FLAG, new Date().toISOString()); } catch (_) {}
+    console.log('SU.PA split: moved', moved, 'orphan fill(s) → cursor-err; live model open kept');
+    auditLog('ibkr_su_pa_split_orphan_live', { moved, liveKey: LIVE_KEY, errKey: ERR_KEY, force: !!(opts && opts.force) });
+    return moved;
+  } catch (e) {
+    console.warn('SU.PA orphan/live split failed:', e.message);
+    return 0;
+  }
+}
 function stampGhostFlatFillsAsErrorTrade() {
   const a = quarantineGhostFlatsAsErrorTrades();
   const b = seedSuPaCursorReconErrorTrade();
@@ -13866,6 +13923,9 @@ try { stampGhostFlatFillsAsErrorTrade(); } catch (e) {
 try { repairSuPaLiveOpenWhenIbAlreadyFlat(); } catch (e) {
   console.warn('boot SU.PA ib-flat repair failed:', e.message);
 }
+try { splitSuPaOrphanCycleFromLiveModel({ force: true }); } catch (e) {
+  console.warn('boot SU.PA orphan/live split failed:', e.message);
+}
 // NOTE: rearmSuPaLongBuyEntry() must NOT run here — riskState is declared later
 // and shouldEmitIbkrEntry → isNewEntryRiskBlocked() hits TDZ (silent re-arm fail).
 
@@ -13896,8 +13956,15 @@ app.post('/api/ibkr/rearm-entry', express.json({ limit: '16kb' }), (req, res) =>
     return res.status(400).json({ error: 'only SU.PA re-arm is supported right now', ticker });
   }
   try {
+    const splitMoved = splitSuPaOrphanCycleFromLiveModel({ force: true });
     const result = rearmSuPaLongBuyEntry({ force });
-    res.json({ ok: !!(result && result.ok), ...result });
+    // Split again after re-arm in case orphan fills were still mixed on LIVE.
+    const splitMoved2 = splitSuPaOrphanCycleFromLiveModel({ force: true });
+    res.json({
+      ok: !!(result && result.ok) || splitMoved > 0 || splitMoved2 > 0,
+      splitMoved: splitMoved + splitMoved2,
+      ...result
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
   }
