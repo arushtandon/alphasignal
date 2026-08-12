@@ -1932,14 +1932,15 @@ async function main() {
         log('skip entry (missing entry/SL):', key);
         return;
       }
-      // Defense in depth: re-check live history is still Buy/Sell for this key.
+      // Defense in depth: if history still shows Hold for this key day, skip.
+      // Missing history row must NOT block — board backfill can emit entry before
+      // history ingest (SU.PA / AFL 2026-08-12). Trust the Buy/Sell event side.
       try {
         const hist = await fetchJson('/api/history');
         const rows = Array.isArray(hist) ? hist : [];
         const hz = evt.hz || 'short';
         const keyDay = String(key.split('|')[2] || '');
         const keyDayMs = Date.parse(keyDay);
-        // Same trading-day key as server; ±2h clock-skew only (no multi-day fuzzy).
         const h = rows.find(x => {
           if (!x || x.ticker !== evt.ticker) return false;
           if (String(x.hz || 'short') !== String(hz)) return false;
@@ -1949,10 +1950,14 @@ async function main() {
           return Number.isFinite(keyDayMs) && Math.abs(ms - keyDayMs) <= 2 * 3600 * 1000
             && singaporeToDateString(ms) === singaporeToDateString(keyDayMs);
         });
-        const act = String((h && (h[hz + 'Action'] || h.action)) || '').toLowerCase();
-        if (act !== 'buy' && act !== 'sell') {
-          log('skip entry (history not Buy/Sell):', key, 'action=', act || 'missing');
-          return;
+        if (h) {
+          const act = String((h[hz + 'Action'] || h.action) || '').toLowerCase();
+          if (act !== 'buy' && act !== 'sell') {
+            log('skip entry (history not Buy/Sell):', key, 'action=', act || 'missing');
+            return;
+          }
+        } else {
+          log('entry history row missing — trusting event side', key, 'side=', side);
         }
       } catch (e) { log('entry history check failed (continuing with event side):', e.message); }
       // Age gate on the TRADE's entry date (not the event emit time). A stale
@@ -2451,14 +2456,13 @@ async function main() {
     return '$' + Number(n).toFixed(2);
   }
 
-  async function buildEodPerformanceMessage(dayKey) {
+  async function buildEodPerformancePayload(dayKey) {
     let tradesPayload = null;
     try { tradesPayload = await fetchJson('/api/ibkr/trades'); }
     catch (e) { log('TELEGRAM EOD: trades fetch failed', e.message); }
     const tt = (tradesPayload && tradesPayload.totals) || {};
     const acct = (tradesPayload && tradesPayload.account) || {};
     const daily = Array.isArray(tradesPayload && tradesPayload.daily) ? tradesPayload.daily : [];
-    // Prefer the ET session day just closed; fall back to latest daily row.
     let dayRow = daily.find(x => x && x.date === dayKey) || null;
     if (!dayRow && daily.length) dayRow = daily[daily.length - 1];
     const dayReal = dayRow && dayRow.realizedUsd != null ? Number(dayRow.realizedUsd) : null;
@@ -2477,29 +2481,58 @@ async function main() {
 
     const openN = Number(tt.openCount) || 0;
     const closedN = Number(tt.closedCount) || 0;
+    const netPnl = (Number(tt.realizedUsd) || 0) + (Number(tt.unrealizedUsd) || 0);
+    const snapshot = {
+      date: dayLabel,
+      session: 'us-post-close',
+      account: acct.account || ACCOUNT || null,
+      at: new Date().toISOString(),
+      todayRealizedUsd: dayReal,
+      realizedUsd: tt.realizedUsd != null ? Number(tt.realizedUsd) : null,
+      unrealizedUsd: tt.unrealizedUsd != null ? Number(tt.unrealizedUsd) : null,
+      netPnlUsd: +netPnl.toFixed(2),
+      winRate: tt.winRate != null ? Number(tt.winRate) : null,
+      wins: tt.wins != null ? Number(tt.wins) : null,
+      losses: tt.losses != null ? Number(tt.losses) : null,
+      openCount: openN,
+      closedCount: closedN,
+      currentBalance: acct.currentBalance != null ? Number(acct.currentBalance)
+        : (acct.netLiquidation != null ? Number(acct.netLiquidation) : null),
+      netLiquidityAvailable: acct.netLiquidityAvailable != null ? Number(acct.netLiquidityAvailable)
+        : (acct.availableFunds != null ? Number(acct.availableFunds) : null),
+      marginsUsed: acct.marginsUsed != null ? Number(acct.marginsUsed) : null,
+      liquidityPct: acct.liquidityPct != null ? Number(acct.liquidityPct) : null,
+      ibDailyPnl: accountSnap.dailyPnl != null ? Number(accountSnap.dailyPnl) : null,
+      notableCloses: closedToday.map(t => ({
+        ticker: t.ticker || null,
+        side: t.side || null,
+        hz: t.hz || null,
+        realizedUsd: t.realizedUsd != null ? Number(t.realizedUsd) : null
+      }))
+    };
     const lines = [
       '📊 AlphaSignal IBKR — end of day',
       `Session: ${dayLabel} (after US post-market close)`,
-      `Account: ${acct.account || ACCOUNT || 'paper'}`,
-      `Sent: ${new Date().toISOString()}`,
+      `Account: ${snapshot.account || 'paper'}`,
+      `Sent: ${snapshot.at}`,
       '',
       '— Performance —',
       `Today realised: ${fmtUsdSigned(dayReal)}`,
       `Total realised (net): ${fmtUsdSigned(tt.realizedUsd)}`,
       `Unrealised: ${fmtUsdSigned(tt.unrealizedUsd)}`,
-      `Net PnL: ${fmtUsdSigned((Number(tt.realizedUsd) || 0) + (Number(tt.unrealizedUsd) || 0))}`,
+      `Net PnL: ${fmtUsdSigned(netPnl)}`,
       `Win rate: ${tt.winRate != null ? tt.winRate + '%' : '—'} (${tt.wins || 0}W / ${tt.losses || 0}L)`,
       `Trades: ${openN} open · ${closedN} closed`,
       '',
       '— Account —',
-      `Balance: ${fmtUsdPlain(acct.currentBalance != null ? acct.currentBalance : acct.netLiquidation)}`,
-      `Net liquidity avail: ${fmtUsdPlain(acct.netLiquidityAvailable != null ? acct.netLiquidityAvailable : acct.availableFunds)}`,
-      `Margin used: ${fmtUsdPlain(acct.marginsUsed)}`,
-      `Liquidity: ${acct.liquidityPct != null ? Number(acct.liquidityPct).toFixed(1) + '%' : '—'}`
+      `Balance: ${fmtUsdPlain(snapshot.currentBalance)}`,
+      `Net liquidity avail: ${fmtUsdPlain(snapshot.netLiquidityAvailable)}`,
+      `Margin used: ${fmtUsdPlain(snapshot.marginsUsed)}`,
+      `Liquidity: ${snapshot.liquidityPct != null ? Number(snapshot.liquidityPct).toFixed(1) + '%' : '—'}`
         + (acct.liquidityRiskOff ? ' · NEW ENTRIES PAUSED' : '')
     ];
-    if (accountSnap.dailyPnl != null && Number.isFinite(Number(accountSnap.dailyPnl))) {
-      lines.push(`IB daily PnL: ${fmtUsdSigned(accountSnap.dailyPnl)}`);
+    if (snapshot.ibDailyPnl != null && Number.isFinite(snapshot.ibDailyPnl)) {
+      lines.push(`IB daily PnL: ${fmtUsdSigned(snapshot.ibDailyPnl)}`);
     }
     if (closedToday.length) {
       lines.push('');
@@ -2510,22 +2543,34 @@ async function main() {
         );
       }
     }
-    return lines.join('\n');
+    return { text: lines.join('\n'), snapshot };
   }
 
   async function maybeSendEodPerformanceSummary() {
-    if (!telegramConfigured() || DRY || !EOD_ALERTS) return;
+    if (DRY || !EOD_ALERTS) return;
     const dayKey = usEodSummaryDayKey();
     if (!dayKey) return;
     const meta = state.alertMeta || (state.alertMeta = {});
     if (meta.eodSentDay === dayKey) return;
     try {
-      const text = await buildEodPerformanceMessage(dayKey);
-      await sendTelegramAlert(text);
+      const { text, snapshot } = await buildEodPerformancePayload(dayKey);
+      // Durable analysis store on AlphaSignal (Render disk).
+      try {
+        const saved = await postJson('/api/ibkr/eod-performance', snapshot);
+        if (saved && saved.ok) log('EOD performance persisted for', dayKey);
+        else log('EOD performance persist soft-fail', saved && saved.error);
+      } catch (e) {
+        log('EOD performance persist failed:', e.message);
+      }
+      if (telegramConfigured()) {
+        await sendTelegramAlert(text);
+        log('TELEGRAM: EOD performance summary sent for', dayKey);
+      } else {
+        log('EOD recorded (Telegram off) for', dayKey);
+      }
       meta.eodSentDay = dayKey;
       meta.eodSentAt = new Date().toISOString();
       saveState(state);
-      log('TELEGRAM: EOD performance summary sent for', dayKey);
     } catch (e) {
       log('TELEGRAM: EOD summary failed', e.message);
     }
@@ -2671,16 +2716,18 @@ async function main() {
         }
       } catch (e) { log('RECONCILE: history Hold-check failed', e.message); }
 
-      // 0z. Seed missing HK/JP state rows still open on the model (state loss /
-      // cursor past the original entry event). Only recent entries — never
-      // revive multi-day-old Asia keys (e.g. Wed Aug 05) that still lack an exit.
+      // 0z. Seed missing state for open entry events (state loss / cursor past
+      // entry / history-gate false skip). Recent entries, all markets.
       const SEED_MAX_AGE_MS = MAX_EVENT_AGE_MS; // same 24h gate as live entries
       for (const [key, stOpen] of keyState) {
         if (stOpen !== 'open' || state.byKey[key]) continue;
         const src = entryByKey.get(key);
         if (!src || !src.ticker) continue;
+        const side = String(src.side || '').toLowerCase();
+        if (side !== 'buy' && side !== 'sell') continue;
+        if (!(Number(src.entry) > 0) || !(Number(src.sl || src.trailSl) > 0)) continue;
         const c = toContract(src.ticker);
-        if (!c || (c.market !== 'HK' && c.market !== 'JP')) continue;
+        if (!c) continue;
         const tradeTs = Date.parse(src.entryDate || src.t || 0);
         const keyDayTs = Date.parse(String(key.split('|')[2] || ''));
         const oldest = Math.min(
@@ -2688,7 +2735,7 @@ async function main() {
           Number.isFinite(keyDayTs) ? keyDayTs : Infinity
         );
         if (!Number.isFinite(oldest) || oldest === Infinity || (Date.now() - oldest) > SEED_MAX_AGE_MS) {
-          log('RECONCILE: skip seed (stale Asia key)', key);
+          log('RECONCILE: skip seed (stale key)', key);
           continue;
         }
         // If IB already holds this symbol in the trade direction, assume the
@@ -2719,18 +2766,20 @@ async function main() {
               time: new Date().toISOString()
             });
           }
-          log('RECONCILE: recovered filled Asia row from IB position', key, 'qty', posInDir);
+          log('RECONCILE: recovered filled row from IB position', key, 'qty', posInDir);
           saveState(state);
           continue;
         }
-        state.byKey[key] = {
-          ticker: src.ticker, hz: src.hz, side: src.side,
-          entry: src.entry, stopPx: src.sl || src.trailSl, tp1Px: src.tp1 || 0,
-          entryStyle: null, entryFilled: false, closed: false,
-          contract: c, updated: new Date().toISOString()
-        };
-        log('RECONCILE: seeded missing Asia state row', key);
-        saveState(state);
+        log('RECONCILE: seeding missing entry from open event', key);
+        try {
+          const placed = await placeBracket(src);
+          if (placed) {
+            state.byKey[key] = placed;
+            saveState(state);
+          }
+        } catch (e) {
+          log('RECONCILE: seed place failed', key, e.message);
+        }
       }
 
       // 0z2. Any market: model-open + IB holds shares but site has no fill →

@@ -112,7 +112,7 @@ Every **15 minutes** (`IBKR_RECON_MS`, default `900000`) the bridge runs a full 
 | Missing stop | Filled lot with no stop order id |
 | Recon errors / pending | Server reported ledger issues |
 | All-clear | Sent once when a prior alert state returns to fully matched |
-| EOD performance | Once per US session after **post-market close** (~20:00 ET): day realised, totals, win rate, balance / margin / liquidity |
+| EOD performance | Once per US session after **post-market close** (~20:00 ET): day realised, totals, win rate, balance / margin / liquidity. Also persisted to `ibkr_daily_performance.jsonl` via `POST /api/ibkr/eod-performance` (read with `GET /api/ibkr/eod-performance` or the IBKR trades payload `eodPerformance`). |
 
 ### Setup Telegram
 

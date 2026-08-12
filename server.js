@@ -7653,7 +7653,7 @@ async function generateServerPicksFromShortlist(opts = {}) {
         const h = await addTradesToHistory(recs);
         console.log('Server scan recorded history:', h.accepted, 'added,', h.skipped, 'skipped, total', h.total);
       }
-      try { backfillIbkrEntriesFromOpenBoard(); } catch (_) {}
+      try { backfillIbkrEntriesFromOpenBoard().catch(() => {}); } catch (_) {}
     } catch (e) {
       console.warn('Server history record failed:', e.message);
     }
@@ -12807,16 +12807,25 @@ function shouldEmitIbkrEntry(trade, hz) {
 /**
  * Board already shows Buy/Sell that passed Conf/RR — emit any missing IBKR entry
  * events (e.g. previously blocked by Strong-only gate, or same-day board lock).
+ * Also records history so the bridge history-gate can see Buy/Sell.
  */
-function backfillIbkrEntriesFromOpenBoard() {
+async function backfillIbkrEntriesFromOpenBoard() {
   const dash = dashboardPicksCache && dashboardPicksCache.dashData;
   if (!dash || typeof dash !== 'object') return 0;
   if (isNewEntryRiskBlocked()) {
     console.log('IBKR board backfill skipped (risk-off / liquidity gate)');
     return 0;
   }
-  let n = 0;
   const recs = serverPicksToHistoryRecords(dash);
+  if (recs.length) {
+    try {
+      const h = await addTradesToHistory(recs);
+      console.log('IBKR board backfill history:', h.accepted, 'added,', h.skipped, 'skipped');
+    } catch (e) {
+      console.warn('IBKR board backfill history failed:', e && e.message);
+    }
+  }
+  let n = 0;
   for (const trade of recs) {
     if (!trade || !trade.ticker) continue;
     const hz = trade.hz || 'short';
@@ -14076,6 +14085,7 @@ app.get('/api/ibkr/recon', (req, res) => {
 
 // Live marks from the local IBKR bridge (TWS/Gateway market data) — preferred for MTM.
 const IBKR_MARKS_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_marks.json');
+const IBKR_EOD_PERF_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_daily_performance.jsonl');
 let _ibkrLiveMarks = {}; // ticker -> { price, bid, ask, last, at, src }
 try {
   if (fs.existsSync(IBKR_MARKS_FILE)) {
@@ -14083,6 +14093,77 @@ try {
     if (j && typeof j === 'object') _ibkrLiveMarks = j;
   }
 } catch (_) {}
+
+function readIbkrEodPerformance(limit = 90) {
+  try {
+    if (!fs.existsSync(IBKR_EOD_PERF_FILE)) return [];
+    const lines = fs.readFileSync(IBKR_EOD_PERF_FILE, 'utf8').split(/\r?\n/).filter(Boolean);
+    const out = [];
+    for (const line of lines) {
+      try {
+        const j = JSON.parse(line);
+        if (j && typeof j === 'object') out.push(j);
+      } catch (_) { /* skip */ }
+    }
+    return out.slice(-Math.max(1, limit));
+  } catch (_) { return []; }
+}
+function upsertIbkrEodPerformance(row) {
+  if (!row || typeof row !== 'object' || !row.date) return false;
+  const existing = readIbkrEodPerformance(500);
+  const filtered = existing.filter(r => String(r.date) !== String(row.date));
+  filtered.push({ ...row, savedAt: new Date().toISOString() });
+  try {
+    fs.writeFileSync(IBKR_EOD_PERF_FILE, filtered.map(r => JSON.stringify(r)).join('\n') + '\n');
+    return true;
+  } catch (_) { return false; }
+}
+
+/** POST /api/ibkr/eod-performance — durable daily snapshot for analysis (bridge after US post-close). */
+app.post('/api/ibkr/eod-performance', express.json({ limit: '128kb' }), (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const date = String(body.date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date required (YYYY-MM-DD)' });
+    }
+    const row = {
+      date,
+      session: body.session || 'us-post-close',
+      account: body.account || null,
+      at: body.at || new Date().toISOString(),
+      todayRealizedUsd: body.todayRealizedUsd != null ? Number(body.todayRealizedUsd) : null,
+      realizedUsd: body.realizedUsd != null ? Number(body.realizedUsd) : null,
+      unrealizedUsd: body.unrealizedUsd != null ? Number(body.unrealizedUsd) : null,
+      netPnlUsd: body.netPnlUsd != null ? Number(body.netPnlUsd) : null,
+      winRate: body.winRate != null ? Number(body.winRate) : null,
+      wins: body.wins != null ? Number(body.wins) : null,
+      losses: body.losses != null ? Number(body.losses) : null,
+      openCount: body.openCount != null ? Number(body.openCount) : null,
+      closedCount: body.closedCount != null ? Number(body.closedCount) : null,
+      currentBalance: body.currentBalance != null ? Number(body.currentBalance) : null,
+      netLiquidityAvailable: body.netLiquidityAvailable != null ? Number(body.netLiquidityAvailable) : null,
+      marginsUsed: body.marginsUsed != null ? Number(body.marginsUsed) : null,
+      liquidityPct: body.liquidityPct != null ? Number(body.liquidityPct) : null,
+      ibDailyPnl: body.ibDailyPnl != null ? Number(body.ibDailyPnl) : null,
+      notableCloses: Array.isArray(body.notableCloses) ? body.notableCloses.slice(0, 20) : []
+    };
+    const ok = upsertIbkrEodPerformance(row);
+    if (!ok) return res.status(500).json({ error: 'persist failed' });
+    auditLog('ibkr_eod_performance', { date: row.date, todayRealizedUsd: row.todayRealizedUsd, netPnlUsd: row.netPnlUsd });
+    res.json({ ok: true, date: row.date });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** GET /api/ibkr/eod-performance — historical EOD snapshots for analysis. */
+app.get('/api/ibkr/eod-performance', (req, res) => {
+  const limit = Math.min(365, Math.max(1, parseInt(req.query.limit || '90', 10) || 90));
+  const rows = readIbkrEodPerformance(limit);
+  res.json({ ok: true, count: rows.length, rows });
+});
 
 app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
@@ -14827,6 +14908,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       ok: true,
       trades,
       daily: dailyArr,
+      eodPerformance: readIbkrEodPerformance(60),
       dailyError: dailyErrorArr,
       account,
       expenses: {
@@ -14916,7 +14998,7 @@ function isNewEntryRiskBlocked() {
 
 // After risk state is live: emit Buy/Sell board picks that never got IBKR events
 // (e.g. previously Strong-only gated). Safe no-op when board empty / already emitted.
-try { backfillIbkrEntriesFromOpenBoard(); } catch (e) {
+try { backfillIbkrEntriesFromOpenBoard().catch(e => console.warn('IBKR board backfill failed:', e.message)); } catch (e) {
   console.warn('IBKR board backfill failed:', e.message);
 }
 
