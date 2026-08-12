@@ -13580,8 +13580,37 @@ function emitExitsForLegacyUnauthorizedKeys() {
 }
 
 /**
- * Abandon open entry events that never filled and are no longer Buy/Sell
- * (or are >36h old). Clears BP.L Aug-09/10 Telegram "Order NOT executed" spam.
+ * Entry fill keys that prove an open model entry is not "unfilled".
+ * Includes base keys for |cursor-err| rows (quarantined recover copies).
+ */
+function ibkrAbandonFillKeySet(rows) {
+  const fillKeys = new Set();
+  for (const r of rows || []) {
+    if (!r || !r.key || r.role !== 'entry') continue;
+    const k = String(r.key);
+    fillKeys.add(k);
+    if (isCursorErrIbkrKey(k)) fillKeys.add(k.replace(/\|cursor-err$/i, ''));
+  }
+  return fillKeys;
+}
+
+/** Whether abandon-unfilled should emit an exit for this open entry. */
+function shouldAbandonUnfilledEntry(opts) {
+  const force = !!(opts && opts.force);
+  const stillLive = !!(opts && opts.stillLive);
+  const hasFill = !!(opts && opts.hasFill);
+  if (hasFill) return false;
+  if (!force && stillLive) return false;
+  return true;
+}
+
+/**
+ * Abandon open entry events that never filled and are no longer Buy/Sell.
+ * Clears BP.L Aug-09/10 Telegram "Order NOT executed" spam.
+ *
+ * NEVER age-abandon a still-live Buy/Sell — that falsely closed KHC (fills had
+ * been quarantined to |cursor-err, so the live key looked "unfilled").
+ * Fills on live OR |cursor-err count as filled evidence.
  */
 function emitExitsForAbandonedUnfilledEntries() {
   if (process.env.IBKR_EVENTS_ENABLED === '0') return 0;
@@ -13596,24 +13625,15 @@ function emitExitsForAbandonedUnfilledEntries() {
     }
   } catch (_) { return 0; }
   let fillKeys = new Set();
-  try {
-    for (const r of readIbkrFillRows()) {
-      if (r && r.key && r.role === 'entry' && !isCursorErrIbkrKey(r.key)) fillKeys.add(String(r.key));
-    }
-  } catch (_) {}
-  const STALE_MS = 36 * 3600 * 1000;
+  try { fillKeys = ibkrAbandonFillKeySet(readIbkrFillRows()); } catch (_) {}
   const FORCE = new Set([
     'BP.L|short|Sun Aug 09 2026',
     'BP.L|short|Mon Aug 10 2026'
   ]);
   let n = 0;
   for (const [key, e] of open) {
-    if (fillKeys.has(key)) continue; // filled — normal exit path
     const ticker = String(e.ticker || key.split('|')[0] || '').toUpperCase();
     const hz = String(e.hz || key.split('|')[1] || 'short');
-    const keyDay = String(key.split('|')[2] || '');
-    const keyTs = Date.parse(keyDay);
-    const ageOk = Number.isFinite(keyTs) ? (Date.now() - keyTs) : 0;
     let act = '';
     try {
       const rows = (tradeHistory || []).filter(h => h && String(h.ticker || '').toUpperCase() === ticker);
@@ -13625,8 +13645,9 @@ function emitExitsForAbandonedUnfilledEntries() {
     } catch (_) {}
     const stillLive = act === 'buy' || act === 'sell';
     const force = FORCE.has(key);
-    const stale = ageOk > STALE_MS;
-    if (!force && stillLive && !stale) continue;
+    if (!shouldAbandonUnfilledEntry({
+      force, stillLive, hasFill: fillKeys.has(key)
+    })) continue;
     emitTradeEvent('exit', {
       key,
       ticker: e.ticker || ticker,
@@ -13637,6 +13658,91 @@ function emitExitsForAbandonedUnfilledEntries() {
     n++;
   }
   if (n) console.log('Emitted', n, 'exit(s) for abandoned unfilled entries (BP.L Hold spam etc.)');
+  return n;
+}
+
+/**
+ * Undo false `stale-unfilled-abandon` exits when entry fills exist (live or
+ * |cursor-err) and history is still Buy/Sell. Restores Open-trades provenance
+ * (KHC 2026-08-12) and moves one entry fill back onto the live key when empty.
+ */
+function restoreFilledEntriesFalselyAbandoned() {
+  if (process.env.IBKR_EVENTS_ENABLED === '0') return 0;
+  if (!fs.existsSync(TRADE_EVENTS_FILE)) return 0;
+  const byKey = new Map(); // key -> { entry, exit }
+  try {
+    for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
+      let e; try { e = JSON.parse(line); } catch (_) { continue; }
+      if (!e || !e.key) continue;
+      const cur = byKey.get(e.key) || {};
+      if (e.type === 'entry') { cur.entry = e; delete cur.exit; }
+      else if (e.type === 'exit') cur.exit = e;
+      byKey.set(e.key, cur);
+    }
+  } catch (_) { return 0; }
+  const rows = readIbkrFillRows();
+  let n = 0;
+  for (const [key, cur] of byKey) {
+    if (!cur.entry || !cur.exit) continue; // need closed-after-entry
+    const reason = String(cur.exit.reason || cur.exit.exitReason || '');
+    if (reason !== 'stale-unfilled-abandon') continue;
+    if (isCursorErrIbkrKey(key)) continue;
+    const errKey = toCursorErrIbkrKey(key);
+    const hasFill = rows.some(r =>
+      r && r.role === 'entry' && (String(r.key) === key || String(r.key) === errKey));
+    if (!hasFill) continue;
+    const ticker = String((cur.entry && cur.entry.ticker) || key.split('|')[0] || '').toUpperCase();
+    const hz = String((cur.entry && cur.entry.hz) || key.split('|')[1] || 'short');
+    let act = '';
+    let hist = null;
+    try {
+      const pool = (tradeHistory || []).filter(h => h && String(h.ticker || '').toUpperCase() === ticker);
+      const sameHz = pool.filter(h => String(h.hz || 'short') === hz);
+      const list = (sameHz.length ? sameHz : pool).slice().sort(
+        (a, b) => Date.parse(b.entryDate || b.timestamp || 0) - Date.parse(a.entryDate || a.timestamp || 0)
+      );
+      hist = list[0] || null;
+      if (hist) act = String(hist[hz + 'Action'] || hist.action || '').toLowerCase();
+    } catch (_) {}
+    if (act !== 'buy' && act !== 'sell') continue;
+    const src = cur.entry || {};
+    const payload = {
+      key,
+      ticker,
+      name: src.name || ticker,
+      hz,
+      side: src.side === 'sell' || act === 'sell' ? 'sell' : 'buy',
+      entry: Number(src.entry) || Number(hist && (hist[hz + 'Entry'] || hist.entry)) || null,
+      tp1: src.tp1 != null ? Number(src.tp1) : (hist ? Number(hist[hz + 'Target1'] || hist.target1) : null),
+      tp2: src.tp2 != null ? Number(src.tp2) : (hist ? Number(hist[hz + 'Target2'] || hist.target2) : null),
+      sl: Number(src.sl) || Number(hist && (hist[hz + 'StopLoss'] || hist.stopLoss)) || null,
+      status: 'open',
+      entryDate: src.entryDate || (hist && hist.entryDate) || null,
+      reason: 'restore-false-stale-abandon'
+    };
+    if (!(payload.entry > 0) || !(payload.sl > 0)) continue;
+    const evt = emitTradeEvent('entry', payload);
+    if (!evt) continue;
+    n++;
+    // Live key empty → move one entry fill off |cursor-err so Open trades sees it.
+    try {
+      const liveHas = readIbkrFillRows().some(r => r && String(r.key) === key && r.role === 'entry');
+      if (!liveHas) {
+        let moved = false;
+        mutateFillLedger('restore_false_abandon_fill', (all) => all.map(r => {
+          if (moved || !r || String(r.key) !== errKey || r.role !== 'entry') return r;
+          moved = true;
+          return Object.assign({}, r, {
+            key,
+            errorTrade: false,
+            note: (r.note ? String(r.note) + ' ' : '') + '[restore-false-stale-abandon → model]'
+          });
+        }));
+      }
+    } catch (_) { /* non-fatal */ }
+    console.log('Restored falsely abandoned filled entry', key);
+    auditLog('ibkr_restore_false_stale_abandon', { key });
+  }
   return n;
 }
 let _ibkrExecIds = new Set();
@@ -13928,6 +14034,9 @@ try { stampGhostFlatFillsAsErrorTrade(); } catch (e) {
 }
 try { quarantineErrorFillsOffModelKeys(); } catch (e) {
   console.warn('boot quarantine error-off-model failed:', e.message);
+}
+try { restoreFilledEntriesFalselyAbandoned(); } catch (e) {
+  console.warn('boot restore false stale-abandon failed:', e.message);
 }
 // Re-arm is on-demand only: POST /api/ibkr/rearm { key } — never auto at boot.
 
@@ -15232,17 +15341,21 @@ app.get('/api/ibkr/trades', async (req, res) => {
         if (Math.sign(ibQty) !== asSign) continue;
 
         // Model opens claim IB shares before Error/|cursor-err| dups; then by
-        // fill-open, then newest. Flat keys stay closed.
+        // fill-open, then newest. Flat keys stay closed. When a model lot exists,
+        // Error keys never claim IB (avoids 3000/3000 split + double unrealised).
         const ordered = group.slice().sort(ibkrOverlayClaimOrder);
+        const hasModelLot = ordered.some(t => !isIbkrOverlayErrorLot(t));
         let remaining = ibAbs;
         for (const t of ordered) {
           const fillOpen = Math.max(0, Number(t.openQty) || 0);
           let take = 0;
-          if (fillOpen > 0) {
-            take = Math.min(fillOpen, remaining);
-          } else if (remaining > 0 && ordered.filter(x => x.openQty > 0).length === 0) {
-            // No key still open on fills — park leftover IB on preferred host only.
-            take = remaining;
+          if (!(isIbkrOverlayErrorLot(t) && hasModelLot)) {
+            if (fillOpen > 0) {
+              take = Math.min(fillOpen, remaining);
+            } else if (remaining > 0 && ordered.filter(x => x.openQty > 0).length === 0) {
+              // No key still open on fills — park leftover IB on preferred host only.
+              take = remaining;
+            }
           }
           remaining -= take;
           if (take !== t.openQty) {
@@ -16704,6 +16817,10 @@ module.exports = {
   isIbkrOverlayErrorLot,
   ibkrOverlayClaimOrder,
   ibkrOverlayPadHost,
+  emitExitsForAbandonedUnfilledEntries,
+  restoreFilledEntriesFalselyAbandoned,
+  ibkrAbandonFillKeySet,
+  shouldAbandonUnfilledEntry,
   ibkrYahooAliases,
   IBKR_FILLS_FILE,
   TRADE_EVENTS_FILE,

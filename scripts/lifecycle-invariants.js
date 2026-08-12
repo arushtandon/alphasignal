@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AlphaSignal recommendation-lifecycle invariants (T1–T17).
+ * AlphaSignal recommendation-lifecycle invariants (T1–T18).
  * Uses an isolated DATA_DIR so production disk is untouched.
  */
 'use strict';
@@ -375,26 +375,55 @@ function ok(name, cond, detail) {
       const ordered = [err, live].sort(S.ibkrOverlayClaimOrder);
       ok('T17 model claims before cursor-err', ordered[0] === live && ordered[1] === err,
         ordered.map(t => t.key).join(' > '));
-      // Simulate claim: IB abs=3000 → live takes 3000, err starved.
-      let remaining = 3000;
+      // IB abs=6000: model takes fill 3000, Error claims 0, pad leftover → 6000.
+      const hasModelLot = ordered.some(t => !S.isIbkrOverlayErrorLot(t));
+      let remaining = 6000;
       for (const t of ordered) {
         const fillOpen = Math.max(0, Number(t.openQty) || 0);
-        const take = fillOpen > 0 ? Math.min(fillOpen, remaining) : 0;
+        let take = 0;
+        if (!(S.isIbkrOverlayErrorLot(t) && hasModelLot)) {
+          take = fillOpen > 0 ? Math.min(fillOpen, remaining) : 0;
+        }
         remaining -= take;
         t.openQty = take;
         t.status = take > 0 ? 'open' : 'closed';
       }
-      ok('T17 live keeps IB open qty', live.openQty === 3000 && live.status === 'open', live.openQty);
+      if (remaining > 0) {
+        const host = S.ibkrOverlayPadHost(ordered);
+        host.openQty = (Number(host.openQty) || 0) + remaining;
+        host.status = 'open';
+        remaining = 0;
+      }
+      ok('T17 live gets full IB qty', live.openQty === 6000 && live.status === 'open', live.openQty);
       ok('T17 err starved closed', err.openQty === 0 && err.status === 'closed', err.openQty);
       const host = S.ibkrOverlayPadHost([err, live]);
       ok('T17 pad host prefers model', host === live, host && host.key);
+    })();
+
+    // ── T18 Abandon must not kill live Buy whose fills sit on |cursor-err ─────
+    (function t18() {
+      const liveKey = 'KHC|short|Thu Aug 06 2026';
+      const errKey = liveKey + '|cursor-err';
+      const keys = S.ibkrAbandonFillKeySet([{
+        key: errKey, role: 'entry', qty: 400, ticker: 'KHC'
+      }]);
+      ok('T18 cursor-err fill covers live key', keys.has(liveKey) && keys.has(errKey),
+        [...keys].join(','));
+      ok('T18 stillLive no-fill not abandoned',
+        S.shouldAbandonUnfilledEntry({ force: false, stillLive: true, hasFill: false }) === false);
+      ok('T18 stillLive with fill not abandoned',
+        S.shouldAbandonUnfilledEntry({ force: false, stillLive: true, hasFill: true }) === false);
+      ok('T18 Hold no-fill is abandoned',
+        S.shouldAbandonUnfilledEntry({ force: false, stillLive: false, hasFill: false }) === true);
+      ok('T18 FORCE abandons even if live',
+        S.shouldAbandonUnfilledEntry({ force: true, stillLive: true, hasFill: false }) === true);
     })();
 
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T17 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T18 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();
