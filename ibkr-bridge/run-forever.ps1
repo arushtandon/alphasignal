@@ -21,11 +21,16 @@ $env:IBKR_MARKET_DATA_TYPE = "3"
 # Full IB↔AS reconcile + Telegram risk digest (default 15 minutes).
 $env:IBKR_RECON_MS = "900000"
 # Telegram risk alerts (untracked IB, unfilled RTH orders, recon errors).
-# Create a bot via @BotFather, DM it once, then get chat id from getUpdates.
-# Uncomment and fill:
+# Prefer local-secrets.ps1 (gitignored) so the bot token is never committed.
+# Or uncomment placeholders below for a one-off local run:
 # $env:TELEGRAM_BOT_TOKEN = "123456:ABC..."
 # $env:TELEGRAM_CHAT_ID   = "123456789"
 # $env:TELEGRAM_ALERTS    = "1"
+$secrets = Join-Path $PSScriptRoot "local-secrets.ps1"
+if (Test-Path $secrets) {
+  . $secrets
+  Write-Host "Loaded local-secrets.ps1 (Telegram=$(if ($env:TELEGRAM_BOT_TOKEN -and $env:TELEGRAM_CHAT_ID) { 'configured' } else { 'incomplete' }))"
+}
 
 New-Item -ItemType Directory -Force -Path "$PSScriptRoot\logs" | Out-Null
 

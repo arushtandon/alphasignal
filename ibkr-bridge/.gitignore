@@ -1,4 +1,5 @@
 node_modules/
 bridge-state.json
 .env
+local-secrets.ps1
 *.log
