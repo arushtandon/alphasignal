@@ -12714,6 +12714,36 @@ function resolveIbPosForYahoo(yahoo, ibByY, ibByConId) {
   return null;
 }
 
+/** True when a trade row is Error / |cursor-err| bookkeeping (not the model lot). */
+function isIbkrOverlayErrorLot(t) {
+  if (!t) return false;
+  return !!(t.errorTrade || isCursorErrIbkrKey(t.key));
+}
+
+/**
+ * IB paper qty is one position per ticker+side. Sort so model (non-Error) opens
+ * claim shares before |cursor-err| / errorTrade recover-entry dups — otherwise
+ * newer Error keys steal Open Qty / unrealised from the live model lot.
+ */
+function ibkrOverlayClaimOrder(a, b) {
+  const aModel = isIbkrOverlayErrorLot(a) ? 0 : 1;
+  const bModel = isIbkrOverlayErrorLot(b) ? 0 : 1;
+  if (bModel !== aModel) return bModel - aModel;
+  const ao = a.openQty > 0 ? 1 : 0;
+  const bo = b.openQty > 0 ? 1 : 0;
+  if (bo !== ao) return bo - ao;
+  return String(b.lastTime || '').localeCompare(String(a.lastTime || ''));
+}
+
+/** Prefer a still-open model key when padding leftover IB qty onto a host. */
+function ibkrOverlayPadHost(ordered) {
+  const list = ordered || [];
+  return list.find(t => t.openQty > 0 && !isIbkrOverlayErrorLot(t))
+    || list.find(t => t.openQty > 0)
+    || list.find(t => !isIbkrOverlayErrorLot(t))
+    || list[0];
+}
+
 /**
  * AUTHORIZATION BY PROVENANCE: a position is authorized iff it maps to an open
  * emitted `entry` key (no `exit`) in trade_events — never by ticker identity lists.
@@ -15201,13 +15231,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
         }
         if (Math.sign(ibQty) !== asSign) continue;
 
-        // Newest fill-ledger opens claim IB shares first; flat keys stay closed.
-        const ordered = group.slice().sort((a, b) => {
-          const ao = a.openQty > 0 ? 1 : 0;
-          const bo = b.openQty > 0 ? 1 : 0;
-          if (bo !== ao) return bo - ao;
-          return String(b.lastTime || '').localeCompare(String(a.lastTime || ''));
-        });
+        // Model opens claim IB shares before Error/|cursor-err| dups; then by
+        // fill-open, then newest. Flat keys stay closed.
+        const ordered = group.slice().sort(ibkrOverlayClaimOrder);
         let remaining = ibAbs;
         for (const t of ordered) {
           const fillOpen = Math.max(0, Number(t.openQty) || 0);
@@ -15215,7 +15241,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
           if (fillOpen > 0) {
             take = Math.min(fillOpen, remaining);
           } else if (remaining > 0 && ordered.filter(x => x.openQty > 0).length === 0) {
-            // No key still open on fills — park leftover IB on newest key only.
+            // No key still open on fills — park leftover IB on preferred host only.
             take = remaining;
           }
           remaining -= take;
@@ -15233,16 +15259,20 @@ app.get('/api/ibkr/trades', async (req, res) => {
                 t.ibReconciled = (t.ibReconciled ? t.ibReconciled + '+avg' : 'avg');
               }
             }
-          } else if (t.exitQty > 0 || t.hasFlatten) {
+          } else if (fillOpen > 0 || t.exitQty > 0 || t.hasFlatten) {
+            // take=0 with fill-open: another key claimed the IB shares (e.g. Error
+            // dup starved — or we preferred the model lot). Do not leave status
+            // "open" with openQty=0 (UI dashes unrealised while still listed).
+            t.openQty = 0;
             t.status = 'closed';
             t.unrealizedUsd = 0;
-            if (t.errorTrade) t.exitType = 'error flatten';
+            if (t.errorTrade && (t.exitQty > 0 || t.hasFlatten)) t.exitType = 'error flatten';
             else if (t.hasFlatten && !t.exitType) t.exitType = 'flatten exit';
           }
         }
-        // Leftover IB after filling open keys → add to newest still-open key.
+        // Leftover IB after filling open keys → pad onto preferred model host.
         if (remaining > 0) {
-          const host = ordered.find(t => t.openQty > 0) || ordered[0];
+          const host = ibkrOverlayPadHost(ordered);
           if (host) {
             host.openQty = (Number(host.openQty) || 0) + remaining;
             host.status = host.exitQty > 0 ? 'partial' : 'open';
@@ -16671,6 +16701,9 @@ module.exports = {
   isIbkrErrorTrade,
   toCursorErrIbkrKey,
   isCursorErrIbkrKey,
+  isIbkrOverlayErrorLot,
+  ibkrOverlayClaimOrder,
+  ibkrOverlayPadHost,
   ibkrYahooAliases,
   IBKR_FILLS_FILE,
   TRADE_EVENTS_FILE,

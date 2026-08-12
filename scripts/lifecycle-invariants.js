@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AlphaSignal recommendation-lifecycle invariants (T1–T6).
+ * AlphaSignal recommendation-lifecycle invariants (T1–T17).
  * Uses an isolated DATA_DIR so production disk is untouched.
  */
 'use strict';
@@ -358,11 +358,43 @@ function ok(name, cond, detail) {
       ok('T16 synth → cursor-err', S.isCursorErrIbkrKey(synth.key), synth.key);
     })();
 
+    // ── T17 IB overlay: model lot claims shares before newer |cursor-err| dups ─
+    (function t17() {
+      const live = {
+        key: '0883.HK|medium|Thu Aug 06 2026',
+        openQty: 3000, errorTrade: false,
+        lastTime: '2026-08-07T05:05:03.538Z'
+      };
+      const err = {
+        key: '0883.HK|medium|Thu Aug 06 2026|cursor-err',
+        openQty: 6000, errorTrade: true,
+        lastTime: '2026-08-11T06:00:29.910Z'
+      };
+      ok('T17 err is overlay error lot', S.isIbkrOverlayErrorLot(err));
+      ok('T17 live is not overlay error lot', !S.isIbkrOverlayErrorLot(live));
+      const ordered = [err, live].sort(S.ibkrOverlayClaimOrder);
+      ok('T17 model claims before cursor-err', ordered[0] === live && ordered[1] === err,
+        ordered.map(t => t.key).join(' > '));
+      // Simulate claim: IB abs=3000 → live takes 3000, err starved.
+      let remaining = 3000;
+      for (const t of ordered) {
+        const fillOpen = Math.max(0, Number(t.openQty) || 0);
+        const take = fillOpen > 0 ? Math.min(fillOpen, remaining) : 0;
+        remaining -= take;
+        t.openQty = take;
+        t.status = take > 0 ? 'open' : 'closed';
+      }
+      ok('T17 live keeps IB open qty', live.openQty === 3000 && live.status === 'open', live.openQty);
+      ok('T17 err starved closed', err.openQty === 0 && err.status === 'closed', err.openQty);
+      const host = S.ibkrOverlayPadHost([err, live]);
+      ok('T17 pad host prefers model', host === live, host && host.key);
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T16 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T17 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();
