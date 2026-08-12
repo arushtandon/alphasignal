@@ -749,9 +749,61 @@ async function main() {
     realizedPnl: null,
     unrealizedPnl: null,
     dailyPnl: null,
-    accruedCash: null
+    accruedCash: null,
+    accruedDividend: null,
+    dividendReceivable: null,
+    initMarginReq: null,
+    maintMarginReq: null,
+    fullInitMarginReq: null,
+    fullMaintMarginReq: null,
+    cushion: null,
+    marginsUsed: null
   };
   const commissionByExec = new Map(); // execId -> { commission, currency, realizedPNL }
+  // Durable charge/dividend events queued for AlphaSignal (ibkr_charges.jsonl).
+  if (!Array.isArray(state.pendingCharges)) state.pendingCharges = [];
+  const _lastChargeVal = Object.create(null); // tag -> last numeric value
+  /** Queue a ledger line when AccruedDividend / AccruedCash etc. move. */
+  function noteChargeMove(type, label, value, currency, signHint) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return;
+    const key = type;
+    const prev = _lastChargeVal[key];
+    // First observation: seed only (balances already shown via account snapshot).
+    if (prev == null) {
+      _lastChargeVal[key] = n;
+      return;
+    }
+    const delta = +(n - prev).toFixed(6);
+    _lastChargeVal[key] = n;
+    if (Math.abs(delta) < 1e-6) return;
+    const isIncome = type === 'dividend' || type === 'dividend_receivable'
+      || (signHint === 'income');
+    state.pendingCharges = state.pendingCharges || [];
+    state.pendingCharges.push({
+      id: type + '-' + Date.now() + '-' + Math.abs(delta).toFixed(4),
+      type,
+      label: label + ' (Δ)',
+      amount: delta,
+      currency: currency || 'USD',
+      income: !!isIncome,
+      time: new Date().toISOString()
+    });
+    saveState(state);
+    log('charge event', type, delta, currency || 'USD');
+  }
+  function takePendingCharges() {
+    const batch = Array.isArray(state.pendingCharges) ? state.pendingCharges.slice() : [];
+    if (!batch.length) return [];
+    state.pendingCharges = [];
+    saveState(state);
+    return batch;
+  }
+  function restorePendingCharges(batch) {
+    if (!Array.isArray(batch) || !batch.length) return;
+    state.pendingCharges = (state.pendingCharges || []).concat(batch);
+    saveState(state);
+  }
   // Live IBKR market data for MTM (posted to AlphaSignal every ~10s).
   const mktById = new Map(); // reqId -> { ticker, last, bid, ask, close }
   const mktSubscribed = new Set(); // AlphaSignal ticker already subscribed
@@ -972,10 +1024,28 @@ async function main() {
       FullExcessLiquidity: 'excessLiquidity',
       InitMarginReq: 'initMarginReq',
       MaintMarginReq: 'maintMarginReq',
+      FullInitMarginReq: 'fullInitMarginReq',
+      FullMaintMarginReq: 'fullMaintMarginReq',
       RealizedPnL: 'realizedPnl',
       UnrealizedPnL: 'unrealizedPnl',
-      AccruedCash: 'accruedCash'
+      AccruedCash: 'accruedCash',
+      AccruedDividend: 'accruedDividend',
+      DividendReceivable: 'dividendReceivable'
     };
+    function refreshAccountDerived() {
+      if (accountSnap.netLiquidation != null) accountSnap.currentBalance = accountSnap.netLiquidation;
+      if (accountSnap.availableFunds != null) accountSnap.netLiquidityAvailable = accountSnap.availableFunds;
+      // Prefer IB initial margin as "margin used"; fall back to NLV − available.
+      const initM = accountSnap.fullInitMarginReq != null
+        ? accountSnap.fullInitMarginReq
+        : accountSnap.initMarginReq;
+      if (initM != null && Number.isFinite(Number(initM))) {
+        accountSnap.marginsUsed = +Number(initM).toFixed(2);
+      } else if (accountSnap.netLiquidation != null && accountSnap.availableFunds != null) {
+        accountSnap.marginsUsed = +(accountSnap.netLiquidation - accountSnap.availableFunds).toFixed(2);
+      }
+      refreshStartingBalance();
+    }
     function refreshStartingBalance() {
       if (accountSnap.previousDayEquity != null) {
         accountSnap.startingBalance = accountSnap.previousDayEquity;
@@ -993,35 +1063,33 @@ async function main() {
         }
         const field = ACCOUNT_VALUE_TAGS[key];
         if (!field) return;
-        // Prefer BASE/USD; if only a local ccy line exists, still accept NetLiquidation /
-        // AvailableFunds so the IBKR tab is never blank.
         const ccy = String(currency || '').toUpperCase();
         const prefer = !ccy || ccy === 'BASE' || ccy === 'USD';
         const n = parseFloat(value);
         if (!Number.isFinite(n)) return;
         const prev = accountSnap[field];
-        if (prev != null && !prefer) return; // keep BASE/USD if we already have it
-        if (prev != null && prefer && accountSnap['_' + field + 'Ccy'] === 'BASE' && ccy === 'USD') {
-          // keep BASE over USD when both present
-        } else {
+        if (prev != null && !prefer) return;
+        if (!(prev != null && prefer && accountSnap['_' + field + 'Ccy'] === 'BASE' && ccy === 'USD')) {
           accountSnap[field] = n;
           accountSnap['_' + field + 'Ccy'] = ccy || 'BASE';
         }
         accountSnap.currency = (!ccy || ccy === 'BASE') ? 'USD' : (prefer ? ccy : (accountSnap.currency || 'USD'));
         accountSnap.account = accountName || ACCOUNT || accountSnap.account;
         accountSnap.at = new Date().toISOString();
-        // Current balance = equity (NLV). Net liquidity available = AvailableFunds.
-        if (accountSnap.netLiquidation != null) accountSnap.currentBalance = accountSnap.netLiquidation;
-        if (accountSnap.availableFunds != null) accountSnap.netLiquidityAvailable = accountSnap.availableFunds;
-        if (accountSnap.netLiquidation != null && accountSnap.availableFunds != null) {
-          accountSnap.marginsUsed = +(accountSnap.netLiquidation - accountSnap.availableFunds).toFixed(2);
+        refreshAccountDerived();
+        if (field === 'accruedDividend') {
+          noteChargeMove('dividend', 'Accrued dividend (IB)', n, accountSnap.currency, 'income');
+        } else if (field === 'dividendReceivable') {
+          noteChargeMove('dividend_receivable', 'Dividend receivable (IB)', n, accountSnap.currency, 'income');
+        } else if (field === 'accruedCash') {
+          noteChargeMove('accrued_cash', 'Accrued cash / interest & fees (IB)', n, accountSnap.currency, 'expense');
         }
-        refreshStartingBalance();
         if (accountSnap.netLiquidation != null && !accountSnap._loggedOnce) {
           accountSnap._loggedOnce = true;
           log('account values live',
             'NLV=' + accountSnap.netLiquidation,
             'Avail=' + accountSnap.availableFunds,
+            'Margin=' + accountSnap.marginsUsed,
             'Cash=' + accountSnap.totalCashValue);
         }
       } catch (_) { /* ignore */ }
@@ -1032,7 +1100,9 @@ async function main() {
       'NetLiquidation', 'AvailableFunds', 'FullAvailableFunds', 'BuyingPower',
       'TotalCashValue', 'PreviousDayEquityWithLoanValue', 'EquityWithLoanValue',
       'GrossPositionValue', 'ExcessLiquidity', 'InitMarginReq', 'MaintMarginReq',
-      'RealizedPnL', 'UnrealizedPnL', 'AccruedCash', 'Cushion'
+      'FullInitMarginReq', 'FullMaintMarginReq',
+      'RealizedPnL', 'UnrealizedPnL', 'AccruedCash', 'AccruedDividend',
+      'DividendReceivable', 'Cushion'
     ].join(',');
     try {
       ib.reqAccountSummary(ACC_SUMMARY_REQ, 'All', ACC_SUMMARY_TAGS);
@@ -1058,20 +1128,23 @@ async function main() {
           const prev = accountSnap[field];
           if (prev != null && !prefer) return;
           accountSnap[field] = n;
+          if (field === 'accruedDividend') {
+            noteChargeMove('dividend', 'Accrued dividend (IB)', n, ccy || 'USD', 'income');
+          } else if (field === 'dividendReceivable') {
+            noteChargeMove('dividend_receivable', 'Dividend receivable (IB)', n, ccy || 'USD', 'income');
+          } else if (field === 'accruedCash') {
+            noteChargeMove('accrued_cash', 'Accrued cash / interest & fees (IB)', n, ccy || 'USD', 'expense');
+          }
         }
         accountSnap.account = account || ACCOUNT || accountSnap.account;
         accountSnap.at = new Date().toISOString();
-        if (accountSnap.netLiquidation != null) accountSnap.currentBalance = accountSnap.netLiquidation;
-        if (accountSnap.availableFunds != null) accountSnap.netLiquidityAvailable = accountSnap.availableFunds;
-        if (accountSnap.netLiquidation != null && accountSnap.availableFunds != null) {
-          accountSnap.marginsUsed = +(accountSnap.netLiquidation - accountSnap.availableFunds).toFixed(2);
-        }
-        refreshStartingBalance();
+        refreshAccountDerived();
         if (accountSnap.netLiquidation != null && !accountSnap._loggedOnce) {
           accountSnap._loggedOnce = true;
           log('account values live (summary)',
             'NLV=' + accountSnap.netLiquidation,
-            'Avail=' + accountSnap.availableFunds);
+            'Avail=' + accountSnap.availableFunds,
+            'Margin=' + accountSnap.marginsUsed);
         }
       } catch (_) { /* ignore */ }
     });
@@ -1546,22 +1619,41 @@ async function main() {
       }
     }
     const marks = [...byTicker.values()];
+    if (!marks.length && accountSnap.netLiquidation == null && accountSnap.availableFunds == null
+        && !(state.pendingCharges && state.pendingCharges.length)) return;
+    const charges = takePendingCharges();
     try {
       const body = {
         marks,
+        charges,
         accountSnapshot: {
           ...accountSnap,
           startingBalance: accountSnap.startingBalance,
           availableFunds: accountSnap.availableFunds,
-          netLiquidation: accountSnap.netLiquidation
+          netLiquidation: accountSnap.netLiquidation,
+          marginsUsed: accountSnap.marginsUsed,
+          initMarginReq: accountSnap.initMarginReq,
+          maintMarginReq: accountSnap.maintMarginReq,
+          fullInitMarginReq: accountSnap.fullInitMarginReq,
+          fullMaintMarginReq: accountSnap.fullMaintMarginReq,
+          accruedCash: accountSnap.accruedCash,
+          accruedDividend: accountSnap.accruedDividend,
+          dividendReceivable: accountSnap.dividendReceivable
         }
       };
-      if (!marks.length && accountSnap.netLiquidation == null && accountSnap.availableFunds == null) return;
       const resp = await postJson('/api/ibkr/marks', body);
-      if (resp && resp.ok && marks.length) {
-        log('marks posted', marks.length, '→', marks.map(m => m.ticker + '=' + m.price).join(' '));
+      if (resp && resp.ok) {
+        if (marks.length) {
+          log('marks posted', marks.length, '→', marks.map(m => m.ticker + '=' + m.price).join(' '));
+        }
+        if (charges.length) log('charges posted', charges.length);
+      } else if (charges.length) {
+        restorePendingCharges(charges);
       }
-    } catch (e) { log('marks flush failed:', e.message); }
+    } catch (e) {
+      if (charges.length) restorePendingCharges(charges);
+      log('marks flush failed:', e.message);
+    }
   }
 
   function baseOrder(extra) {
@@ -2120,18 +2212,29 @@ async function main() {
       const mk = portfolioMarks.get(y);
       if (mk && Number(mk.price) > 0) marks[y] = Number(mk.price);
     }
+    const charges = takePendingCharges();
     try {
       const resp = await postJson('/api/ibkr/recon', {
         positions,
         marks,
+        charges,
         account: ACCOUNT || accountSnap.account || '',
         accountSnapshot: {
           ...accountSnap,
           startingBalance: accountSnap.startingBalance,
           availableFunds: accountSnap.availableFunds,
-          netLiquidation: accountSnap.netLiquidation
+          netLiquidation: accountSnap.netLiquidation,
+          marginsUsed: accountSnap.marginsUsed,
+          initMarginReq: accountSnap.initMarginReq,
+          maintMarginReq: accountSnap.maintMarginReq,
+          fullInitMarginReq: accountSnap.fullInitMarginReq,
+          fullMaintMarginReq: accountSnap.fullMaintMarginReq,
+          accruedCash: accountSnap.accruedCash,
+          accruedDividend: accountSnap.accruedDividend,
+          dividendReceivable: accountSnap.dividendReceivable
         }
       });
+      if (!(resp && resp.ok) && charges.length) restorePendingCharges(charges);
       lastIbReconAt = Date.now();
       lastIbReconResp = resp;
       if (resp && resp.ok) {
@@ -2154,6 +2257,7 @@ async function main() {
       }
       return resp;
     } catch (e) {
+      if (charges.length) restorePendingCharges(charges);
       log('RECONCILE: IB↔AS recon failed', e.message);
       lastIbReconResp = { ok: false, error: e.message, inSync: false };
       return lastIbReconResp;

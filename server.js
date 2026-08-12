@@ -13406,6 +13406,7 @@ app.post('/api/ibkr/correct-avg', express.json({ limit: '64kb' }), (req, res) =>
 const IBKR_RECON_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_recon.json');
 const IBKR_RECON_PENDING_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_recon_pending.json');
 const IBKR_ACCOUNT_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_account.json');
+const IBKR_CHARGES_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_charges.jsonl');
 
 function loadIbkrAccountSnapshot() {
   try { return JSON.parse(fs.readFileSync(IBKR_ACCOUNT_FILE, 'utf8')); }
@@ -13416,6 +13417,76 @@ function saveIbkrAccountSnapshot(snap) {
   try {
     fs.writeFileSync(IBKR_ACCOUNT_FILE, JSON.stringify({ ...snap, savedAt: new Date().toISOString() }, null, 2));
   } catch (_) {}
+}
+/** Prefer IB InitMarginReq as margin used; fall back to NLV − available funds. */
+function finalizeIbkrAccountSnapshot(merged) {
+  if (!merged || typeof merged !== 'object') return merged;
+  if (merged.netLiquidation != null) merged.currentBalance = Number(merged.netLiquidation);
+  if (merged.availableFunds != null) merged.netLiquidityAvailable = Number(merged.availableFunds);
+  const bal = Number(merged.currentBalance != null ? merged.currentBalance : merged.netLiquidation);
+  const avail = Number(merged.netLiquidityAvailable != null
+    ? merged.netLiquidityAvailable : merged.availableFunds);
+  if (Number.isFinite(bal) && Number.isFinite(avail) && bal > 0) {
+    merged.liquidityPct = +((avail / bal) * 100).toFixed(2);
+  }
+  const initM = merged.fullInitMarginReq != null ? Number(merged.fullInitMarginReq)
+    : (merged.initMarginReq != null ? Number(merged.initMarginReq) : null);
+  if (Number.isFinite(initM)) {
+    merged.marginsUsed = +initM.toFixed(2);
+  } else if (merged.marginsUsed != null && Number.isFinite(Number(merged.marginsUsed))) {
+    merged.marginsUsed = +Number(merged.marginsUsed).toFixed(2);
+  } else if (Number.isFinite(bal) && Number.isFinite(avail)) {
+    merged.marginsUsed = +(bal - avail).toFixed(2);
+  }
+  return merged;
+}
+function readIbkrChargeRows() {
+  try {
+    if (!fs.existsSync(IBKR_CHARGES_FILE)) return [];
+    const lines = fs.readFileSync(IBKR_CHARGES_FILE, 'utf8').split(/\r?\n/).filter(Boolean);
+    const out = [];
+    for (const line of lines) {
+      try {
+        const j = JSON.parse(line);
+        if (j && typeof j === 'object') out.push(j);
+      } catch (_) { /* skip bad line */ }
+    }
+    return out;
+  } catch (_) { return []; }
+}
+function appendIbkrCharges(rows) {
+  if (!Array.isArray(rows) || !rows.length) return 0;
+  const existing = new Set(readIbkrChargeRows().map(r => String(r && r.id || '')).filter(Boolean));
+  let n = 0;
+  const chunks = [];
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') continue;
+    const id = String(r.id || '').trim();
+    if (!id || existing.has(id)) continue;
+    existing.add(id);
+    const row = {
+      id,
+      type: String(r.type || 'other'),
+      label: String(r.label || r.type || 'charge'),
+      amount: Number(r.amount),
+      currency: String(r.currency || 'USD'),
+      income: !!r.income,
+      time: r.time || new Date().toISOString()
+    };
+    if (!Number.isFinite(row.amount) || row.amount === 0) continue;
+    chunks.push(JSON.stringify(row));
+    n++;
+  }
+  if (chunks.length) {
+    try { fs.appendFileSync(IBKR_CHARGES_FILE, chunks.join('\n') + '\n'); } catch (_) { return 0; }
+  }
+  return n;
+}
+function ingestIbkrChargesFromBody(body) {
+  try {
+    const charges = body && Array.isArray(body.charges) ? body.charges : [];
+    return appendIbkrCharges(charges);
+  } catch (_) { return 0; }
 }
 function normalizeIbkrYahooTicker(t) {
   const s = String(t || '').toUpperCase();
@@ -13540,24 +13611,16 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       const snap = req.body && req.body.accountSnapshot;
       if (snap && typeof snap === 'object') {
         const prev = loadIbkrAccountSnapshot() || {};
-        const merged = {
+        const merged = finalizeIbkrAccountSnapshot({
           ...prev,
           ...snap,
           account: snap.account || req.body.account || prev.account || null,
           at: snap.at || new Date().toISOString()
-        };
-        // Canonical display fields.
-        if (merged.netLiquidation != null) merged.currentBalance = Number(merged.netLiquidation);
-        if (merged.availableFunds != null) merged.netLiquidityAvailable = Number(merged.availableFunds);
-        if (merged.currentBalance != null && merged.netLiquidityAvailable != null) {
-          const bal = Number(merged.currentBalance);
-          const avail = Number(merged.netLiquidityAvailable);
-          merged.marginsUsed = +(bal - avail).toFixed(2);
-          merged.liquidityPct = bal > 0 ? +((avail / bal) * 100).toFixed(2) : null;
-        }
+        });
         saveIbkrAccountSnapshot(merged);
         try { updateLiquidityRiskGate(merged); } catch (_) { /* best-effort */ }
       }
+      ingestIbkrChargesFromBody(req.body);
     } catch (_) { /* best-effort */ }
     const ibByY = new Map();
     const ibByConId = new Map(); // conId → canonical yahoo (dual-list identity)
@@ -13980,23 +14043,16 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
     const snap = req.body && req.body.accountSnapshot;
     if (snap && typeof snap === 'object') {
       const prev = loadIbkrAccountSnapshot() || {};
-      const merged = {
+      const merged = finalizeIbkrAccountSnapshot({
         ...prev,
         ...snap,
         account: snap.account || prev.account || null,
         at: snap.at || new Date().toISOString()
-      };
-      if (merged.netLiquidation != null) merged.currentBalance = Number(merged.netLiquidation);
-      if (merged.availableFunds != null) merged.netLiquidityAvailable = Number(merged.availableFunds);
-      if (merged.currentBalance != null && merged.netLiquidityAvailable != null) {
-        const bal = Number(merged.currentBalance);
-        const avail = Number(merged.netLiquidityAvailable);
-        merged.marginsUsed = +(bal - avail).toFixed(2);
-        merged.liquidityPct = bal > 0 ? +((avail / bal) * 100).toFixed(2) : null;
-      }
+      });
       saveIbkrAccountSnapshot(merged);
       try { updateLiquidityRiskGate(merged); } catch (_) { /* best-effort */ }
     }
+    ingestIbkrChargesFromBody(req.body);
   } catch (_) { /* best-effort */ }
   let n = 0;
   const now = Date.now();
@@ -14580,18 +14636,20 @@ app.get('/api/ibkr/trades', async (req, res) => {
       : null;
     const liquidityPct = (currentBalance > 0 && Number.isFinite(netLiqAvail))
       ? +((netLiqAvail / currentBalance) * 100).toFixed(2) : null;
-    // Expense ledger: every commission + accrued cash (IB account charges).
+    // Expense ledger: commissions + accrued/interest + dividends (IB charge events).
     const expenses = [];
-    let expenseTotalUsd = 0;
+    let commissionExpenseUsd = 0;
+    const chargeLedger = readIbkrChargeRows();
     for (const r of rows) {
       const c = Number(r.commission);
       if (!(c > 0) && !(c < 0)) continue;
       const ccy = String(r.commissionCcy || r.currency || 'USD');
       const cFx = await ibkrUsdPerCcy(ccy);
       const usd = +(Math.abs(c) * cFx).toFixed(4);
-      expenseTotalUsd += usd;
+      commissionExpenseUsd += usd;
       expenses.push({
         type: 'commission',
+        section: 'commission',
         label: 'Brokerage · ' + (r.ticker || '?') + ' · ' + (r.role || 'fill'),
         ticker: r.ticker || null,
         role: r.role || null,
@@ -14599,32 +14657,109 @@ app.get('/api/ibkr/trades', async (req, res) => {
         amount: Math.abs(c),
         currency: ccy,
         amountUsd: +usd.toFixed(2),
+        income: false,
         time: r.time || null,
         errorTrade: !!r.errorTrade
       });
     }
+    // Durable IB charge / dividend deltas posted by the bridge.
+    for (const ch of chargeLedger) {
+      const amt = Number(ch.amount);
+      if (!Number.isFinite(amt) || amt === 0) continue;
+      const ccy = String(ch.currency || 'USD');
+      const cFx = await ibkrUsdPerCcy(ccy);
+      const usd = +(Math.abs(amt) * cFx).toFixed(4);
+      const income = !!ch.income || /dividend/i.test(String(ch.type || ''))
+        || /dividend/i.test(String(ch.label || ''));
+      const section = income ? 'dividend' : (/accrued|interest|fee|cash/i.test(String(ch.type || ''))
+        ? 'accrued' : 'other');
+      expenses.push({
+        type: ch.type || 'charge',
+        section,
+        label: ch.label || ch.type || 'charge',
+        amount: amt,
+        currency: ccy,
+        amountUsd: +(income ? (amt >= 0 ? usd : -usd) : usd).toFixed(2),
+        income,
+        time: ch.time || null,
+        id: ch.id || null
+      });
+    }
+    // Live IB balances (status lines for risk — totals use these, not Δ double-count).
+    let accruedUsd = 0;
+    let dividendUsd = 0;
     if (accountSnap && accountSnap.accruedCash != null && Number(accountSnap.accruedCash) !== 0) {
       const ac = Number(accountSnap.accruedCash);
+      accruedUsd = Math.abs(ac);
       expenses.push({
-        type: 'accrued',
-        label: 'Accrued cash / account charges (IB)',
+        type: 'accrued_balance',
+        section: 'accrued',
+        label: 'Accrued cash / interest & fees (current IB balance)',
         amount: ac,
         currency: accountSnap.currency || 'USD',
         amountUsd: +ac.toFixed(2),
+        income: false,
+        balance: true,
         time: accountSnap.at || null
       });
-      expenseTotalUsd += Math.abs(ac);
     }
+    if (accountSnap && accountSnap.accruedDividend != null && Number(accountSnap.accruedDividend) !== 0) {
+      const ad = Number(accountSnap.accruedDividend);
+      dividendUsd += ad;
+      expenses.push({
+        type: 'dividend_balance',
+        section: 'dividend',
+        label: 'Accrued dividend (current IB balance)',
+        amount: ad,
+        currency: accountSnap.currency || 'USD',
+        amountUsd: +ad.toFixed(2),
+        income: true,
+        balance: true,
+        time: accountSnap.at || null
+      });
+    }
+    if (accountSnap && accountSnap.dividendReceivable != null && Number(accountSnap.dividendReceivable) !== 0) {
+      const dr = Number(accountSnap.dividendReceivable);
+      dividendUsd += dr;
+      expenses.push({
+        type: 'dividend_receivable_balance',
+        section: 'dividend',
+        label: 'Dividend receivable (current IB balance)',
+        amount: dr,
+        currency: accountSnap.currency || 'USD',
+        amountUsd: +dr.toFixed(2),
+        income: true,
+        balance: true,
+        time: accountSnap.at || null
+      });
+    }
+    const expenseTotalUsd = commissionExpenseUsd + accruedUsd;
     expenses.sort((a, b) => String(b.time || '').localeCompare(String(a.time || '')));
+    const initMargin = accountSnap
+      ? (accountSnap.fullInitMarginReq != null ? Number(accountSnap.fullInitMarginReq)
+        : (accountSnap.initMarginReq != null ? Number(accountSnap.initMarginReq) : null))
+      : null;
+    const maintMargin = accountSnap
+      ? (accountSnap.fullMaintMarginReq != null ? Number(accountSnap.fullMaintMarginReq)
+        : (accountSnap.maintMarginReq != null ? Number(accountSnap.maintMarginReq) : null))
+      : null;
+    const marginsUsed = Number.isFinite(initMargin)
+      ? +initMargin.toFixed(2)
+      : (accountSnap && accountSnap.marginsUsed != null ? Number(accountSnap.marginsUsed)
+        : ((Number.isFinite(currentBalance) && Number.isFinite(netLiqAvail))
+          ? +(currentBalance - netLiqAvail).toFixed(2) : null));
     const account = accountSnap ? {
       account: accountSnap.account || null,
       currency: accountSnap.currency || 'USD',
       at: accountSnap.at || accountSnap.savedAt || null,
       currentBalance: Number.isFinite(currentBalance) ? currentBalance : null,
       netLiquidityAvailable: Number.isFinite(netLiqAvail) ? netLiqAvail : null,
-      marginsUsed: (Number.isFinite(currentBalance) && Number.isFinite(netLiqAvail))
-        ? +(currentBalance - netLiqAvail).toFixed(2)
-        : (accountSnap.marginsUsed != null ? Number(accountSnap.marginsUsed) : null),
+      marginsUsed: Number.isFinite(marginsUsed) ? marginsUsed : null,
+      initMarginReq: Number.isFinite(initMargin) ? +initMargin.toFixed(2) : null,
+      maintMarginReq: Number.isFinite(maintMargin) ? +maintMargin.toFixed(2) : null,
+      accruedCash: accountSnap.accruedCash != null ? Number(accountSnap.accruedCash) : null,
+      accruedDividend: accountSnap.accruedDividend != null ? Number(accountSnap.accruedDividend) : null,
+      dividendReceivable: accountSnap.dividendReceivable != null ? Number(accountSnap.dividendReceivable) : null,
       liquidityPct,
       liquidityRiskOff: !!riskState.liquidityRiskOff,
       liquidityPausePct: LIQ_PAUSE_PCT,
@@ -14648,8 +14783,11 @@ app.get('/api/ibkr/trades', async (req, res) => {
       account,
       expenses: {
         totalUsd: +expenseTotalUsd.toFixed(2),
-        commissionUsd: +totCommissionUsd.toFixed(2),
-        rows: expenses.slice(0, 200)
+        commissionUsd: +commissionExpenseUsd.toFixed(2),
+        otherUsd: +accruedUsd.toFixed(2),
+        dividendUsd: +dividendUsd.toFixed(2),
+        netUsd: +(expenseTotalUsd - dividendUsd).toFixed(2),
+        rows: expenses.slice(0, 300)
       },
       risk: {
         riskOff: !!riskState.riskOff,

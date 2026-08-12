@@ -1789,6 +1789,13 @@ async function tickIbkrMtm(){
     }
     setTxt('ibkrCardBalance', ibkrBal(a.currentBalance), 'var(--t1)');
     setTxt('ibkrCardLiq', ibkrBal(a.netLiquidityAvailable), 'var(--t1)');
+    setTxt('ibkrCardMargin', ibkrBal(a.marginsUsed), a.marginsUsed > 0 ? 'var(--sell)' : 'var(--t1)');
+    const marSub = document.getElementById('ibkrCardMarginSub');
+    if (marSub) {
+      marSub.textContent = a.maintMarginReq != null
+        ? ('init · maint ' + ibkrBal(a.maintMarginReq))
+        : 'IB initial margin req';
+    }
     const liqEl = document.getElementById('ibkrCardLiqSub');
     if (liqEl && a.liquidityPct != null) {
       liqEl.textContent = a.liquidityPct.toFixed(1) + '% of balance'
@@ -1843,7 +1850,7 @@ async function renderIbkr(force){
       '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-height:80px;flex:1;min-width:130px;display:flex;flex-direction:column;justify-content:center;gap:5px">'
       +'<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace">'+l+'</div>'
       +'<div id="'+id+'" style="font-size:21px;font-weight:600;font-family:DM Mono,monospace;color:'+(c||'var(--t1)')+'">'+v+'</div>'
-      +(sub?'<div style="font-size:10px;color:var(--m2)">'+sub+'</div>':'')
+      +(sub?'<div id="'+id+'Sub" style="font-size:10px;color:var(--m2)">'+sub+'</div>':'')
       +'</div>';
     const tt = d.totals;
     const todayKey = new Date().toISOString().slice(0,10);
@@ -1888,12 +1895,21 @@ async function renderIbkr(force){
           + '</div>');
     const acct = d.account || {};
     const balSub = acct.account ? ('IB '+acct.account+(acct.at ? ' · '+String(acct.at).slice(11,19)+'Z' : '')) : 'from TWS account window';
-    const expTotal = (d.expenses && d.expenses.totalUsd != null) ? d.expenses.totalUsd : (tt.commissionUsd || 0);
+    const exp = d.expenses || {};
+    const expTotal = exp.totalUsd != null ? exp.totalUsd : (tt.commissionUsd || 0);
+    const expSub = [
+      exp.commissionUsd != null ? ('comm $' + Math.abs(exp.commissionUsd).toFixed(0)) : null,
+      exp.otherUsd ? ('accrued $' + Math.abs(exp.otherUsd).toFixed(0)) : null,
+      exp.dividendUsd ? ('div +$' + Math.abs(exp.dividendUsd).toFixed(0)) : null
+    ].filter(Boolean).join(' · ') || 'click for full detail';
     const liqPct = acct.liquidityPct;
     const liqSub = liqPct != null
       ? (liqPct.toFixed(1) + '% of balance · cash − margins'
         + (acct.liquidityRiskOff ? ' · PAUSED <'+(acct.liquidityPausePct||15)+'%' : ' · pause ≤'+(acct.liquidityPausePct||15)+'%'))
       : 'cash available − margins used';
+    const marginSub = acct.maintMarginReq != null
+      ? ('IB init margin · maint ' + ibkrBal(acct.maintMarginReq))
+      : 'IB initial margin requirement';
     const tileClick = (id,l,v,sub,c,onclick) =>
       '<div '+(onclick?'onclick="'+onclick+'" title="Click for details" style="cursor:pointer;':'style="')
       +'background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-height:80px;flex:1;min-width:130px;display:flex;flex-direction:column;justify-content:center;gap:5px">'
@@ -1915,12 +1931,14 @@ async function renderIbkr(force){
       + tile('ibkrCardBalance','Current balance', ibkrBal(acct.currentBalance), balSub, 'var(--t1)')
       + tile('ibkrCardLiq','Net liquidity available', ibkrBal(acct.netLiquidityAvailable), liqSub,
           acct.liquidityRiskOff ? 'var(--sell)' : 'var(--t1)')
+      + tile('ibkrCardMargin','Margin used', ibkrBal(acct.marginsUsed), marginSub,
+          (acct.marginsUsed > 0) ? 'var(--sell)' : 'var(--t1)')
       + tile('ibkrCardToday','Today realised', fp(todayReal), 'fills · '+todayKey, pc(todayReal))
       + tile('ibkrCardReal','Total realised (net)', fp(tt.realizedUsd),
           'gross '+(tt.realizedUsdGross!=null?fp(tt.realizedUsdGross):'—')+' · '+tt.closedCount+' closed', pc(tt.realizedUsd))
-      + tileClick('ibkrCardComm','Brokerage & expenses',
+      + tileClick('ibkrCardComm','Brokerage, dividends & charges',
           expTotal?('-$'+Math.abs(expTotal).toFixed(0)):'—',
-          'click for commission detail',
+          expSub,
           expTotal?'var(--sell)':'var(--m1)',
           'showIbkrExpenses()')
       + tile('ibkrCardUnreal','Unrealised', fp(tt.unrealizedUsd), tt.openCount+' open', pc(tt.unrealizedUsd))
@@ -2091,43 +2109,78 @@ async function renderIbkr(force){
   }
 }
 
-/** Interactive brokerage / expenses breakdown (from IB commission reports). */
+/** Interactive brokerage / dividends / charges breakdown. */
 function showIbkrExpenses(){
   const d = _ibkrLastPayload;
   if (!d) { alert('IBKR data not loaded yet'); return; }
-  const rows = (d.expenses && d.expenses.rows) || [];
-  const total = (d.expenses && d.expenses.totalUsd != null)
-    ? d.expenses.totalUsd : (d.totals && d.totals.commissionUsd) || 0;
+  const exp = d.expenses || {};
+  const rows = exp.rows || [];
+  const total = exp.totalUsd != null
+    ? exp.totalUsd : (d.totals && d.totals.commissionUsd) || 0;
   const existing = document.getElementById('ibkrExpenseModal');
   if (existing) existing.remove();
   const modal = document.createElement('div');
   modal.id = 'ibkrExpenseModal';
   modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:16px';
   modal.onclick = function(ev){ if (ev.target === modal) modal.remove(); };
-  const bodyRows = rows.length
-    ? rows.map(function(r){
-        const amt = r.amountUsd != null ? r.amountUsd : r.amount;
-        return '<tr>'
-          + '<td style="padding:6px 8px;font-size:10px;color:var(--m2);font-family:DM Mono,monospace">'+(r.time?String(r.time).slice(0,19):'—')+'</td>'
-          + '<td style="padding:6px 8px;font-size:11px;color:var(--t1)">'+(r.label||r.type||'expense')+'</td>'
-          + '<td style="padding:6px 8px;font-size:10px;color:var(--m2);text-align:right;font-family:DM Mono,monospace">'+(r.currency||'USD')+' '+(r.amount!=null?Number(r.amount).toFixed(2):'—')+'</td>'
-          + '<td style="padding:6px 8px;font-size:11px;color:var(--sell);text-align:right;font-family:DM Mono,monospace;font-weight:600">-$'+Math.abs(Number(amt)||0).toFixed(2)+'</td>'
-          + '</tr>';
-      }).join('')
-    : '<tr><td colspan="4" style="padding:16px;color:var(--m2);font-size:12px">No commission / expense rows yet. New fills will populate this as IB reports brokerage.</td></tr>';
-  modal.innerHTML = '<div style="background:var(--s0,#111);border:1px solid var(--b1);border-radius:12px;max-width:720px;width:100%;max-height:80vh;overflow:auto;padding:18px 16px">'
+  const fmtUsd = function(n, income){
+    const v = Number(n) || 0;
+    if (income) return (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+    return '-$' + Math.abs(v).toFixed(2);
+  };
+  const sectionOrder = ['commission', 'accrued', 'dividend', 'other'];
+  const sectionTitle = {
+    commission: 'Brokerage commissions',
+    accrued: 'Accrued cash / interest & fees',
+    dividend: 'Dividends',
+    other: 'Other charges'
+  };
+  const bySec = {};
+  for (const r of rows) {
+    const s = r.section || (r.income ? 'dividend' : (String(r.type||'').indexOf('accrued')>=0 ? 'accrued' : 'commission'));
+    if (!bySec[s]) bySec[s] = [];
+    bySec[s].push(r);
+  }
+  let bodyHtml = '';
+  for (const sec of sectionOrder) {
+    const list = bySec[sec] || [];
+    if (!list.length) continue;
+    bodyHtml += '<div style="margin:14px 0 6px;font-size:11px;font-weight:600;color:var(--t1);text-transform:uppercase;letter-spacing:.06em">'
+      + (sectionTitle[sec] || sec) + ' · ' + list.length + '</div>';
+    bodyHtml += '<table style="width:100%;border-collapse:collapse;margin-bottom:4px"><thead><tr>'
+      + '<th style="text-align:left;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Time</th>'
+      + '<th style="text-align:left;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Item</th>'
+      + '<th style="text-align:right;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Native</th>'
+      + '<th style="text-align:right;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">USD</th>'
+      + '</tr></thead><tbody>'
+      + list.map(function(r){
+          const amt = r.amountUsd != null ? r.amountUsd : r.amount;
+          const income = !!r.income;
+          const col = income ? 'var(--buy,#3d8b5c)' : 'var(--sell)';
+          return '<tr>'
+            + '<td style="padding:6px 8px;font-size:10px;color:var(--m2);font-family:DM Mono,monospace">'+(r.time?String(r.time).slice(0,19):'—')
+            + (r.balance ? ' · live' : '') + '</td>'
+            + '<td style="padding:6px 8px;font-size:11px;color:var(--t1)">'+(r.label||r.type||'item')+'</td>'
+            + '<td style="padding:6px 8px;font-size:10px;color:var(--m2);text-align:right;font-family:DM Mono,monospace">'+(r.currency||'USD')+' '+(r.amount!=null?Number(r.amount).toFixed(2):'—')+'</td>'
+            + '<td style="padding:6px 8px;font-size:11px;color:'+col+';text-align:right;font-family:DM Mono,monospace;font-weight:600">'+fmtUsd(amt, income)+'</td>'
+            + '</tr>';
+        }).join('')
+      + '</tbody></table>';
+  }
+  if (!bodyHtml) {
+    bodyHtml = '<div style="padding:16px;color:var(--m2);font-size:12px">No commission / dividend / charge rows yet. Fills and IB accrued updates will populate this.</div>';
+  }
+  const sumLine = 'Charges -$'+Math.abs(total).toFixed(2)
+    + (exp.commissionUsd != null ? ' · comm $'+Math.abs(exp.commissionUsd).toFixed(2) : '')
+    + (exp.otherUsd ? ' · accrued $'+Math.abs(exp.otherUsd).toFixed(2) : '')
+    + (exp.dividendUsd ? ' · dividends +$'+Math.abs(exp.dividendUsd).toFixed(2) : '');
+  modal.innerHTML = '<div style="background:var(--s0,#111);border:1px solid var(--b1);border-radius:12px;max-width:780px;width:100%;max-height:80vh;overflow:auto;padding:18px 16px">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
-    + '<div><div style="font-size:13px;font-weight:600;color:var(--t1)">Brokerage & account expenses</div>'
-    + '<div style="font-size:10px;color:var(--m2);font-family:DM Mono,monospace;margin-top:4px">Total -$'+Math.abs(total).toFixed(2)+' USD · IB commissionReport + accrued</div></div>'
+    + '<div><div style="font-size:13px;font-weight:600;color:var(--t1)">Brokerage, dividends & account charges</div>'
+    + '<div style="font-size:10px;color:var(--m2);font-family:DM Mono,monospace;margin-top:4px">'+sumLine+'</div></div>'
     + '<button onclick="document.getElementById(\'ibkrExpenseModal\').remove()" style="background:transparent;border:1px solid var(--b1);color:var(--m1);border-radius:6px;padding:4px 10px;cursor:pointer">Close</button>'
     + '</div>'
-    + '<table style="width:100%;border-collapse:collapse">'
-    + '<thead><tr>'
-    + '<th style="text-align:left;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Time</th>'
-    + '<th style="text-align:left;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Item</th>'
-    + '<th style="text-align:right;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Native</th>'
-    + '<th style="text-align:right;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">USD</th>'
-    + '</tr></thead><tbody>'+bodyRows+'</tbody></table></div>';
+    + bodyHtml + '</div>';
   document.body.appendChild(modal);
 }
 
