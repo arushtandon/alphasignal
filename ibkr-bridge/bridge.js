@@ -146,17 +146,24 @@ function normalizeYahooTicker(t) {
 
 /** Dual-list aliases — same conId identity; authorize by provenance not name. */
 const LISTING_ALIASES = {
-  'AIR.DE': ['AIR.PA'],
-  'AIR.PA': ['AIR.DE'],
-  'SU.PA': ['SU.DE'],
-  'SU.DE': ['SU.PA'],
-  'DHL.PA': ['DHL.DE'],
-  'DHL.DE': ['DHL.PA']
+  'AIR.DE': ['AIR.PA', 'AIR'],
+  'AIR.PA': ['AIR.DE', 'AIR'],
+  'SU.PA': ['SU.DE', 'SU'],
+  'SU.DE': ['SU.PA', 'SU'],
+  'DHL.PA': ['DHL.DE', 'DHL'],
+  'DHL.DE': ['DHL.PA', 'DHL']
 };
 function yahooAliases(t) {
   const y = normalizeYahooTicker(t);
   const out = new Set([y]);
   for (const a of (LISTING_ALIASES[y] || [])) out.add(normalizeYahooTicker(a));
+  // Bare IB portfolio symbol ("SU") must match Yahoo "SU.PA" / "SU.DE"
+  if (y.includes('.')) out.add(y.split('.')[0]);
+  else {
+    for (const k of Object.keys(LISTING_ALIASES)) {
+      if (k.split('.')[0] === y) out.add(k);
+    }
+  }
   return out;
 }
 function setHasYahooAlias(set, t) {
@@ -1315,9 +1322,13 @@ async function main() {
     if (ccy === 'JPY') return sym + '.T';
     if (ccy === 'GBP') return sym + '.L';
     if (ccy === 'EUR') {
-      if (c.primaryExch === 'SBF') return sym + '.PA';
+      if (c.primaryExch === 'SBF' || c.primaryExch === 'SBF.SBF') return sym + '.PA';
       if (c.primaryExch === 'AEB') return sym + '.AS';
       if (c.primaryExch === 'BVME') return sym + '.MI';
+      // IB often omits primaryExch on portfolio updates — prefer .PA for known
+      // dual-lists so orphan-flatten does not treat SU as IB-only vs SU.PA.
+      const u = String(sym || '').toUpperCase();
+      if (u === 'SU' || u === 'AIR' || u === 'DHL') return u + '.PA';
       return sym + '.DE';
     }
     return sym;

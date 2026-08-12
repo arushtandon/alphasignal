@@ -12631,18 +12631,25 @@ try {
 /** Dual-listed names that must not open two IBKR brackets for the same thesis.
  *  Resolved once via aliases + IB conId — not per-endpoint name collapses. */
 const IBKR_LISTING_ALIASES = {
-  'AIR.DE': ['AIR.PA'],
-  'AIR.PA': ['AIR.DE'],
-  'SU.PA': ['SU.DE'],
-  'SU.DE': ['SU.PA'],
-  'DHL.PA': ['DHL.DE'],
-  'DHL.DE': ['DHL.PA']
+  'AIR.DE': ['AIR.PA', 'AIR'],
+  'AIR.PA': ['AIR.DE', 'AIR'],
+  'SU.PA': ['SU.DE', 'SU'],
+  'SU.DE': ['SU.PA', 'SU'],
+  'DHL.PA': ['DHL.DE', 'DHL'],
+  'DHL.DE': ['DHL.PA', 'DHL']
 };
 
 function ibkrYahooAliases(ticker) {
   const y = String(ticker || '').toUpperCase();
   const out = new Set([y]);
   for (const a of (IBKR_LISTING_ALIASES[y] || [])) out.add(String(a).toUpperCase());
+  // Bare IB symbol (portfolio "SU") ↔ Yahoo "SU.PA" / "SU.DE"
+  if (y.includes('.')) out.add(y.split('.')[0]);
+  else {
+    for (const k of Object.keys(IBKR_LISTING_ALIASES)) {
+      if (k.split('.')[0] === y) out.add(k);
+    }
+  }
   return out;
 }
 
@@ -13152,18 +13159,13 @@ function unstampModelIbkrFills() {
 }
 
 /**
- * Quarantine system ghost-flats / dup recover-entries onto `…|cursor-err` with
- * errorTrade:true so invented PnL shows under Error trades and never nets the
- * live model open (SU.PA 2026-08-12 Cursor recon bug).
+ * Quarantine duplicate recover-entries onto `…|cursor-err`. Ghost-flats that
+ * close a live key stay on that key (errorTrade) so site open qty hits zero.
  */
 function quarantineGhostFlatsAsErrorTrades() {
   try {
     if (!fs.existsSync(IBKR_FILLS_FILE)) return 0;
     const before = readIbkrFillRows();
-    const ghostBaseKeys = new Set(
-      before.filter(r => r && (r.recon === 'ghost-flat' || String(r.execId || '').startsWith('recon-flat-')))
-        .map(r => String(r.key || '').replace(/\|cursor-err$/i, ''))
-    );
     let n = 0;
     const next = before.map(r => {
       if (!r) return r;
@@ -13181,19 +13183,29 @@ function quarantineGhostFlatsAsErrorTrades() {
         x && String(x.key || '') === key && x.role === 'entry' && !x.synthetic
         && !String(x.execId || '').startsWith('recover-entry-')
         && !String(x.execId || '').startsWith('recon-'));
-      const isDupRecover = isRecover && (ghostBaseKeys.has(key) || hasRealEntryOnKey
-        || /\|ghost\|/i.test(key) || /\|ghost\|/i.test(String(r.execId || '')));
-      if (!isGhost && !isDupRecover) return r;
-      n++;
-      return Object.assign({}, r, {
-        errorTrade: true,
-        key: toCursorErrIbkrKey(key),
-        note: (r.note ? String(r.note) + ' ' : '') + '[cursor recon error — not model PnL]'
-      });
+      // Ghost-flat: stamp as error but keep key so it closes the site open.
+      if (isGhost) {
+        if (r.errorTrade) return r;
+        n++;
+        return Object.assign({}, r, {
+          errorTrade: true,
+          note: (r.note ? String(r.note) + ' ' : '') + '[cursor/system flatten — Error trade]'
+        });
+      }
+      // Dup recover-entry: move off the live key so qty is not doubled.
+      if (isRecover && (hasRealEntryOnKey || /\|ghost\|/i.test(key) || /\|ghost\|/i.test(String(r.execId || '')))) {
+        n++;
+        return Object.assign({}, r, {
+          errorTrade: true,
+          key: toCursorErrIbkrKey(key),
+          note: (r.note ? String(r.note) + ' ' : '') + '[dup recover-entry — not model PnL]'
+        });
+      }
+      return r;
     });
     if (!n) return 0;
     mutateFillLedger('quarantine_ghost_flat_error', () => next);
-    console.log('Quarantined', n, 'ghost-flat / dup-entry fill(s) → Error trades (|cursor-err)');
+    console.log('Quarantined', n, 'ghost-flat / dup-entry fill(s) → Error trades');
     auditLog('ibkr_quarantine_ghost_flat_error', { count: n });
     return n;
   } catch (e) {
@@ -13204,7 +13216,8 @@ function quarantineGhostFlatsAsErrorTrades() {
 
 /**
  * SU.PA Aug-12: ghost-flat was voided, leaving ~$5 (entry commission) on model
- * realised. Move that hit into a closed Error trade; keep live 28sh as model.
+ * realised. Move that hit into a *closed* Error trade. Also closes any open
+ * `|cursor-err` remnant so recon never counts it as site-open qty.
  */
 function seedSuPaCursorReconErrorTrade() {
   const LIVE_KEY = 'SU.PA|long|Wed Aug 12 2026';
@@ -13212,7 +13225,6 @@ function seedSuPaCursorReconErrorTrade() {
   try {
     if (!fs.existsSync(IBKR_FILLS_FILE)) return 0;
     const before = readIbkrFillRows();
-    const hasErr = before.some(r => r && String(r.key || '') === ERR_KEY);
     let n = 0;
     let movedComm = null;
     let movedCcy = 'EUR';
@@ -13231,16 +13243,19 @@ function seedSuPaCursorReconErrorTrade() {
         commission: 0
       });
     });
-    if (!hasErr) {
-      const live = before.find(r => r && String(r.key || '') === LIVE_KEY && r.role === 'entry')
-        || next.find(r => r && String(r.key || '') === LIVE_KEY && r.role === 'entry');
-      const px = Number(live && live.price) || 309.404625;
-      const qty = Number(live && live.qty) || 28;
-      const comm = movedComm != null ? movedComm
-        : Math.abs(Number(live && (live._origCommission != null ? live._origCommission : live.commission))) || 4.3295;
-      const ccy = movedCcy || String(live && (live._origCommissionCcy || live.commissionCcy)) || 'EUR';
-      const t0 = (live && live.time) || '2026-08-12T08:53:25.407Z';
-      const t1 = '2026-08-12T09:30:00.000Z';
+    const live = before.find(r => r && String(r.key || '') === LIVE_KEY && r.role === 'entry')
+      || next.find(r => r && String(r.key || '') === LIVE_KEY && r.role === 'entry');
+    const px = Number(live && live.price) || 309.404625;
+    const qty = Number(live && live.qty) || 28;
+    const comm = movedComm != null ? movedComm
+      : Math.abs(Number(live && (live._origCommission != null ? live._origCommission : live.commission))) || 4.3295;
+    const ccy = movedCcy || String(live && (live._origCommissionCcy || live.commissionCcy)) || 'EUR';
+    const t0 = (live && live.time) || '2026-08-12T08:53:25.407Z';
+    const t1 = '2026-08-12T09:08:24.000Z';
+    const errRows = next.filter(r => r && String(r.key || '') === ERR_KEY);
+    const errEntryQty = errRows.filter(r => r.role === 'entry').reduce((s, r) => s + (Number(r.qty) || 0), 0);
+    const errExitQty = errRows.filter(r => r.role !== 'entry').reduce((s, r) => s + (Number(r.qty) || 0), 0);
+    if (!errRows.length) {
       const entryId = 'cursor-err-SU.PA-entry-2026-08-12';
       const flatId = 'cursor-err-SU.PA-flat-2026-08-12';
       next.push({
@@ -13261,10 +13276,24 @@ function seedSuPaCursorReconErrorTrade() {
       _ibkrExecIds.add(entryId);
       _ibkrExecIds.add(flatId);
       n += 2;
+    } else if (errEntryQty > errExitQty) {
+      const need = errEntryQty - errExitQty;
+      const flatId = 'cursor-err-SU.PA-flat-close-' + need;
+      if (!_ibkrExecIds.has(flatId) && !next.some(r => r && r.execId === flatId)) {
+        next.push({
+          execId: flatId, key: ERR_KEY, ticker: 'SU.PA', hz: 'long', side: 'buy',
+          role: 'flatten', qty: need, price: px, currency: 'EUR', ccyScale: 1, orderId: null,
+          time: t1, session: 'rth', sessionLabel: 'Market',
+          errorTrade: true, synthetic: true, recon: 'ghost-flat',
+          note: 'Close open |cursor-err remnant — Error trade (not model PnL)'
+        });
+        _ibkrExecIds.add(flatId);
+        n++;
+      }
     }
     if (!n) return 0;
     mutateFillLedger('seed_su_pa_cursor_err', () => next);
-    console.log('Seeded/moved SU.PA Cursor recon ~$5 into Error trades');
+    console.log('Seeded/closed SU.PA Cursor recon Error trade (~$5)');
     auditLog('ibkr_seed_su_pa_cursor_err', { count: n, errKey: ERR_KEY });
     return n;
   } catch (e) {
@@ -13276,7 +13305,55 @@ function seedSuPaCursorReconErrorTrade() {
 function stampGhostFlatFillsAsErrorTrade() {
   const a = quarantineGhostFlatsAsErrorTrades();
   const b = seedSuPaCursorReconErrorTrade();
-  return a + b;
+  const c = repairSuPaLiveOpenWhenIbAlreadyFlat();
+  return a + b + c;
+}
+
+/**
+ * SU.PA was orphan-flattened at IB (09:08Z) while site kept the model open.
+ * Close the live key as Error trade so recon matches IB flat.
+ */
+function repairSuPaLiveOpenWhenIbAlreadyFlat() {
+  const LIVE_KEY = 'SU.PA|long|Wed Aug 12 2026';
+  try {
+    if (!fs.existsSync(IBKR_FILLS_FILE)) return 0;
+    const before = readIbkrFillRows();
+    const live = before.filter(r => r && String(r.key || '') === LIVE_KEY);
+    if (!live.length) return 0;
+    const entryQty = live.filter(r => r.role === 'entry').reduce((s, r) => s + (Number(r.qty) || 0), 0);
+    const exitQty = live.filter(r => r.role !== 'entry').reduce((s, r) => s + (Number(r.qty) || 0), 0);
+    const openQty = Math.max(0, entryQty - exitQty);
+    if (!(openQty > 0)) return 0;
+    const ent = live.find(r => r.role === 'entry');
+    const px = Number(ent && ent.price) || 309.404625;
+    const flatId = 'repair-ibflat-SU.PA-2026-08-12';
+    if (_ibkrExecIds.has(flatId) || before.some(r => r && r.execId === flatId)) return 0;
+    const fillAt = '2026-08-12T09:08:24.049Z';
+    mutateFillLedger('repair_su_pa_ib_flat', (rows) => {
+      rows.push({
+        execId: flatId, key: LIVE_KEY, ticker: 'SU.PA', hz: 'long', side: 'buy',
+        role: 'flatten', qty: openQty, price: px, currency: 'EUR', ccyScale: 1,
+        orderId: null, time: fillAt, session: 'rth', sessionLabel: 'Market',
+        errorTrade: true, synthetic: true, recon: 'ghost-flat',
+        markSrc: 'orphan-ib-only-flatten',
+        note: 'IB orphan-flatten closed live SU.PA — Error trade (site↔IB sync)'
+      });
+      return rows;
+    });
+    _ibkrExecIds.add(flatId);
+    try {
+      emitTradeEvent('exit', {
+        key: LIVE_KEY, ticker: 'SU.PA', hz: 'long', side: 'buy',
+        reason: 'ib-orphan-flatten-repair', errorTrade: true
+      });
+    } catch (_) {}
+    console.log('Repaired SU.PA live open → closed Error trade (IB already flat)');
+    auditLog('ibkr_repair_su_pa_ib_flat', { openQty, flatId });
+    return 1;
+  } catch (e) {
+    console.warn('SU.PA IB-flat repair failed:', e.message);
+    return 0;
+  }
 }
 /**
  * Close unauthorized / dual-list entry events (including AIR.DE + AIR.PA) so
@@ -13531,23 +13608,18 @@ function mutateFillLedger(reason, fn, opts) {
   return { before: before.length, after: next.length, rows: next };
 }
 
-/** Ghost-flatten while model entry still open, or duplicate recover-entry that
- *  doubled qty (SU.PA: 28 real + 28 synthetic → flatten×56 fake PnL).
- *  Rows already on `|cursor-err` are kept as Error trades (not voided). */
+/** Duplicate recover-entry that doubled qty (SU.PA: 28 real + 28 synthetic).
+ *  Ghost-flats that close a key are kept (IB flat is authoritative after grace). */
 function isErroneousGhostFlatOrDupEntry(row, allRows) {
   if (!row) return false;
   if (isCursorErrIbkrKey(row.key)) return false;
   const key = String(row.key || '');
-  const ticker = String(row.ticker || key.split('|')[0] || '').toUpperCase();
-  if (row.role === 'flatten' && row.recon === 'ghost-flat') {
-    if (hasOpenEmittedEntryForTicker(ticker)) return true;
-  }
   if (row.role === 'entry' && (row.recon === 'recover-entry' || String(row.execId || '').startsWith('recover-entry-'))) {
     const realEntries = (allRows || []).filter(r =>
       r && r.key === key && r.role === 'entry' && !r.synthetic
       && !String(r.execId || '').startsWith('recover-entry-')
       && !String(r.execId || '').startsWith('recon-'));
-    if (realEntries.length) return true; // real fill already exists — quarantine
+    if (realEntries.length) return true;
   }
   return false;
 }
@@ -13757,10 +13829,13 @@ function ibkrAvgToFillUnit(avgCost, ccyScale, sampleEntryPx) {
   return avg;
 }
 /** Aggregate open lots from fill rows (same math as /api/ibkr/trades). */
-function aggregateIbkrOpenFromFills(rows) {
+function aggregateIbkrOpenFromFills(rows, opts) {
+  opts = opts || {};
   const byKey = new Map();
   for (const r of rows) {
     if (!r || !r.key) continue;
+    // |cursor-err| ledger rows are Error-trade bookkeeping — never count vs IB qty.
+    if (opts.forRecon && isCursorErrIbkrKey(r.key)) continue;
     if (!byKey.has(r.key)) byKey.set(r.key, []);
     byKey.get(r.key).push(r);
   }
@@ -13913,7 +13988,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     try { stampGhostFlatFillsAsErrorTrade(); } catch (_) {}
 
     const rows = readIbkrFillRows();
-    const opens = aggregateIbkrOpenFromFills(rows);
+    const opens = aggregateIbkrOpenFromFills(rows, { forRecon: true });
     const pending = loadIbkrReconPending();
     const matched = [];
     const adjusted = [];
@@ -14046,28 +14121,24 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           // Ghost open on site while IB is flat. Never invent an exit at avg
           // entry ($0 "flatten") — that produced fake AIR.PA/AIR.DE closes.
           // Dual-list: merge alias lots once (one IB book, not two $0 closes).
-          // CRITICAL: never ghost-flatten while a live model entry event is open
-          // (SU.PA 2026-08-12 — IB listing lag / dual-list made ibAbs=0 and
-          // invented flatten×56 with fake realised PnL).
-          if (hasOpenEmittedEntryForTicker(y)) {
-            issues.push({
-              ticker: y, severity: 'pending',
-              detail: `Site open ${asAbs} but IB flat — open model entry still live; wait for position/alias (no ghost-flatten)`
-            });
-            continue;
-          }
+          // Fresh entry grace: wait for listing lag / fill settle. After grace,
+          // IB flat is authoritative — close site opens (and emit exit) even if
+          // the model entry event is still open (SU.PA orphan-flatten 2026-08-12).
           const aliasYs = [...ibkrYahooAliases(y)];
           for (const a of aliasYs) dualListHandled.add(a);
           const mergedOpens = [];
           for (const a of aliasYs) {
-            for (const o of (asByTicker.get(a) || [])) mergedOpens.push(o);
+            for (const o of (asByTicker.get(a) || [])) {
+              if (isCursorErrIbkrKey(o.key)) continue;
+              mergedOpens.push(o);
+            }
           }
-          // Fresh entry grace: any entry fill in last 45m → never invent exit.
-          const GHOST_FLAT_GRACE_MS = 45 * 60 * 1000;
+          const GHOST_FLAT_GRACE_MS = 15 * 60 * 1000;
           const fillRowsNow = readIbkrFillRows();
           const recentEntry = mergedOpens.some(o => {
             return fillRowsNow.some(r => {
               if (!r || r.key !== o.key || r.role !== 'entry') return false;
+              if (isCursorErrIbkrKey(r.key)) return false;
               const ts = Date.parse(r.time || 0);
               return Number.isFinite(ts) && (Date.now() - ts) < GHOST_FLAT_GRACE_MS;
             });
@@ -14075,7 +14146,9 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           if (recentEntry) {
             issues.push({
               ticker: y, severity: 'pending',
-              detail: `Site open ${asAbs} but IB flat — entry fill <45m old; defer ghost-flatten`
+              detail: hasOpenEmittedEntryForTicker(y)
+                ? `Site open ${asAbs} but IB flat — entry fill <45m old / open model entry; defer close`
+                : `Site open ${asAbs} but IB flat — entry fill <45m old; defer ghost-flatten`
             });
             continue;
           }
@@ -14096,22 +14169,38 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
             // old bug (inventing exit === avgEntry with no quote).
             const fillAt = new Date().toISOString();
             const phase = ibkrSessionPhase(o.rawTicker || y, fillAt);
-            // Isolate on |cursor-err so inventing an exit never closes the live model key.
-            const errKey = toCursorErrIbkrKey(o.key);
-            const execId = `recon-flat-${errKey}-q${o.openQty}`;
+            // Close on the same key (model or error). Tag as errorTrade when a
+            // live model entry was open — IB flat after grace means system/orphan
+            // close, not a model TP/SL exit.
+            const modelStillOpen = hasOpenEmittedEntryForTicker(o.rawTicker || y);
+            const execId = `recon-flat-${o.key}-q${o.openQty}`;
             if (_ibkrExecIds.has(execId)) continue;
             newFills.push({
-              execId, key: errKey, ticker: o.rawTicker || y, hz: o.hz || 'short',
+              execId, key: o.key, ticker: o.rawTicker || y, hz: o.hz || 'short',
               side: o.side, role: 'flatten', qty: o.openQty, price: px,
               currency: o.currency, ccyScale: o.ccyScale, orderId: null,
               time: fillAt, session: phase, sessionLabel: ibkrSessionLabel(phase),
-              errorTrade: true, // system ghost-flat — never model PnL
+              errorTrade: true,
               synthetic: true,
               recon: 'ghost-flat', markSrc: o.markSrc || 'unknown',
-              note: 'Cursor recon ghost-flatten — Error trade (not model PnL)'
+              note: modelStillOpen
+                ? 'IB flat after grace — Error trade close (orphan/system; not model exit)'
+                : 'IB flat site-open close — Error trade'
             });
+            if (modelStillOpen && o.key && !isCursorErrIbkrKey(o.key)) {
+              try {
+                emitTradeEvent('exit', {
+                  key: o.key,
+                  ticker: o.rawTicker || y,
+                  hz: o.hz || 'long',
+                  side: o.side === 'sell' ? 'sell' : 'buy',
+                  reason: 'ib-flat-after-grace',
+                  errorTrade: true
+                });
+              } catch (_) {}
+            }
             adjusted.push({
-              ticker: o.rawTicker || y, key: errKey, action: 'ghost-flatten',
+              ticker: o.rawTicker || y, key: o.key, action: 'ghost-flatten',
               qty: o.openQty, price: px, markSrc: o.markSrc || 'unknown', errorTrade: true
             });
             anyFlat = true;
