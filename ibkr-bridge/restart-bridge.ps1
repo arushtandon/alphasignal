@@ -11,19 +11,34 @@ Write-Host "=== AlphaSignal IBKR bridge restart ===" -ForegroundColor Cyan
 Write-Host "Folder: $Root"
 Write-Host ""
 
-# 1) Stop existing bridge / run-forever windows that own this folder
-Write-Host "Stopping old bridge node processes..."
+# 1) Stop ALL bridge supervisors + node workers for this folder.
+#    Duplicate run-forever.ps1 windows fight over clientId → disconnect loop.
+Write-Host "Stopping old bridge / run-forever processes..."
 Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
   Where-Object {
-    $_.Name -match '^(node|nodejs)\.exe$' -and
-    $_.CommandLine -and
-    ($_.CommandLine -match 'bridge\.js' -or $_.CommandLine -match 'run-forever\.ps1')
+    $_.CommandLine -and (
+      ($_.Name -match '^(node|nodejs)\.exe$' -and $_.CommandLine -match 'bridge\.js') -or
+      ($_.CommandLine -match 'run-forever\.ps1')
+    )
   } |
   ForEach-Object {
     Write-Host ("  kill PID {0}: {1}" -f $_.ProcessId, $_.CommandLine.Substring(0, [Math]::Min(120, $_.CommandLine.Length)))
     Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
   }
 
+Start-Sleep -Seconds 4
+# Second pass — leftover supervisors sometimes respawn a node during the sleep.
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+  Where-Object {
+    $_.CommandLine -and (
+      ($_.Name -match '^(node|nodejs)\.exe$' -and $_.CommandLine -match 'bridge\.js') -or
+      ($_.CommandLine -match 'run-forever\.ps1')
+    )
+  } |
+  ForEach-Object {
+    Write-Host ("  kill leftover PID {0}" -f $_.ProcessId)
+    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+  }
 Start-Sleep -Seconds 2
 
 # 2) Pull latest bridge.js from git (optional — ignore failures)

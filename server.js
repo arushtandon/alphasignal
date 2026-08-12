@@ -2912,11 +2912,11 @@ async function fetchFundamentalsYahoo(symbol) {
         sym,
         'financialData,defaultKeyStatistics,summaryDetail,assetProfile'
       );
-      const res = qs?.quoteSummary?.result?.[0];
+    const res = qs?.quoteSummary?.result?.[0];
       if (!res) continue;
-      const fd = res.financialData || {};
-      const ks = res.defaultKeyStatistics || {};
-      const sd = res.summaryDetail || {};
+    const fd = res.financialData || {};
+    const ks = res.defaultKeyStatistics || {};
+    const sd = res.summaryDetail || {};
       const ap = res.assetProfile || {};
       const sect = String(ap.sector || ap.industry || '')
         .trim()
@@ -2953,9 +2953,9 @@ async function fetchFundamentalsYahoo(symbol) {
         console.log(`fetchFundamentalsYahoo ${symbol} ← ${sym}`);
         return snap;
       }
-    } catch (e) {
+  } catch (e) {
       console.warn('fetchFundamentalsYahoo', sym, e.message);
-    }
+  }
   }
   return null;
 }
@@ -3665,7 +3665,7 @@ async function fetchFundamentalsFromYahooV7Quote(symbol) {
       earningsGrowth == null &&
       !sector
     )
-      return null;
+    return null;
     console.log(`fetchFundamentalsFromYahooV7Quote ${symbol} ← ${symLabel}`);
     return {
       forwardPE,
@@ -3686,7 +3686,7 @@ async function fetchFundamentalsFromYahooV7Quote(symbol) {
         if (r.ok) {
           const d = await r.json().catch(() => null);
           const hit = parseQ(d?.quoteResponse?.result?.[0], sym);
-          if (hit) return hit;
+        if (hit) return hit;
         }
         const priceOnly = `https://${base}.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(sym)}&fields=${YAHOO_PRICE_FIELDS},trailingPE,forwardPE,pegRatio,epsTrailingTwelveMonths`;
         r = await fetch(priceOnly, { headers: YF_HEADERS, signal: AbortSignal.timeout(12000) });
@@ -3700,7 +3700,7 @@ async function fetchFundamentalsFromYahooV7Quote(symbol) {
         if (r.ok) {
           const d = await r.json().catch(() => null);
           const hit = parseQ(d?.quoteResponse?.result?.[0], sym);
-          if (hit) return hit;
+        if (hit) return hit;
         }
       } catch (e) {
         console.warn('fetchFundamentalsFromYahooV7Quote', sym, e.message);
@@ -5022,7 +5022,7 @@ async function fetchFundamentals(symbol) {
   // Last-resort Yahoo PE pass
   if (
     merged.trailingPE == null ||
-    merged.forwardPE == null ||
+      merged.forwardPE == null ||
     merged.pegRatio == null ||
     merged.revenueGrowth == null ||
     merged.earningsGrowth == null
@@ -5447,7 +5447,7 @@ app.post('/api/technicals/batch', async (req, res) => {
       techCache.set(sym, { ts: Date.now(), data });
       results[sym] = data;
     } catch(e) { console.warn('Batch tech fail:', sym, e.message); }
-    }));
+  }));
   }
 
   console.log(`Technicals batch: ${Object.keys(results).length}/${symbols.length} succeeded`);
@@ -5475,7 +5475,7 @@ app.post('/api/fundamentals/batch', async (req, res) => {
       const data = await fetchFundamentals(sym);
       if (data) { fundCache.set(sym, { ts: Date.now(), data }); results[sym] = data; }
     } catch(e) { console.warn('Fund batch fail:', sym, e.message); }
-    }));
+  }));
   }
 
   console.log(`Fundamentals batch: ${Object.keys(results).length}/${equities.length} succeeded`);
@@ -6862,7 +6862,7 @@ const DATA_DIR = (() => {
       fs.writeFileSync(probe, '1');
       fs.unlinkSync(probe);
       return dir;
-    } catch (_) {}
+  } catch (_) {}
   }
   return '/tmp';
 })();
@@ -7716,7 +7716,7 @@ app.get('/api/health', async (req, res) => {
       }
     }
     const ak = anthropicApiKey();
-    res.json({
+  res.json({
     status: 'ok',
     server_build: '20260624-fmp-ultimate-v7.9.5',
     uptime_s: Math.round(process.uptime()),
@@ -8112,7 +8112,7 @@ async function addTradesToHistory(trades) {
   // Cap total rows (multi-horizon scans add many per day; avoid unbounded growth)
   const HISTORY_MAX_SERVER = 3000;
   if (tradeHistory.length > HISTORY_MAX_SERVER) tradeHistory = tradeHistory.slice(0, HISTORY_MAX_SERVER);
-
+  
   saveHistoryFile(tradeHistory);
   return { accepted: accepted.length, skipped: trades.length - accepted.length, total: tradeHistory.length };
 }
@@ -8350,7 +8350,7 @@ app.post('/api/history/update-pnl', express.json(), (req, res) => {
   
   updates.forEach(u => {
     const uDay = singaporeToDateString(Date.parse(u.entryDate) || Date.now());
-    const idx = tradeHistory.findIndex(h =>
+    const idx = tradeHistory.findIndex(h => 
       h.ticker === u.ticker && historyTradeEntryDay(h) === uDay
     );
     if (idx >= 0) {
@@ -9529,10 +9529,10 @@ function fmpNormalizeEarningsHistRows(arr) {
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   }
-  const sorted = [...arr].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-  return sorted
-    .slice(0, 4)
-    .map((row) => {
+    const sorted = [...arr].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    return sorted
+      .slice(0, 4)
+      .map((row) => {
       const dateStr = String(row.date || row.reportDate || '').slice(0, 10);
       const ea = pickNum(
         row.epsActual ?? row.actualEPS ?? row.actual ?? row.actualEarningResult ?? row.eps
@@ -9545,30 +9545,30 @@ function fmpNormalizeEarningsHistRows(arr) {
           row.estimatedEarning
       );
       let surp = pickNum(row.surprisePercent ?? row.surprise);
-      if ((surp == null || Number.isNaN(surp)) && ea != null && ee != null && Math.abs(ee) > 1e-9) {
-        surp = ((ea - ee) / Math.abs(ee)) * 100;
-      }
-      const quarter = dateStr
-        ? new Date(dateStr + 'T12:00:00Z').toLocaleDateString('en-GB', {
-            month: 'short',
-            year: 'numeric'
-          })
-        : '';
-      const surpLabel =
-        surp != null && Number.isFinite(surp) ? (surp >= 0 ? '+' : '') + surp.toFixed(1) + '%' : null;
-      return {
-        quarter,
-        date: dateStr,
-        epsActual: ea != null ? String(ea) : null,
-        epsEstimate: ee != null ? String(ee) : null,
-        epsSurprise: surpLabel,
-        beat: surp != null ? surp >= 0 : null,
+        if ((surp == null || Number.isNaN(surp)) && ea != null && ee != null && Math.abs(ee) > 1e-9) {
+          surp = ((ea - ee) / Math.abs(ee)) * 100;
+        }
+        const quarter = dateStr
+          ? new Date(dateStr + 'T12:00:00Z').toLocaleDateString('en-GB', {
+              month: 'short',
+              year: 'numeric'
+            })
+          : '';
+        const surpLabel =
+          surp != null && Number.isFinite(surp) ? (surp >= 0 ? '+' : '') + surp.toFixed(1) + '%' : null;
+        return {
+          quarter,
+          date: dateStr,
+          epsActual: ea != null ? String(ea) : null,
+          epsEstimate: ee != null ? String(ee) : null,
+          epsSurprise: surpLabel,
+          beat: surp != null ? surp >= 0 : null,
         revenueActual: row.revenueActual != null ? String(row.revenueActual) : null,
-        stockReaction: null
-      };
-    })
-    .filter((r) => r.date || r.quarter);
-}
+          stockReaction: null
+        };
+      })
+      .filter((r) => r.date || r.quarter);
+  }
 
 /** US/other listings that share earnings with HK/NSE primary tickers (FMP often indexes under ADR). */
 function earningsCrossListVariants(sym) {
@@ -9668,7 +9668,7 @@ async function fmpEarningsSurprisesHistory(sym) {
         }
         if (!Array.isArray(arr) || !arr.length) continue;
         const out = fmpNormalizeEarningsHistRows(arr);
-        if (out.length) return out;
+      if (out.length) return out;
       }
     } catch (e) {
       console.warn('fmpEarningsSurprisesHistory', v, e.message);
@@ -10085,7 +10085,7 @@ app.get('/api/earnings/:symbol', async (req, res) => {
       ].filter(Boolean);
       const symCompactSet = new Set(symVariants.map(s => s.replace(/\./g, '').toUpperCase()));
       let fmpHits = fmpArr.filter(r => {
-        const fs = fmpSymbol(r);
+          const fs = fmpSymbol(r);
         if (!fs) return false;
         const n = normalizeTickerMatch(String(fs).trim().toUpperCase());
         return n && symVariants.includes(n);
@@ -12552,21 +12552,30 @@ function resolveIbPosForYahoo(yahoo, ibByY, ibByConId) {
  * AUTHORIZATION BY PROVENANCE: a position is authorized iff it maps to an open
  * emitted `entry` key (no `exit`) in trade_events — never by ticker identity lists.
  */
-function hasOpenEmittedEntryForTicker(ticker) {
+function openEmittedEntriesForTicker(ticker) {
   const aliases = ibkrYahooAliases(ticker);
+  const open = new Map(); // key -> { key, side, hz, ticker }
   try {
-    if (!fs.existsSync(TRADE_EVENTS_FILE)) return false;
-    const open = new Set();
+    if (!fs.existsSync(TRADE_EVENTS_FILE)) return [];
     for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
       let e; try { e = JSON.parse(line); } catch (_) { continue; }
       if (!e || !e.key) continue;
       const t = String(e.key.split('|')[0] || '').toUpperCase();
       if (!aliases.has(t)) continue;
-      if (e.type === 'entry') open.add(e.key);
-      else if (e.type === 'exit') open.delete(e.key);
+      if (e.type === 'entry') {
+        const hz = String(e.key.split('|')[1] || e.hz || 'short');
+        open.set(e.key, {
+          key: e.key, ticker: t, hz,
+          side: e.side === 'sell' ? 'sell' : 'buy'
+        });
+      } else if (e.type === 'exit') open.delete(e.key);
     }
-    return open.size > 0;
-  } catch (_) { return false; }
+  } catch (_) { return []; }
+  return [...open.values()];
+}
+
+function hasOpenEmittedEntryForTicker(ticker) {
+  return openEmittedEntriesForTicker(ticker).length > 0;
 }
 
 function isPositionAuthorizedByProvenance(ticker, hz, entryDate) {
@@ -13531,6 +13540,44 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         authorized: isPositionAuthorizedByProvenance(y)
       });
     }
+
+    // Authorized but no site fill lot (e.g. KHC): import IB avg as synthetic entry
+    // so recon stops flagging "fill lag" and the IBKR tab shows the model open.
+    const stillUntracked = [];
+    for (const u of untrackedIb) {
+      if (!u.authorized || !(Math.abs(Number(u.qty)) > 0)) { stillUntracked.push(u); continue; }
+      const ents = openEmittedEntriesForTicker(u.ticker);
+      if (!ents.length) { stillUntracked.push(u); continue; }
+      const ent = ents[ents.length - 1];
+      const qty = Math.abs(Number(u.qty));
+      const side = Math.sign(Number(u.qty)) < 0 ? 'sell' : 'buy';
+      // Prefer matching side from emit; fall back to IB position sign.
+      const prefer = ents.find(e => e.side === side) || ent;
+      const ccy = /\.HK$/i.test(u.ticker) ? 'HKD' : (/\.T$/i.test(u.ticker) ? 'JPY'
+        : (/\.L$/i.test(u.ticker) ? 'GBP' : (/(\.DE|\.PA)$/i.test(u.ticker) ? 'EUR' : 'USD')));
+      const ccyScale = ccy === 'GBP' ? 100 : 1;
+      const avg = ibkrAvgToFillUnit(u.avgCost, ccyScale, null) || Number(u.avgCost) || 0;
+      if (!(avg > 0)) { stillUntracked.push(u); continue; }
+      const fillAt = new Date().toISOString();
+      const phase = ibkrSessionPhase(u.ticker, fillAt);
+      const execId = `recon-import-${prefer.key}-q${qty}`;
+      if (!_ibkrExecIds.has(execId)) {
+        newFills.push({
+          execId, key: prefer.key, ticker: u.ticker, hz: prefer.hz || 'short',
+          side: prefer.side || side, role: 'entry', qty, price: avg,
+          currency: ccy, ccyScale, orderId: null,
+          time: fillAt, session: phase, sessionLabel: ibkrSessionLabel(phase),
+          synthetic: true, recon: 'import-ib-lot'
+        });
+        adjusted.push({ ticker: u.ticker, key: prefer.key, action: 'import-ib-lot', qty, price: avg });
+        console.log('IBKR recon: imported missing fill lot', u.ticker, qty + '@' + avg, prefer.key);
+      }
+      // Drop from untracked once imported (or already imported).
+    }
+    untrackedIb.length = 0;
+    untrackedIb.push(...stillUntracked.filter(u => !adjusted.some(a =>
+      a.action === 'import-ib-lot' && String(a.ticker).toUpperCase() === String(u.ticker).toUpperCase()
+    )));
 
     for (const [y, group] of asByTicker) {
       if (dualListHandled.has(y)) continue;
@@ -15359,25 +15406,25 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log('AlphaSignal on port', PORT);
+app.listen(PORT, () => {
+  console.log('AlphaSignal on port', PORT);
     console.log('Anthropic API key set:', !!anthropicApiKey());
-    const likelyRender =
-      String(process.env.RENDER || '').toLowerCase() === 'true' ||
-      /\bonrender\.com\b/i.test(
-        String(process.env.RENDER_EXTERNAL_URL || process.env.RENDER_EXTERNAL_HOSTNAME || '')
-      );
-    if (likelyRender && bloombergBridgeUrlIsUnreachableFromInternet()) {
-      console.warn(
-        '→ BLOOMBERG_BRIDGE_URL is private/localhost — this host cannot reach your Bloomberg PC on the LAN.'
-      );
-      console.warn('  Use Cloudflare Tunnel / ngrok to expose the bridge HTTPS URL, or self-host API on-premises.');
-    }
-    // Test price fetch on startup
-    fetchSinglePrice('AAPL').then(p => {
-      if (p) console.log('✓ Yahoo Finance working - AAPL:', p.price, p.currency);
-      else console.warn('✗ Yahoo Finance not working - prices will be unavailable');
-    });
+  const likelyRender =
+    String(process.env.RENDER || '').toLowerCase() === 'true' ||
+    /\bonrender\.com\b/i.test(
+      String(process.env.RENDER_EXTERNAL_URL || process.env.RENDER_EXTERNAL_HOSTNAME || '')
+    );
+  if (likelyRender && bloombergBridgeUrlIsUnreachableFromInternet()) {
+    console.warn(
+      '→ BLOOMBERG_BRIDGE_URL is private/localhost — this host cannot reach your Bloomberg PC on the LAN.'
+    );
+    console.warn('  Use Cloudflare Tunnel / ngrok to expose the bridge HTTPS URL, or self-host API on-premises.');
+  }
+  // Test price fetch on startup
+  fetchSinglePrice('AAPL').then(p => {
+    if (p) console.log('✓ Yahoo Finance working - AAPL:', p.price, p.currency);
+    else console.warn('✗ Yahoo Finance not working - prices will be unavailable');
+  });
     // Restore any recommended CSVs dropped into data/pending_history_import/
     importPendingRecommendedCsvs()
       .then(() => importSeedRecommendedCsvsIfMissing())

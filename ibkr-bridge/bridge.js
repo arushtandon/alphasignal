@@ -456,10 +456,14 @@ function enrichSessionMeta(c) {
 
 function orderContractFromPos(c) {
   if (!c) return null;
+  const ccy = String(c.currency || 'USD');
+  const isHk = ccy === 'HKD' || String(c.primaryExch || '').toUpperCase() === 'SEHK'
+    || String(c.market || '') === 'HK';
   const out = {
     secType: c.secType || 'STK',
-    exchange: 'SMART',
-    currency: c.currency || 'USD'
+    // HK SMART+bare numeric symbol often returns IB error 200. Pin SEHK.
+    exchange: isHk ? 'SEHK' : 'SMART',
+    currency: ccy
   };
   const conId = Number(c.conId);
   if (conId > 0) out.conId = conId;
@@ -467,9 +471,8 @@ function orderContractFromPos(c) {
   if (c.localSymbol) out.localSymbol = String(c.localSymbol);
   if (c.primaryExch) {
     out.primaryExch = c.primaryExch;
-  } else if (out.currency === 'HKD') {
+  } else if (isHk) {
     out.primaryExch = 'SEHK';
-    // IB often wants the numeric code as-is; keep symbol from the position
   } else if (out.currency === 'JPY') {
     out.primaryExch = 'TSEJ';
   } else if (out.currency === 'EUR') {
@@ -480,6 +483,28 @@ function orderContractFromPos(c) {
     out.primaryExch = 'NASDAQ';
   }
   return enrichSessionMeta(out);
+}
+
+/** Prefer conId + listing exchange (same shape as placeBracket) for reliable MKT. */
+function placeableContract(c) {
+  if (!c) return null;
+  const base = orderContractFromPos(c) || c;
+  const conId = Number(base.conId || c.conId);
+  const isHk = String(base.currency || '') === 'HKD' || base.market === 'HK'
+    || String(base.primaryExch || '').toUpperCase() === 'SEHK';
+  if (conId > 0) {
+    return enrichSessionMeta({
+      conId,
+      symbol: base.symbol != null ? String(base.symbol) : undefined,
+      localSymbol: base.localSymbol || undefined,
+      secType: 'STK',
+      exchange: isHk ? 'SEHK' : (base.exchange || 'SMART'),
+      primaryExch: base.primaryExch || (isHk ? 'SEHK' : undefined),
+      currency: base.currency || 'USD',
+      market: base.market
+    });
+  }
+  return base;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -837,12 +862,13 @@ async function main() {
       ib.on(EventName.contractDetails, onDet);
       ib.on(EventName.contractDetailsEnd, onEnd);
       try {
+        const isHk = String(contract.currency || '') === 'HKD' || contract.market === 'HK';
         ib.reqContractDetails(reqId, {
           symbol: String(contract.symbol),
           secType: contract.secType || 'STK',
-          exchange: 'SMART',
+          exchange: isHk ? 'SEHK' : 'SMART',
           currency: contract.currency,
-          primaryExch: contract.primaryExch
+          primaryExch: contract.primaryExch || (isHk ? 'SEHK' : undefined)
         });
       } catch (e) {
         clearTimeout(t);
@@ -1932,7 +1958,8 @@ async function main() {
         if (Date.now() - lastTry < 15 * 60 * 1000) continue;
         _flattenTried.set('err|' + key, Date.now());
         const fid = nid();
-        const oc = orderContractFromPos(held.contract || contract);
+        try { await resolveLot(held.contract || contract); } catch (_) { /* best-effort */ }
+        const oc = placeableContract(held.contract || contract);
         if (!oc || (!oc.conId && !oc.symbol)) continue;
         row.errorTrade = true;
         row.flatReason = row.flatReason || 'unauthorized-non-recommendation';
@@ -1967,7 +1994,8 @@ async function main() {
           _flattenTried.set('err|' + pk, Date.now());
           const qty = Math.abs(pos);
           const fid = nid();
-          const oc = orderContractFromPos(contract);
+          try { await resolveLot(contract); } catch (_) { /* best-effort */ }
+          const oc = placeableContract(contract);
           if (!oc || (!oc.conId && !oc.symbol)) continue;
           const ticker = y || symU;
           const errKey = `${ticker}|error|${singaporeToDateString()}`;
@@ -2075,7 +2103,9 @@ async function main() {
         _flattenTried.set(pk, Date.now());
         const qty = Math.abs(pos);
         const fid = nid();
-        const oc = orderContractFromPos(cMeta);
+        // Resolve conId when missing — SMART+numeric HK without conId → error 200.
+        try { await resolveLot(cMeta); } catch (_) { /* best-effort */ }
+        const oc = placeableContract(cMeta);
         if (!oc || (!oc.conId && !oc.symbol)) continue;
         const action = pos > 0 ? 'SELL' : 'BUY';
         // RTH → market day order. Otherwise → opening auction (next session).
@@ -2083,6 +2113,7 @@ async function main() {
         const tif = useOpg ? 'OPG' : 'DAY';
         log('RECONCILE: flattening', isOrphanIbOnly ? 'IB-ONLY ORPHAN' : 'UNAUTHORIZED',
           pk, 'pos=' + pos, 'ticker=' + y, 'streak=' + streak,
+          'exch=' + (oc.exchange || '?'), 'conId=' + (oc.conId || 'none'),
           useOpg ? ('OPG→next open (' + phase + ')') : 'MKT RTH');
         transmitOrder(fid, oc, baseOrder({
           orderId: fid, action,
