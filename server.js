@@ -6480,10 +6480,55 @@ function countDashPicks(dashData) {
 }
 
 /**
- * Rebuild board rows from live History opens. After a deploy gutting the picks
- * cache, open Buy/Sell names (IR/DLR/RCL…) were blocked from regen by
- * hasOpenTradeInDirection — so panes stayed empty even though the trades were live.
- * Put those opens back on today's board (display + cache), up to 5 per pane.
+ * True when History still has a live open in this direction whose entry day is
+ * NOT today (SGT). Yesterday's DHL etc. must not keep appearing as "today's picks".
+ */
+function hasPriorDayOpenInDirection(ticker, wantSell) {
+  if (!ticker) return false;
+  const aliases = historyTickerMatchSet(ticker);
+  const today = singaporeToDateString();
+  if (Array.isArray(tradeHistory)) {
+    for (const h of tradeHistory) {
+      if (!h || !aliases.has(normalizeHistoryTicker(h.ticker))) continue;
+      const hz = h.hz || 'short';
+      const status = String(h[hz + 'Status'] || h.status || 'open').toLowerCase();
+      if (!LIVE_STATUSES.has(status)) continue;
+      const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
+      if (act !== 'buy' && act !== 'sell') continue;
+      if ((act === 'sell') !== !!wantSell) continue;
+      if (historyTradeEntryDay(h) !== today) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Drop board rows that are still-open History names from a prior SGT day.
+ * Dashboard = today's rotating board; open book lives on History / IBKR.
+ */
+function stripPriorDayOpenPicksFromDashData(dashData) {
+  if (!dashData || typeof dashData !== 'object') return dashData;
+  const paneSell = { shortSell: true, medSell: true, longSell: true };
+  const out = { ...dashData };
+  for (const pane of ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell']) {
+    const arr = Array.isArray(dashData[pane]) ? dashData[pane] : [];
+    const wantSell = !!paneSell[pane];
+    out[pane] = arr.filter((r) => {
+      if (!r || !r.ticker) return false;
+      if (hasPriorDayOpenInDirection(r.ticker, wantSell)) {
+        console.log('Board strip prior-day open:', r.ticker, pane);
+        return false;
+      }
+      return true;
+    });
+  }
+  return out;
+}
+
+/**
+ * Optionally surface TODAY's open History buys/sells on the board (same SGT day
+ * only). Never re-list prior-day opens — that made DHL/KHC look like fresh picks.
+ * Empty cache after deploy should regen new names; History still shows live opens.
  */
 function historyOpenToDashPick(h) {
   if (!h || !h.ticker) return null;
@@ -6541,7 +6586,8 @@ function historyOpenToDashPick(h) {
   return row;
 }
 
-function mergeLiveOpenHistoryIntoDashData(dashData) {
+function mergeLiveOpenHistoryIntoDashData(dashData, opts = {}) {
+  const onlyToday = opts.onlyToday !== false; // default: never recycle prior-day opens
   const LIVE = new Set(['open', 'partial', 'tp1_hit', 'tp1_open', 'pending', '']);
   const paneOf = (hz, sell) => (sell
     ? { short: 'shortSell', medium: 'medSell', long: 'longSell' }
@@ -6563,6 +6609,7 @@ function mergeLiveOpenHistoryIntoDashData(dashData) {
     if (act !== 'buy' && act !== 'sell') continue;
     const st = String(h[hz + 'Status'] || h.status || 'open').toLowerCase();
     if (!LIVE.has(st)) continue;
+    if (onlyToday && historyTradeEntryDay(h) !== today) continue;
     if (act === 'sell' && !SELL_PICKS_ENABLED) continue;
     if (!bracketEnabled(act === 'sell' ? 'sell' : 'buy', hz)) continue;
     const pane = paneOf(hz, act === 'sell');
@@ -6570,8 +6617,7 @@ function mergeLiveOpenHistoryIntoDashData(dashData) {
     const pick = historyOpenToDashPick(h);
     if (!pick) continue;
     const conf = Number(pick[hz + 'Conf'] || 0);
-    const todayBoost = historyTradeEntryDay(h) === today ? 1000 : 0;
-    candidates.push({ pane, pick, rank: todayBoost + conf });
+    candidates.push({ pane, pick, rank: conf });
   }
   candidates.sort((a, b) => b.rank - a.rank);
   let added = 0;
@@ -6961,10 +7007,10 @@ app.get('/api/dashboard/picks', (req, res) => {
   const fromDisk = loadDashboardPicksFile();
   if (fromDisk) dashboardPicksCache = fromDisk;
   if (!dashboardPicksCache || !dashboardPicksCache.dashData) {
-    // Still try to surface today's open History buys if cache was wiped.
-    const seeded = mergeLiveOpenHistoryIntoDashData(null);
+    // Only today's opens — never seed the board with yesterday's DHL/KHC.
+    const seeded = mergeLiveOpenHistoryIntoDashData(null, { onlyToday: true });
     if (seeded.added > 0) {
-      const dashData = filterDashDataBySLCooldown(seeded.dashData);
+      const dashData = stripPriorDayOpenPicksFromDashData(filterDashDataBySLCooldown(seeded.dashData));
       dashboardPicksCache = {
         version: DASHBOARD_PICKS_VERSION,
         schemaVersion: 1,
@@ -6992,9 +7038,12 @@ app.get('/api/dashboard/picks', (req, res) => {
   }
   let dashData = filterDashDataBySLCooldown(dashboardPicksCache.dashData);
   const before = countDashPicks(dashData);
-  const merged = mergeLiveOpenHistoryIntoDashData(dashData);
+  // Purge prior-day opens that were glued onto the board (DHL etc.).
+  dashData = stripPriorDayOpenPicksFromDashData(dashData);
+  const merged = mergeLiveOpenHistoryIntoDashData(dashData, { onlyToday: true });
   dashData = merged.dashData;
-  if (merged.added > 0) {
+  const stripped = before !== countDashPicks(dashData) || merged.added > 0;
+  if (stripped) {
     dashboardPicksCache = {
       version: dashboardPicksCache.version || DASHBOARD_PICKS_VERSION,
       schemaVersion: dashboardPicksCache.schemaVersion || 1,
@@ -7006,7 +7055,10 @@ app.get('/api/dashboard/picks', (req, res) => {
       prevSummary: dashboardPicksCache.prevSummary
     };
     saveDashboardPicksFile(dashboardPicksCache);
-    console.log('Restored', merged.added, 'open History pick(s) onto board (was', before, '→', countDashPicks(dashData), ')');
+    console.log(
+      'Board open-history reconcile:', before, '→', countDashPicks(dashData),
+      '(today-only restore', merged.added || 0, ')'
+    );
   }
   res.json({
     version: dashboardPicksCache.version,
@@ -7513,25 +7565,39 @@ async function generateServerPicksFromShortlist(opts = {}) {
     // Generic/empty reason fields were leaving recommended CSV Reason blanks.
     stampDashDataReasons(dashData);
 
-    // Open History buys/sells are excluded from candidate pools (no re-recommend),
-    // but they must still appear on the board — otherwise a deploy wipe leaves
-    // empty panes while IR/DLR/RCL remain live opens.
-    dashData = mergeLiveOpenHistoryIntoDashData(dashData).dashData;
+    // Only TODAY's opens may stay on the board (same SGT day). Prior-day opens
+    // (DHL yesterday, KHC last week) stay on History — never as recycled picks.
+    dashData = mergeLiveOpenHistoryIntoDashData(dashData, { onlyToday: true }).dashData;
+    dashData = stripPriorDayOpenPicksFromDashData(dashData);
 
     // Never clobber a good board with an empty/sparse one (open-trade + rotation
-    // race, or a thin shortlist after deploy). A single surviving name used to
-    // overwrite a full short/medium board and blank the dashboard.
+    // race, or a thin shortlist after deploy). Compare against a prior board that
+    // has already had stale opens stripped — otherwise we forever keep DHL/KHC.
+    const cleanPrev = stripPriorDayOpenPicksFromDashData(prevDash);
+    const cleanPrevCount = countDashPicks(cleanPrev);
     const newCount = countDashPicks(dashData);
-    const sparseCollapse = prevCount >= 3 && newCount < Math.min(3, Math.ceil(prevCount * 0.4));
-    if ((newCount === 0 && prevCount > 0) || sparseCollapse) {
+    const sparseCollapse = cleanPrevCount >= 3 && newCount < Math.min(3, Math.ceil(cleanPrevCount * 0.4));
+    if ((newCount === 0 && cleanPrevCount > 0) || sparseCollapse) {
       console.warn(
-        'Server picks regen too thin (', newCount, 'vs prior', prevCount,
-        ') — keeping previous board'
+        'Server picks regen too thin (', newCount, 'vs prior', cleanPrevCount,
+        ') — keeping previous board (prior-day opens stripped)'
       );
+      if (cleanPrev && cleanPrevCount !== prevCount) {
+        dashboardPicksCache = {
+          version: (dashboardPicksCache && dashboardPicksCache.version) || DASHBOARD_PICKS_VERSION,
+          schemaVersion: 1,
+          dashTs: (dashboardPicksCache && dashboardPicksCache.dashTs) || Date.now(),
+          dashData: sanitizeDashDataForServer(cleanPrev),
+          priorPickTickers: priorTickers,
+          priorPickTs: (dashboardPicksCache && dashboardPicksCache.priorPickTs) || Date.now(),
+          prevSummary: prevSummary || ''
+        };
+        saveDashboardPicksFile(dashboardPicksCache);
+      }
       return {
         ok: true,
         keptPrevious: true,
-        summary: prevSummary,
+        summary: dashboardPicksSummary(cleanPrev || prevDash),
         prevSummary,
         dashTs: dashboardPicksCache && dashboardPicksCache.dashTs,
         cooldownSize: cooldown.size
@@ -12552,30 +12618,21 @@ function resolveIbPosForYahoo(yahoo, ibByY, ibByConId) {
  * AUTHORIZATION BY PROVENANCE: a position is authorized iff it maps to an open
  * emitted `entry` key (no `exit`) in trade_events — never by ticker identity lists.
  */
-function openEmittedEntriesForTicker(ticker) {
+function hasOpenEmittedEntryForTicker(ticker) {
   const aliases = ibkrYahooAliases(ticker);
-  const open = new Map(); // key -> { key, side, hz, ticker }
   try {
-    if (!fs.existsSync(TRADE_EVENTS_FILE)) return [];
+    if (!fs.existsSync(TRADE_EVENTS_FILE)) return false;
+    const open = new Set();
     for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
       let e; try { e = JSON.parse(line); } catch (_) { continue; }
       if (!e || !e.key) continue;
       const t = String(e.key.split('|')[0] || '').toUpperCase();
       if (!aliases.has(t)) continue;
-      if (e.type === 'entry') {
-        const hz = String(e.key.split('|')[1] || e.hz || 'short');
-        open.set(e.key, {
-          key: e.key, ticker: t, hz,
-          side: e.side === 'sell' ? 'sell' : 'buy'
-        });
-      } else if (e.type === 'exit') open.delete(e.key);
+      if (e.type === 'entry') open.add(e.key);
+      else if (e.type === 'exit') open.delete(e.key);
     }
-  } catch (_) { return []; }
-  return [...open.values()];
-}
-
-function hasOpenEmittedEntryForTicker(ticker) {
-  return openEmittedEntriesForTicker(ticker).length > 0;
+    return open.size > 0;
+  } catch (_) { return false; }
 }
 
 function isPositionAuthorizedByProvenance(ticker, hz, entryDate) {
@@ -13540,44 +13597,6 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         authorized: isPositionAuthorizedByProvenance(y)
       });
     }
-
-    // Authorized but no site fill lot (e.g. KHC): import IB avg as synthetic entry
-    // so recon stops flagging "fill lag" and the IBKR tab shows the model open.
-    const stillUntracked = [];
-    for (const u of untrackedIb) {
-      if (!u.authorized || !(Math.abs(Number(u.qty)) > 0)) { stillUntracked.push(u); continue; }
-      const ents = openEmittedEntriesForTicker(u.ticker);
-      if (!ents.length) { stillUntracked.push(u); continue; }
-      const ent = ents[ents.length - 1];
-      const qty = Math.abs(Number(u.qty));
-      const side = Math.sign(Number(u.qty)) < 0 ? 'sell' : 'buy';
-      // Prefer matching side from emit; fall back to IB position sign.
-      const prefer = ents.find(e => e.side === side) || ent;
-      const ccy = /\.HK$/i.test(u.ticker) ? 'HKD' : (/\.T$/i.test(u.ticker) ? 'JPY'
-        : (/\.L$/i.test(u.ticker) ? 'GBP' : (/(\.DE|\.PA)$/i.test(u.ticker) ? 'EUR' : 'USD')));
-      const ccyScale = ccy === 'GBP' ? 100 : 1;
-      const avg = ibkrAvgToFillUnit(u.avgCost, ccyScale, null) || Number(u.avgCost) || 0;
-      if (!(avg > 0)) { stillUntracked.push(u); continue; }
-      const fillAt = new Date().toISOString();
-      const phase = ibkrSessionPhase(u.ticker, fillAt);
-      const execId = `recon-import-${prefer.key}-q${qty}`;
-      if (!_ibkrExecIds.has(execId)) {
-        newFills.push({
-          execId, key: prefer.key, ticker: u.ticker, hz: prefer.hz || 'short',
-          side: prefer.side || side, role: 'entry', qty, price: avg,
-          currency: ccy, ccyScale, orderId: null,
-          time: fillAt, session: phase, sessionLabel: ibkrSessionLabel(phase),
-          synthetic: true, recon: 'import-ib-lot'
-        });
-        adjusted.push({ ticker: u.ticker, key: prefer.key, action: 'import-ib-lot', qty, price: avg });
-        console.log('IBKR recon: imported missing fill lot', u.ticker, qty + '@' + avg, prefer.key);
-      }
-      // Drop from untracked once imported (or already imported).
-    }
-    untrackedIb.length = 0;
-    untrackedIb.push(...stillUntracked.filter(u => !adjusted.some(a =>
-      a.action === 'import-ib-lot' && String(a.ticker).toUpperCase() === String(u.ticker).toUpperCase()
-    )));
 
     for (const [y, group] of asByTicker) {
       if (dualListHandled.has(y)) continue;
