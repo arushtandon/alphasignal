@@ -14179,36 +14179,88 @@ app.get('/api/ibkr/trades', async (req, res) => {
           : hasStop ? 'stop-loss (full)'
           : 'tp exit';
       }
+    }
 
-      const y = normalizeIbkrYahooTicker(t.ticker);
-      const ibp = resolveIbPosForYahoo(y, ibPosByY, ibPosByConId);
-      if (!ibp || reconSnap && reconSnap.at && (Date.now() - Date.parse(reconSnap.at)) > 15 * 60 * 1000) {
-        continue; // snapshot missing/stale — keep fill-ledger view
+    // Overlay IB paper qty/avg — allocate ONE position across multiple keys for
+    // the same ticker (2914 short+long used to each get openQty=IB abs → fake
+    // unrealised on the already-flattened short lot).
+    if (!(reconSnap && reconSnap.at && (Date.now() - Date.parse(reconSnap.at)) > 15 * 60 * 1000)) {
+      const byYSign = new Map(); // `${y}|${sign}` -> trades[]
+      for (const t of trades) {
+        const y = normalizeIbkrYahooTicker(t.ticker);
+        const sign = t.side === 'sell' ? -1 : 1;
+        const k = y + '|' + sign;
+        if (!byYSign.has(k)) byYSign.set(k, []);
+        byYSign.get(k).push(t);
       }
-      const ibQty = Number(ibp.qty) || 0;
-      const ibAbs = Math.abs(ibQty);
-      const asSign = t.side === 'sell' ? -1 : 1;
-      if (ibAbs === 0 && t.openQty > 0) {
-        // Ghost open vs paper — present as closed at IB
-        t.openQty = 0;
-        t.status = 'closed';
-        t.ibReconciled = 'ghost-closed';
-        if (t.errorTrade) t.exitType = 'error flatten';
-        else if (!t.exitType) t.exitType = 'flatten exit';
-        t.unrealizedUsd = 0;
-        t.mark = null;
-      } else if (ibAbs > 0 && Math.sign(ibQty) === asSign) {
-        if (t.openQty !== ibAbs) {
-          t.openQty = ibAbs;
-          t.ibReconciled = 'qty';
-          t.status = t.exitQty > 0 ? 'partial' : 'open';
+      for (const [k, group] of byYSign) {
+        const y = k.split('|')[0];
+        const asSign = Number(k.split('|')[1]) || 1;
+        const ibp = resolveIbPosForYahoo(y, ibPosByY, ibPosByConId);
+        if (!ibp) continue;
+        const ibQty = Number(ibp.qty) || 0;
+        const ibAbs = Math.abs(ibQty);
+        if (ibAbs === 0) {
+          for (const t of group) {
+            if (!(t.openQty > 0)) continue;
+            t.openQty = 0;
+            t.status = 'closed';
+            t.ibReconciled = 'ghost-closed';
+            if (t.errorTrade) t.exitType = 'error flatten';
+            else if (!t.exitType) t.exitType = 'flatten exit';
+            t.unrealizedUsd = 0;
+            t.mark = null;
+          }
+          continue;
         }
-        const avg = ibkrAvgToFillUnit(ibp.avgCost, t.ccyScale, t.avgEntry);
-        if (avg > 0) {
-          const tick = t.ccyScale === 100 ? 0.1 : (avg >= 1000 ? 1 : avg >= 100 ? 0.05 : 0.01);
-          if (Math.abs(t.avgEntry - avg) > tick) {
-            t.avgEntry = avg;
-            t.ibReconciled = (t.ibReconciled ? t.ibReconciled + '+avg' : 'avg');
+        if (Math.sign(ibQty) !== asSign) continue;
+
+        // Newest fill-ledger opens claim IB shares first; flat keys stay closed.
+        const ordered = group.slice().sort((a, b) => {
+          const ao = a.openQty > 0 ? 1 : 0;
+          const bo = b.openQty > 0 ? 1 : 0;
+          if (bo !== ao) return bo - ao;
+          return String(b.lastTime || '').localeCompare(String(a.lastTime || ''));
+        });
+        let remaining = ibAbs;
+        for (const t of ordered) {
+          const fillOpen = Math.max(0, Number(t.openQty) || 0);
+          let take = 0;
+          if (fillOpen > 0) {
+            take = Math.min(fillOpen, remaining);
+          } else if (remaining > 0 && ordered.filter(x => x.openQty > 0).length === 0) {
+            // No key still open on fills — park leftover IB on newest key only.
+            take = remaining;
+          }
+          remaining -= take;
+          if (take !== t.openQty) {
+            t.openQty = take;
+            t.ibReconciled = take > 0 ? 'qty' : (t.ibReconciled || 'qty');
+          }
+          if (take > 0) {
+            t.status = t.exitQty > 0 ? 'partial' : 'open';
+            const avg = ibkrAvgToFillUnit(ibp.avgCost, t.ccyScale, t.avgEntry);
+            if (avg > 0) {
+              const tick = t.ccyScale === 100 ? 0.1 : (avg >= 1000 ? 1 : avg >= 100 ? 0.05 : 0.01);
+              if (Math.abs(t.avgEntry - avg) > tick) {
+                t.avgEntry = avg;
+                t.ibReconciled = (t.ibReconciled ? t.ibReconciled + '+avg' : 'avg');
+              }
+            }
+          } else if (t.exitQty > 0 || t.hasFlatten) {
+            t.status = 'closed';
+            t.unrealizedUsd = 0;
+            if (t.errorTrade) t.exitType = 'error flatten';
+            else if (t.hasFlatten && !t.exitType) t.exitType = 'flatten exit';
+          }
+        }
+        // Leftover IB after filling open keys → add to newest still-open key.
+        if (remaining > 0) {
+          const host = ordered.find(t => t.openQty > 0) || ordered[0];
+          if (host) {
+            host.openQty = (Number(host.openQty) || 0) + remaining;
+            host.status = host.exitQty > 0 ? 'partial' : 'open';
+            host.ibReconciled = host.ibReconciled ? host.ibReconciled + '+pad' : 'qty-pad';
           }
         }
       }
