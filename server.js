@@ -12868,6 +12868,21 @@ function emitTradeEvent(type, payload) {
       return null;
     }
   }
+  // Idempotent exits — never spam the same closed key (SU.PA repair loop).
+  if (type === 'exit' && payload && payload.key) {
+    try {
+      if (fs.existsSync(TRADE_EVENTS_FILE)) {
+        const open = new Set();
+        for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
+          let e; try { e = JSON.parse(line); } catch (_) { continue; }
+          if (!e || !e.key) continue;
+          if (e.type === 'entry') open.add(e.key);
+          else if (e.type === 'exit') open.delete(e.key);
+        }
+        if (!open.has(String(payload.key))) return null;
+      }
+    } catch (_) { /* continue emit */ }
+  }
   _tradeEventSeq += 1;
   const evt = { seq: _tradeEventSeq, t: new Date().toISOString(), type, ...(payload || {}) };
   try {
@@ -13305,29 +13320,46 @@ function seedSuPaCursorReconErrorTrade() {
 function stampGhostFlatFillsAsErrorTrade() {
   const a = quarantineGhostFlatsAsErrorTrades();
   const b = seedSuPaCursorReconErrorTrade();
-  const c = repairSuPaLiveOpenWhenIbAlreadyFlat();
-  return a + b + c;
+  // Do NOT call repairSuPaLiveOpenWhenIbAlreadyFlat here — it looped with
+  // zero-edge void and spammed exit events, blocking model re-entry.
+  return a + b;
 }
 
 /**
- * SU.PA was orphan-flattened at IB (09:08Z) while site kept the model open.
- * Close the live key as Error trade so recon matches IB flat.
+ * One-shot only (boot). Never re-run on recon — zero-edge void + re-add caused
+ * exit spam (ib-orphan-flatten-repair every ~60s).
  */
 function repairSuPaLiveOpenWhenIbAlreadyFlat() {
   const LIVE_KEY = 'SU.PA|long|Wed Aug 12 2026';
+  const FLAG = path.join(path.dirname(HISTORY_FILE), 'su_pa_ibflat_repaired.flag');
   try {
+    if (fs.existsSync(FLAG)) return 0;
     if (!fs.existsSync(IBKR_FILLS_FILE)) return 0;
+    // Already exited in the event log — do not spam more exits.
+    if (!hasOpenEmittedEntryForTicker('SU.PA')) {
+      try { fs.writeFileSync(FLAG, new Date().toISOString()); } catch (_) {}
+      return 0;
+    }
     const before = readIbkrFillRows();
     const live = before.filter(r => r && String(r.key || '') === LIVE_KEY);
-    if (!live.length) return 0;
+    if (!live.length) {
+      try { fs.writeFileSync(FLAG, new Date().toISOString()); } catch (_) {}
+      return 0;
+    }
     const entryQty = live.filter(r => r.role === 'entry').reduce((s, r) => s + (Number(r.qty) || 0), 0);
     const exitQty = live.filter(r => r.role !== 'entry').reduce((s, r) => s + (Number(r.qty) || 0), 0);
     const openQty = Math.max(0, entryQty - exitQty);
-    if (!(openQty > 0)) return 0;
+    if (!(openQty > 0)) {
+      try { fs.writeFileSync(FLAG, new Date().toISOString()); } catch (_) {}
+      return 0;
+    }
     const ent = live.find(r => r.role === 'entry');
     const px = Number(ent && ent.price) || 309.404625;
     const flatId = 'repair-ibflat-SU.PA-2026-08-12';
-    if (_ibkrExecIds.has(flatId) || before.some(r => r && r.execId === flatId)) return 0;
+    if (_ibkrExecIds.has(flatId) || before.some(r => r && r.execId === flatId)) {
+      try { fs.writeFileSync(FLAG, new Date().toISOString()); } catch (_) {}
+      return 0;
+    }
     const fillAt = '2026-08-12T09:08:24.049Z';
     mutateFillLedger('repair_su_pa_ib_flat', (rows) => {
       rows.push({
@@ -13335,7 +13367,8 @@ function repairSuPaLiveOpenWhenIbAlreadyFlat() {
         role: 'flatten', qty: openQty, price: px, currency: 'EUR', ccyScale: 1,
         orderId: null, time: fillAt, session: 'rth', sessionLabel: 'Market',
         errorTrade: true, synthetic: true, recon: 'ghost-flat',
-        markSrc: 'orphan-ib-only-flatten',
+        // Survive zero-edge void (price≈entry) so repair does not loop.
+        markSrc: 'ibkr',
         note: 'IB orphan-flatten closed live SU.PA — Error trade (site↔IB sync)'
       });
       return rows;
@@ -13347,11 +13380,83 @@ function repairSuPaLiveOpenWhenIbAlreadyFlat() {
         reason: 'ib-orphan-flatten-repair', errorTrade: true
       });
     } catch (_) {}
-    console.log('Repaired SU.PA live open → closed Error trade (IB already flat)');
+    try { fs.writeFileSync(FLAG, new Date().toISOString()); } catch (_) {}
+    console.log('Repaired SU.PA live open → closed Error trade (IB already flat) [one-shot]');
     auditLog('ibkr_repair_su_pa_ib_flat', { openQty, flatId });
     return 1;
   } catch (e) {
     console.warn('SU.PA IB-flat repair failed:', e.message);
+    return 0;
+  }
+}
+
+/**
+ * Re-arm SU.PA long Buy after the erroneous orphan flatten. History still has
+ * open long Buy (Conf≥62, RR ok) — emit a fresh entry so the bridge places
+ * MKT + TP/SL. Prior fills stay on the closed Error ledger.
+ */
+function rearmSuPaLongBuyEntry() {
+  const LIVE_KEY = 'SU.PA|long|Wed Aug 12 2026';
+  try {
+    if (hasOpenEmittedEntryForTicker('SU.PA')) {
+      console.log('SU.PA re-arm skipped — entry event already open');
+      return 0;
+    }
+    // Move any leftover LIVE_KEY open fills to cursor-err so re-entry is clean.
+    const before = readIbkrFillRows();
+    let moved = 0;
+    const next = before.map(r => {
+      if (!r || String(r.key || '') !== LIVE_KEY) return r;
+      moved++;
+      return Object.assign({}, r, {
+        key: LIVE_KEY + '|cursor-err',
+        errorTrade: true,
+        note: (r.note ? String(r.note) + ' ' : '') + '[prior orphan cycle — re-arm model entry]'
+      });
+    });
+    if (moved) mutateFillLedger('su_pa_rearm_quarantine', () => next);
+
+    const h = (tradeHistory || []).find(x =>
+      x && String(x.ticker || '').toUpperCase() === 'SU.PA'
+      && String(x.hz || '') === 'long'
+      && String(x.longAction || x.action || '').toLowerCase() === 'buy'
+      && String(x.longStatus || x.status || 'open').toLowerCase() === 'open'
+    );
+    if (!h) {
+      console.warn('SU.PA re-arm: no open long Buy in history');
+      return 0;
+    }
+    // Ensure levels present for shouldEmit / placeBracket
+    if (!(Number(h.longEntry || h.entry) > 0)) h.longEntry = 302.25;
+    if (!(Number(h.longTarget1 || h.target1) > 0)) h.longTarget1 = 367.07;
+    if (!(Number(h.longTarget2 || h.target2) > 0)) h.longTarget2 = 404.11;
+    if (!(Number(h.longStopLoss || h.stopLoss) > 0)) h.longStopLoss = 255.38;
+    if (!(Number(h.longConf || h.conf) >= 62)) h.longConf = 65;
+    h.longAction = 'Buy';
+    h.longRating = 'Buy';
+    h.action = 'Buy';
+    h.rating = 'Buy';
+    h.hz = 'long';
+    h.longStatus = 'open';
+    h.status = 'open';
+    // Fresh entryDate → same SGT day key (Wed Aug 12) so bridge matches today.
+    h.entryDate = new Date().toISOString();
+    if (!shouldEmitIbkrEntry(h, 'long')) {
+      console.warn('SU.PA re-arm blocked by shouldEmitIbkrEntry');
+      return 0;
+    }
+    const evt = emitTradeEvent('entry', tradeEventSnapshot(h, 'long', {
+      reason: 'rearm-after-orphan-flatten'
+    }));
+    if (evt) {
+      console.log('SU.PA long Buy re-armed — entry event', evt.key, 'TP/SL for bridge');
+      auditLog('ibkr_su_pa_rearm', { key: evt.key, entry: evt.entry, tp1: evt.tp1, sl: evt.sl });
+      try { saveHistoryFile(tradeHistory); } catch (_) {}
+      return 1;
+    }
+    return 0;
+  } catch (e) {
+    console.warn('SU.PA re-arm failed:', e.message);
     return 0;
   }
 }
@@ -13728,6 +13833,12 @@ try { repairErroneousGhostFlats(); } catch (e) {
 }
 try { stampGhostFlatFillsAsErrorTrade(); } catch (e) {
   console.warn('boot ghost-flat error stamp failed:', e.message);
+}
+try { repairSuPaLiveOpenWhenIbAlreadyFlat(); } catch (e) {
+  console.warn('boot SU.PA ib-flat repair failed:', e.message);
+}
+try { rearmSuPaLongBuyEntry(); } catch (e) {
+  console.warn('boot SU.PA re-arm failed:', e.message);
 }
 
 /** Drop phantom/stale fills (and optional explicit keys) from the durable log. */

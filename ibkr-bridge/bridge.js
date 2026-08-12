@@ -1941,7 +1941,18 @@ async function main() {
   async function handleEvent(evt) {
     const key = evt.key || `${evt.ticker}|${evt.hz}|${evt.entryDate}`;
     if (evt.type === 'entry') {
-      if (state.byKey[key] && state.byKey[key].parentId) { log('skip duplicate entry', key); return; }
+      const prior = state.byKey[key];
+      // Allow re-entry after a closed row (orphan flatten / error close). Same-day
+      // key must not be blocked forever by a leftover parentId.
+      if (prior && prior.parentId && !prior.closed) {
+        log('skip duplicate entry', key);
+        return;
+      }
+      if (prior && prior.closed) {
+        log('re-entry after closed state row', key, 'priorReason=', prior.flatReason || prior.holdCancelledUnfilled || 'closed');
+        delete state.byKey[key];
+        saveState(state);
+      }
       // Hard gate: only real Buy/Sell with levels. Hold must never trade
       // (server used to default Hold→buy and paper-bought FSLR/BMY/…).
       const side = String(evt.side || '').toLowerCase();
