@@ -13325,40 +13325,58 @@ function seedSuPaCursorReconErrorTrade() {
   }
 }
 /**
- * After re-arm fill (27 @ ~11:18Z), orphan morning entry+ghost-flatten still sat
- * on the LIVE key and painted the whole lot as Error trades (any errorTrade fill
- * ⇒ trade.errorTrade). Move pre-rearm LIVE fills to |cursor-err; keep post-rearm
- * IB fills as the model Open trade.
+ * Hard split for SU.PA Aug-12:
+ *  - Wrong orphan cycle (morning ~28 + flatten @~309.55) → |cursor-err| Error PnL
+ *  - Genuine re-arm fill (27 @ ~309.75 from 11:18Z) → LIVE key Open trades / model PnL
  */
+const SU_PA_LIVE_KEY = 'SU.PA|long|Wed Aug 12 2026';
+const SU_PA_ERR_KEY = SU_PA_LIVE_KEY + '|cursor-err';
+const SU_PA_REARM_CUTOFF_MS = Date.parse('2026-08-12T11:18:00.000Z');
+
+function isSuPaOrphanCycleFill(r) {
+  if (!r) return false;
+  const ts = Date.parse(r.time || 0);
+  if (Number.isFinite(ts) && ts < SU_PA_REARM_CUTOFF_MS) return true;
+  if (r.role === 'flatten' && (r.errorTrade || r.recon === 'ghost-flat'
+    || String(r.execId || '').startsWith('recon-flat-')
+    || String(r.execId || '').startsWith('repair-ibflat-'))) return true;
+  return false;
+}
+
+function isSuPaLiveModelFill(r) {
+  if (!r || r.role !== 'entry') return false;
+  if (r.errorTrade || r.synthetic) return false;
+  if (r.recon === 'recover-entry' || String(r.execId || '').startsWith('recover-entry-')) return false;
+  const ts = Date.parse(r.time || 0);
+  return Number.isFinite(ts) && ts >= SU_PA_REARM_CUTOFF_MS;
+}
+
 function splitSuPaOrphanCycleFromLiveModel(opts) {
-  const LIVE_KEY = 'SU.PA|long|Wed Aug 12 2026';
-  const ERR_KEY = LIVE_KEY + '|cursor-err';
-  const REARM_CUTOFF_MS = Date.parse('2026-08-12T11:18:00.000Z');
   const FLAG = path.join(path.dirname(HISTORY_FILE), 'su_pa_split_orphan_live.flag');
   try {
     if (!fs.existsSync(IBKR_FILLS_FILE)) return 0;
     const before = readIbkrFillRows();
     let moved = 0;
     const next = before.map(r => {
-      if (!r || String(r.key || '') !== LIVE_KEY) return r;
-      const ts = Date.parse(r.time || 0);
-      const preRearm = Number.isFinite(ts) && ts < REARM_CUTOFF_MS;
-      const orphanFlat = r.role === 'flatten' && (r.errorTrade || r.recon === 'ghost-flat'
-        || String(r.execId || '').startsWith('recon-flat-'));
-      if (!preRearm && !orphanFlat) {
-        // Ensure live model fill is not stamped error.
-        if (r.errorTrade) {
-          moved++;
-          return Object.assign({}, r, { errorTrade: false });
-        }
-        return r;
+      if (!r) return r;
+      const key = String(r.key || '');
+      if (key === SU_PA_LIVE_KEY && isSuPaOrphanCycleFill(r)) {
+        moved++;
+        return Object.assign({}, r, {
+          key: SU_PA_ERR_KEY,
+          errorTrade: true,
+          note: (r.note ? String(r.note) + ' ' : '') + '[wrong orphan 28 — Error PnL only]'
+        });
       }
-      moved++;
-      return Object.assign({}, r, {
-        key: ERR_KEY,
-        errorTrade: true,
-        note: (r.note ? String(r.note) + ' ' : '') + '[orphan cycle split off live model 27]'
-      });
+      if (key === SU_PA_LIVE_KEY && isSuPaLiveModelFill(r) && r.errorTrade) {
+        moved++;
+        return Object.assign({}, r, { errorTrade: false });
+      }
+      if (key === SU_PA_ERR_KEY && !r.errorTrade) {
+        moved++;
+        return Object.assign({}, r, { errorTrade: true });
+      }
+      return r;
     });
     if (!moved) {
       try { fs.writeFileSync(FLAG, new Date().toISOString()); } catch (_) {}
@@ -13366,13 +13384,38 @@ function splitSuPaOrphanCycleFromLiveModel(opts) {
     }
     mutateFillLedger('su_pa_split_orphan_from_live', () => next);
     try { fs.writeFileSync(FLAG, new Date().toISOString()); } catch (_) {}
-    console.log('SU.PA split: moved', moved, 'orphan fill(s) → cursor-err; live model open kept');
-    auditLog('ibkr_su_pa_split_orphan_live', { moved, liveKey: LIVE_KEY, errKey: ERR_KEY, force: !!(opts && opts.force) });
+    console.log('SU.PA split: moved', moved, 'orphan fill(s) → Error ledger; live 27 kept on model key');
+    auditLog('ibkr_su_pa_split_orphan_live', {
+      moved, liveKey: SU_PA_LIVE_KEY, errKey: SU_PA_ERR_KEY, force: !!(opts && opts.force)
+    });
     return moved;
   } catch (e) {
     console.warn('SU.PA orphan/live split failed:', e.message);
     return 0;
   }
+}
+
+/** View-layer partition so orphan realised cannot leak into model PnL. */
+function partitionSuPaFillsForTradesView(key, fills) {
+  if (String(key) !== SU_PA_LIVE_KEY || !Array.isArray(fills) || fills.length < 2) {
+    return [{ key, fills }];
+  }
+  const model = [];
+  const orphan = [];
+  for (const f of fills) {
+    if (isSuPaLiveModelFill(f)) {
+      model.push(Object.assign({}, f, { errorTrade: false }));
+    } else if (isSuPaOrphanCycleFill(f) || f.errorTrade || f.role === 'flatten') {
+      orphan.push(Object.assign({}, f, { errorTrade: true }));
+    } else {
+      model.push(f);
+    }
+  }
+  if (!orphan.length || !model.length) return [{ key, fills }];
+  return [
+    { key: SU_PA_LIVE_KEY, fills: model },
+    { key: SU_PA_ERR_KEY, fills: orphan }
+  ];
 }
 function stampGhostFlatFillsAsErrorTrade() {
   const a = quarantineGhostFlatsAsErrorTrades();
@@ -13727,11 +13770,28 @@ app.post('/api/ibkr/report', (req, res) => {
     }
     const fillTime = r.time || new Date().toISOString();
     const ticker = String(r.ticker || '');
+    let fillKey = String(r.key);
+    let fillError = r.errorTrade === true || isForceIbkrErrorTicker(r.ticker);
+    // Never let the wrong morning SU.PA cycle re-attach to the live model key.
+    if (fillKey === SU_PA_LIVE_KEY || fillKey === SU_PA_ERR_KEY) {
+      const probe = {
+        role: ['entry', 'tp1', 'stop', 'flatten'].includes(r.role) ? r.role : 'other',
+        time: fillTime,
+        errorTrade: fillError,
+        recon: r.recon,
+        execId: r.execId,
+        synthetic: r.synthetic === true
+      };
+      if (isSuPaOrphanCycleFill(probe) || fillKey === SU_PA_ERR_KEY) {
+        fillKey = SU_PA_ERR_KEY;
+        fillError = true;
+      }
+    }
     const phase = ['pre', 'rth', 'post', 'lunch', 'closed'].includes(r.session)
       ? r.session
       : ibkrSessionPhase(ticker, fillTime);
     const row = {
-      execId: String(r.execId), key: String(r.key),
+      execId: String(r.execId), key: fillKey,
       ticker, hz: String(r.hz || 'short'),
       side: r.side === 'sell' ? 'sell' : 'buy',
       role: ['entry', 'tp1', 'stop', 'flatten'].includes(r.role) ? r.role : 'other',
@@ -13742,7 +13802,7 @@ app.post('/api/ibkr/report', (req, res) => {
       session: phase,
       sessionLabel: r.sessionLabel || ibkrSessionLabel(phase),
       // Bridge stamp, env kill-switch, or force-error list (AIR.DE / AIR.PA).
-      errorTrade: r.errorTrade === true || isForceIbkrErrorTicker(r.ticker),
+      errorTrade: fillError,
       synthetic: r.synthetic === true || undefined,
       recon: r.recon ? String(r.recon) : undefined,
       markSrc: r.markSrc ? String(r.markSrc) : undefined
@@ -14202,6 +14262,7 @@ async function resolveGhostFlatMark(ticker) {
 app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   try {
+    try { splitSuPaOrphanCycleFromLiveModel({ force: true }); } catch (_) {}
     // Refresh dedupe set from disk (purge/other instance may have changed file).
     try {
       _ibkrExecIds.clear();
@@ -14954,12 +15015,13 @@ async function ibkrUsdPerCcy(ccy) {
   }
 }
 
-// Aggregated per-trade view of the paper account, built purely from real fills.
-// READ-ONLY: never mutate ibkr_fills.jsonl here (phantom drop runs inside recon).
+// Aggregated per-trade view of the paper account, built from real fills.
+// SU.PA orphan/live split may mutate the ledger once so Error vs model PnL stay clean.
 app.get('/api/ibkr/trades', async (req, res) => {
   try {
+    try { splitSuPaOrphanCycleFromLiveModel({ force: true }); } catch (_) {}
     const allRows = readIbkrFillRows();
-    // In-memory view only — do not writeIbkrFillRows / mutateFillLedger.
+    // In-memory view only after the SU.PA split above.
     const rows = allRows.filter(r => !isPhantomIbkrKey(r.key, r.time, r));
     const errExtra = loadIbkrErrorTradeExtra();
     const byKey = new Map();
@@ -14972,7 +15034,19 @@ app.get('/api/ibkr/trades', async (req, res) => {
     // pence for LSE, JPY for Tokyo, etc., so scales cancel out).
     const trades = [];
     const needMarks = [];
+    const grouped = [];
     for (const [key, fills] of byKey) {
+      for (const part of partitionSuPaFillsForTradesView(key, fills)) {
+        grouped.push(part);
+      }
+    }
+    // Merge duplicate ERR keys produced by partition + existing cursor-err rows.
+    const merged = new Map();
+    for (const g of grouped) {
+      if (!merged.has(g.key)) merged.set(g.key, []);
+      merged.get(g.key).push(...g.fills);
+    }
+    for (const [key, fills] of merged) {
       const f0 = fills[0];
       const dir = f0.side === 'sell' ? -1 : 1;
       const entries = fills.filter(f => f.role === 'entry');
@@ -15027,7 +15101,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
         entryTime: entries[0] ? entries[0].time : f0.time,
         lastTime: fills[fills.length - 1].time,
         status: openQty > 0 ? (exitQty > 0 ? 'partial' : 'open') : 'closed',
-        errorTrade: !!(f0.errorTrade || fills.some(f => f.errorTrade))
+        errorTrade: !!(f0.errorTrade || fills.some(f => f.errorTrade) || isCursorErrIbkrKey(key))
       };
       t.errorTrade = isIbkrErrorTrade(t, errExtra);
       trades.push(t);
