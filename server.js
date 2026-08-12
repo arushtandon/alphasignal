@@ -13384,6 +13384,67 @@ function emitExitsForLegacyUnauthorizedKeys() {
   if (n) console.log('Emitted', n, 'exit event(s) for legacy unauthorized IBKR keys');
   return n;
 }
+
+/**
+ * Abandon open entry events that never filled and are no longer Buy/Sell
+ * (or are >36h old). Clears BP.L Aug-09/10 Telegram "Order NOT executed" spam.
+ */
+function emitExitsForAbandonedUnfilledEntries() {
+  if (process.env.IBKR_EVENTS_ENABLED === '0') return 0;
+  const open = new Map();
+  try {
+    if (!fs.existsSync(TRADE_EVENTS_FILE)) return 0;
+    for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
+      let e; try { e = JSON.parse(line); } catch (_) { continue; }
+      if (!e || !e.key) continue;
+      if (e.type === 'entry') open.set(e.key, e);
+      else if (e.type === 'exit') open.delete(e.key);
+    }
+  } catch (_) { return 0; }
+  let fillKeys = new Set();
+  try {
+    for (const r of readIbkrFillRows()) {
+      if (r && r.key && r.role === 'entry' && !isCursorErrIbkrKey(r.key)) fillKeys.add(String(r.key));
+    }
+  } catch (_) {}
+  const STALE_MS = 36 * 3600 * 1000;
+  const FORCE = new Set([
+    'BP.L|short|Sun Aug 09 2026',
+    'BP.L|short|Mon Aug 10 2026'
+  ]);
+  let n = 0;
+  for (const [key, e] of open) {
+    if (fillKeys.has(key)) continue; // filled — normal exit path
+    const ticker = String(e.ticker || key.split('|')[0] || '').toUpperCase();
+    const hz = String(e.hz || key.split('|')[1] || 'short');
+    const keyDay = String(key.split('|')[2] || '');
+    const keyTs = Date.parse(keyDay);
+    const ageOk = Number.isFinite(keyTs) ? (Date.now() - keyTs) : 0;
+    let act = '';
+    try {
+      const rows = (tradeHistory || []).filter(h => h && String(h.ticker || '').toUpperCase() === ticker);
+      const sameHz = rows.filter(h => String(h.hz || 'short') === hz);
+      const pool = sameHz.length ? sameHz : rows;
+      pool.sort((a, b) => Date.parse(b.entryDate || b.timestamp || 0) - Date.parse(a.entryDate || a.timestamp || 0));
+      const h = pool[0];
+      if (h) act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
+    } catch (_) {}
+    const stillLive = act === 'buy' || act === 'sell';
+    const force = FORCE.has(key);
+    const stale = ageOk > STALE_MS;
+    if (!force && stillLive && !stale) continue;
+    emitTradeEvent('exit', {
+      key,
+      ticker: e.ticker || ticker,
+      hz,
+      side: e.side === 'sell' ? 'sell' : 'buy',
+      reason: force || !stillLive ? 'hold-abandon-unfilled' : 'stale-unfilled-abandon'
+    });
+    n++;
+  }
+  if (n) console.log('Emitted', n, 'exit(s) for abandoned unfilled entries (BP.L Hold spam etc.)');
+  return n;
+}
 let _ibkrExecIds = new Set();
 try {
   if (fs.existsSync(IBKR_FILLS_FILE)) {
@@ -13659,6 +13720,9 @@ function isZeroEdgeGhostFlatFill(row, allRows) {
 stampLegacyIbkrErrorFills();
 unstampModelIbkrFills();
 emitExitsForLegacyUnauthorizedKeys();
+try { emitExitsForAbandonedUnfilledEntries(); } catch (e) {
+  console.warn('boot abandon-unfilled exits failed:', e.message);
+}
 try { repairErroneousGhostFlats(); } catch (e) {
   console.warn('boot ghost-flat repair failed:', e.message);
 }

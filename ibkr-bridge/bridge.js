@@ -2711,7 +2711,7 @@ async function main() {
           const hz = row.hz || 'short';
           const keyDay = String(key.split('|')[2] || '');
           const keyDayMs = Date.parse(keyDay);
-          const h = rows.find(x => {
+          let h = rows.find(x => {
             if (!x || x.ticker !== row.ticker) return false;
             if (String(x.hz || 'short') !== String(hz)) return false;
             const ms = Date.parse(x.entryDate || x.timestamp || 0);
@@ -2720,6 +2720,15 @@ async function main() {
             return Number.isFinite(keyDayMs) && Math.abs(ms - keyDayMs) <= 2 * 3600 * 1000
               && singaporeToDateString(ms) === singaporeToDateString(keyDayMs);
           });
+          if (!h) {
+            // Fall back to latest history row for ticker+hz (weekend re-keys
+            // like BP.L Aug-09/10 never match key-day and kept re-arming forever).
+            const same = rows.filter(x => x && x.ticker === row.ticker
+              && String(x.hz || 'short') === String(hz))
+              .sort((a, b) => Date.parse(b.entryDate || b.timestamp || 0)
+                - Date.parse(a.entryDate || a.timestamp || 0));
+            h = same[0] || null;
+          }
           if (!h) continue;
           const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
           if (act === 'buy' || act === 'sell') continue;
@@ -2902,9 +2911,9 @@ async function main() {
           saveState(state);
           continue;
         }
-        // Never chase Asia keys older than the event-age gate (prevents Aug 05
-        // shorts being MKT-bought on Aug 07 just because model status is still open).
-        if (asia) {
+        // Never chase keys older than the event-age gate (prevents Aug 05
+        // shorts / BP.L weekend re-keys being MKT-bought days later).
+        {
           const srcAge = entryByKey.get(key);
           const tradeTs = Date.parse((srcAge && (srcAge.entryDate || srcAge.t)) || 0);
           const keyDayTs = Date.parse(String(key.split('|')[2] || ''));
@@ -2913,7 +2922,14 @@ async function main() {
             Number.isFinite(keyDayTs) ? keyDayTs : Infinity
           );
           if (Number.isFinite(oldest) && oldest !== Infinity && (Date.now() - oldest) > MAX_EVENT_AGE_MS) {
-            log('RECONCILE: skip re-arm (stale Asia key)', key);
+            log('RECONCILE: abandon stale unfilled key', key);
+            if (row.parentId != null) cancelOrder(row.parentId, 'stale-unfilled parent ' + key);
+            if (row.stopId != null) cancelOrder(row.stopId, 'stale-unfilled stop ' + key);
+            if (row.tp1Id != null) cancelOrder(row.tp1Id, 'stale-unfilled tp1 ' + key);
+            row.closed = true;
+            row.staleUnfilledAbandoned = true;
+            row.updated = new Date().toISOString();
+            saveState(state);
             continue;
           }
         }
