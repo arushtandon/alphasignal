@@ -2147,14 +2147,32 @@ async function main() {
         _flattenTried.set(pk, Date.now());
         const qty = Math.abs(pos);
         const fid = nid();
-        const oc = orderContractFromPos(cMeta);
-        if (!oc || (!oc.conId && !oc.symbol)) continue;
+        // Prefer conId + venue exchange — HK SMART+symbol "1" hits IB error 200
+        // (0001.HK / CK Hutchison). Same shape as bracket placeOrder.
+        const rawOc = orderContractFromPos(cMeta) || cMeta;
+        const conId = Number(rawOc.conId || cMeta.conId) || 0;
+        if (!(conId > 0)) {
+          log('RECONCILE: skip orphan flatten — no conId', pk, y);
+          continue;
+        }
+        const isHk = String(rawOc.currency || cMeta.currency || '') === 'HKD'
+          || cMeta.market === 'HK' || /\.HK$/i.test(y);
+        const oc = {
+          conId,
+          symbol: rawOc.symbol != null ? String(rawOc.symbol) : undefined,
+          localSymbol: rawOc.localSymbol || undefined,
+          secType: 'STK',
+          exchange: isHk ? 'SEHK' : 'SMART',
+          primaryExch: rawOc.primaryExch || (isHk ? 'SEHK' : undefined),
+          currency: rawOc.currency || cMeta.currency || 'USD'
+        };
         const action = pos > 0 ? 'SELL' : 'BUY';
         // RTH → market day order. Otherwise → opening auction (next session).
         const useOpg = phase !== 'rth';
         const tif = useOpg ? 'OPG' : 'DAY';
         log('RECONCILE: flattening', isOrphanIbOnly ? 'IB-ONLY ORPHAN' : 'UNAUTHORIZED',
           pk, 'pos=' + pos, 'ticker=' + y, 'streak=' + streak,
+          'exch=' + oc.exchange, 'conId=' + conId,
           useOpg ? ('OPG→next open (' + phase + ')') : 'MKT RTH');
         transmitOrder(fid, oc, baseOrder({
           orderId: fid, action,
