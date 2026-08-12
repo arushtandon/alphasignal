@@ -12632,7 +12632,11 @@ try {
  *  Resolved once via aliases + IB conId — not per-endpoint name collapses. */
 const IBKR_LISTING_ALIASES = {
   'AIR.DE': ['AIR.PA'],
-  'AIR.PA': ['AIR.DE']
+  'AIR.PA': ['AIR.DE'],
+  'SU.PA': ['SU.DE'],
+  'SU.DE': ['SU.PA'],
+  'DHL.PA': ['DHL.DE'],
+  'DHL.DE': ['DHL.PA']
 };
 
 function ibkrYahooAliases(ticker) {
@@ -13384,6 +13388,43 @@ function mutateFillLedger(reason, fn, opts) {
   return { before: before.length, after: next.length, rows: next };
 }
 
+/** Ghost-flatten while model entry still open, or duplicate recover-entry that
+ *  doubled qty (SU.PA: 28 real + 28 synthetic → flatten×56 fake PnL). */
+function isErroneousGhostFlatOrDupEntry(row, allRows) {
+  if (!row) return false;
+  const key = String(row.key || '');
+  const ticker = String(row.ticker || key.split('|')[0] || '').toUpperCase();
+  if (row.role === 'flatten' && row.recon === 'ghost-flat') {
+    if (hasOpenEmittedEntryForTicker(ticker)) return true;
+  }
+  if (row.role === 'entry' && (row.recon === 'recover-entry' || String(row.execId || '').startsWith('recover-entry-'))) {
+    const realEntries = (allRows || []).filter(r =>
+      r && r.key === key && r.role === 'entry' && !r.synthetic
+      && !String(r.execId || '').startsWith('recover-entry-')
+      && !String(r.execId || '').startsWith('recon-'));
+    if (realEntries.length) return true; // real fill already exists — drop synthetic
+  }
+  return false;
+}
+
+function repairErroneousGhostFlats() {
+  try {
+    const before = readIbkrFillRows();
+    const drop = before.filter(r => isErroneousGhostFlatOrDupEntry(r, before));
+    if (!drop.length) return 0;
+    mutateFillLedger('void_erroneous_ghost_flat', (rows) =>
+      rows.filter(r => !isErroneousGhostFlatOrDupEntry(r, before)),
+      { mayDropProtected: (r, all) => isErroneousGhostFlatOrDupEntry(r, all) }
+    );
+    console.log('IBKR repair: voided', drop.length, 'erroneous ghost-flat/dup-entry fill(s):',
+      drop.map(r => (r.ticker || '?') + ':' + r.role + ':' + (r.recon || r.execId || '')).join(', '));
+    return drop.length;
+  } catch (e) {
+    console.warn('IBKR ghost-flat repair failed:', e.message);
+    return 0;
+  }
+}
+
 /** Fake $0 closes: synthetic ghost-flat with no external mark whose exit ≈ avg entry.
  *  Quote-backed closes (yahoo-recon / ib-bridge) are kept even if PnL is near zero. */
 function isZeroEdgeGhostFlatFill(row, allRows) {
@@ -13409,6 +13450,9 @@ function isZeroEdgeGhostFlatFill(row, allRows) {
 stampLegacyIbkrErrorFills();
 unstampModelIbkrFills();
 emitExitsForLegacyUnauthorizedKeys();
+try { repairErroneousGhostFlats(); } catch (e) {
+  console.warn('boot ghost-flat repair failed:', e.message);
+}
 
 /** Drop phantom/stale fills (and optional explicit keys) from the durable log. */
 app.post('/api/ibkr/purge', express.json({ limit: '32kb' }), (req, res) => {
@@ -13725,6 +13769,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         console.log('IBKR recon: voided', dropIds.size, 'zero-edge ghost-flat fill(s)');
       }
     }
+    try { repairErroneousGhostFlats(); } catch (_) {}
 
     const rows = readIbkrFillRows();
     const opens = aggregateIbkrOpenFromFills(rows);
@@ -13860,11 +13905,38 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           // Ghost open on site while IB is flat. Never invent an exit at avg
           // entry ($0 "flatten") — that produced fake AIR.PA/AIR.DE closes.
           // Dual-list: merge alias lots once (one IB book, not two $0 closes).
+          // CRITICAL: never ghost-flatten while a live model entry event is open
+          // (SU.PA 2026-08-12 — IB listing lag / dual-list made ibAbs=0 and
+          // invented flatten×56 with fake realised PnL).
+          if (hasOpenEmittedEntryForTicker(y)) {
+            issues.push({
+              ticker: y, severity: 'pending',
+              detail: `Site open ${asAbs} but IB flat — open model entry still live; wait for position/alias (no ghost-flatten)`
+            });
+            continue;
+          }
           const aliasYs = [...ibkrYahooAliases(y)];
           for (const a of aliasYs) dualListHandled.add(a);
           const mergedOpens = [];
           for (const a of aliasYs) {
             for (const o of (asByTicker.get(a) || [])) mergedOpens.push(o);
+          }
+          // Fresh entry grace: any entry fill in last 45m → never invent exit.
+          const GHOST_FLAT_GRACE_MS = 45 * 60 * 1000;
+          const fillRowsNow = readIbkrFillRows();
+          const recentEntry = mergedOpens.some(o => {
+            return fillRowsNow.some(r => {
+              if (!r || r.key !== o.key || r.role !== 'entry') return false;
+              const ts = Date.parse(r.time || 0);
+              return Number.isFinite(ts) && (Date.now() - ts) < GHOST_FLAT_GRACE_MS;
+            });
+          });
+          if (recentEntry) {
+            issues.push({
+              ticker: y, severity: 'pending',
+              detail: `Site open ${asAbs} but IB flat — entry fill <45m old; defer ghost-flatten`
+            });
+            continue;
           }
           let anyFlat = false;
           let siteOpenSum = 0;

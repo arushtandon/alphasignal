@@ -147,7 +147,11 @@ function normalizeYahooTicker(t) {
 /** Dual-list aliases — same conId identity; authorize by provenance not name. */
 const LISTING_ALIASES = {
   'AIR.DE': ['AIR.PA'],
-  'AIR.PA': ['AIR.DE']
+  'AIR.PA': ['AIR.DE'],
+  'SU.PA': ['SU.DE'],
+  'SU.DE': ['SU.PA'],
+  'DHL.PA': ['DHL.DE'],
+  'DHL.DE': ['DHL.PA']
 };
 function yahooAliases(t) {
   const y = normalizeYahooTicker(t);
@@ -2794,6 +2798,11 @@ async function main() {
           if (stOpen !== 'open') continue;
           const src = entryByKey.get(key);
           if (!src || !src.ticker) continue;
+          // Already filled live this session — never invent a second entry fill
+          // (SU.PA: real 28@309.25 + recover-entry 28@302.25 → fake flatten×56).
+          const live = state.byKey[key];
+          if (live && (live.entryFilled || live.recoveredFromPosition)) continue;
+          if ((state.pendingReports || []).some(r => r && r.key === key && r.role === 'entry')) continue;
           const y = normalizeYahooTicker(src.ticker);
           if (setHasYahooAlias(siteOpen, y)) continue;
           const c0 = toContract(src.ticker);
