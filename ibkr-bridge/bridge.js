@@ -2437,17 +2437,19 @@ async function main() {
     }
   }
 
-  /** US post-market ends 20:00 ET ≈ 00:00 UTC (EDT). Return ET session date key once in the send window. */
+  /** US post-market ends 20:00 ET ≈ 00:00 UTC (EDT). Return ET session date if we should send. */
   function usEodSummaryDayKey(nowMs = Date.now()) {
     const d = new Date(nowMs);
     const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
     const dow = d.getUTCDay(); // 0=Sun … 6=Sat
-    // First ~EOD_WINDOW_MIN after post close: Tue–Sat 00:00–window UTC
-    // (covers Mon–Fri ET sessions that just finished extended hours).
+    // Tue–Sat UTC: session that ended at this UTC midnight (Mon–Fri ET).
     if (!(dow >= 2 && dow <= 6)) return null;
-    if (!(utcMin >= 0 && utcMin < EOD_WINDOW_MIN)) return null;
-    // ET ≈ UTC-4 (DST window used elsewhere in this bridge).
-    const et = new Date(nowMs - 4 * 3600 * 1000);
+    // Primary window: first EOD_WINDOW_MIN after post-close.
+    // Catch-up until 12:00 UTC (20:00 SGT) if the bridge was down overnight.
+    const catchUpUntil = Math.max(EOD_WINDOW_MIN, 12 * 60);
+    if (!(utcMin >= 0 && utcMin < catchUpUntil)) return null;
+    const midnightUtc = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    const et = new Date(midnightUtc - 4 * 3600 * 1000);
     return et.toISOString().slice(0, 10);
   }
 

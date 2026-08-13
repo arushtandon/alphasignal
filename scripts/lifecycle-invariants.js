@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AlphaSignal recommendation-lifecycle invariants (T1–T19).
+ * AlphaSignal recommendation-lifecycle invariants (T1–T20).
  * Uses an isolated DATA_DIR so production disk is untouched.
  */
 'use strict';
@@ -451,11 +451,31 @@ function ok(name, cond, detail) {
         'errN=' + err.length);
     })();
 
+    // ── T20 IB qty-pad stays on the model key (not auto-quarantined) ──────────
+    (function t20() {
+      const live = '0883.HK|medium|Thu Aug 06 2026';
+      const pad = S.quarantineFillForLedger({
+        execId: 'recon-entry-' + live + '-pad3000',
+        key: live, ticker: '0883.HK', hz: 'medium', side: 'buy',
+        role: 'entry', qty: 3000, price: 23.19, currency: 'HKD', ccyScale: 1,
+        synthetic: true, recon: 'qty-pad', errorTrade: false
+      });
+      ok('T20 qty-pad stays live', pad.key === live && !pad.errorTrade, pad.key);
+      ok('T20 isModelIbSyncFill', S.isModelIbSyncFill(pad));
+      const recover = S.quarantineFillForLedger({
+        execId: 'recover-entry-' + live + '-q3000',
+        key: live, ticker: '0883.HK', role: 'entry', qty: 3000, price: 23.19,
+        synthetic: true, recon: 'recover-entry'
+      });
+      ok('T20 recover-entry still quarantined', S.isCursorErrIbkrKey(recover.key) && recover.errorTrade,
+        recover.key);
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T19 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T20 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();

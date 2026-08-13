@@ -2046,7 +2046,7 @@ async function renderIbkr(force){
         + td('right','var(--m2)') + String(t.entryTime).slice(0,10)
           + ((t.key||'').split('|')[2] ? ' <span style="font-size:8px;color:var(--m1)" title="Recommendation day">'
             + String((t.key||'').split('|')[2]).replace(/^\w{3}\s/,'').slice(0,6)+'</span>' : '')+'</td>'
-        + td('right') + t.entryQty+'</td>'
+        + td('right') + ((t.openQty > 0 ? Math.max(Number(t.entryQty) || 0, Number(t.openQty) || 0) : t.entryQty))+'</td>'
         + td('right') + fmtPx(t.avgEntry)+' <span style="font-size:8px;color:var(--m1)">'+t.currency+'</span></td>'
         + td('right') + (exitPx!=null?fmtPx(exitPx):'—')
           + (t.exitQty>0?' <span style="font-size:8px;color:var(--m1)">x'+t.exitQty+'</span>':'')+'</td>'

@@ -13332,20 +13332,35 @@ function isReconFamilyFill(r) {
   return false;
 }
 
+/** IB sync pads/trims belong on the model key — not Error ledger. */
+function isModelIbSyncFill(r) {
+  if (!r) return false;
+  const recon = String(r.recon || '');
+  const exec = String(r.execId || '');
+  if (recon === 'qty-pad' || recon === 'qty-trim' || recon === 'avg-correct') return true;
+  if (exec.startsWith('recon-entry-') || exec.startsWith('recon-trim-')) return true;
+  return false;
+}
+
 /**
- * Decide whether a fill belongs on |cursor-err. Real non-synthetic bridge fills
- * for a provenance-authorized ticker stay on the model key (with a short grace
- * if the entry event is racing the fill report).
+ * Decide whether a fill belongs on |cursor-err. Real bridge fills and intentional
+ * IB qty-pad/trim stay on the model key. Ghost-flats / recover-entry dups / explicit
+ * errorTrade go to Error.
  */
 function shouldQuarantineFillToCursorErr(r) {
   if (!r || !r.key) return false;
   if (isCursorErrIbkrKey(r.key)) return false;
-  if (r.errorTrade === true) return true;
-  if (r.synthetic === true) return true;
-  if (isReconFamilyFill(r)) return true;
   if (IBKR_LEGACY_ERROR_KEYS.has(String(r.key || ''))) return true;
   if (isForceIbkrErrorTicker(r.ticker)) return true;
-  // Real bridge fills stay on the model key (provenance / history gates elsewhere).
+  if (r.errorTrade === true) return true;
+  // Model IB sync (pad/trim/avg) must stay on the live key.
+  if (isModelIbSyncFill(r)) return false;
+  const recon = String(r.recon || '');
+  const exec = String(r.execId || '');
+  if (recon === 'ghost-flat' || recon === 'recover-entry' || recon === 'cursor-recon-error') return true;
+  if (exec.startsWith('recon-flat-') || exec.startsWith('recover-entry-')
+    || exec.startsWith('repair-ibflat-') || exec.startsWith('cursor-err-')) return true;
+  if (r.synthetic === true) return true;
   return false;
 }
 
@@ -13414,23 +13429,30 @@ function quarantineErrorFillsOffModelKeys() {
         moved++;
         return q;
       }
-      // Pre-open-entry fills on a live key with a newer open entry event → Error.
+      // Pre-open-entry fills → Error ONLY when a newer entry fill already exists
+      // on the live key (true re-arm cycle). Otherwise restoring KHC after a false
+      // stale-abandon would immediately bounce the lot back to |cursor-err.
       const openTs = openEntryTsByKey.get(String(r.key));
       if (openTs && Number.isFinite(openTs)) {
         const fillTs = Date.parse(r.time || 0);
         if (Number.isFinite(fillTs) && fillTs < openTs - 1000) {
-          moved++;
-          const toKey = toCursorErrIbkrKey(r.key);
-          try {
-            auditLog('ibkr_fill_rekey', {
-              execId: r.execId || null, fromKey: r.key, toKey, reason: 'pre-open-entry-cycle'
+          const hasNewerEntryOnKey = before.some(x =>
+            x && String(x.key || '') === String(r.key) && x.role === 'entry'
+            && Date.parse(x.time || 0) >= openTs - 1000);
+          if (hasNewerEntryOnKey) {
+            moved++;
+            const toKey = toCursorErrIbkrKey(r.key);
+            try {
+              auditLog('ibkr_fill_rekey', {
+                execId: r.execId || null, fromKey: r.key, toKey, reason: 'pre-open-entry-cycle'
+              });
+            } catch (_) {}
+            return Object.assign({}, r, {
+              key: toKey,
+              errorTrade: true,
+              note: (r.note ? String(r.note) + ' ' : '') + '[pre-open-entry cycle → Error]'
             });
-          } catch (_) {}
-          return Object.assign({}, r, {
-            key: toKey,
-            errorTrade: true,
-            note: (r.note ? String(r.note) + ' ' : '') + '[pre-open-entry cycle → Error]'
-          });
+          }
         }
       }
       return r;
@@ -13485,7 +13507,15 @@ function quarantineExcessModelEntriesVsIb() {
       }
       let did = false;
       for (const [ys, group] of byYSign) {
-        const ibAbs = ibAbsByYSign.get(ys);
+        let ibAbs = ibAbsByYSign.get(ys);
+        if (!(ibAbs > 0)) {
+          const y0 = ys.split('|')[0];
+          const sign0 = ys.split('|')[1];
+          for (const a of ibkrYahooAliases(y0)) {
+            const v = ibAbsByYSign.get(normalizeIbkrYahooTicker(a) + '|' + sign0);
+            if (v > 0) { ibAbs = v; break; }
+          }
+        }
         if (!(ibAbs > 0)) continue;
         const sum = group.reduce((s, o) => s + Number(o.openQty || 0), 0);
         if (!(sum > ibAbs)) continue;
@@ -13816,11 +13846,14 @@ function restoreFilledEntriesFalselyAbandoned() {
         mutateFillLedger('restore_false_abandon_fill', (all) => all.map(r => {
           if (moved || !r || String(r.key) !== errKey || r.role !== 'entry') return r;
           moved = true;
-          return Object.assign({}, r, {
+          const out = Object.assign({}, r, {
             key,
             errorTrade: false,
+            synthetic: false,
             note: (r.note ? String(r.note) + ' ' : '') + '[restore-false-stale-abandon → model]'
           });
+          delete out.recon;
+          return out;
         }));
       }
     } catch (_) { /* non-fatal */ }
@@ -13828,6 +13861,127 @@ function restoreFilledEntriesFalselyAbandoned() {
     auditLog('ibkr_restore_false_stale_abandon', { key });
   }
   return n;
+}
+
+/**
+ * Open model entry + IB shares but fills only on |cursor-err (or live short vs IB)
+ * → move entry fills back to the live key so Open trades / authorization match IB.
+ * Also pads a model qty-pad fill when cursor-err cannot cover the shortfall (0883).
+ */
+function restoreOpenModelFillsFromCursorErr() {
+  try {
+    const snap = loadIbkrReconReport();
+    if (!snap || !Array.isArray(snap.positions) || !snap.positions.length) return 0;
+    const ibAbsByYSign = new Map();
+    for (const p of snap.positions) {
+      if (!p || !p.ticker) continue;
+      const qty = Number(p.qty) || 0;
+      if (!qty) continue;
+      const y = normalizeIbkrYahooTicker(p.ticker);
+      ibAbsByYSign.set(y + '|' + (Math.sign(qty) || 1), Math.abs(qty));
+    }
+    if (!ibAbsByYSign.size) return 0;
+
+    const openKeys = new Set();
+    try {
+      if (fs.existsSync(TRADE_EVENTS_FILE)) {
+        const open = new Set();
+        for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
+          let e; try { e = JSON.parse(line); } catch (_) { continue; }
+          if (!e || !e.key || isCursorErrIbkrKey(e.key)) continue;
+          if (e.type === 'entry') open.add(e.key);
+          else if (e.type === 'exit') open.delete(e.key);
+        }
+        for (const k of open) openKeys.add(k);
+      }
+    } catch (_) {}
+    if (!openKeys.size) return 0;
+
+    const before = readIbkrFillRows();
+    const out = before.map(r => Object.assign({}, r));
+    let moved = 0;
+
+    for (const liveKey of openKeys) {
+      const parts = String(liveKey).split('|');
+      const ticker = String(parts[0] || '').toUpperCase();
+      const side = (() => {
+        // Infer side from existing fills or entry event — default buy.
+        const liveF = out.find(r => r && String(r.key) === liveKey);
+        if (liveF && liveF.side) return liveF.side === 'sell' ? 'sell' : 'buy';
+        const errF = out.find(r => r && String(r.key) === toCursorErrIbkrKey(liveKey));
+        if (errF && errF.side) return errF.side === 'sell' ? 'sell' : 'buy';
+        return 'buy';
+      })();
+      const y = normalizeIbkrYahooTicker(ticker);
+      const sign = side === 'sell' ? -1 : 1;
+      let ibAbs = ibAbsByYSign.get(y + '|' + sign);
+      if (!(ibAbs > 0)) {
+        // Alias lookup (SU / SU.PA)
+        for (const a of ibkrYahooAliases(y)) {
+          const v = ibAbsByYSign.get(normalizeIbkrYahooTicker(a) + '|' + sign);
+          if (v > 0) { ibAbs = v; break; }
+        }
+      }
+      if (!(ibAbs > 0)) continue;
+
+      const liveEntries = out.filter(r => r && String(r.key) === liveKey && r.role === 'entry');
+      let liveQty = liveEntries.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+      if (liveQty >= ibAbs) continue;
+
+      const errKey = toCursorErrIbkrKey(liveKey);
+      const errEntries = out
+        .map((r, idx) => ({ r, idx }))
+        .filter(x => x.r && String(x.r.key) === errKey && x.r.role === 'entry')
+        .sort((a, b) => String(a.r.time || '').localeCompare(String(b.r.time || '')));
+
+      for (const e of errEntries) {
+        if (liveQty >= ibAbs) break;
+        const q = Number(e.r.qty) || 0;
+        if (!(q > 0)) continue;
+        const promoted = Object.assign({}, e.r, {
+          key: liveKey,
+          errorTrade: false,
+          synthetic: false,
+          note: (e.r.note ? String(e.r.note) + ' ' : '') + '[restore-open-model ← cursor-err]'
+        });
+        delete promoted.recon;
+        out[e.idx] = promoted;
+        liveQty += q;
+        moved++;
+      }
+
+      // Still short vs IB and no more err fills → durable qty-pad on live key.
+      if (liveQty < ibAbs) {
+        const delta = ibAbs - liveQty;
+        const sample = liveEntries[0] || errEntries[0] && errEntries[0].r;
+        const px = Number(sample && sample.price) || 0;
+        if (delta > 0 && px > 0) {
+          const execId = `recon-entry-${liveKey}-pad${delta}`;
+          if (!out.some(r => r && String(r.execId) === execId)) {
+            out.push({
+              execId, key: liveKey, ticker, hz: parts[1] || 'short',
+              side, role: 'entry', qty: delta, price: px,
+              currency: (sample && sample.currency) || 'USD',
+              ccyScale: Number(sample && sample.ccyScale) || 1,
+              time: new Date().toISOString(),
+              errorTrade: false, synthetic: true, recon: 'qty-pad',
+              note: '[restore-open-model qty-pad]'
+            });
+            moved++;
+          }
+        }
+      }
+    }
+
+    if (!moved) return 0;
+    mutateFillLedger('restore_open_model_from_cursor_err', () => out);
+    console.log('Restored', moved, 'fill(s) from |cursor-err / qty-pad onto open model keys');
+    auditLog('ibkr_restore_open_model_fills', { moved });
+    return moved;
+  } catch (e) {
+    console.warn('restoreOpenModelFillsFromCursorErr failed:', e.message);
+    return 0;
+  }
 }
 let _ibkrExecIds = new Set();
 try {
@@ -14037,10 +14191,15 @@ function mutateFillLedger(reason, fn, opts) {
   if (!Array.isArray(next)) throw new Error('mutateFillLedger fn must return an array');
   // C1: never persist an error/recon fill on a model key.
   next = next.map(r => quarantineFillForLedger(r));
+  // Protected rows may be re-keyed (same execId). Only re-add if the execId
+  // vanished entirely — otherwise excess-vs-ib / restore remaps never stick.
+  const nextExecIds = new Set(next.map(r => String(r && r.execId || '')).filter(Boolean));
   const nextIds = new Set(next.map(ibkrFillRowId));
   for (const r of before) {
     if (!isProtectedIbkrFillRow(r)) continue;
     if (typeof opts.mayDropProtected === 'function' && opts.mayDropProtected(r, before)) continue;
+    const exec = String(r.execId || '');
+    if (exec && nextExecIds.has(exec)) continue;
     const id = ibkrFillRowId(r);
     if (!nextIds.has(id)) {
       next.push(quarantineFillForLedger(r));
@@ -14322,6 +14481,9 @@ function saveIbkrReconReport(r) {
 try { quarantineExcessModelEntriesVsIb(); } catch (e) {
   console.warn('boot quarantine excess-vs-ib failed:', e.message);
 }
+try { restoreOpenModelFillsFromCursorErr(); } catch (e) {
+  console.warn('boot restore open-model fills failed:', e.message);
+}
 function ibkrAvgToFillUnit(avgCost, ccyScale, sampleEntryPx) {
   let avg = Number(avgCost);
   if (!(avg > 0)) return null;
@@ -14416,6 +14578,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
   try {
     try { quarantineErrorFillsOffModelKeys(); } catch (_) {}
     try { quarantineExcessModelEntriesVsIb(); } catch (_) {}
+    try { restoreOpenModelFillsFromCursorErr(); } catch (_) {}
     // Refresh dedupe set from disk (purge/other instance may have changed file).
     try {
       _ibkrExecIds.clear();
@@ -14582,13 +14745,16 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         if (cid > 0) seenUntrackedCon.add(cid);
         continue;
       }
+      // Open model entry (KHC after false stale-abandon) is fill-lag, not an orphan.
+      if ([...aliases].some(a => isPositionAuthorizedByProvenance(a))) {
+        if (cid > 0) seenUntrackedCon.add(cid);
+        continue;
+      }
       if (cid > 0) seenUntrackedCon.add(cid);
       untrackedIb.push({
         ticker: y, qty: ib.qty, avgCost: ib.avgCost, conId: cid || null,
-        note: isPositionAuthorizedByProvenance(y)
-          ? 'IB position missing site fill lot (model entry exists — import/fill lag)'
-          : 'IB-only orphan — not a model recommendation (bridge flattens MKT/OPG)',
-        authorized: isPositionAuthorizedByProvenance(y)
+        note: 'IB-only orphan — not a model recommendation (bridge flattens MKT/OPG)',
+        authorized: false
       });
     }
 
@@ -16897,6 +17063,8 @@ module.exports = {
   quarantineFillForLedger,
   quarantineErrorFillsOffModelKeys,
   quarantineExcessModelEntriesVsIb,
+  restoreOpenModelFillsFromCursorErr,
+  isModelIbSyncFill,
   quarantineKeyFillsToCursorErr,
   reArmModelEntry,
   isNewEntryRiskBlocked,
