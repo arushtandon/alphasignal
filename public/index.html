@@ -593,8 +593,14 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
     <div id="pane-history" class="pane">
       <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div>
-          <div class="pt">IBKR trade history</div>
-          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Paper fills recorded in IBKR from 6 Aug 2026 · same book as the IBKR tab</div>
+          <div class="pt">Recommendation history</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">IBKR-filled trades from 6 Aug 2026 · TP1/TP2/TSL/donation unchanged</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <button class="btn" style="font-size:10px;padding:4px 10px" onclick="exportHistoryTrades()" title="Download every trade with TP1/TP2/TSL/donation/shares for model review">⬇ Export Excel</button>
+          <button class="btn" style="font-size:10px;padding:4px 10px" onclick="exportClosedExitQuality()" title="Closed trades only — exit quality CSV for TP/TSL/donation analysis">⬇ Closed exit quality</button>
+          <button class="btn" style="font-size:10px;padding:4px 10px" onclick="document.getElementById('importRecCsv').click()" title="Re-import a dashboard recommended CSV into history">⬆ Import recommended CSV</button>
+          <input type="file" id="importRecCsv" accept=".csv,text/csv" style="display:none" onchange="importRecommendedCsvFile(this)">
         </div>
       </div>
       <div id="histContent"></div>
@@ -605,10 +611,16 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
       <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div>
           <div class="pt">Performance</div>
-          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Starting capital USD 1,000,000 · IBKR fill PnL (realised + unrealised) · paper account high / low</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Exit quality · brackets · TP/TSL/donation · $1,000,000 start · account high/low</div>
         </div>
+        <button class="btn" style="font-size:10px;padding:4px 10px" onclick="exportClosedExitQuality()">⬇ Exit quality CSV</button>
       </div>
-      <div id="perfContent"></div>
+      <div id="perfContent">
+        <div id="ibkrPerfCapital"></div>
+        <div id="exitQualityPerformance"></div>
+        <div id="histPerformance"></div>
+        <div id="bracketPerformance"></div>
+      </div>
     </div>
 
     <!-- IBKR TRADE ANALYSIS -->
@@ -1669,9 +1681,27 @@ function switchTab(t){
   });
   if(t==='history') {
     renderHist();
+    renderSummaryCards('short'); renderPortfolioSummary();
+    loadIbkrHistFilter().then(function () {
+      if (ST.history.length) {
+        return refreshHistoryPnl()
+          .then(function () { renderHist(); renderSummaryCards('short'); renderPortfolioSummary(); })
+          .catch(function (e) { console.warn(e); });
+      }
+    }).catch(function (e) { console.warn(e); });
   }
   if(t==='performance') {
-    renderIbkrPerformancePage();
+    const renderPerf = function(){
+      renderIbkrPerformanceExtras();
+      renderExitQualityPerformance();
+      renderPerformancePanel();
+      renderBracketPerformance();
+    };
+    loadHistoryFromServer().then(function(){
+      return loadIbkrHistFilter();
+    }).then(function(){
+      return refreshHistoryPnl().catch(function(){});
+    }).then(renderPerf).catch(function(e){ console.warn(e); renderPerf(); });
   }
   if(t==='ibkr') { startIbkrMtm(); }
   else stopIbkrMtm();
@@ -1779,6 +1809,37 @@ async function fetchIbkrBook() {
   _ibkrLastPayload = d;
   return d;
 }
+function ibkrHistAllowFromPayload(d) {
+  const set = new Set();
+  const start = Date.parse(IBKR_BOOK_START + 'T00:00:00.000Z') - 12 * 3600 * 1000;
+  for (const t of (d && d.trades) || []) {
+    if (t.errorTrade) continue;
+    const parts = String(t.key || '').split('|');
+    const ticker = String(t.ticker || parts[0] || '').toUpperCase();
+    const hz = parts[1] || t.hz || 'short';
+    const recMs = Date.parse(parts[2] || '');
+    const fillMs = Date.parse(t.entryTime || t.lastTime || '');
+    const inBook = (Number.isFinite(recMs) && recMs >= start)
+      || (Number.isFinite(fillMs) && fillMs >= start);
+    if (!inBook || !ticker) continue;
+    if (parts[2]) set.add(ticker + '|' + hz + '|' + parts[2]);
+    set.add(ticker + '|' + hz);
+  }
+  return set;
+}
+function loadIbkrHistFilter() {
+  if (window._ibkrHistAllow instanceof Set) return Promise.resolve(window._ibkrHistAllow);
+  if (window._ibkrHistAllowP) return window._ibkrHistAllowP;
+  window._ibkrHistAllowP = fetchIbkrBook().then(function (d) {
+    window._ibkrHistAllow = ibkrHistAllowFromPayload(d);
+    return window._ibkrHistAllow;
+  }).catch(function (e) {
+    console.warn(e);
+    window._ibkrHistAllow = new Set();
+    return window._ibkrHistAllow;
+  });
+  return window._ibkrHistAllowP;
+}
 function ibkrPeriodFromDaily(daily) {
   const months = {}, weeks = {};
   (daily || []).filter(function(x){ return String(x.date || '') >= IBKR_BOOK_START; }).forEach(function(x){
@@ -1803,95 +1864,10 @@ function ibkrPeriodFromDaily(daily) {
   };
   return { monthly: fmt(months, 12), weekly: fmt(weeks, 8) };
 }
-function ibkrTradeRowHtml(t, err) {
-  const dirC = t.side==='sell'?'var(--sell)':'var(--buy)';
-  const stC = t.status==='closed'?'var(--m1)':t.status==='partial'?'#F5C842':'var(--ac)';
-  const hzTag = t.hz==='medium'?'MED':t.hz==='long'?'LONG':'SHORT';
-  const exitPx = t.avgExit != null ? t.avgExit : t.lastExitPrice;
-  const td = function(s,c){ return '<td style="text-align:'+s+';padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;color:'+(c||'var(--t1)')+'">'; };
-  return '<tr'+(err?' style="opacity:.85"':'')+'>'
-    + td('left') + '<span style="font-weight:600">'+t.ticker+'</span> <span style="font-size:8px;color:var(--m1)">'+hzTag+(err?' · ERR':'')+'</span></td>'
-    + td('left',dirC) + String(t.side||'').toUpperCase()+'</td>'
-    + td('right','var(--m2)') + String(t.entryTime||'').slice(0,10)+'</td>'
-    + td('right') + (t.openQty > 0 ? Math.max(Number(t.entryQty)||0, Number(t.openQty)||0) : t.entryQty)+'</td>'
-    + td('right') + ibkrFmtPx(t.avgEntry)+' <span style="font-size:8px;color:var(--m1)">'+(t.currency||'')+'</span></td>'
-    + td('right') + (exitPx!=null?ibkrFmtPx(exitPx):'—')
-      + (t.exitQty>0?' <span style="font-size:8px;color:var(--m1)">x'+t.exitQty+'</span>':'')+'</td>'
-    + td('right') + (t.openQty>0?t.openQty:'—')+'</td>'
-    + td('right',ibkrPc(t.realizedUsd)) + ibkrFp(t.realizedUsd)+'</td>'
-    + td('right',ibkrPc(t.unrealizedUsd)) + (t.openQty>0?ibkrFp(t.unrealizedUsd):'—')+'</td>'
-    + td('right','var(--m2)') + (t.commissionUsd ? ('-$'+Math.abs(t.commissionUsd).toFixed(2)) : '—')+'</td>'
-    + td('left',stC) + t.status+'</td>'
-    + '</tr>';
-}
-function ibkrTradeTable(trades, err) {
-  const th = function(s){ return '<th style="text-align:'+s+';padding:4px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;border-bottom:1px solid var(--b1)">'; };
-  if (!trades.length) return '<div style="padding:10px 12px;font-size:11px;color:var(--m2);font-family:DM Mono,monospace">None</div>';
-  return '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:980px"><thead><tr>'
-    + th('left')+'Ticker</th>'+th('left')+'Side</th>'+th('right')+'Fill date</th>'+th('right')+'Qty</th>'
-    + th('right')+'Avg entry</th>'+th('right')+'Avg exit</th>'+th('right')+'Open</th>'
-    + th('right')+'Realised $</th>'+th('right')+'Unrealised $</th>'+th('right')+'Brokerage</th>'+th('left')+'Status</th>'
-    + '</tr></thead><tbody>'
-    + trades.map(function(t){ return ibkrTradeRowHtml(t, err); }).join('')
-    + '</tbody></table></div>';
-}
-
-function renderIbkrHistoryFromApi() {
-  const el = document.getElementById('histContent');
+function renderIbkrPerformanceExtras() {
+  const el = document.getElementById('ibkrPerfCapital');
   if (!el) return;
-  el.innerHTML = '<div class="emp"><div class="emp-a">◷</div><p>Loading IBKR fills from 6 Aug 2026…</p></div>';
-  fetchIbkrBook().then(function(d){ renderIbkrHistoryBook(d); })
-    .catch(function(e){
-      el.innerHTML = '<div class="emp"><div class="emp-a">!</div><p>Could not load IBKR trades: '+(e.message||e)+'</p></div>';
-    });
-}
-function renderIbkrHistoryBook(d) {
-  const el = document.getElementById('histContent');
-  if (!el) return;
-  const model = ibkrBookTrades(d, false);
-  const errors = (d.trades || []).filter(function(t){ return t.errorTrade && ibkrOnOrAfterBookStart(t.entryTime || t.lastTime); });
-  const st = ibkrBookStats(model);
-  const view = ST.histView === 'closed' ? 'closed' : 'live';
-  const live = model.filter(function(t){ return t.status === 'open' || t.status === 'partial'; });
-  const closed = model.filter(function(t){ return t.status === 'closed'; });
-  const shown = view === 'closed' ? closed : live;
-  const tile = function(l,v,sub,c){
-    return '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:10px 12px;min-width:118px;flex:1">'
-      +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace">'+l+'</div>'
-      +'<div style="font-size:16px;font-weight:600;font-family:DM Mono,monospace;color:'+(c||'var(--t1)')+';margin-top:2px">'+v+'</div>'
-      +(sub?'<div style="font-size:8px;color:var(--m1);font-family:DM Mono,monospace;margin-top:1px">'+sub+'</div>':'')
-      +'</div>';
-  };
-  const wrC = st.winRate==null?'var(--m1)':st.winRate>=55?'var(--buy)':st.winRate>=40?'#F5C842':'var(--sell)';
-  const tabs = '<div style="display:flex;gap:6px;margin:8px 0 10px">'
-    +'<button type="button" onclick="window.setHistView(\'live\')" style="background:'+(view==='live'?'rgba(61,219,123,0.12)':'rgba(255,255,255,0.04)')+';border:1px solid '+(view==='live'?'rgba(61,219,123,0.35)':'var(--b1)')+';color:'+(view==='live'?'var(--buy)':'var(--m1)')+';border-radius:5px;padding:4px 12px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">● Open ('+live.length+')</button>'
-    +'<button type="button" onclick="window.setHistView(\'closed\')" style="background:'+(view==='closed'?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.04)')+';border:1px solid '+(view==='closed'?'var(--m2)':'var(--b1)')+';color:'+(view==='closed'?'var(--t1)':'var(--m1)')+';border-radius:5px;padding:4px 12px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">✓ Closed ('+closed.length+')</button>'
-    +'</div>';
-  const errHtml = errors.length
-    ? ('<details style="background:var(--s1);border:1px solid #8B3A3A;border-radius:8px;padding:8px 4px;margin-top:10px">'
-      +'<summary style="cursor:pointer;font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:#E88;font-family:DM Mono,monospace;padding:4px 8px">Error trades · '+errors.length+' — IB fills excluded from model PnL</summary>'
-      + ibkrTradeTable(errors, true) + '</details>')
-    : '';
-  el.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
-    + tile('Open', st.openCount, 'IBKR lots from '+IBKR_BOOK_START)
-    + tile('Closed', st.closedCount, null)
-    + tile('Realised', ibkrFp(st.realizedUsd), 'net of brokerage', ibkrPc(st.realizedUsd))
-    + tile('Unrealised', ibkrFp(st.unrealizedUsd), null, ibkrPc(st.unrealizedUsd))
-    + tile('Net PnL', ibkrFp(st.net), 'same as IBKR tab', ibkrPc(st.net))
-    + tile('Win rate', st.winRate!=null?st.winRate+'%':'—', st.wins+'W / '+st.losses+'L', wrC)
-    + '</div>'
-    + '<div style="font-size:10px;color:var(--m1);font-family:DM Mono,monospace;margin-bottom:4px">Only IBKR-recorded fills from '+IBKR_BOOK_START+' (recommendation-only rows are not shown)</div>'
-    + tabs
-    + '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px">'
-    + ibkrTradeTable(shown, false)
-    + '</div>'
-    + errHtml;
-}
-
-function renderIbkrPerformancePage() {
-  const el = document.getElementById('perfContent');
-  if (!el) return;
-  el.innerHTML = '<div class="emp"><div class="emp-a">◷</div><p>Loading IBKR performance…</p></div>';
+  el.innerHTML = '<div style="font-size:10px;color:var(--m2);font-family:DM Mono,monospace;margin-bottom:8px">Loading $1,000,000 account high/low…</div>';
   fetchIbkrBook().then(function(d){
     const model = ibkrBookTrades(d, false);
     const st = ibkrBookStats(model);
@@ -1954,7 +1930,8 @@ function renderIbkrPerformancePage() {
         +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:'+ibkrPc(ret)+'">'+(ret>=0?'+':'')+ret+'%</td>'
         +'</tr>';
     }).join('');
-    el.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
+    el.innerHTML = '<div style="font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;margin:0 0 8px">Paper account — USD 1,000,000 (added)</div>'
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
       + tile('Starting capital', ibkrBal(start), 'paper account · '+IBKR_BOOK_START, 'var(--t1)')
       + tile('Current NLV', ibkrBal(nlv), acct.account ? ('IB '+acct.account) : 'IB net liquidation', 'var(--t1)')
       + tile('Highest account level', ibkrBal(peak), 'on '+ibkrFmtWhen(peakAt)+' · vs $1,000,000 start', 'var(--buy)')
@@ -4199,12 +4176,15 @@ function historyDedupKey(h) {
   return h.ticker + '_' + (h.hz || 'short') + '_' + new Date(h.entryDate || h.timestamp).toDateString();
 }
 
-/** Buy/Sell rows for History UI — deduped ticker+horizon+day (must match table). */
+/** Buy/Sell rows for History UI — deduped ticker+horizon+day (must match table).
+ *  After the IBKR book loads, only rows that have an IBKR model fill from 6 Aug 2026. */
 function getDisplayHistory() {
   const seen = new Set();
   const out = [];
+  const allow = window._ibkrHistAllow;
   for (const h of ST.history) {
     if (!historyRecordIsTrade(h)) continue;
+    if (allow && !historyRowInIbkrBook(h, allow)) continue;
     const k = historyDedupKey(h);
     if (seen.has(k)) continue;
     seen.add(k);
@@ -4214,6 +4194,18 @@ function getDisplayHistory() {
     return new Date(b.entryDate || b.timestamp) - new Date(a.entryDate || a.timestamp);
   });
   return out;
+}
+
+function historyRowInIbkrBook(h, allow) {
+  if (!allow || !allow.size) return false;
+  const ticker = String(h.ticker || '').toUpperCase();
+  const hz = h.hz || 'short';
+  const day = new Date(h.entryDate || h.timestamp).toDateString();
+  if (allow.has(ticker + '|' + hz + '|' + day)) return true;
+  const recMs = Date.parse(h.entryDate || h.timestamp || '');
+  const start = Date.parse(IBKR_BOOK_START + 'T00:00:00.000Z') - 12 * 3600 * 1000;
+  if (Number.isFinite(recMs) && recMs >= start && allow.has(ticker + '|' + hz)) return true;
+  return false;
 }
 
 function getDisplayHistoryForHz(hzKey) {
@@ -6306,10 +6298,7 @@ function clearHistoryAll() {
 
 window.setHistView = function (v) {
   ST.histView = v === 'closed' ? 'closed' : 'live';
-  try {
-    if (_ibkrLastPayload) renderIbkrHistoryBook(_ibkrLastPayload);
-    else renderHist();
-  } catch (e) { console.error('setHistView render:', e); }
+  try { renderHist(); } catch (e) { console.error('setHistView render:', e); }
 };
 
 window._riskState = window._riskState || null;
@@ -6397,7 +6386,393 @@ function renderHist() {
       }
     } else if (b) { b.remove(); }
   })();
-  renderIbkrHistoryFromApi();
+  const histPh = document.querySelector('#pane-history .ph');
+  if (histPh && !histPh.querySelector('.hist-actions')) {
+    const actDiv = document.createElement('div');
+    actDiv.className = 'hist-actions';
+    actDiv.style.cssText = 'display:flex;gap:8px;align-items:center';
+    actDiv.innerHTML = '<button onclick="clearHistoryAll()" style="background:rgba(255,60,60,0.1);border:1px solid rgba(255,60,60,0.25);color:#ff5555;border-radius:5px;padding:4px 10px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">✕ Clear all</button>';
+    histPh.appendChild(actDiv);
+  }
+  if (!(window._ibkrHistAllow instanceof Set)) {
+    el.innerHTML = '<div class="emp"><div class="emp-a">◷</div><p>Matching history to IBKR fills from 6 Aug 2026…</p></div>';
+    loadIbkrHistFilter().then(function () {
+      renderHist();
+      renderSummaryCards('short');
+      renderPortfolioSummary();
+    }).catch(function (e) { console.warn(e); });
+    return;
+  }
+  if(!ST.history.length) {
+    el.innerHTML = '<div class="emp"><div class="emp-a">◷</div>'
+      +'<p>No recommendations yet.<br>'
+      +'<span style="font-size:11px;color:var(--m1)">Run a dashboard scan or analyse a ticker — Buy/Sell trades save automatically. If you had history before v7.3.2, reload once after deploy; local records restore to the server.</span></p>'
+      +'</div>';
+    return;
+  }
+
+  // Only show Buy/Sell trades (no Hold), deduplicated by ticker+horizon+day
+  const hist = getDisplayHistory();
+
+  if(!hist.length) {
+    el.innerHTML = '<div class="emp"><div class="emp-a">◷</div>'
+      +'<p>No IBKR-filled trades from 6 Aug 2026 yet.<br>'
+      +'<span style="font-size:11px;color:var(--m1)">History keeps the same TP1/TP2/TSL/donation analysis, but only shows recommendations that have a fill in IBKR from that date.</span></p>'
+      +'</div>';
+    return;
+  }
+
+  // Portfolio stats — separate realised (TP/SL hit) and unrealised (open)
+  function getHzPnl(h, hz) {
+    const rawStatus = h[hz+'Status'] || (h[hz+'PnlDollar'] != null ? 'open' : null);
+    const pnl = h[hz+'PnlDollar'];
+    const mktOpen = isMarketTrading(h.ticker);
+    const isToday = new Date(h.entryDate||h.timestamp).toDateString() === new Date().toDateString();
+    const wasClosed = rawStatus==='tp1_hit'||rawStatus==='tp2_hit'||rawStatus==='sl_hit';
+    // Today's trades that appear "closed" are really just open (market hasn't confirmed)
+    const effectiveOpen = rawStatus==='open'||rawStatus==null||(isToday&&!mktOpen&&wasClosed);
+    return { status: rawStatus, pnl, isOpen: effectiveOpen };
+  }
+
+  function fmtPnl(v) {
+    if(v==null) return '—';
+    const s = v>=0?'+':'-'; return s+'$'+Math.abs(v).toFixed(0);
+  }
+
+  const summaryCards = '<div id="histPortfolioSummary"></div><div id="histSummaryCards" class="hist-summary-strip"></div>';
+
+  const horizonTabs = '<div class="hist-horizon-tabs">'
+    + '<div class="ht act" id="hist-ht-all" onclick="switchHistHz(\'all\')">All timeframes</div>'
+    + '<div class="ht" id="hist-ht-short" onclick="switchHistHz(\'short\')">Short · 1d–1mo</div>'
+    + '<div class="ht" id="hist-ht-medium" onclick="switchHistHz(\'medium\')">Medium · 1–3mo</div>'
+    + '<div class="ht" id="hist-ht-long" onclick="switchHistHz(\'long\')">Long · 4–12mo</div>'
+    + '</div>';
+
+  function mkTable(hz) {
+    const rk  = hz+'Rating';
+    const pk  = hz+'PnlDollar';
+    const ppk = hz+'PnlPct';
+    const stk = hz+'Status';
+    const ak  = hz+'Action';
+
+    // Records with hz: show on matching tab. "all" shows the primary horizon of every row.
+    let hzHist = hist.filter(h => {
+      if (hz === 'all') return true;
+      if(!h.hz) return true;  // no hz = old format, show everywhere
+      return h.hz === hz;
+    });
+    const rowHz = function (h) { return hz === 'all' ? (h.hz || 'short') : hz; };
+
+    // ── LIVE vs REALISED split ──────────────────────────────────────────────
+    // Live: fully open positions + TP1-banked runners (still in the market).
+    // Realised: every trade with a REALISED event — TP1 partials (runner may
+    // still be live → highlighted green) and all full exits.
+    const FULL_EXITS = ['tp1_hit','tp2_hit','sl_hit','time_limit','signal_exit','tp1_then_sl','tp1_then_time'];
+    const _view = ST.histView === 'closed' ? 'closed' : 'live';
+    const _liveCount = hzHist.filter(function(t){ const rh=rowHz(t); const st=t[rh+'Status']||t.status||'open'; return st==='open'||st==='tp1_open'||st==='pending'; }).length;
+    const _realCount = hzHist.filter(function(t){ const rh=rowHz(t); const st=t[rh+'Status']||t.status||'open'; return st==='tp1_open'||FULL_EXITS.includes(st); }).length;
+    hzHist = hzHist.filter(function(t){
+      const rh = rowHz(t);
+      const st = t[rh+'Status'] || t.status || 'open';
+      if (_view === 'live') return st === 'open' || st === 'tp1_open' || st === 'pending';
+      return st === 'tp1_open' || FULL_EXITS.includes(st); // realised view
+    });
+    const _viewTabs = '<div style="display:flex;gap:6px;margin:8px 0 6px 0">'
+      +'<button type="button" onclick="window.setHistView(\'live\')" style="background:'+(_view==='live'?'rgba(61,219,123,0.12)':'rgba(255,255,255,0.04)')+';border:1px solid '+(_view==='live'?'rgba(61,219,123,0.35)':'var(--b1)')+';color:'+(_view==='live'?'var(--buy)':'var(--m1)')+';border-radius:5px;padding:4px 12px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">● Live ('+_liveCount+')</button>'
+      +'<button type="button" onclick="window.setHistView(\'closed\')" style="background:'+(_view==='closed'?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.04)')+';border:1px solid '+(_view==='closed'?'var(--m2)':'var(--b1)')+';color:'+(_view==='closed'?'var(--t1)':'var(--m1)')+';border-radius:5px;padding:4px 12px;font-size:10px;font-family:DM Mono,monospace;cursor:pointer">✓ Realised / Exited ('+_realCount+')</button>'
+      +'</div>';
+
+    if(!hzHist.length) {
+      return '<div id="hist-table-'+hz+'" style="display:'+(hz==='all'?'block':'none')+'">'+_viewTabs
+        +'<div style="padding:1.5rem;text-align:center;color:var(--m1);font-family:DM Mono,monospace;font-size:11px">'
+        +'No '+(_view==='live'?'live':'realised')+' trades for this timeframe.</div></div>';
+    }
+    if(false) {
+      return '<div id="hist-table-'+hz+'" style="display:'+(hz==='short'?'block':'none')+'">'
+        +'<div style="padding:1.5rem;text-align:center;color:var(--m1);font-family:DM Mono,monospace;font-size:11px">'
+        +'No Buy/Sell recommendations for this timeframe.</div></div>';
+    }
+
+    const rows = hzHist.map(function(h) {
+      const rh = rowHz(h);
+      const isSell = (h.action||'').toLowerCase() === 'sell';
+      const livePrice = h.currentPrice ? '$'+parseFloat(h.currentPrice).toFixed(2) : '—';
+      // Entry and target - new format has them set at record creation time
+      const entryRaw = h[rh+'Entry'] || h.entry || '—';
+      const ep = (!entryRaw || entryRaw === 'unavailable') ? '—' : entryRaw;
+      const tpRaw = h[rh+'Target1'] || h.target1 || '—';
+      const tp        = tpRaw==='unavailable'?'—':tpRaw;
+      const slVal = h[rh+'StopLoss'] || (isSell ? h.sellStopLoss : h.stopLoss) || h.stopLoss || '—';
+      const sl = slVal === 'unavailable' || !slVal ? '—' : slVal;
+      const rating    = h.rating || h[rk] || h.action || '—';
+      // For new records, use the hz-specific PnL; also check generic pnl field
+      const pnlD      = h[rh+'PnlDollar'] !== undefined ? h[rh+'PnlDollar'] : h.pnlDollar;
+      const pnlP      = h[rh+'PnlPct'] !== undefined ? h[rh+'PnlPct'] : h.pnlPct;
+      // If closed (TP/SL hit) but pnlD is null, compute from stored levels
+      let computedPnlD = pnlD, computedPnlP = pnlP;
+      if(pnlD == null && (h[rh+'Status']==='tp1_hit'||h[rh+'Status']==='tp2_hit'||h[rh+'Status']==='sl_hit'||h[rh+'Status']==='time_limit'||h[rh+'Status']==='signal_exit'||h[rh+'Status']==='tp1_then_sl'||h[rh+'Status']==='tp1_then_time')) {
+        const isSc = (h.action||'').toLowerCase()==='sell';
+        const entryV = parsePrice(h[rh+'Entry']||h.entry||h.entryPrice);
+        let exitRaw = h[rh+'ExitPrice'];
+        if (exitRaw == null || exitRaw === '') {
+          const stt = h[rh+'Status'];
+          const tp1f = h[rh+'Target1']||h.target1;
+          const tp2f = h[rh+'Target2']||h.target2;
+          const slf = h[rh+'StopLoss']||(isSc?h.sellStopLoss:h.stopLoss)||h.stopLoss;
+          if (stt==='tp1_hit') exitRaw = tp1f;
+          else if (stt==='tp2_hit') exitRaw = tp2f;
+          else if (stt==='sl_hit') exitRaw = slf;
+        }
+        const exitV = parsePrice(exitRaw);
+        if(entryV && exitV) {
+          const dir = isSc ? -1 : 1;
+          // Fixed $10k notional (NOT floor(10000/entry) shares, which is 0 for
+          // high-priced names and shows a bogus $0).
+          computedPnlP = (exitV - entryV) / entryV * dir * 100;
+          computedPnlD = computedPnlP / 100 * 10000;
+        }
+      }
+      const status    = h[rh+'Status'] && h[rh+'Status'] !== 'n/a' ? h[rh+'Status'] : (h.status||'open');
+      const ds        = new Date(h.entryDate||h.timestamp).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'});
+
+      // Compute effective status FIRST (market-hours aware) - BEFORE any usage
+      const minsElapsed = (Date.now() - new Date(h.entryDate||h.timestamp).getTime()) / 60000;
+      const mktNowOpen = isMarketTrading(h.ticker);
+      const isToday = new Date(h.entryDate||h.timestamp).toDateString() === new Date().toDateString();
+      const wasClosed = status==='tp1_hit'||status==='tp2_hit'||status==='sl_hit'||status==='time_limit'||status==='signal_exit'||status==='tp1_then_sl'||status==='tp1_then_time';
+      const wouldBePending = (isToday && !mktNowOpen && !wasClosed);
+      const effectiveStatus = (wouldBePending && computedPnlD == null) ? 'pending' : status;
+      const effectiveIsOpen = effectiveStatus === 'open' || effectiveStatus === 'pending';
+      const effectiveIsRunner = effectiveStatus === 'tp1_open'; // TP1 banked, runner LIVE
+      const effectiveIsTp1  = effectiveStatus === 'tp1_hit' || effectiveStatus === 'tp1_then_sl' || effectiveStatus === 'tp1_then_time' || effectiveIsRunner;
+      const effectiveIsTp2  = effectiveStatus === 'tp2_hit';
+      const effectiveIsSl   = effectiveStatus === 'sl_hit';
+      const isOpen  = effectiveIsOpen;
+      const isTp1   = effectiveIsTp1;
+      const isTp2   = effectiveIsTp2;
+      const isSl    = effectiveIsSl;
+      const effectiveIsSignalExit = effectiveStatus==='signal_exit';
+      const isClosed= isTp1||isTp2||isSl||effectiveStatus==='time_limit'||effectiveIsSignalExit;
+
+      const rowBg = effectiveIsRunner
+        ? 'background:rgba(61,219,123,0.12);border-left:2px solid var(--buy);' // TP1 banked · runner LIVE
+        : effectiveIsOpen && computedPnlD != null
+        ? 'background:rgba(245,200,66,0.06);'
+        : effectiveIsTp1||effectiveIsTp2 ? 'background:rgba(61,219,123,0.05);'
+        : effectiveIsSl ? 'background:rgba(244,108,108,0.05);'
+        : '';
+
+      const statusBadge = effectiveStatus==='pending'
+        ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(245,200,66,0.15);color:#F5C842;font-family:DM Mono,monospace">⏳ Pending open</span>'
+        : effectiveStatus==='time_limit' ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(180,180,180,0.15);color:#aaa;font-family:DM Mono,monospace">⏱ Time limit</span>'
+        : effectiveIsSignalExit ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(120,170,255,0.18);color:#7aaaff;font-family:DM Mono,monospace">⇄ Signal exit</span>'
+        : effectiveIsTp2 ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.2);color:var(--buy);font-family:DM Mono,monospace" title="Re-decided under partial+TSL on the next History refresh">✓ TP2 exit</span>'
+        : effectiveIsRunner ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.25);color:var(--buy);font-family:DM Mono,monospace" title="TP1 hit — ~half banked, remaining rides the trailing stop">✓ TP1 · Runner LIVE</span>'
+        : effectiveStatus === 'tp1_hit' ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(245,200,66,0.2);color:#F5C842;font-family:DM Mono,monospace" title="Re-decided under partial+TSL on the next History refresh">✓ TP1 exit</span>'
+        : effectiveIsTp1 ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(61,219,123,0.15);color:var(--buy);font-family:DM Mono,monospace">✓ TP1 + TSL done</span>'
+        : effectiveIsSl  ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(244,108,108,0.2);color:var(--sell);font-family:DM Mono,monospace">✗ SL Hit</span>'
+        : '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(245,200,66,0.2);color:#F5C842;font-family:DM Mono,monospace">● Open</span>';
+
+            let pnlDisplay;
+      // CLOSED trades (TP/SL/time-limit hit) → always show realised PnL, ignore market hours
+      if(isClosed && computedPnlD != null) {
+        const pos  = computedPnlD >= 0;
+        const col  = pos ? 'var(--buy)' : 'var(--sell)';
+        const sign = pos ? '+' : '';
+        const exitLabel = effectiveIsTp2?'TP2':effectiveIsTp1?'TP1':effectiveIsSl?'SL':effectiveIsSignalExit?'Flip':'Closed';
+        const exitP = h[rh+'ExitPrice'] ? ' @ '+roundDashPrice(parseFloat(h[rh+'ExitPrice'])) : '';
+        pnlDisplay = '<span style="color:'+col+';font-family:DM Mono,monospace;font-size:11px;font-weight:500">'
+          +sign+'$'+Math.abs(computedPnlD).toFixed(0)+' ('+sign+Math.abs(computedPnlP||0).toFixed(1)+'%)'
+          +'<span style="font-size:9px;color:var(--m2);margin-left:4px">'+exitLabel+exitP+'</span></span>';
+      // OPEN trades PnL display
+      } else if(effectiveStatus === 'pending') {
+        // Today's trade, market not open yet, no price - show pending
+        pnlDisplay = '<span style="color:var(--m1);font-size:10px;font-family:DM Mono,monospace">⏳ Pending open</span>';
+      } else if(computedPnlD == null) {
+        // No price loaded yet
+        pnlDisplay = '<span style="color:var(--m1);font-size:10px;font-family:DM Mono,monospace">Live price loading…</span>';
+      } else {
+        // Show unrealised PnL (yellow) regardless of market hours - last known price
+        const pos  = computedPnlD >= 0;
+        const sign = pos ? '+' : '';
+        const mktLabel = mktNowOpen ? '' : '<span style="font-size:9px;color:var(--m2);margin-left:4px">(last close)</span>';
+        pnlDisplay = '<span style="color:#F5C842;font-family:DM Mono,monospace;font-size:11px;font-weight:500">'
+          +sign+'$'+Math.abs(computedPnlD).toFixed(0)+' ('+sign+Math.abs(computedPnlP||0).toFixed(1)+'%)</span>'+mktLabel;
+      }
+
+      // Action badge
+      const actionBadge = '<span class="ab '+aCls(h.action)+'">'+(isSell?'Sell':'Buy')+'</span>';
+      const ratingBg = rCls(rating).includes('buy') ? 'var(--buyb);color:var(--buy)' : rCls(rating).includes('sell') ? 'var(--sellb);color:var(--sell)' : 'var(--holdb);color:var(--hold)';
+
+      function td(c,a){ return '<td style="padding:8px 10px;border-bottom:1px solid var(--b1);text-align:'+(a||'left')+'">' + c + '</td>'; }
+
+      return '<tr style="'+rowBg+'">'
+        +td('<div style="font-family:DM Mono,monospace;font-size:11px;font-weight:500">'+h.ticker+'</div><div style="font-size:9px;color:var(--m2)">'+(h.name||'').substring(0,16)+'</div>'+(hz==='all'?'<div style="font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase">'+rh+'</div>':''))
+        +td(actionBadge + ' ' + statusBadge)
+        +td('<span style="font-size:10px;padding:2px 6px;border-radius:6px;font-family:DM Mono,monospace;background:'+ratingBg+'">'+rating+'</span>')
+        +td('<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--m2)">'+ds+'</span>')
+        +td('<span style="font-family:DM Mono,monospace;font-size:11px" title="'+((h.entrySource||'pre-fix entry').replace(/"/g,'&quot;'))+'">'+ep+'</span>','right')
+        +td('<span style="font-family:DM Mono,monospace;font-size:11px">'+livePrice+'</span>','right')
+        +td(pnlDisplay,'right')
+        +td((function(){
+          var base = '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--buy)">'+tp+'</span>';
+          // Position size on $10k notional — always show original share count.
+          var stot = h[rh+'SharesTotal'];
+          var sold = h[rh+'SharesSoldTP1'];
+          var runr = h[rh+'SharesRunner'];
+          if (stot == null) {
+            var _eS = parseFloat(h[rh+'Entry']||h.entry||0);
+            stot = _eS > 0 ? Math.floor(10000/_eS) : null;
+            if (!(stot >= 1)) stot = null;
+            sold = stot != null ? Math.floor(stot/2) : null;
+            runr = stot != null && sold != null ? (stot - sold) : null;
+          }
+          if (sold == null && stot != null) sold = Math.floor(stot/2);
+          if (runr == null && stot != null && sold != null) runr = stot - sold;
+          var stt2 = effectiveStatus;
+          var tp1Done = h[rh+'Tp1Hit'] || effectiveIsRunner || stt2==='tp1_then_sl' || stt2==='tp1_then_time' || stt2==='tp1_hit' || stt2==='tp2_hit';
+          var sizeLine;
+          if (stot == null) {
+            // Price > $10k notional → fractional 1.0 unit position
+            sizeLine = 'Pos: $10k (frac)';
+          } else if (tp1Done) {
+            sizeLine = 'Pos: '+stot+' sh · sold '+sold+' @ TP1 · '+runr+(isClosed?' closed':' run');
+          } else {
+            sizeLine = 'Pos: '+stot+' sh · plan '+sold+' @ TP1 / '+runr+' run';
+          }
+          return base+'<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--m1);margin-top:1px" title="$10k notional position. Whole-share TP1 split: floor(shares/2) banked at TP1, remainder rides TSL.">'+sizeLine+'</div>';
+        })())
+        +td((function(){
+          var tp2v = h[rh+'Target2'] || h.target2 || '';
+          var hit = h[rh+'Tp2Hit'] ? ' <span style="color:var(--buy)">✓ hit</span>' : '';
+          var beyond = h[rh+'Tp2DonationPct'];
+          var beyondTxt = (h[rh+'Tp2Hit'] && beyond != null && isFinite(beyond) && beyond > 0.05)
+            ? '<div style="font-size:8px;color:var(--m1)">+' + Number(beyond).toFixed(1) + '% beyond</div>' : '';
+          return tp2v && tp2v !== 'unavailable'
+            ? '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--m2)" title="TP2 is a REFERENCE level only — never an automatic exit. Hit = price reached TP2 while the runner was live.">'+tp2v+hit+'</span>'+beyondTxt
+            : '<span style="color:var(--m1)">—</span>';
+        })())
+        +td((function(){
+          var tsl = h[rh+'LiveTrailSL'];
+          var slHtml = tsl
+            ? '<span style="font-family:DM Mono,monospace;font-size:10px;color:#F5C842" title="Trailing stop — ratchets daily on favorable moves, never loosens">TSL @ '+tsl+'</span>'
+            : '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--sell)">'+sl+'</span>';
+          var bits = [];
+          if (h[rh+'TslActivated']) bits.push('<span title="Trailing stop activated after TP1">TSL active</span>');
+          var alt = h[rh+'Tp2AltPnlPct'];
+          if (alt != null && isFinite(alt)) {
+            var actP = (computedPnlP != null && isFinite(computedPnlP)) ? Number(computedPnlP).toFixed(1)+'%' : '—';
+            var diff = (computedPnlP != null && isFinite(computedPnlP)) ? (Number(computedPnlP) - Number(alt)) : null;
+            var diffTxt = diff != null ? (diff >= 0 ? ' <span style="color:var(--buy)">(+'+diff.toFixed(1)+' running)</span>' : ' <span style="color:var(--sell)">('+diff.toFixed(1)+' running)</span>') : '';
+            bits.push('<span title="Hypothetical full exit at TP2 vs actual trailing-runner result">TP2-exit '+Number(alt).toFixed(1)+'% vs '+actP+diffTxt+'</span>');
+          }
+          var sec = h[rh+'SectorTrend'] || h.sectorTrend || '';
+          if (!sec && (h.sector || h.fundSnapshot)) {
+            var rawSec = h.fundSnapshot && h.fundSnapshot._fmpSector ? h.fundSnapshot._fmpSector : (h.sector || '');
+            if (rawSec) sec = String(rawSec);
+          }
+          if (sec) bits.push('<span title="Sector / sector-ETF trend">'+String(sec).replace(/</g,'').slice(0,40)+'</span>');
+          if (bits.length) slHtml += '<div style="font-family:DM Mono,monospace;font-size:8px;color:var(--m1);margin-top:1px">'+bits.join(' <span style="opacity:0.4">·</span> ')+'</div>';
+          return slHtml;
+        })())
+        +td((function(){
+          // ── REASON column: why the trade closed / where it stands ──
+          var stt = effectiveStatus;
+          var exitPx = parseFloat(h[rh+'ExitPrice']||0)||null;
+          var entryPx = parseFloat(h[rh+'Entry']||h.entry||0)||null;
+          var dirn = isSell ? -1 : 1;
+          var runnerPct = (exitPx && entryPx) ? (dirn*(exitPx-entryPx)/entryPx*100) : null;
+          var storedReason = h[rh+'ExitReason'] || '';
+          function mk(txt,col,tip){ return '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(255,255,255,0.06);color:'+col+';font-family:DM Mono,monospace;white-space:nowrap" title="'+String(tip||'').replace(/"/g,'&quot;')+'">'+txt+'</span>'; }
+          if (stt==='tp1_then_sl') {
+            var rp = runnerPct!=null ? (runnerPct>=0?'+':'')+runnerPct.toFixed(1)+'%' : '';
+            var cc = (runnerPct!=null && runnerPct<0) ? '#F5C842' : 'var(--buy)';
+            var soldN = h[rh+'SharesSoldTP1'];
+            return mk('TSL '+rp, cc, 'TP1 banked '+(soldN!=null?soldN+' sh':'50%')+' → SL converted to ratchet TSL (breakeven floor) → runner leg exited'+(exitPx?' @ '+exitPx:'')+' at '+rp+' vs entry');
+          }
+          if (stt==='tp1_then_time') return mk('TIME post-TP1','#F5C842','TP1 banked; horizon time limit closed the runner (TSL was active, never hit)');
+          if (stt==='sl_hit') return mk('SL','var(--sell)','Original stop hit — TP1 never printed, so the SL was never converted to a TSL');
+          if (stt==='time_limit') return mk('TIME','#aaa','Horizon time limit exit — neither TP1 nor SL was reached');
+          if (effectiveIsSignalExit) return mk('REVERSAL','#7aaaff', storedReason || 'Closed by an opposite-side entry-grade signal (reversal-only exit policy)');
+          if (stt==='tp1_hit') return mk('TP1 exit','#F5C842','Re-decided under partial+TSL on the next History refresh — all trades bank the partial at TP1 and trail the rest.');
+          if (stt==='tp2_hit') return mk('TP2 exit','var(--buy)','Re-decided under partial+TSL on the next History refresh — TP2 is reference-only, never an exit.');
+          if (effectiveIsRunner) return mk('TP1 ✓ runner live','var(--buy)','TP1 partial banked; runner riding the ratchet TSL');
+          if (storedReason) return mk(String(storedReason).slice(0,18), 'var(--m2)', storedReason);
+          return '<span style="color:var(--m1)">—</span>';
+        })())
+        +td((function(){
+          // ── DON %: giveback AFTER TP1 (clock starts at the TP1 print — v145
+          //    spec; '—' until TP1 prints) + $ giveback on $10k + move beyond
+          //    TP1/TP2 after those levels printed ──
+          var gd = h[rh+'DonationPct'];
+          var d1 = h[rh+'Tp1DonationPct'];
+          var d2 = h[rh+'Tp2DonationPct'];
+          var lines = [];
+          if (gd != null && isFinite(gd)) {
+            var gcol = gd >= 5 ? 'var(--sell)' : gd >= 2 ? '#F5C842' : 'var(--m2)';
+            var fx = h[rh+'FavExtreme'];
+            var gDol = +(Number(gd) / 100 * 10000).toFixed(0);
+            lines.push('<span style="color:'+gcol+'" title="Giveback after TP1: best price since TP1 printed'+(fx?' ('+fx+')':'')+' → '+(isClosed?'exit':'current price')+'. Clock starts at the TP1 print — no donation before TP1.">'+Number(gd).toFixed(1)+'% · $'+gDol+'</span>');
+          }
+          var tpParts = [];
+          if (d1 != null && isFinite(d1) && d1 > 0.05) tpParts.push('TP1 +'+Number(d1).toFixed(1)+'%');
+          if (d2 != null && isFinite(d2) && d2 > 0.05) tpParts.push('TP2 +'+Number(d2).toFixed(1)+'%');
+          if (tpParts.length) lines.push('<span style="font-size:8px;color:var(--m1)" title="How far price ran beyond TP after it printed — were targets too early?">'+tpParts.join(' · ')+'</span>');
+          if (h[rh+'Tp2Hit']) lines.push('<span style="font-size:8px;color:var(--buy)" title="Price reached the TP2 reference level">TP2 reached</span>');
+          if (!lines.length) return '<span style="color:var(--m1)">—</span>';
+          return '<span style="font-family:DM Mono,monospace;font-size:10px">'+lines.join('<br>')+'</span>';
+        })())
+        +td((function(){
+          var ex = h[rh+'Exhaustion'];
+          return ex
+            ? '<span style="font-family:DM Mono,monospace;font-size:10px;color:'+(ex.indexOf('HIGH')>=0?'var(--sell)':'#F5C842')+'" title="'+ex.replace(/"/g,'&quot;')+'">Yes</span>'
+            : '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--m1)">No</span>';
+        })())
+        +td('<button class="btn" style="font-size:10px;padding:3px 7px" data-t="'+h.ticker+'" onclick="sbAn(this.getAttribute(\'data-t\'),\'\',\'\')">↻</button>')
+        +'</tr>';
+    }).join('');
+
+    const th = 'padding:8px 10px;font-size:9px;font-family:DM Mono,monospace;color:var(--m1);text-transform:uppercase;letter-spacing:.06em;font-weight:400;border-bottom:1px solid var(--b1);background:var(--s2)';
+    return '<div id="hist-table-'+hz+'" style="display:'+(hz==='all'?'block':'none')+'">'+_viewTabs
+      +'<div class="lcard" style="padding:0;overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
+      +'<thead><tr>'
+      +'<th style="text-align:left;'+th+'">Instrument</th>'
+      +'<th style="text-align:left;'+th+'">Action / Status</th>'
+      +'<th style="text-align:left;'+th+'">Rating</th>'
+      +'<th style="text-align:left;'+th+'">Date</th>'
+      +'<th style="text-align:right;'+th+'">Entry</th>'
+      +'<th style="text-align:right;'+th+'">Live</th>'
+      +'<th style="text-align:right;'+th+'">PnL ($10k)</th>'
+      +'<th style="text-align:left;'+th+'">TP1</th>'
+      +'<th style="text-align:left;'+th+'">TP2</th>'
+      +'<th style="text-align:left;'+th+'">SL / TSL</th>'
+      +'<th style="text-align:left;'+th+'" title="Why the trade closed — SL (no TP1), TSL (post-TP1 ratchet, with runner-leg result), TIME, or REVERSAL">Reason</th>'
+      +'<th style="text-align:left;'+th+'" title="Giveback after TP1: favorable extreme once TP1 printed → exit/CMP. Shows — until TP1 prints. Sub-line: move beyond TP1/TP2 after they printed">Don %</th>'
+      +'<th style="text-align:left;'+th+'" title="Move exhaustion — Yes = RSI extreme / stretched vs MA20 / long one-way run">Exh</th>'
+      +'<th style="text-align:left;'+th+'"></th>'
+      +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  }
+
+  const activeHz = window._histActiveHz || 'all';
+  const pendingBase = activeHz === 'all' ? getDisplayHistory() : getDisplayHistoryForHz(activeHz);
+  const pendingCount = pendingBase
+    .filter(function (h) {
+      const hz = activeHz === 'all' ? (h.hz || 'short') : activeHz;
+      const st = h[hz + 'Status'];
+      return h[hz + 'PnlDollar'] == null && !['tp1_hit', 'tp2_hit', 'sl_hit', 'time_limit', 'signal_exit', 'tp1_then_sl', 'tp1_then_time'].includes(st);
+    }).length;
+  const pendingBanner = pendingCount > 0
+    ? '<div style="background:rgba(245,200,66,0.08);border:1px solid rgba(245,200,66,0.25);border-radius:8px;padding:8px 12px">'
+      +'<span style="font-size:11px;color:#F5C842;font-family:DM Mono,monospace">'+pendingCount+' trade'+(pendingCount>1?'s':'')+' — fetching live quotes for PnL (automatic)</span></div>'
+    : '';
+
+  el.innerHTML = '<div class="hist-body">'+summaryCards + pendingBanner
+    +'<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;margin-top:2px">'
+    +'<span style="font-size:10px;color:var(--m1);font-family:DM Mono,monospace">'+hist.length+' Buy/Sell trades · $10k per trade · 🟡 Unrealised · ✓ TP hit · ✗ SL hit · PnL refreshes when you open History</span>'
+    +'<div></div>'
+    +'</div>'
+    +horizonTabs+mkTable('all')+mkTable('short')+mkTable('medium')+mkTable('long')+'</div>';
+  switchHistHz(window._histActiveHz || 'all');
 }
 
 function calcSummaryForHz(hzKey) {

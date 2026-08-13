@@ -13977,7 +13977,7 @@ function restoreOpenModelFillsFromCursorErr(positionsOverride) {
               side, role: 'entry', qty: delta, price: px,
               currency: (sample && sample.currency) || meta.currency || 'USD',
               ccyScale: Number(sample && sample.ccyScale) || 1,
-              time: new Date().toISOString(),
+              time: (sample && sample.time) || ibkrRecDayIsoFromKey(liveKey) || new Date().toISOString(),
               errorTrade: false, synthetic: true, recon: 'qty-pad',
               note: '[restore-open-model qty-pad]'
             });
@@ -14967,9 +14967,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           const avg = ibkrAvgToFillUnit(ib && ib.avgCost, primary.ccyScale, primary.avgEntry)
             || primary.avgEntry;
           if (!(avg > 0) || !(delta > 0)) continue;
-          const fillAt = new Date().toISOString();
-          const phase = ibkrSessionPhase(primary.rawTicker || y, fillAt);
-          const execId = `recon-entry-${primary.key}-pad${delta}`;
+          const fillAt = ibkrRecDayIsoFromKey(primary.key) || new Date().toISOString();
           if (!_ibkrExecIds.has(execId)) {
             newFills.push({
               execId, key: primary.key, ticker: primary.rawTicker || y, hz: primary.hz || 'short',
@@ -15403,6 +15401,19 @@ async function ibkrUsdPerCcy(ccy) {
   }
 }
 
+function ibkrRecDayIsoFromKey(key) {
+  const day = String(key || '').split('|')[2] || '';
+  const ms = Date.parse(day);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toISOString();
+}
+function isIbkrSyntheticFillRow(f) {
+  if (!f) return false;
+  if (f.synthetic || f.recon) return true;
+  const e = String(f.execId || '');
+  return /^(recon-|recover-entry-|ibhist-|synth-)/.test(e);
+}
+
 // Aggregated per-trade view of the paper account, built purely from real fills.
 // READ-ONLY: never mutate ibkr_fills.jsonl here (phantom drop / quarantine run in recon/boot).
 app.get('/api/ibkr/trades', async (req, res) => {
@@ -15475,7 +15486,12 @@ app.get('/api/ibkr/trades', async (req, res) => {
         sessionSummary,
         realizedLocal,
         fills: fillViews,
-        entryTime: entries[0] ? entries[0].time : f0.time,
+        recDay: String(key).split('|')[2] || null,
+        entryTime: (function () {
+          const real = entries.find(f => !isIbkrSyntheticFillRow(f));
+          if (real && real.time) return real.time;
+          return ibkrRecDayIsoFromKey(key) || (entries[0] && entries[0].time) || f0.time;
+        })(),
         lastTime: fills[fills.length - 1].time,
         status: openQty > 0 ? (exitQty > 0 ? 'partial' : 'open') : 'closed',
         errorTrade: !!(f0.errorTrade || fills.some(f => f.errorTrade) || isCursorErrIbkrKey(key))
