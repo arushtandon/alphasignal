@@ -14391,6 +14391,7 @@ const IBKR_RECON_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_recon.json')
 const IBKR_RECON_PENDING_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_recon_pending.json');
 const IBKR_ACCOUNT_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_account.json');
 const IBKR_CHARGES_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_charges.jsonl');
+const IBKR_ACCRUED_ALLOC_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_accrued_alloc.json');
 /** Paper account inception capital — Performance / History return % denominator. */
 const IBKR_STARTING_CAPITAL = 1000000;
 /** History + Performance only include IBKR fills from this UTC date onward. */
@@ -14502,6 +14503,82 @@ function appendIbkrCharges(rows) {
   }
   return n;
 }
+function loadIbkrAccruedAlloc() {
+  try { return JSON.parse(fs.readFileSync(IBKR_ACCRUED_ALLOC_FILE, 'utf8')) || {}; }
+  catch (_) { return { open: {}, realized: [] }; }
+}
+function saveIbkrAccruedAlloc(j) {
+  try { fs.writeFileSync(IBKR_ACCRUED_ALLOC_FILE, JSON.stringify(j, null, 2)); } catch (_) {}
+}
+/**
+ * IB AccruedCash is one portfolio number (credit interest + stock-borrow).
+ * Negative → allocate across open shorts by USD notional; lock that share onto
+ * the equity when the lot leaves the open book.
+ */
+function updateIbkrAccruedAlloc(trades, accruedCash) {
+  const prev = loadIbkrAccruedAlloc();
+  const ac = Number(accruedCash);
+  const nature = ac < 0 ? 'borrow' : (ac > 0 ? 'credit_interest' : 'none');
+  const opens = (trades || []).filter(t => t && !t.errorTrade && t.openQty > 0);
+  const shorts = opens.filter(t => t.side === 'sell');
+  const pool = nature === 'borrow' ? (shorts.length ? shorts : opens) : [];
+  const prevOpen = (prev && prev.open && typeof prev.open === 'object') ? prev.open : {};
+  const realized = Array.isArray(prev && prev.realized) ? prev.realized.slice() : [];
+  const realizedKeys = new Set(realized.map(r => String(r && r.key || '')));
+  const openKeys = new Set(opens.map(t => t.key));
+  for (const [key, row] of Object.entries(prevOpen)) {
+    if (openKeys.has(key) || realizedKeys.has(key)) continue;
+    const usd = Number(row && row.usd);
+    if (!usd) continue;
+    realized.push({
+      key,
+      ticker: row.ticker || String(key).split('|')[0],
+      side: row.side || 'sell',
+      usd,
+      qty: row.qty != null ? row.qty : null,
+      closedAt: new Date().toISOString(),
+      recDay: String(key).split('|')[2] || null
+    });
+    realizedKeys.add(key);
+  }
+  const openMap = {};
+  if (nature === 'borrow' && pool.length) {
+    let totN = pool.reduce((s, t) => s + Math.abs(Number(t.notionalUsd) || 0), 0);
+    if (!(totN > 0)) totN = pool.length;
+    let assigned = 0;
+    pool.forEach((t, i) => {
+      const w = totN > 0 ? Math.abs(Number(t.notionalUsd) || 0) / totN : (1 / pool.length);
+      let usd = +(ac * w).toFixed(2);
+      if (i === pool.length - 1) usd = +(ac - assigned).toFixed(2);
+      else assigned += usd;
+      openMap[t.key] = {
+        ticker: t.ticker, side: t.side, hz: t.hz, qty: t.openQty,
+        usd, weight: +w.toFixed(4), notionalUsd: t.notionalUsd || null,
+        at: new Date().toISOString()
+      };
+      t.accruedAllocUsd = usd;
+      t.accruedAllocNature = 'borrow';
+    });
+  }
+  for (const t of (trades || [])) {
+    if (!t || t.errorTrade) continue;
+    const hit = realized.find(r => r && r.key === t.key);
+    if (hit) {
+      t.accruedRealizedUsd = hit.usd;
+      t.accruedAllocNature = t.accruedAllocNature || 'borrow';
+    }
+  }
+  const out = {
+    open: openMap,
+    realized: realized.slice(-300),
+    nature,
+    accruedCash: Number.isFinite(ac) ? ac : null,
+    at: new Date().toISOString()
+  };
+  saveIbkrAccruedAlloc(out);
+  return out;
+}
+
 function ingestIbkrChargesFromBody(body) {
   try {
     const charges = body && Array.isArray(body.charges) ? body.charges : [];
@@ -14968,6 +15045,8 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
             || primary.avgEntry;
           if (!(avg > 0) || !(delta > 0)) continue;
           const fillAt = ibkrRecDayIsoFromKey(primary.key) || new Date().toISOString();
+          const phase = ibkrSessionPhase(primary.rawTicker || y, fillAt);
+          const execId = `recon-entry-${primary.key}-pad${delta}`;
           if (!_ibkrExecIds.has(execId)) {
             newFills.push({
               execId, key: primary.key, ticker: primary.rawTicker || y, hz: primary.hz || 'short',
@@ -15764,6 +15843,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
       t.unrealizedUsd = (t.openQty > 0 && mark != null)
         ? +(((mark - t.avgEntry) * t.openQty * dir / (t.ccyScale || 1)) * fx).toFixed(2)
         : (t.openQty > 0 ? null : 0);
+      const nQty = t.openQty > 0 ? t.openQty : t.entryQty;
+      t.notionalUsd = +((Math.abs(t.avgEntry * nQty / (t.ccyScale || 1)) * fx)).toFixed(2);
 
       if (t.errorTrade) {
         errRealUsd += t.realizedUsd;
@@ -15855,6 +15936,13 @@ app.get('/api/ibkr/trades', async (req, res) => {
       : null;
     const liquidityPct = (currentBalance > 0 && Number.isFinite(netLiqAvail))
       ? +((netLiqAvail / currentBalance) * 100).toFixed(2) : null;
+    let accruedAlloc = { open: {}, realized: [], nature: 'none' };
+    try {
+      accruedAlloc = updateIbkrAccruedAlloc(
+        trades.filter(t => !t.errorTrade),
+        accountSnap && accountSnap.accruedCash
+      );
+    } catch (e) { console.warn('accrued alloc failed:', e.message); }
     // Expense ledger: commissions + accrued/interest + dividends (IB charge events).
     const expenses = [];
     let commissionExpenseUsd = 0;
@@ -15954,6 +16042,54 @@ app.get('/api/ibkr/trades', async (req, res) => {
         balance: true,
         accountLevel: true,
         time: accountSnap.at || null
+      });
+      const openAlloc = accruedAlloc && accruedAlloc.open ? Object.values(accruedAlloc.open) : [];
+      openAlloc.sort((a, b) => Math.abs(Number(b.usd) || 0) - Math.abs(Number(a.usd) || 0));
+      for (const a of openAlloc) {
+        if (!a || !Number(a.usd)) continue;
+        const pct = a.weight != null ? Math.round(Number(a.weight) * 100) : null;
+        expenses.push({
+          type: 'accrued_alloc_open',
+          section: 'accrued',
+          feeType: 'Allocated IB AccruedCash (accruing) — stock-borrow / HTB by notional',
+          label: (a.ticker || '?') + ' · ' + (a.side === 'sell' ? 'open short' : 'open long')
+            + (a.qty ? (' ×' + a.qty) : '')
+            + (pct != null ? (' · ' + pct + '% of AccruedCash') : ''),
+          ticker: a.ticker || null,
+          side: a.side || 'sell',
+          qty: a.qty != null ? a.qty : null,
+          amount: Number(a.usd),
+          currency: 'USD',
+          amountUsd: Number(a.usd),
+          income: Number(a.usd) > 0,
+          signed: true,
+          allocated: true,
+          accountLevel: false,
+          time: a.at || accountSnap.at || null
+        });
+      }
+    }
+    const realizedAlloc = accruedAlloc && Array.isArray(accruedAlloc.realized) ? accruedAlloc.realized : [];
+    for (const a of realizedAlloc.slice().reverse()) {
+      if (!a || !Number(a.usd)) continue;
+      expenses.push({
+        type: 'accrued_alloc_realized',
+        section: 'accrued',
+        feeType: 'Allocated stock-borrow — locked when this equity was closed',
+        label: (a.ticker || '?') + ' · realized'
+          + (a.qty ? (' ×' + a.qty) : ''),
+        ticker: a.ticker || null,
+        side: a.side || 'sell',
+        qty: a.qty != null ? a.qty : null,
+        amount: Number(a.usd),
+        currency: 'USD',
+        amountUsd: Number(a.usd),
+        income: Number(a.usd) > 0,
+        signed: true,
+        allocated: true,
+        realized: true,
+        accountLevel: false,
+        time: a.closedAt || null
       });
     }
     if (accountSnap && accountSnap.accruedDividend != null && Number(accountSnap.accruedDividend) !== 0) {

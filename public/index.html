@@ -1692,11 +1692,12 @@ function switchTab(t){
   }
   if(t==='performance') {
     const renderPerf = function(){
-      renderIbkrPerformanceExtras();
-      renderExitQualityPerformance();
-      renderPerformancePanel();
-      renderBracketPerformance();
+      try { renderIbkrPerformanceExtras(); } catch (e) { console.warn(e); }
+      try { renderExitQualityPerformance(); } catch (e) { console.warn(e); }
+      try { renderPerformancePanel(); } catch (e) { console.warn(e); }
+      try { renderBracketPerformance(); } catch (e) { console.warn(e); }
     };
+    renderPerf();
     loadHistoryFromServer().then(function(){
       return loadIbkrHistFilter();
     }).then(function(){
@@ -2343,13 +2344,13 @@ function showIbkrExpenses(){
   const sectionOrder = ['commission', 'accrued', 'dividend', 'other'];
   const sectionTitle = {
     commission: 'Brokerage commissions — per equity fill',
-    accrued: 'Account interest & borrow fees (IB AccruedCash — not per equity)',
+    accrued: 'Interest & stock-borrow (allocated to equities)',
     dividend: 'Dividends',
     other: 'Other charges'
   };
   const sectionNote = {
     commission: 'Each row is IB commissionReport on a specific fill: ticker, side, quantity, price, and whether it was an entry, TP1, stop, or flatten.',
-    accrued: 'IB reports one portfolio AccruedCash figure (credit interest / stock-borrow). It is not broken down by ticker. Only the live account total is shown.',
+    accrued: 'IB sends one AccruedCash total. Negative amounts (stock-borrow) are allocated to open shorts by USD notional. When a short is closed, that share is locked onto the equity. Positive AccruedCash is credit interest on cash (account-level). Allocations are a breakdown of the live total, not extra charges.',
     dividend: 'Accrued / receivable dividends from IB account tags.',
     other: ''
   };
