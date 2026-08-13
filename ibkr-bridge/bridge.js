@@ -7,10 +7,11 @@
  *   This process runs NEXT TO IB Gateway or TWS (cannot run on Render)
  *   Polls GET /api/ibkr/events and mirrors the AlphaSignal exit spec exactly:
  *
- *     entry        → parent MARKET entry (recommended price sizes shares + gates US pre):
- *                      • US pre/extended: MKT outsideRth ONLY if live quote is at
+ *     entry        → parent MARKET / US-extended LMT entry (recommended price sizes shares + gates US pre):
+ *                      • US pre/extended: LMT @ entry with outsideRth ONLY if live quote is at
  *                        or better than the AlphaSignal entry (buy: quote≤entry,
- *                        sell: quote≥entry); otherwise MOO (OPG) for the cash open
+ *                        sell: quote≥entry); otherwise MOO (OPG) for the cash open.
+ *                        IB ignores outsideRth on MKT (error 2109) and queues until 09:30 ET (399).
  *                      • US RTH: MKT; US fully closed: MOO for next open
  *                      • JP / HK / EU / UK: MOO before the open; MKT in RTH
  *                      • Unfilled HK/JP still open on the model are re-armed
@@ -378,6 +379,11 @@ function premarketFavorable(side, entryPx, quotePx) {
   return sell ? q >= e : q <= e;
 }
 
+/** Parent styles that were meant to work in US pre/post (LMT-EXT is the real one). */
+function isUsExtStyle(style) {
+  return style === 'LMT-EXT' || style === 'MKT-EXT';
+}
+
 /**
  * Parent entry order: MOO / RTH MKT / US extended MKT (price-gated).
  * opts: { side, entryPx, quotePx } — quotePx gates US pre/extended only.
@@ -418,9 +424,15 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
       return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MKT' };
     }
     if (phase === 'pre' || phase === 'post') {
-      // Premarket / post: only lift if quote is at or better than recommendation
+      // Premarket / post: only lift if quote is at or better than recommendation.
+      // Must be LMT — IB SMART ignores outsideRth on MKT (2109) and holds until RTH (399).
       if (premarketFavorable(side, entryPx, quotePx)) {
-        return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: true, transmit: false, entryStyle: 'MKT-EXT' };
+        const sell = side === 'sell';
+        const lmt = roundPx(entryPx, contract, sell ? 'down' : 'up');
+        return {
+          orderType: 'LMT', action, totalQuantity: qty, lmtPrice: lmt,
+          tif: 'DAY', outsideRth: true, transmit: false, entryStyle: 'LMT-EXT'
+        };
       }
       return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
     }
@@ -2709,6 +2721,12 @@ async function main() {
           if (!h) continue;
           const act = String(h[hz + 'Action'] || h.action || '').toLowerCase();
           if (act === 'buy' || act === 'sell') continue;
+          const live = entryByKey.get(key);
+          const liveSide = live ? String(live.side || '').toLowerCase() : '';
+          if (liveSide === 'buy' || liveSide === 'sell') {
+            log('RECONCILE: skip hold-cancel — live entry still', liveSide, key, '(history=', act || 'Hold', ')');
+            continue;
+          }
           const contract = row.contract || toContract(row.ticker);
           const held = contract ? posMap.get(posKeyOf(contract)) : null;
           const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
@@ -2731,7 +2749,18 @@ async function main() {
       // entry / history-gate false skip). Recent entries, all markets.
       const SEED_MAX_AGE_MS = MAX_EVENT_AGE_MS; // same 24h gate as live entries
       for (const [key, stOpen] of keyState) {
-        if (stOpen !== 'open' || state.byKey[key]) continue;
+        if (stOpen !== 'open') continue;
+        const existing = state.byKey[key];
+        // Re-seed rows that were Hold-cancelled while a live Buy/Sell event
+        // was still open (NVDA 13 Aug: history fallback matched an old Hold).
+        if (existing && !(existing.closed && existing.holdCancelledUnfilled)) continue;
+        if (existing && existing.holdCancelledUnfilled) {
+          const lastSeed = existing.holdReseedAt ? Date.parse(existing.holdReseedAt) : 0;
+          if (lastSeed && Date.now() - lastSeed < 2 * 60 * 1000) continue;
+          existing.holdReseedAt = new Date().toISOString();
+          log('RECONCILE: re-seeding hold-cancelled unfilled', key);
+          saveState(state);
+        }
         const src = entryByKey.get(key);
         if (!src || !src.ticker) continue;
         const side = String(src.side || '').toLowerCase();
@@ -2852,8 +2881,9 @@ async function main() {
       // 0. Re-arm unfilled parents still open on the model.
       //   • HK / JP: chase while model open (missed OPG must not stay dead)
       //   • EU / UK: OPG before open; if still unfilled once RTH starts → MKT
-      //   • US: OPG overnight; in pre/extended upgrade to MKT-EXT only when the
-      //     live quote is at/better than the AlphaSignal entry; else stay OPG
+      //   • US: OPG overnight; in pre/extended upgrade to LMT-EXT only when the
+      //     live quote is at/better than the AlphaSignal entry; else stay OPG.
+      //     (MKT-EXT is treated as broken — IB queues those until 09:30.)
       for (const [key, row] of Object.entries(state.byKey)) {
         if (row.closed || !row.ticker) continue;
         if (keyState.get(key) !== 'open') continue;
@@ -2931,17 +2961,17 @@ async function main() {
             ensureMktData(row.ticker, contract);
             const q = await fetchEntryQuote(row.ticker);
             const fav = premarketFavorable(row.side, row.entry, q.px);
-            if (fav && row.entryStyle !== 'MKT-EXT') {
-              reason = 'us-pre-favorable';
-              log('RECONCILE: US pre/post gate OPEN', key, 'phase=' + phase, 'quote=', q.px, '(' + (q.src || '?') + ') entry=', row.entry, 'side=', row.side);
-            } else if (!fav && row.entryStyle === 'MKT-EXT') {
+            if (fav && row.entryStyle !== 'LMT-EXT') {
+              reason = row.entryStyle === 'MKT-EXT' ? 'us-pre-mkt-to-lmt' : 'us-pre-favorable';
+              log('RECONCILE: US pre/post gate OPEN', key, 'phase=' + phase, 'quote=', q.px, '(' + (q.src || '?') + ') entry=', row.entry, 'side=', row.side, 'was=', row.entryStyle);
+            } else if (!fav && isUsExtStyle(row.entryStyle)) {
               // Was chasing extended; quote no longer good → park at next open
               reason = 'us-pre-unfavorable-to-opg';
               log('RECONCILE: US pre/post gate CLOSED', key, 'quote=', q.px, 'entry=', row.entry, '→ OPG');
             }
-          } else if (phase === 'rth' && row.entryStyle === 'OPG') {
+          } else if (phase === 'rth' && (row.entryStyle === 'OPG' || isUsExtStyle(row.entryStyle))) {
             reason = 'us-rth-after-opg';
-          } else if (phase === 'closed' && row.entryStyle === 'MKT-EXT') {
+          } else if (phase === 'closed' && isUsExtStyle(row.entryStyle)) {
             // Overnight leftover extended order — convert to next-open OPG
             reason = 'us-overnight-to-opg';
           }
@@ -2949,7 +2979,8 @@ async function main() {
         if (!reason) continue;
 
         const last = row.lastRearmAt ? Date.parse(row.lastRearmAt) : 0;
-        const minGap = reason === 'asia-rth-retry' ? 2 * 60 * 1000 : 15 * 60 * 1000;
+        const minGap = (reason === 'asia-rth-retry' || reason === 'us-pre-mkt-to-lmt')
+          ? 2 * 60 * 1000 : 15 * 60 * 1000;
         if (last && Date.now() - last < minGap) continue;
 
         try {
@@ -3384,13 +3415,23 @@ async function main() {
       await postIbRecon().catch(e => log('recon error', e.message));
       await recoverMissingExitFills().catch(e => log('exec-history error', e.message));
     }
-    // HK afternoon reopen: chase rows that are not on a live RTH MKT yet
+    // HK afternoon reopen: chase rows that are not on a live RTH MKT yet.
+    // US pre: replace IB-ignored MKT-EXT / re-seed Hold-cancelled Buys now.
     if (!forceReconcile && positionsReady) {
       for (const row of Object.values(state.byKey)) {
-        if (row.closed || row.entryFilled || !row.contract || row.contract.market !== 'HK') continue;
-        if (sessionPhase(row.contract) === 'rth' && row.entryStyle !== 'MKT') {
+        if (row.closed && row.holdCancelledUnfilled) { forceReconcile = true; break; }
+        if (row.closed || row.entryFilled || !row.contract) continue;
+        if (row.contract.market === 'HK'
+          && sessionPhase(row.contract) === 'rth' && row.entryStyle !== 'MKT') {
           forceReconcile = true;
           break;
+        }
+        if (row.contract.usRth) {
+          const usPh = sessionPhase(row.contract);
+          if ((usPh === 'pre' || usPh === 'post') && row.entryStyle !== 'LMT-EXT') {
+            forceReconcile = true;
+            break;
+          }
         }
       }
     }
