@@ -7,11 +7,12 @@
  *   This process runs NEXT TO IB Gateway or TWS (cannot run on Render)
  *   Polls GET /api/ibkr/events and mirrors the AlphaSignal exit spec exactly:
  *
- *     entry        → parent MARKET / US-extended LMT entry (recommended price sizes shares + gates US pre):
- *                      • US pre/extended: LMT @ entry with outsideRth ONLY if live quote is at
- *                        or better than the AlphaSignal entry (buy: quote≤entry,
- *                        sell: quote≥entry); otherwise MOO (OPG) for the cash open.
- *                        IB ignores outsideRth on MKT (error 2109) and queues until 09:30 ET (399).
+ *     entry        → parent MARKET / US-extended LMT entry (recommended price sizes shares + gates US pre/post):
+ *                      • US pre/post (all usRth equities): if live extended quote is at or
+ *                        better than the AlphaSignal entry (buy: quote≤entry, sell: quote≥entry),
+ *                        LMT @ the live pre/post print (e.g. buy 224.1 with pre 222 → fill @ 222),
+ *                        never worse than the model cap. IB ignores outsideRth on MKT (2109/399).
+ *                        Otherwise MOO (OPG) for the cash open.
  *                      • US RTH: MKT; US fully closed: MOO for next open
  *                      • JP / HK / EU / UK: MOO before the open; MKT in RTH
  *                      • Unfilled HK/JP still open on the model are re-armed
@@ -384,8 +385,20 @@ function isUsExtStyle(style) {
   return style === 'LMT-EXT' || style === 'MKT-EXT';
 }
 
+/** Live extended fill cap: buy at the pre/post print, never above the model entry
+ *  (224.1 recommended + pre 222 → LMT 222). Sell is the mirror. */
+function extendedFillLimit(side, entryPx, quotePx, contract) {
+  const e = Number(entryPx);
+  const q = Number(quotePx);
+  if (!(e > 0)) return null;
+  const sell = String(side || '').toLowerCase() === 'sell';
+  let lmt = e;
+  if (q > 0) lmt = sell ? Math.max(e, q) : Math.min(e, q);
+  return roundPx(lmt, contract, sell ? 'down' : 'up');
+}
+
 /**
- * Parent entry order: MOO / RTH MKT / US extended MKT (price-gated).
+ * Parent entry order: MOO / RTH MKT / US extended LMT (price-gated).
  * opts: { side, entryPx, quotePx } — quotePx gates US pre/extended only.
  */
 function parentEntrySpec(contract, action, qty, opts = {}) {
@@ -427,8 +440,7 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
       // Premarket / post: only lift if quote is at or better than recommendation.
       // Must be LMT — IB SMART ignores outsideRth on MKT (2109) and holds until RTH (399).
       if (premarketFavorable(side, entryPx, quotePx)) {
-        const sell = side === 'sell';
-        const lmt = roundPx(entryPx, contract, sell ? 'down' : 'up');
+        const lmt = extendedFillLimit(side, entryPx, quotePx, contract);
         return {
           orderType: 'LMT', action, totalQuantity: qty, lmtPrice: lmt,
           tif: 'DAY', outsideRth: true, transmit: false, entryStyle: 'LMT-EXT'
@@ -1716,19 +1728,49 @@ async function main() {
     return null;
   }
 
-  /** Live/pre quote for US premarket gate (IB ticks, else AlphaSignal /api/prices). */
-  async function fetchEntryQuote(ticker) {
-    const ibPx = ibQuoteForTicker(ticker);
-    if (ibPx > 0) return { px: ibPx, src: 'ibkr' };
+  /** Live IB tick for US pre/post gate — never yesterday's close. */
+  function ibLiveExtQuote(ticker) {
+    for (const row of mktById.values()) {
+      if (!row || row.ticker !== ticker) continue;
+      const bid = Number(row.bid) || 0;
+      const ask = Number(row.ask) || 0;
+      const last = Number(row.last) || 0;
+      const close = Number(row.close) || 0;
+      const fresh = row.lastAt && (Date.now() - row.lastAt) < 15 * 60 * 1000;
+      const lastIsLive = last > 0 && fresh && !(close > 0 && Math.abs(last - close) < 1e-6);
+      const px = lastIsLive ? last : (ask > 0 && bid > 0 ? (ask + bid) / 2 : (ask || bid || 0));
+      if (px > 0) return { px, bid, ask, src: 'ibkr' };
+    }
+    return null;
+  }
+
+  /** Live/pre/post quote for US extended-hours gate (Yahoo pre/post, else IB live tick). */
+  async function fetchEntryQuote(ticker, phase) {
+    const ib = ibLiveExtQuote(ticker);
     try {
       const j = await fetchJson('/api/prices?symbols=' + encodeURIComponent(ticker));
       const v = j && j[ticker];
-      if (v == null) return { px: null, src: null };
-      const pre = Number(v.preMarketPrice ?? v.preMarket ?? 0);
-      if (pre > 0) return { px: pre, src: 'pre' };
-      const px = Number(v.price ?? v.regularMarketPrice ?? v.last ?? v);
-      if (px > 0) return { px, src: 'last' };
+      const pre = Number(v && (v.preMarketPrice ?? v.preMarket));
+      const post = Number(v && (v.postMarketPrice ?? v.postMarket));
+      const last = Number(v && (v.price ?? v.regularMarketPrice ?? v.last ?? v));
+      const state = String((v && v.marketState) || '').toUpperCase();
+      if ((phase === 'pre' || state === 'PRE') && pre > 0) {
+        return { px: pre, src: 'pre', bid: ib && ib.bid, ask: ib && ib.ask };
+      }
+      if ((phase === 'post' || state === 'POST') && post > 0) {
+        return { px: post, src: 'post', bid: ib && ib.bid, ask: ib && ib.ask };
+      }
+      if (phase === 'pre' || phase === 'post') {
+        // Do not fall back to regular last/close — that parked ROST at yesterday's print.
+        if (ib && ib.px > 0) return ib;
+        return { px: null, src: null };
+      }
+      if (ib && ib.px > 0) return ib;
+      if (last > 0) return { px: last, src: 'last' };
     } catch (e) { log('entry quote fetch failed', ticker, e.message); }
+    if (ib && ib.px > 0) return ib;
+    const stale = ibQuoteForTicker(ticker);
+    if (phase !== 'pre' && phase !== 'post' && stale > 0) return { px: stale, src: 'ibkr' };
     return { px: null, src: null };
   }
 
@@ -1771,7 +1813,7 @@ async function main() {
     const usPhase = contract.usRth ? sessionPhase(contract) : null;
     if (contract.usRth && (usPhase === 'pre' || usPhase === 'post' || usPhase === 'rth')) {
       ensureMktData(evt.ticker, contract);
-      const q = await fetchEntryQuote(evt.ticker);
+      const q = await fetchEntryQuote(evt.ticker, usPhase);
       quotePx = q.px;
       quoteSrc = q.src;
     }
@@ -1807,8 +1849,8 @@ async function main() {
       ib.placeOrder(parentId, oc, parent);
       ib.placeOrder(stopId, oc, stopOrder);
       if (tp1Order) ib.placeOrder(tp1Id, oc, tp1Order);
-      const gateNote = contract.usRth && sessionPhase(contract) === 'pre'
-        ? ` quote=${quotePx != null ? quotePx : 'n/a'}(${quoteSrc || 'none'}) vs entry=${roundPx(evt.entry)} → ${entryStyle}`
+      const gateNote = contract.usRth && (sessionPhase(contract) === 'pre' || sessionPhase(contract) === 'post')
+        ? ` quote=${quotePx != null ? quotePx : 'n/a'}(${quoteSrc || 'none'}) vs entry=${roundPx(evt.entry)} lmt=${parent.lmtPrice != null ? parent.lmtPrice : 'n/a'} → ${entryStyle}`
         : '';
       const sizeNote = contract.secType === 'FUT'
         ? ` futMonth=${contract.lastTradeDateOrContractMonth} mult=${contract.multiplier}`
@@ -1820,6 +1862,7 @@ async function main() {
       parentId, stopId, tp1Id,
       ticker: evt.ticker, hz: evt.hz, side: evt.side,
       entry: evt.entry, stopPx, tp1Px, entryStyle,
+      extLmt: parent.lmtPrice != null ? Number(parent.lmtPrice) : null,
       qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
       contract, tp1Done: false, closed: false, updated: evt.t || new Date().toISOString(), dry: DRY
     };
@@ -2959,12 +3002,21 @@ async function main() {
         } else if (us) {
           if (phase === 'pre' || phase === 'post') {
             ensureMktData(row.ticker, contract);
-            const q = await fetchEntryQuote(row.ticker);
+            const q = await fetchEntryQuote(row.ticker, phase);
             const fav = premarketFavorable(row.side, row.entry, q.px);
             if (fav && row.entryStyle !== 'LMT-EXT') {
               reason = row.entryStyle === 'MKT-EXT' ? 'us-pre-mkt-to-lmt' : 'us-pre-favorable';
               log('RECONCILE: US pre/post gate OPEN', key, 'phase=' + phase, 'quote=', q.px, '(' + (q.src || '?') + ') entry=', row.entry, 'side=', row.side, 'was=', row.entryStyle);
-            } else if (!fav && isUsExtStyle(row.entryStyle)) {
+            } else if (fav && row.entryStyle === 'LMT-EXT') {
+              const want = extendedFillLimit(row.side, row.entry, q.px, contract);
+              const have = Number(row.extLmt) || Number(row.entry) || 0;
+              const sell = String(row.side || '').toLowerCase() === 'sell';
+              const better = want > 0 && have > 0 && (sell ? want > have + 1e-6 : want < have - 1e-6);
+              if (better) {
+                reason = 'us-pre-reprice';
+                log('RECONCILE: US pre/post reprice', key, 'phase=' + phase, 'quote=', q.px, '(' + (q.src || '?') + ') lmt', have, '→', want);
+              }
+            } else if (q.px > 0 && !fav && isUsExtStyle(row.entryStyle)) {
               // Was chasing extended; quote no longer good → park at next open
               reason = 'us-pre-unfavorable-to-opg';
               log('RECONCILE: US pre/post gate CLOSED', key, 'quote=', q.px, 'entry=', row.entry, '→ OPG');
@@ -2979,7 +3031,7 @@ async function main() {
         if (!reason) continue;
 
         const last = row.lastRearmAt ? Date.parse(row.lastRearmAt) : 0;
-        const minGap = (reason === 'asia-rth-retry' || reason === 'us-pre-mkt-to-lmt')
+        const minGap = (reason === 'asia-rth-retry' || reason === 'us-pre-mkt-to-lmt' || reason === 'us-pre-reprice')
           ? 2 * 60 * 1000 : 15 * 60 * 1000;
         if (last && Date.now() - last < minGap) continue;
 
@@ -3428,7 +3480,7 @@ async function main() {
         }
         if (row.contract.usRth) {
           const usPh = sessionPhase(row.contract);
-          if ((usPh === 'pre' || usPh === 'post') && row.entryStyle !== 'LMT-EXT') {
+          if ((usPh === 'pre' || usPh === 'post') && !row.entryFilled) {
             forceReconcile = true;
             break;
           }

@@ -123,8 +123,8 @@ async function fetchSinglePrice(symbol) {
 
   for (const sym of symVariants) {
     const endpoints = [
-      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(sym)}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose,currency,regularMarketOpen,regularMarketDayHigh,regularMarketDayLow`,
-      `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(sym)}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose,currency`,
+      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(sym)}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose,currency,regularMarketOpen,regularMarketDayHigh,regularMarketDayLow,preMarketPrice,postMarketPrice,marketState`,
+      `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(sym)}&fields=regularMarketPrice,regularMarketChangePercent,regularMarketPreviousClose,currency,preMarketPrice,postMarketPrice,marketState`,
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1m&range=1d`
     ];
 
@@ -138,6 +138,8 @@ async function fetchSinglePrice(symbol) {
       if (data?.quoteResponse?.result?.length > 0) {
         const q = data.quoteResponse.result[0];
         if (q.regularMarketPrice) {
+          const pre = Number(q.preMarketPrice);
+          const post = Number(q.postMarketPrice);
           return {
             price: q.regularMarketPrice,
             change: q.regularMarketChangePercent ? +q.regularMarketChangePercent.toFixed(2) : 0,
@@ -146,6 +148,9 @@ async function fetchSinglePrice(symbol) {
             high: q.regularMarketDayHigh,
             low: q.regularMarketDayLow,
             currency: q.currency || 'USD',
+            marketState: q.marketState || null,
+            preMarketPrice: pre > 0 ? pre : null,
+            postMarketPrice: post > 0 ? post : null,
             source: 'yahoo_v7'
           };
         }
@@ -155,6 +160,8 @@ async function fetchSinglePrice(symbol) {
       if (data?.chart?.result?.[0]) {
         const meta = data.chart.result[0].meta;
         if (meta?.regularMarketPrice) {
+          const pre = Number(meta.preMarketPrice);
+          const post = Number(meta.postMarketPrice);
           return {
             price: meta.regularMarketPrice,
             change: meta.regularMarketPrice && meta.chartPreviousClose
@@ -162,6 +169,9 @@ async function fetchSinglePrice(symbol) {
               : 0,
             prevClose: meta.chartPreviousClose,
             currency: meta.currency || 'USD',
+            marketState: meta.marketState || null,
+            preMarketPrice: pre > 0 ? pre : null,
+            postMarketPrice: post > 0 ? post : null,
             source: 'yahoo_v8'
           };
         }
@@ -177,6 +187,8 @@ async function fetchSinglePrice(symbol) {
 /** Normalize one Yahoo Finance v7 quote row into fetchSinglePrice() shape */
 function normalizeV7Quote(q) {
   if (!q?.symbol || q.regularMarketPrice == null) return null;
+  const pre = Number(q.preMarketPrice);
+  const post = Number(q.postMarketPrice);
   return {
     price: q.regularMarketPrice,
     change:
@@ -187,6 +199,8 @@ function normalizeV7Quote(q) {
     low: q.regularMarketDayLow,
     currency: q.currency || 'USD',
     marketState: q.marketState || null, // REGULAR | PRE | POST | CLOSED — drives entry semantics
+    preMarketPrice: pre > 0 ? pre : null,
+    postMarketPrice: post > 0 ? post : null,
     source: 'yahoo_v7_bulk'
   };
 }
