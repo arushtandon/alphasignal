@@ -14427,17 +14427,28 @@ function finalizeIbkrAccountSnapshot(merged) {
     merged.marginsUsed = +(bal - avail).toFixed(2);
   }
   merged.startingCapital = IBKR_STARTING_CAPITAL;
+  const startAt = IBKR_BOOK_START + 'T00:00:00.000Z';
+  // Inception of the $1,000,000 paper account is always in the high/low series.
+  // Do not seed from the first live IB print (that would hide the $1M start).
+  const prevPeak = Number(merged.peakNlv);
+  if (!Number.isFinite(prevPeak) || prevPeak < IBKR_STARTING_CAPITAL) {
+    merged.peakNlv = IBKR_STARTING_CAPITAL;
+    merged.peakNlvAt = startAt;
+  }
+  const prevTrough = Number(merged.troughNlv);
+  if (!Number.isFinite(prevTrough) || prevTrough > IBKR_STARTING_CAPITAL) {
+    merged.troughNlv = IBKR_STARTING_CAPITAL;
+    merged.troughNlvAt = startAt;
+  }
   const nlv = Number(merged.netLiquidation != null ? merged.netLiquidation : merged.currentBalance);
   const at = merged.at || merged.savedAt || new Date().toISOString();
   // Ignore junk / currency-mix prints. Paper book is ~$1M; a $0–$1k blip is not a real trough.
   if (Number.isFinite(nlv) && nlv > 1000) {
-    const prevPeak = Number(merged.peakNlv);
-    if (!Number.isFinite(prevPeak) || nlv > prevPeak) {
+    if (nlv > Number(merged.peakNlv)) {
       merged.peakNlv = +nlv.toFixed(2);
       merged.peakNlvAt = at;
     }
-    const prevTrough = Number(merged.troughNlv);
-    if (!Number.isFinite(prevTrough) || nlv < prevTrough) {
+    if (nlv < Number(merged.troughNlv)) {
       merged.troughNlv = +nlv.toFixed(2);
       merged.troughNlvAt = at;
     }
@@ -15813,7 +15824,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
     const accountSnapRaw = loadIbkrAccountSnapshot();
     const accountSnap = accountSnapRaw ? finalizeIbkrAccountSnapshot({ ...accountSnapRaw }) : null;
     if (accountSnap && accountSnapRaw
-        && (accountSnapRaw.peakNlv == null || accountSnapRaw.troughNlv == null)
+        && (accountSnapRaw.peakNlv == null || accountSnapRaw.troughNlv == null
+          || Number(accountSnapRaw.peakNlv) < IBKR_STARTING_CAPITAL
+          || Number(accountSnapRaw.troughNlv) > IBKR_STARTING_CAPITAL)
         && accountSnap.peakNlv != null) {
       try { saveIbkrAccountSnapshot(accountSnap); } catch (_) {}
     }

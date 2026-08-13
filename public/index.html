@@ -1900,8 +1900,17 @@ function renderIbkrPerformancePage() {
     const nlv = acct.netLiquidation != null ? Number(acct.netLiquidation) : acct.currentBalance;
     const acctRet = (nlv != null && Number.isFinite(Number(nlv)))
       ? +((Number(nlv) - start) / start * 100).toFixed(2) : null;
-    const peak = acct.peakNlv;
-    const trough = acct.troughNlv;
+    const startAt = IBKR_BOOK_START + 'T00:00:00.000Z';
+    let peak = acct.peakNlv;
+    let peakAt = acct.peakNlvAt;
+    let trough = acct.troughNlv;
+    let troughAt = acct.troughNlvAt;
+    if (!(Number(peak) > 0) || Number(peak) < start) { peak = start; peakAt = startAt; }
+    if (!(Number(trough) > 0) || Number(trough) > start) { trough = start; troughAt = startAt; }
+    if (nlv != null && Number.isFinite(Number(nlv))) {
+      if (Number(nlv) > Number(peak)) { peak = Number(nlv); peakAt = acct.at || startAt; }
+      if (Number(nlv) < Number(trough)) { trough = Number(nlv); troughAt = acct.at || startAt; }
+    }
     const tile = function(l,v,sub,c){
       return '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-height:88px;flex:1;min-width:150px;display:flex;flex-direction:column;justify-content:center;gap:5px">'
         +'<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace">'+l+'</div>'
@@ -1948,8 +1957,8 @@ function renderIbkrPerformancePage() {
     el.innerHTML = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
       + tile('Starting capital', ibkrBal(start), 'paper account · '+IBKR_BOOK_START, 'var(--t1)')
       + tile('Current NLV', ibkrBal(nlv), acct.account ? ('IB '+acct.account) : 'IB net liquidation', 'var(--t1)')
-      + tile('Highest account level', ibkrBal(peak), peak!=null ? ('on '+ibkrFmtWhen(acct.peakNlvAt)) : 'waiting for IB snapshot', 'var(--buy)')
-      + tile('Lowest account level', ibkrBal(trough), trough!=null ? ('on '+ibkrFmtWhen(acct.troughNlvAt)) : 'waiting for IB snapshot', 'var(--sell)')
+      + tile('Highest account level', ibkrBal(peak), 'on '+ibkrFmtWhen(peakAt)+' · vs $1,000,000 start', 'var(--buy)')
+      + tile('Lowest account level', ibkrBal(trough), 'on '+ibkrFmtWhen(troughAt)+' · vs $1,000,000 start', 'var(--sell)')
       + '</div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
       + tile('Realised PnL', ibkrFp(st.realizedUsd), st.closedCount+' closed · net of brokerage', ibkrPc(st.realizedUsd))
