@@ -14429,32 +14429,47 @@ function finalizeIbkrAccountSnapshot(merged) {
   }
   merged.startingCapital = IBKR_STARTING_CAPITAL;
   const startAt = IBKR_BOOK_START + 'T00:00:00.000Z';
-  // Inception of the $1,000,000 paper account is always in the high/low series.
-  // Do not seed from the first live IB print (that would hide the $1M start).
-  const prevPeak = Number(merged.peakNlv);
-  if (!Number.isFinite(prevPeak) || prevPeak < IBKR_STARTING_CAPITAL) {
-    merged.peakNlv = IBKR_STARTING_CAPITAL;
-    merged.peakNlvAt = startAt;
-  }
-  const prevTrough = Number(merged.troughNlv);
-  if (!Number.isFinite(prevTrough) || prevTrough > IBKR_STARTING_CAPITAL) {
+  // Performance high/low is $1M ± fill PnL — never IB NetLiquidation (BASE/ccy
+  // prints like ~$464k were poisoning trough and "account return").
+  if (Number.isFinite(Number(merged.troughNlv)) && Number(merged.troughNlv) < IBKR_STARTING_CAPITAL * 0.85) {
     merged.troughNlv = IBKR_STARTING_CAPITAL;
     merged.troughNlvAt = startAt;
   }
-  const nlv = Number(merged.netLiquidation != null ? merged.netLiquidation : merged.currentBalance);
-  const at = merged.at || merged.savedAt || new Date().toISOString();
-  // Ignore junk / currency-mix prints. Paper book is ~$1M; a $0–$1k blip is not a real trough.
-  if (Number.isFinite(nlv) && nlv > 1000) {
-    if (nlv > Number(merged.peakNlv)) {
-      merged.peakNlv = +nlv.toFixed(2);
-      merged.peakNlvAt = at;
-    }
-    if (nlv < Number(merged.troughNlv)) {
-      merged.troughNlv = +nlv.toFixed(2);
-      merged.troughNlvAt = at;
-    }
+  if (Number.isFinite(Number(merged.peakNlv)) && Number(merged.peakNlv) > IBKR_STARTING_CAPITAL * 1.5) {
+    merged.peakNlv = IBKR_STARTING_CAPITAL;
+    merged.peakNlvAt = startAt;
   }
   return merged;
+}
+/** $1M book equity = starting capital + model fill PnL (not IB NetLiquidation). */
+function applyBookEquityExtremes(snap, netPnlUsd) {
+  if (!snap || typeof snap !== 'object') return snap;
+  const start = IBKR_STARTING_CAPITAL;
+  const startAt = IBKR_BOOK_START + 'T00:00:00.000Z';
+  const equity = start + (Number(netPnlUsd) || 0);
+  const at = new Date().toISOString();
+  let peak = Number(snap.peakBookEquity);
+  let trough = Number(snap.troughBookEquity);
+  if (!Number.isFinite(peak) || peak < start) {
+    peak = start;
+    snap.peakBookEquityAt = startAt;
+  }
+  if (!Number.isFinite(trough) || trough > start || trough < start * 0.85) {
+    trough = start;
+    snap.troughBookEquityAt = startAt;
+  }
+  if (equity > peak) {
+    peak = +equity.toFixed(2);
+    snap.peakBookEquityAt = at;
+  }
+  if (equity < trough) {
+    trough = +equity.toFixed(2);
+    snap.troughBookEquityAt = at;
+  }
+  snap.peakBookEquity = +peak.toFixed(2);
+  snap.troughBookEquity = +trough.toFixed(2);
+  snap.bookEquity = +equity.toFixed(2);
+  return snap;
 }
 function readIbkrChargeRows() {
   try {
@@ -14726,7 +14741,12 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           peakNlv: prev.peakNlv,
           peakNlvAt: prev.peakNlvAt,
           troughNlv: prev.troughNlv,
-          troughNlvAt: prev.troughNlvAt
+          troughNlvAt: prev.troughNlvAt,
+          peakBookEquity: prev.peakBookEquity,
+          peakBookEquityAt: prev.peakBookEquityAt,
+          troughBookEquity: prev.troughBookEquity,
+          troughBookEquityAt: prev.troughBookEquityAt,
+          bookEquity: prev.bookEquity
         });
         saveIbkrAccountSnapshot(merged);
         try { updateLiquidityRiskGate(merged); } catch (_) { /* best-effort */ }
@@ -15313,7 +15333,12 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
         peakNlv: prev.peakNlv,
         peakNlvAt: prev.peakNlvAt,
         troughNlv: prev.troughNlv,
-        troughNlvAt: prev.troughNlvAt
+        troughNlvAt: prev.troughNlvAt,
+        peakBookEquity: prev.peakBookEquity,
+        peakBookEquityAt: prev.peakBookEquityAt,
+        troughBookEquity: prev.troughBookEquity,
+        troughBookEquityAt: prev.troughBookEquityAt,
+        bookEquity: prev.bookEquity
       });
       saveIbkrAccountSnapshot(merged);
       try { updateLiquidityRiskGate(merged); } catch (_) { /* best-effort */ }
@@ -15919,14 +15944,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
 
     const reconReport = loadIbkrReconReport();
     const accountSnapRaw = loadIbkrAccountSnapshot();
-    const accountSnap = accountSnapRaw ? finalizeIbkrAccountSnapshot({ ...accountSnapRaw }) : null;
-    if (accountSnap && accountSnapRaw
-        && (accountSnapRaw.peakNlv == null || accountSnapRaw.troughNlv == null
-          || Number(accountSnapRaw.peakNlv) < IBKR_STARTING_CAPITAL
-          || Number(accountSnapRaw.troughNlv) > IBKR_STARTING_CAPITAL)
-        && accountSnap.peakNlv != null) {
-      try { saveIbkrAccountSnapshot(accountSnap); } catch (_) {}
-    }
+    const accountSnap = finalizeIbkrAccountSnapshot({ ...(accountSnapRaw || {}) });
+    applyBookEquityExtremes(accountSnap, totRealUsd + totUnrealUsd);
+    try { saveIbkrAccountSnapshot(accountSnap); } catch (_) {}
     const currentBalance = accountSnap
       ? Number(accountSnap.currentBalance != null ? accountSnap.currentBalance : accountSnap.netLiquidation)
       : null;
@@ -16155,10 +16175,11 @@ app.get('/api/ibkr/trades', async (req, res) => {
       liquidityResumePct: LIQ_RESUME_PCT,
       startingCapital: IBKR_STARTING_CAPITAL,
       bookStart: IBKR_BOOK_START,
-      peakNlv: accountSnap.peakNlv != null ? Number(accountSnap.peakNlv) : null,
-      peakNlvAt: accountSnap.peakNlvAt || null,
-      troughNlv: accountSnap.troughNlv != null ? Number(accountSnap.troughNlv) : null,
-      troughNlvAt: accountSnap.troughNlvAt || null,
+      bookEquity: accountSnap.bookEquity != null ? Number(accountSnap.bookEquity) : null,
+      peakBookEquity: accountSnap.peakBookEquity != null ? Number(accountSnap.peakBookEquity) : null,
+      peakBookEquityAt: accountSnap.peakBookEquityAt || null,
+      troughBookEquity: accountSnap.troughBookEquity != null ? Number(accountSnap.troughBookEquity) : null,
+      troughBookEquityAt: accountSnap.troughBookEquityAt || null,
       startingBalance: accountSnap.startingBalance != null ? Number(accountSnap.startingBalance)
         : (accountSnap.previousDayEquity != null ? Number(accountSnap.previousDayEquity) : null),
       availableFunds: netLiqAvail,

@@ -1874,20 +1874,18 @@ function renderIbkrPerformanceExtras() {
     const st = ibkrBookStats(model);
     const acct = d.account || {};
     const start = Number(acct.startingCapital) > 0 ? Number(acct.startingCapital) : IBKR_STARTING_CAPITAL;
-    const nlv = acct.netLiquidation != null ? Number(acct.netLiquidation) : acct.currentBalance;
-    const acctRet = (nlv != null && Number.isFinite(Number(nlv)))
-      ? +((Number(nlv) - start) / start * 100).toFixed(2) : null;
     const startAt = IBKR_BOOK_START + 'T00:00:00.000Z';
-    let peak = acct.peakNlv;
-    let peakAt = acct.peakNlvAt;
-    let trough = acct.troughNlv;
-    let troughAt = acct.troughNlvAt;
+    const equity = start + st.net;
+    let peak = acct.peakBookEquity;
+    let peakAt = acct.peakBookEquityAt;
+    let trough = acct.troughBookEquity;
+    let troughAt = acct.troughBookEquityAt;
     if (!(Number(peak) > 0) || Number(peak) < start) { peak = start; peakAt = startAt; }
-    if (!(Number(trough) > 0) || Number(trough) > start) { trough = start; troughAt = startAt; }
-    if (nlv != null && Number.isFinite(Number(nlv))) {
-      if (Number(nlv) > Number(peak)) { peak = Number(nlv); peakAt = acct.at || startAt; }
-      if (Number(nlv) < Number(trough)) { trough = Number(nlv); troughAt = acct.at || startAt; }
+    if (!(Number(trough) > 0) || Number(trough) > start || Number(trough) < start * 0.85) {
+      trough = start; troughAt = startAt;
     }
+    if (equity > Number(peak)) { peak = equity; peakAt = acct.at || startAt; }
+    if (equity < Number(trough)) { trough = equity; troughAt = acct.at || startAt; }
     const tile = function(l,v,sub,c){
       return '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-height:88px;flex:1;min-width:150px;display:flex;flex-direction:column;justify-content:center;gap:5px">'
         +'<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace">'+l+'</div>'
@@ -1931,19 +1929,18 @@ function renderIbkrPerformanceExtras() {
         +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:'+ibkrPc(ret)+'">'+(ret>=0?'+':'')+ret+'%</td>'
         +'</tr>';
     }).join('');
-    el.innerHTML = '<div style="font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;margin:0 0 8px">Paper account — USD 1,000,000 (added)</div>'
+    el.innerHTML = '<div style="font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;margin:0 0 8px">USD 1,000,000 book — fill PnL, not IB net liquidation</div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
-      + tile('Starting capital', ibkrBal(start), 'paper account · '+IBKR_BOOK_START, 'var(--t1)')
-      + tile('Current NLV', ibkrBal(nlv), acct.account ? ('IB '+acct.account) : 'IB net liquidation', 'var(--t1)')
-      + tile('Highest account level', ibkrBal(peak), 'on '+ibkrFmtWhen(peakAt)+' · vs $1,000,000 start', 'var(--buy)')
-      + tile('Lowest account level', ibkrBal(trough), 'on '+ibkrFmtWhen(troughAt)+' · vs $1,000,000 start', 'var(--sell)')
+      + tile('Starting capital', ibkrBal(start), 'from '+IBKR_BOOK_START, 'var(--t1)')
+      + tile('Current account level', ibkrBal(equity), '$1,000,000 + net PnL', 'var(--t1)')
+      + tile('Highest account level', ibkrBal(peak), 'on '+ibkrFmtWhen(peakAt)+' · $1,000,000 book', 'var(--buy)')
+      + tile('Lowest account level', ibkrBal(trough), 'on '+ibkrFmtWhen(troughAt)+' · $1,000,000 book', 'var(--sell)')
       + '</div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
       + tile('Realised PnL', ibkrFp(st.realizedUsd), st.closedCount+' closed · net of brokerage', ibkrPc(st.realizedUsd))
       + tile('Unrealised PnL', ibkrFp(st.unrealizedUsd), st.openCount+' open', ibkrPc(st.unrealizedUsd))
       + tile('Net PnL', ibkrFp(st.net), 'realised + unrealised (IBKR method)', ibkrPc(st.net))
       + tile('Return %', (st.returnPct>=0?'+':'')+st.returnPct+'%', 'Net PnL / $'+start.toLocaleString(), ibkrPc(st.returnPct))
-      + tile('Account return', acctRet!=null?((acctRet>=0?'+':'')+acctRet+'%'):'—', 'NLV vs $1,000,000', ibkrPc(acctRet))
       + tile('Win rate', st.winRate!=null?st.winRate+'%':'—', st.wins+'W / '+st.losses+'L', wrC)
       + '</div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
