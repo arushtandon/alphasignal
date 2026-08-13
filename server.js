@@ -13474,12 +13474,15 @@ function quarantineErrorFillsOffModelKeys() {
  * |cursor-err until fill-open <= IB. Never splits a fill; never removes the
  * sole remaining entry on a key.
  */
-function quarantineExcessModelEntriesVsIb() {
+function quarantineExcessModelEntriesVsIb(positionsOverride) {
   try {
     const snap = loadIbkrReconReport();
-    if (!snap || !Array.isArray(snap.positions) || !snap.positions.length) return 0;
+    const positions = (Array.isArray(positionsOverride) && positionsOverride.length)
+      ? positionsOverride
+      : ((snap && Array.isArray(snap.positions)) ? snap.positions : []);
+    if (!positions.length) return 0;
     const ibAbsByYSign = new Map();
-    for (const p of snap.positions) {
+    for (const p of positions) {
       if (!p || !p.ticker) continue;
       const qty = Number(p.qty) || 0;
       if (!qty) continue;
@@ -13868,19 +13871,45 @@ function restoreFilledEntriesFalselyAbandoned() {
  * → move entry fills back to the live key so Open trades / authorization match IB.
  * Also pads a model qty-pad fill when cursor-err cannot cover the shortfall (0883).
  */
-function restoreOpenModelFillsFromCursorErr() {
+function restoreOpenModelFillsFromCursorErr(positionsOverride) {
   try {
     const snap = loadIbkrReconReport();
-    if (!snap || !Array.isArray(snap.positions) || !snap.positions.length) return 0;
+    const positions = (Array.isArray(positionsOverride) && positionsOverride.length)
+      ? positionsOverride
+      : ((snap && Array.isArray(snap.positions)) ? snap.positions : []);
+    if (!positions.length) return 0;
     const ibAbsByYSign = new Map();
-    for (const p of snap.positions) {
+    const ibAvgByYSign = new Map();
+    const ibCcyByYSign = new Map();
+    for (const p of positions) {
       if (!p || !p.ticker) continue;
       const qty = Number(p.qty) || 0;
       if (!qty) continue;
       const y = normalizeIbkrYahooTicker(p.ticker);
-      ibAbsByYSign.set(y + '|' + (Math.sign(qty) || 1), Math.abs(qty));
+      const k = y + '|' + (Math.sign(qty) || 1);
+      ibAbsByYSign.set(k, Math.abs(qty));
+      if (Number(p.avgCost) > 0) ibAvgByYSign.set(k, Number(p.avgCost));
+      if (p.currency) ibCcyByYSign.set(k, p.currency);
     }
     if (!ibAbsByYSign.size) return 0;
+
+    function ibMetaForYahoo(y0) {
+      const y = normalizeIbkrYahooTicker(y0);
+      const aliases = [...ibkrYahooAliases(y)];
+      for (const sign of [1, -1]) {
+        for (const a of aliases) {
+          const k = normalizeIbkrYahooTicker(a) + '|' + sign;
+          const abs = ibAbsByYSign.get(k);
+          if (abs > 0) {
+            return {
+              abs, sign, avg: ibAvgByYSign.get(k) || 0,
+              currency: ibCcyByYSign.get(k) || 'USD'
+            };
+          }
+        }
+      }
+      return null;
+    }
 
     const openKeys = new Set();
     try {
@@ -13904,25 +13933,10 @@ function restoreOpenModelFillsFromCursorErr() {
     for (const liveKey of openKeys) {
       const parts = String(liveKey).split('|');
       const ticker = String(parts[0] || '').toUpperCase();
-      const side = (() => {
-        // Infer side from existing fills or entry event — default buy.
-        const liveF = out.find(r => r && String(r.key) === liveKey);
-        if (liveF && liveF.side) return liveF.side === 'sell' ? 'sell' : 'buy';
-        const errF = out.find(r => r && String(r.key) === toCursorErrIbkrKey(liveKey));
-        if (errF && errF.side) return errF.side === 'sell' ? 'sell' : 'buy';
-        return 'buy';
-      })();
-      const y = normalizeIbkrYahooTicker(ticker);
-      const sign = side === 'sell' ? -1 : 1;
-      let ibAbs = ibAbsByYSign.get(y + '|' + sign);
-      if (!(ibAbs > 0)) {
-        // Alias lookup (SU / SU.PA)
-        for (const a of ibkrYahooAliases(y)) {
-          const v = ibAbsByYSign.get(normalizeIbkrYahooTicker(a) + '|' + sign);
-          if (v > 0) { ibAbs = v; break; }
-        }
-      }
-      if (!(ibAbs > 0)) continue;
+      const meta = ibMetaForYahoo(ticker);
+      if (!meta || !(meta.abs > 0)) continue;
+      const ibAbs = meta.abs;
+      const side = meta.sign < 0 ? 'sell' : 'buy';
 
       const liveEntries = out.filter(r => r && String(r.key) === liveKey && r.role === 'entry');
       let liveQty = liveEntries.reduce((s, r) => s + (Number(r.qty) || 0), 0);
@@ -13953,15 +13967,15 @@ function restoreOpenModelFillsFromCursorErr() {
       // Still short vs IB and no more err fills → durable qty-pad on live key.
       if (liveQty < ibAbs) {
         const delta = ibAbs - liveQty;
-        const sample = liveEntries[0] || errEntries[0] && errEntries[0].r;
-        const px = Number(sample && sample.price) || 0;
+        const sample = liveEntries[0] || (errEntries[0] && errEntries[0].r);
+        const px = Number(sample && sample.price) || Number(meta.avg) || 0;
         if (delta > 0 && px > 0) {
           const execId = `recon-entry-${liveKey}-pad${delta}`;
           if (!out.some(r => r && String(r.execId) === execId)) {
             out.push({
               execId, key: liveKey, ticker, hz: parts[1] || 'short',
               side, role: 'entry', qty: delta, price: px,
-              currency: (sample && sample.currency) || 'USD',
+              currency: (sample && sample.currency) || meta.currency || 'USD',
               ccyScale: Number(sample && sample.ccyScale) || 1,
               time: new Date().toISOString(),
               errorTrade: false, synthetic: true, recon: 'qty-pad',
@@ -14577,8 +14591,6 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   try {
     try { quarantineErrorFillsOffModelKeys(); } catch (_) {}
-    try { quarantineExcessModelEntriesVsIb(); } catch (_) {}
-    try { restoreOpenModelFillsFromCursorErr(); } catch (_) {}
     // Refresh dedupe set from disk (purge/other instance may have changed file).
     try {
       _ibkrExecIds.clear();
@@ -14625,6 +14637,15 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         if (!existing) ibByConId.set(cid, y);
       }
     }
+
+    try { restoreOpenModelFillsFromCursorErr(positions); } catch (_) {}
+    try { quarantineExcessModelEntriesVsIb(positions); } catch (_) {}
+    try {
+      _ibkrExecIds.clear();
+      for (const r of readIbkrFillRows()) {
+        if (r && r.execId) _ibkrExecIds.add(String(r.execId));
+      }
+    } catch (_) {}
 
     // SINGLE reconcile writer: drop stale phantoms here (never on GET /trades).
     {

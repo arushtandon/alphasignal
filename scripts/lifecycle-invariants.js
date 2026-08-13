@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AlphaSignal recommendation-lifecycle invariants (T1–T20).
+ * AlphaSignal recommendation-lifecycle invariants (T1–T21).
  * Uses an isolated DATA_DIR so production disk is untouched.
  */
 'use strict';
@@ -471,11 +471,29 @@ function ok(name, cond, detail) {
         recover.key);
     })();
 
+    // ── T21 Authorized IB lot with no live fills → qty-pad (AFL / KHC) ────────
+    (function t21() {
+      const liveKey = 'AFL|short|Wed Aug 12 2026';
+      fs.appendFileSync(S.TRADE_EVENTS_FILE, JSON.stringify({
+        seq: 920001, t: '2026-08-12T11:07:56.530Z', type: 'entry',
+        key: liveKey, ticker: 'AFL', hz: 'short', side: 'buy',
+        entry: 121.07, sl: 115, tp1: 128, status: 'open'
+      }) + '\n');
+      const moved = S.restoreOpenModelFillsFromCursorErr([
+        { ticker: 'AFL', qty: 82, avgCost: 121.10, currency: 'USD' }
+      ]);
+      const live = S.readIbkrFillRows().filter(r => r.key === liveKey && r.role === 'entry');
+      const qty = live.reduce((s, r) => s + Number(r.qty || 0), 0);
+      ok('T21 AFL pad moved', moved >= 1, 'moved=' + moved);
+      ok('T21 AFL live qty 82', qty === 82 && live.some(r => r.recon === 'qty-pad' && !r.errorTrade),
+        'qty=' + qty + ' n=' + live.length);
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T20 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T21 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();
