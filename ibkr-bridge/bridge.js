@@ -208,6 +208,35 @@ function fetchJson(urlPath) {
   });
 }
 
+/** Direct Yahoo v7 pre/post print — used when Render /api/prices is not yet deployed. */
+function fetchYahooExtQuote(ticker) {
+  const u = 'https://query1.finance.yahoo.com/v7/finance/quote?symbols=' + encodeURIComponent(ticker);
+  return new Promise((resolve) => {
+    const req = https.get(u, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        Accept: 'application/json'
+      }
+    }, res => {
+      let raw = '';
+      res.on('data', c => { raw += c; });
+      res.on('end', () => {
+        try {
+          const q = JSON.parse(raw)?.quoteResponse?.result?.[0] || {};
+          resolve({
+            pre: Number(q.preMarketPrice) || 0,
+            post: Number(q.postMarketPrice) || 0,
+            last: Number(q.regularMarketPrice) || 0,
+            state: String(q.marketState || '').toUpperCase()
+          });
+        } catch (_) { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.setTimeout(8000, () => { try { req.destroy(); } catch (_) {} resolve(null); });
+  });
+}
+
 function postJson(urlPath, body) {
   const u = new URL(BASE + urlPath);
   if (TOKEN) u.searchParams.set('token', TOKEN);
@@ -1754,11 +1783,20 @@ async function main() {
       const post = Number(v && (v.postMarketPrice ?? v.postMarket));
       const last = Number(v && (v.price ?? v.regularMarketPrice ?? v.last ?? v));
       const state = String((v && v.marketState) || '').toUpperCase();
-      if ((phase === 'pre' || state === 'PRE') && pre > 0) {
-        return { px: pre, src: 'pre', bid: ib && ib.bid, ask: ib && ib.ask };
+      let prePx = pre, postPx = post, mktState = state;
+      if ((phase === 'pre' || phase === 'post') && !(prePx > 0) && !(postPx > 0)) {
+        const y = await fetchYahooExtQuote(ticker);
+        if (y) {
+          if (y.pre > 0) prePx = y.pre;
+          if (y.post > 0) postPx = y.post;
+          if (y.state) mktState = y.state;
+        }
       }
-      if ((phase === 'post' || state === 'POST') && post > 0) {
-        return { px: post, src: 'post', bid: ib && ib.bid, ask: ib && ib.ask };
+      if ((phase === 'pre' || mktState === 'PRE') && prePx > 0) {
+        return { px: prePx, src: 'pre', bid: ib && ib.bid, ask: ib && ib.ask };
+      }
+      if ((phase === 'post' || mktState === 'POST') && postPx > 0) {
+        return { px: postPx, src: 'post', bid: ib && ib.bid, ask: ib && ib.ask };
       }
       if (phase === 'pre' || phase === 'post') {
         // Do not fall back to regular last/close — that parked ROST at yesterday's print.
