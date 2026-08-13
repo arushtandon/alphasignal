@@ -8,12 +8,13 @@
  *   Polls GET /api/ibkr/events and mirrors the AlphaSignal exit spec exactly:
  *
  *     entry        → parent MARKET / US-extended LMT entry (recommended price sizes shares + gates US pre/post):
- *                      • US pre/post (all usRth equities): if live extended quote is at or
- *                        better than the AlphaSignal entry (buy: quote≤entry, sell: quote≥entry),
- *                        LMT @ the live pre/post print (e.g. buy 224.1 with pre 222 → fill @ 222),
- *                        never worse than the model cap. IB ignores outsideRth on MKT (2109/399).
- *                        Otherwise MOO (OPG) for the cash open.
- *                      • US RTH: MKT; US fully closed: MOO for next open
+ *                      • US pre/post: IBKR bid/ask/last first. If that print is at/better
+ *                        than the model entry, LMT @ the live print (buy 224.1 / pre 222 → 222).
+ *                        Yahoo pre/post is fallback only when IB has no extended tick.
+ *                        Unfilled into 09:30 ET → OPG/MKT at the cash open even if the
+ *                        open is above the buy entry (below for a sell).
+ *                      • US RTH: MKT (chase cap skipped when converting a missed pre/OPG).
+ *                      • US fully closed: MOO for next open
  *                      • JP / HK / EU / UK: MOO before the open; MKT in RTH
  *                      • Unfilled HK/JP still open on the model are re-armed
  *                        (missed Asia opens are chased while the signal is live)
@@ -406,6 +407,13 @@ function sessionPhase(contract, nowMs = Date.now()) {
   return 'closed'; // after close → MOO for tomorrow's open
 }
 
+/** Minutes until US 09:30 ET (DST window in sessionPhase). Negative = already RTH. */
+function minutesUntilUsRth(nowMs = Date.now()) {
+  const d = new Date(nowMs);
+  const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
+  return (13 * 60 + 30) - utcMin;
+}
+
 /** Human label for fill/session stamps on the IBKR tab. */
 function sessionLabel(phase) {
   return ({
@@ -462,10 +470,14 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
   // IB SMART often rejects orderType 'MOO' (error 321). The portable form is
   // MKT + tif OPG (submit to the opening auction).
   if (contract.usRth) {
+    if (opts.forceOpg && phase !== 'rth') {
+      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
+    }
     if (phase === 'rth') {
-      // Never chase a stale model entry more than US_RTH_MAX_CHASE_BPS adverse
-      // (FSLR bought 248 vs entry 236.8 after a late Hold→Buy emit).
-      if (entryPx > 0 && quotePx > 0) {
+      // Missed pre-market / OPG still working → take the open/RTH print even if
+      // it is worse than the model entry. Chase cap only applies to a late first
+      // RTH fire (FSLR 248 vs 236.8), not this handoff.
+      if (!opts.skipChase && entryPx > 0 && quotePx > 0) {
         const sell = side === 'sell';
         const adverseBps = sell
           ? ((entryPx - quotePx) / entryPx) * 10000
@@ -1771,7 +1783,7 @@ async function main() {
     return null;
   }
 
-  /** Live IB tick for US pre/post gate — never yesterday's close. */
+  /** Live IB tick for US pre/post — bid/ask/last, never yesterday's close alone. */
   function ibLiveExtQuote(ticker) {
     for (const row of mktById.values()) {
       if (!row || row.ticker !== ticker) continue;
@@ -1779,17 +1791,51 @@ async function main() {
       const ask = Number(row.ask) || 0;
       const last = Number(row.last) || 0;
       const close = Number(row.close) || 0;
-      const fresh = row.lastAt && (Date.now() - row.lastAt) < 15 * 60 * 1000;
-      const lastIsLive = last > 0 && fresh && !(close > 0 && Math.abs(last - close) < 1e-6);
-      const px = lastIsLive ? last : (ask > 0 && bid > 0 ? (ask + bid) / 2 : (ask || bid || 0));
-      if (px > 0) return { px, bid, ask, src: 'ibkr' };
+      const tickAt = row.lastTickAt || row.lastAt;
+      const fresh = tickAt && (Date.now() - tickAt) < 20 * 60 * 1000;
+      const lastIsClose = close > 0 && last > 0 && Math.abs(last - close) < 1e-6;
+      const lastOk = last > 0 && fresh && !(lastIsClose && bid <= 0 && ask <= 0);
+      const px = lastOk ? last
+        : (ask > 0 && bid > 0 ? (ask + bid) / 2
+          : (ask || bid || 0));
+      if (px > 0 || bid > 0 || ask > 0) {
+        return { px: px || ask || bid || last, bid, ask, last, src: 'ibkr' };
+      }
     }
     return null;
   }
 
-  /** Live/pre/post quote for US extended-hours gate (Yahoo pre/post, else IB live tick). */
-  async function fetchEntryQuote(ticker, phase) {
-    const ib = ibLiveExtQuote(ticker);
+  function ibExtTradePx(side, q) {
+    if (!q) return null;
+    const sell = String(side || '').toLowerCase() === 'sell';
+    if (sell && q.bid > 0) return q.bid;
+    if (!sell && q.ask > 0) return q.ask;
+    const px = Number(q.px) || Number(q.last) || 0;
+    return px > 0 ? px : null;
+  }
+
+  async function waitIbExtQuote(ticker, timeoutMs = 1800) {
+    const t0 = Date.now();
+    for (;;) {
+      const q = ibLiveExtQuote(ticker);
+      if (q && (q.ask > 0 || q.bid > 0 || q.px > 0)) return q;
+      if (Date.now() - t0 >= timeoutMs) return ibLiveExtQuote(ticker);
+      await new Promise(r => setTimeout(r, 200));
+    }
+  }
+
+  /** US extended quote: IBKR bid/ask/last first; Yahoo only if IB has no tick. */
+  async function fetchEntryQuote(ticker, phase, side) {
+    const ib = await waitIbExtQuote(ticker);
+    const ibPx = ibExtTradePx(side, ib);
+    if ((phase === 'pre' || phase === 'post') && ibPx > 0) {
+      log('IBKR ext quote', ticker, 'phase=' + phase,
+        'last=' + ((ib && ib.last) || 'n/a'),
+        'bid=' + ((ib && ib.bid) || 'n/a'),
+        'ask=' + ((ib && ib.ask) || 'n/a'),
+        'trade=' + ibPx);
+      return { px: ibPx, src: 'ibkr', bid: ib && ib.bid, ask: ib && ib.ask };
+    }
     try {
       const j = await fetchJson('/api/prices?symbols=' + encodeURIComponent(ticker));
       const v = j && j[ticker];
@@ -1804,7 +1850,7 @@ async function main() {
           if (y.pre > 0) prePx = y.pre;
           if (y.post > 0) postPx = y.post;
           if (y.state) mktState = y.state;
-          log('yahoo ext', ticker, y.state || '', 'pre=' + (y.pre || 'n/a'), 'post=' + (y.post || 'n/a'));
+          log('yahoo ext fallback', ticker, y.state || '', 'pre=' + (y.pre || 'n/a'), 'post=' + (y.post || 'n/a'));
         }
       }
       if ((phase === 'pre' || mktState === 'PRE') && prePx > 0) {
@@ -1814,14 +1860,12 @@ async function main() {
         return { px: postPx, src: 'post', bid: ib && ib.bid, ask: ib && ib.ask };
       }
       if (phase === 'pre' || phase === 'post') {
-        // Do not fall back to regular last/close — that parked ROST at yesterday's print.
-        if (ib && ib.px > 0) return ib;
         return { px: null, src: null };
       }
-      if (ib && ib.px > 0) return ib;
+      if (ibPx > 0) return { px: ibPx, src: 'ibkr', bid: ib && ib.bid, ask: ib && ib.ask };
       if (last > 0) return { px: last, src: 'last' };
     } catch (e) { log('entry quote fetch failed', ticker, e.message); }
-    if (ib && ib.px > 0) return ib;
+    if (ibPx > 0) return { px: ibPx, src: 'ibkr' };
     const stale = ibQuoteForTicker(ticker);
     if (phase !== 'pre' && phase !== 'post' && stale > 0) return { px: stale, src: 'ibkr' };
     return { px: null, src: null };
@@ -1866,12 +1910,13 @@ async function main() {
     const usPhase = contract.usRth ? sessionPhase(contract) : null;
     if (contract.usRth && (usPhase === 'pre' || usPhase === 'post' || usPhase === 'rth')) {
       ensureMktData(evt.ticker, contract);
-      const q = await fetchEntryQuote(evt.ticker, usPhase);
+      const q = await fetchEntryQuote(evt.ticker, usPhase, evt.side);
       quotePx = q.px;
       quoteSrc = q.src;
     }
     const parentSpec = parentEntrySpec(contract, openAction, split.total, {
-      side: evt.side, entryPx: evt.entry, quotePx
+      side: evt.side, entryPx: evt.entry, quotePx,
+      forceOpg: !!evt.forceOpg, skipChase: !!evt.skipChase
     });
     if (parentSpec.defer) {
       log('defer entry', evt.ticker, parentSpec.entryStyle, 'phase=', sessionPhase(contract));
@@ -3055,7 +3100,14 @@ async function main() {
         } else if (us) {
           if (phase === 'pre' || phase === 'post') {
             ensureMktData(row.ticker, contract);
-            const q = await fetchEntryQuote(row.ticker, phase);
+            // Last 2 minutes of US pre: park unfilled LMT-EXT into the opening
+            // auction so a gap-up still fills at 09:30 even above the buy entry.
+            if (phase === 'pre' && isUsExtStyle(row.entryStyle)
+              && minutesUntilUsRth() <= 2) {
+              reason = 'us-pre-handoff-opg';
+              log('RECONCILE: US pre handoff to OPG for cash open', key, 'minsToRth=', minutesUntilUsRth());
+            } else {
+            const q = await fetchEntryQuote(row.ticker, phase, row.side);
             const fav = premarketFavorable(row.side, row.entry, q.px);
             if (fav && row.entryStyle !== 'LMT-EXT') {
               reason = row.entryStyle === 'MKT-EXT' ? 'us-pre-mkt-to-lmt' : 'us-pre-favorable';
@@ -3074,6 +3126,7 @@ async function main() {
               reason = 'us-pre-unfavorable-to-opg';
               log('RECONCILE: US pre/post gate CLOSED', key, 'quote=', q.px, 'entry=', row.entry, '→ OPG');
             }
+            }
           } else if (phase === 'rth' && (row.entryStyle === 'OPG' || isUsExtStyle(row.entryStyle))) {
             reason = 'us-rth-after-opg';
           } else if (phase === 'closed' && isUsExtStyle(row.entryStyle)) {
@@ -3084,8 +3137,11 @@ async function main() {
         if (!reason) continue;
 
         const last = row.lastRearmAt ? Date.parse(row.lastRearmAt) : 0;
-        const minGap = (reason === 'asia-rth-retry' || reason === 'us-pre-mkt-to-lmt' || reason === 'us-pre-reprice')
-          ? 2 * 60 * 1000 : 15 * 60 * 1000;
+        const minGap = (reason === 'asia-rth-retry' || reason === 'us-pre-mkt-to-lmt'
+          || reason === 'us-pre-reprice' || reason === 'us-pre-handoff-opg'
+          || reason === 'us-rth-after-opg')
+          ? (reason === 'us-pre-handoff-opg' || reason === 'us-rth-after-opg' ? 0 : 2 * 60 * 1000)
+          : 15 * 60 * 1000;
         if (last && Date.now() - last < minGap) continue;
 
         try {
@@ -3113,7 +3169,10 @@ async function main() {
             tp1: src.tp1 != null ? src.tp1 : row.tp1Px,
             sl: src.sl != null ? src.sl : row.stopPx,
             trailSl: src.trailSl != null ? src.trailSl : (src.sl != null ? src.sl : row.stopPx),
-            t: new Date().toISOString()
+            t: new Date().toISOString(),
+            forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-overnight-to-opg'
+              || reason === 'us-pre-unfavorable-to-opg',
+            skipChase: reason === 'us-rth-after-opg'
           });
           if (placed) {
             placed.lastRearmAt = new Date().toISOString();
@@ -3534,6 +3593,11 @@ async function main() {
         if (row.contract.usRth) {
           const usPh = sessionPhase(row.contract);
           if ((usPh === 'pre' || usPh === 'post') && !row.entryFilled) {
+            forceReconcile = true;
+            break;
+          }
+          if (usPh === 'rth' && !row.entryFilled
+            && (row.entryStyle === 'OPG' || isUsExtStyle(row.entryStyle))) {
             forceReconcile = true;
             break;
           }
