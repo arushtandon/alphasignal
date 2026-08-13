@@ -14391,6 +14391,10 @@ const IBKR_RECON_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_recon.json')
 const IBKR_RECON_PENDING_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_recon_pending.json');
 const IBKR_ACCOUNT_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_account.json');
 const IBKR_CHARGES_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_charges.jsonl');
+/** Paper account inception capital — Performance / History return % denominator. */
+const IBKR_STARTING_CAPITAL = 1000000;
+/** History + Performance only include IBKR fills from this UTC date onward. */
+const IBKR_BOOK_START = '2026-08-06';
 
 function loadIbkrAccountSnapshot() {
   try { return JSON.parse(fs.readFileSync(IBKR_ACCOUNT_FILE, 'utf8')); }
@@ -14422,6 +14426,22 @@ function finalizeIbkrAccountSnapshot(merged) {
   } else if (Number.isFinite(bal) && Number.isFinite(avail)) {
     merged.marginsUsed = +(bal - avail).toFixed(2);
   }
+  merged.startingCapital = IBKR_STARTING_CAPITAL;
+  const nlv = Number(merged.netLiquidation != null ? merged.netLiquidation : merged.currentBalance);
+  const at = merged.at || merged.savedAt || new Date().toISOString();
+  // Ignore junk / currency-mix prints. Paper book is ~$1M; a $0–$1k blip is not a real trough.
+  if (Number.isFinite(nlv) && nlv > 1000) {
+    const prevPeak = Number(merged.peakNlv);
+    if (!Number.isFinite(prevPeak) || nlv > prevPeak) {
+      merged.peakNlv = +nlv.toFixed(2);
+      merged.peakNlvAt = at;
+    }
+    const prevTrough = Number(merged.troughNlv);
+    if (!Number.isFinite(prevTrough) || nlv < prevTrough) {
+      merged.troughNlv = +nlv.toFixed(2);
+      merged.troughNlvAt = at;
+    }
+  }
   return merged;
 }
 function readIbkrChargeRows() {
@@ -14447,14 +14467,19 @@ function appendIbkrCharges(rows) {
     if (!r || typeof r !== 'object') continue;
     const id = String(r.id || '').trim();
     if (!id || existing.has(id)) continue;
+    const typ = String(r.type || 'other');
+    // AccruedCash is account-level; live balance comes from the snapshot.
+    // Historical Δ rows (BASE vs USD reconnects) are not per-equity fees.
+    if (/accrued_cash/i.test(typ) && !/dividend/i.test(typ)) continue;
     existing.add(id);
     const row = {
       id,
-      type: String(r.type || 'other'),
+      type: typ,
       label: String(r.label || r.type || 'charge'),
       amount: Number(r.amount),
       currency: String(r.currency || 'USD'),
       income: !!r.income,
+      accountLevel: !!r.accountLevel,
       time: r.time || new Date().toISOString()
     };
     if (!Number.isFinite(row.amount) || row.amount === 0) continue;
@@ -14609,7 +14634,11 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           ...prev,
           ...snap,
           account: snap.account || req.body.account || prev.account || null,
-          at: snap.at || new Date().toISOString()
+          at: snap.at || new Date().toISOString(),
+          peakNlv: prev.peakNlv,
+          peakNlvAt: prev.peakNlvAt,
+          troughNlv: prev.troughNlv,
+          troughNlvAt: prev.troughNlvAt
         });
         saveIbkrAccountSnapshot(merged);
         try { updateLiquidityRiskGate(merged); } catch (_) { /* best-effort */ }
@@ -15192,7 +15221,11 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
         ...prev,
         ...snap,
         account: snap.account || prev.account || null,
-        at: snap.at || new Date().toISOString()
+        at: snap.at || new Date().toISOString(),
+        peakNlv: prev.peakNlv,
+        peakNlvAt: prev.peakNlvAt,
+        troughNlv: prev.troughNlv,
+        troughNlvAt: prev.troughNlvAt
       });
       saveIbkrAccountSnapshot(merged);
       try { updateLiquidityRiskGate(merged); } catch (_) { /* best-effort */ }
@@ -15396,6 +15429,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
         const session = f.session || ibkrSessionPhase(f.ticker || f0.ticker, f.time);
         return {
           role: f.role, qty: f.qty, price: f.price, time: f.time,
+          ticker: f.ticker || f0.ticker,
+          side: f.side || f0.side,
+          execId: f.execId || null,
           errorTrade: !!f.errorTrade,
           commission: f.commission != null ? Number(f.commission) : null,
           commissionCcy: f.commissionCcy || null,
@@ -15774,7 +15810,13 @@ app.get('/api/ibkr/trades', async (req, res) => {
     trades.sort((a, b) => (a.entryTime < b.entryTime ? 1 : -1));
 
     const reconReport = loadIbkrReconReport();
-    const accountSnap = loadIbkrAccountSnapshot();
+    const accountSnapRaw = loadIbkrAccountSnapshot();
+    const accountSnap = accountSnapRaw ? finalizeIbkrAccountSnapshot({ ...accountSnapRaw }) : null;
+    if (accountSnap && accountSnapRaw
+        && (accountSnapRaw.peakNlv == null || accountSnapRaw.troughNlv == null)
+        && accountSnap.peakNlv != null) {
+      try { saveIbkrAccountSnapshot(accountSnap); } catch (_) {}
+    }
     const currentBalance = accountSnap
       ? Number(accountSnap.currentBalance != null ? accountSnap.currentBalance : accountSnap.netLiquidation)
       : null;
@@ -15788,6 +15830,21 @@ app.get('/api/ibkr/trades', async (req, res) => {
     const expenses = [];
     let commissionExpenseUsd = 0;
     const chargeLedger = readIbkrChargeRows();
+    const roleFeeLabel = (role) => {
+      const r = String(role || '').toLowerCase();
+      if (r === 'entry') return 'IB commission on entry fill';
+      if (r === 'tp1') return 'IB commission on TP1 exit';
+      if (r === 'stop') return 'IB commission on stop-loss / TSL fill';
+      if (r === 'flatten') return 'IB commission on flatten';
+      return 'IB commission on fill';
+    };
+    const pxLabel = (px, scale) => {
+      const p = Number(px);
+      if (!Number.isFinite(p)) return '?';
+      if ((Number(scale) || 1) === 100) return p.toFixed(2);
+      if (Math.abs(p) >= 100) return p.toFixed(2);
+      return String(+p.toFixed(4));
+    };
     for (const r of rows) {
       const c = Number(r.commission);
       if (!(c > 0) && !(c < 0)) continue;
@@ -15795,12 +15852,23 @@ app.get('/api/ibkr/trades', async (req, res) => {
       const cFx = await ibkrUsdPerCcy(ccy);
       const usd = +(Math.abs(c) * cFx).toFixed(4);
       commissionExpenseUsd += usd;
+      const ticker = r.ticker || '?';
+      const side = String(r.side || '').toUpperCase() || '?';
+      const qty = Number(r.qty);
+      const qtyTxt = Number.isFinite(qty) ? String(qty) : '?';
+      const role = r.role || 'fill';
       expenses.push({
         type: 'commission',
         section: 'commission',
-        label: 'Brokerage · ' + (r.ticker || '?') + ' · ' + (r.role || 'fill'),
-        ticker: r.ticker || null,
-        role: r.role || null,
+        feeType: roleFeeLabel(role),
+        label: ticker + ' · ' + side + ' ' + qtyTxt + ' @ ' + pxLabel(r.price, r.ccyScale)
+          + ' · ' + roleFeeLabel(role)
+          + (r.errorTrade ? ' · ERROR' : ''),
+        ticker,
+        side: String(r.side || '') || null,
+        qty: Number.isFinite(qty) ? qty : null,
+        price: Number.isFinite(Number(r.price)) ? Number(r.price) : null,
+        role,
         execId: r.execId || null,
         amount: Math.abs(c),
         currency: ccy,
@@ -15810,29 +15878,29 @@ app.get('/api/ibkr/trades', async (req, res) => {
         errorTrade: !!r.errorTrade
       });
     }
-    // Durable IB charge / dividend deltas posted by the bridge.
-    // Skip AccruedCash micro-ticks (historical spam of ±$0.01 rows).
+    // Durable IB dividend (and other) events posted by the bridge.
+    // Never replay AccruedCash Δ rows — reconnect BASE vs USD created fake ±$300 pairs.
     for (const ch of chargeLedger) {
       const amt = Number(ch.amount);
       if (!Number.isFinite(amt) || amt === 0) continue;
       const isAccrued = /accrued_cash|accrued/i.test(String(ch.type || ''))
         && !/dividend/i.test(String(ch.type || ''));
-      if (isAccrued && Math.abs(amt) < 1) continue;
+      if (isAccrued) continue;
       const ccy = String(ch.currency || 'USD');
       const cFx = await ibkrUsdPerCcy(ccy);
       const usd = +(Math.abs(amt) * cFx).toFixed(4);
       const income = !!ch.income || /dividend/i.test(String(ch.type || ''))
         || /dividend/i.test(String(ch.label || ''));
-      const section = income ? 'dividend' : (isAccrued ? 'accrued' : 'other');
+      const section = income ? 'dividend' : 'other';
       expenses.push({
         type: ch.type || 'charge',
         section,
         label: ch.label || ch.type || 'charge',
         amount: amt,
         currency: ccy,
-        amountUsd: +(income ? (amt >= 0 ? usd : -usd) : usd).toFixed(2),
+        amountUsd: +(income ? (amt >= 0 ? usd : -usd) : (amt >= 0 ? usd : -usd)).toFixed(2),
         income,
-        accountLevel: !!ch.accountLevel || isAccrued,
+        accountLevel: !!ch.accountLevel,
         time: ch.time || null,
         id: ch.id || null
       });
@@ -15846,11 +15914,14 @@ app.get('/api/ibkr/trades', async (req, res) => {
       expenses.push({
         type: 'accrued_balance',
         section: 'accrued',
-        label: 'Accrued cash / interest & borrow fees — account total (IB AccruedCash; not per equity)',
+        feeType: 'IB AccruedCash (credit interest / stock-borrow fees)',
+        label: 'Account total — IB AccruedCash (credit interest & borrow fees). IB does not break this down by ticker.',
+        ticker: null,
         amount: ac,
         currency: accountSnap.currency || 'USD',
         amountUsd: +ac.toFixed(2),
-        income: false,
+        income: ac > 0,
+        signed: true,
         balance: true,
         accountLevel: true,
         time: accountSnap.at || null
@@ -15917,7 +15988,12 @@ app.get('/api/ibkr/trades', async (req, res) => {
       liquidityRiskOff: !!riskState.liquidityRiskOff,
       liquidityPausePct: LIQ_PAUSE_PCT,
       liquidityResumePct: LIQ_RESUME_PCT,
-      // Kept for bridge/debug; UI no longer shows these as primary cards.
+      startingCapital: IBKR_STARTING_CAPITAL,
+      bookStart: IBKR_BOOK_START,
+      peakNlv: accountSnap.peakNlv != null ? Number(accountSnap.peakNlv) : null,
+      peakNlvAt: accountSnap.peakNlvAt || null,
+      troughNlv: accountSnap.troughNlv != null ? Number(accountSnap.troughNlv) : null,
+      troughNlvAt: accountSnap.troughNlvAt || null,
       startingBalance: accountSnap.startingBalance != null ? Number(accountSnap.startingBalance)
         : (accountSnap.previousDayEquity != null ? Number(accountSnap.previousDayEquity) : null),
       availableFunds: netLiqAvail,

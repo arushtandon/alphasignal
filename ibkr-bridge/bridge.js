@@ -751,8 +751,12 @@ async function main() {
   // Durable charge/dividend events queued for AlphaSignal (ibkr_charges.jsonl).
   if (!Array.isArray(state.pendingCharges)) state.pendingCharges = [];
   const _lastChargeVal = Object.create(null); // tag -> last numeric value
-  /** Queue a ledger line when AccruedDividend / AccruedCash etc. move. */
+  /** Queue a ledger line when AccruedDividend / receivable move.
+   *  AccruedCash is an account-level IB tag (interest / borrow). Reconnects
+   *  flip BASE vs USD and spam ±$300 Δ rows that are not per-equity fees —
+   *  never queue those. Live AccruedCash is shown from the account snapshot. */
   function noteChargeMove(type, label, value, currency, signHint) {
+    if (type === 'accrued_cash') return;
     const n = Number(value);
     if (!Number.isFinite(n)) return;
     const key = type;
@@ -765,34 +769,27 @@ async function main() {
     const delta = +(n - prev).toFixed(6);
     _lastChargeVal[key] = n;
     if (Math.abs(delta) < 1e-6) return;
-    // AccruedCash is an ACCOUNT-level IB tag (interest/borrow fees on the whole
-    // portfolio). It ticks every few seconds with $0.00–$0.04 noise — never
-    // attribute to a ticker (IB does not send per-name AccruedCash). Only log
-    // material moves (≥ $1). Dividends: ignore sub-cent jitter.
-    if (type === 'accrued_cash' && Math.abs(delta) < 1) return;
     if ((type === 'dividend' || type === 'dividend_receivable') && Math.abs(delta) < 0.05) return;
     const isIncome = type === 'dividend' || type === 'dividend_receivable'
       || (signHint === 'income');
-    const scopeNote = (type === 'accrued_cash')
-      ? ' · account-level (not per ticker)'
-      : '';
     state.pendingCharges = state.pendingCharges || [];
     state.pendingCharges.push({
       id: type + '-' + Date.now() + '-' + Math.abs(delta).toFixed(4),
       type,
-      label: label + ' (Δ)' + scopeNote,
+      label: label + ' (Δ)',
       amount: delta,
       currency: currency || 'USD',
       income: !!isIncome,
-      accountLevel: type === 'accrued_cash',
+      accountLevel: false,
       time: new Date().toISOString()
     });
     saveState(state);
     log('charge event', type, delta, currency || 'USD');
   }
   function takePendingCharges() {
-    const batch = Array.isArray(state.pendingCharges) ? state.pendingCharges.slice() : [];
-    if (!batch.length) return [];
+    const raw = Array.isArray(state.pendingCharges) ? state.pendingCharges.slice() : [];
+    const batch = raw.filter(c => !/accrued_cash/i.test(String(c && c.type || '')));
+    if (!raw.length) return [];
     state.pendingCharges = [];
     saveState(state);
     return batch;
@@ -1079,8 +1076,6 @@ async function main() {
           noteChargeMove('dividend', 'Accrued dividend (IB)', n, accountSnap.currency, 'income');
         } else if (field === 'dividendReceivable') {
           noteChargeMove('dividend_receivable', 'Dividend receivable (IB)', n, accountSnap.currency, 'income');
-        } else if (field === 'accruedCash') {
-          noteChargeMove('accrued_cash', 'Accrued cash / interest & fees (IB)', n, accountSnap.currency, 'expense');
         }
         if (accountSnap.netLiquidation != null && !accountSnap._loggedOnce) {
           accountSnap._loggedOnce = true;
@@ -1130,8 +1125,6 @@ async function main() {
             noteChargeMove('dividend', 'Accrued dividend (IB)', n, ccy || 'USD', 'income');
           } else if (field === 'dividendReceivable') {
             noteChargeMove('dividend_receivable', 'Dividend receivable (IB)', n, ccy || 'USD', 'income');
-          } else if (field === 'accruedCash') {
-            noteChargeMove('accrued_cash', 'Accrued cash / interest & fees (IB)', n, ccy || 'USD', 'expense');
           }
         }
         accountSnap.account = account || ACCOUNT || accountSnap.account;
