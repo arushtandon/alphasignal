@@ -1770,25 +1770,38 @@ function ibkrBookTrades(d, includeError) {
     return ibkrOnOrAfterBookStart(t.entryTime || t.lastTime);
   });
 }
+function ibkrOpenCommission(tt) {
+  return Number(tt && tt.openCommissionUsd) || 0;
+}
+function ibkrNetPnl(tt) {
+  return (Number(tt && tt.realizedUsd) || 0)
+    + (Number(tt && tt.unrealizedUsd) || 0)
+    - ibkrOpenCommission(tt);
+}
 function ibkrBookStats(trades) {
-  let realizedUsd = 0, unrealizedUsd = 0, commissionUsd = 0;
+  let realizedUsd = 0, unrealizedUsd = 0, commissionUsd = 0, openCommissionUsd = 0;
   let openCount = 0, closedCount = 0, wins = 0, losses = 0;
   for (const t of (trades || [])) {
-    commissionUsd += Number(t.commissionUsd) || 0;
+    const comm = Number(t.commissionUsd) || 0;
+    commissionUsd += comm;
     realizedUsd += Number(t.realizedUsd) || 0;
     if (t.unrealizedUsd != null) unrealizedUsd += Number(t.unrealizedUsd) || 0;
     if (t.status === 'closed') {
       closedCount++;
       if ((t.realizedUsd || 0) > 0) wins++;
       else if ((t.realizedUsd || 0) < 0) losses++;
-    } else openCount++;
+    } else {
+      openCount++;
+      openCommissionUsd += comm;
+    }
   }
-  const net = realizedUsd + unrealizedUsd;
+  const net = realizedUsd + unrealizedUsd - openCommissionUsd;
   const start = IBKR_STARTING_CAPITAL;
   return {
     realizedUsd: +realizedUsd.toFixed(2),
     unrealizedUsd: +unrealizedUsd.toFixed(2),
     commissionUsd: +commissionUsd.toFixed(2),
+    openCommissionUsd: +openCommissionUsd.toFixed(2),
     openCount, closedCount, wins, losses,
     net: +net.toFixed(2),
     start,
@@ -1937,9 +1950,9 @@ function renderIbkrPerformanceExtras() {
       + tile('Lowest account level', ibkrBal(trough), 'on '+ibkrFmtWhen(troughAt)+' · $1,000,000 book', 'var(--sell)')
       + '</div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
-      + tile('Realised PnL', ibkrFp(st.realizedUsd), st.closedCount+' closed · net of brokerage', ibkrPc(st.realizedUsd))
+      + tile('Realised PnL', ibkrFp(st.realizedUsd), st.closedCount+' closed · brokerage on exit', ibkrPc(st.realizedUsd))
       + tile('Unrealised PnL', ibkrFp(st.unrealizedUsd), st.openCount+' open', ibkrPc(st.unrealizedUsd))
-      + tile('Net PnL', ibkrFp(st.net), 'realised + unrealised (IBKR method)', ibkrPc(st.net))
+      + tile('Net PnL', ibkrFp(st.net), 'realised + unrealised − open brokerage', ibkrPc(st.net))
       + tile('Return %', (st.returnPct>=0?'+':'')+st.returnPct+'%', 'Net PnL / $'+start.toLocaleString(), ibkrPc(st.returnPct))
       + tile('Win rate', st.winRate!=null?st.winRate+'%':'—', st.wins+'W / '+st.losses+'L', wrC)
       + '</div>'
@@ -1994,7 +2007,7 @@ async function tickIbkrMtm(){
       cEl.style.color = (comm > 0) ? 'var(--sell)' : 'var(--m1)';
     }
     if (nEl) {
-      const net = (d.totals.realizedUsd || 0) + (d.totals.unrealizedUsd || 0);
+      const net = ibkrNetPnl(d.totals);
       nEl.textContent = ibkrFp(net); nEl.style.color = ibkrPc(net);
     }
     setTxt('ibkrCardBalance', ibkrBal(a.currentBalance), 'var(--t1)');
@@ -2069,8 +2082,8 @@ async function renderIbkr(force){
     const todayErr = (d.dailyError||[]).find(x => x.date === todayKey);
     const todayErrReal = todayErr ? todayErr.realizedUsd : 0;
     const wrColor = tt.winRate==null?'var(--m1)':tt.winRate>=55?'var(--buy)':tt.winRate>=40?'#F5C842':'var(--sell)';
-    const net = tt.realizedUsd + tt.unrealizedUsd;
-    const errNet = (tt.errorRealizedUsd||0) + (tt.errorUnrealizedUsd||0);
+    const net = ibkrNetPnl(tt);
+    const errNet = (tt.errorRealizedUsd||0) + (tt.errorUnrealizedUsd||0) - (tt.errorOpenCommissionUsd||0);
     const rc = d.reconcile;
     const rcOk = rc && rc.ok;
     const rcColor = !rc ? 'var(--m1)' : rcOk ? 'var(--buy)' : ((rc.errors||0) > 0 ? 'var(--sell)' : '#F5C842');
@@ -2145,14 +2158,14 @@ async function renderIbkr(force){
           (acct.marginsUsed > 0) ? 'var(--sell)' : 'var(--t1)')
       + tile('ibkrCardToday','Today realised', fp(todayReal), 'fills · '+todayKey, pc(todayReal))
       + tile('ibkrCardReal','Total realised (net)', fp(tt.realizedUsd),
-          'gross '+(tt.realizedUsdGross!=null?fp(tt.realizedUsdGross):'—')+' · '+tt.closedCount+' closed', pc(tt.realizedUsd))
+          'brokerage on close · '+tt.closedCount+' closed', pc(tt.realizedUsd))
       + tileClick('ibkrCardComm','Brokerage, dividends & charges',
           expTotal?('-$'+Math.abs(expTotal).toFixed(0)):'—',
           expSub,
           expTotal?'var(--sell)':'var(--m1)',
           'showIbkrExpenses()')
       + tile('ibkrCardUnreal','Unrealised', fp(tt.unrealizedUsd), tt.openCount+' open', pc(tt.unrealizedUsd))
-      + tile('ibkrCardNet','Net PnL', fp(net), 'net realised + unrealised', pc(net))
+      + tile('ibkrCardNet','Net PnL', fp(net), 'realised + unrealised − open brokerage', pc(net))
       + tile('ibkrCardWR','Win rate', tt.winRate!=null?tt.winRate+'%':'—', tt.wins+'W / '+tt.losses+'L', wrColor)
       + tile('ibkrCardRecon','IB ↔ Site', rcLabel, rcOk ? 'all matched' : 'see differences below', rcColor)
       + '</div>'
@@ -2239,7 +2252,10 @@ async function renderIbkr(force){
       const showReal = t.realizedUsd;
       const realNote = (t.tickerGroupRealizedUsd != null && t.hasFlatten
         && Math.abs(t.tickerGroupRealizedUsd - t.realizedUsd) > 0.005)
-        ? ' <span style="font-size:8px;color:var(--m1)" title="All flatten legs on this ticker">Σ '+fp(t.tickerGroupRealizedUsd)+'</span>' : '';
+        ? ' <span style="font-size:8px;color:var(--m1)" title="All flatten legs on this ticker">Σ '+fp(t.tickerGroupRealizedUsd)+'</span>'
+        : (t.openQty > 0 && t.commissionUsd > 0 && !t.commissionInRealized
+          ? ' <span style="font-size:8px;color:var(--m1)" title="Commission stays in Brokerage until the lot is closed">comm '+fp(-Math.abs(t.commissionUsd))+'</span>'
+          : '');
       const reason = err ? ('ERROR · '+(t.exitType||'unauthorized'))
         : (t.status==='closed'
           ? (t.rec && t.rec.exitReason ? t.rec.exitReason : (t.exitType||'—'))

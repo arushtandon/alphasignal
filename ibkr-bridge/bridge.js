@@ -2636,7 +2636,8 @@ async function main() {
 
     const openN = Number(tt.openCount) || 0;
     const closedN = Number(tt.closedCount) || 0;
-    const netPnl = (Number(tt.realizedUsd) || 0) + (Number(tt.unrealizedUsd) || 0);
+    const netPnl = (Number(tt.realizedUsd) || 0) + (Number(tt.unrealizedUsd) || 0)
+      - (Number(tt.openCommissionUsd) || 0);
     const snapshot = {
       date: dayLabel,
       session: 'us-post-close',

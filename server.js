@@ -15854,9 +15854,10 @@ app.get('/api/ibkr/trades', async (req, res) => {
 
     const daily = new Map();
     const dailyError = new Map();
-    let totRealUsd = 0, totRealGrossUsd = 0, totCommissionUsd = 0;
+    let totRealUsd = 0, totRealGrossUsd = 0, totCommissionUsd = 0, totOpenCommissionUsd = 0;
     let totUnrealUsd = 0, wins = 0, losses = 0, openCount = 0, closedCount = 0;
     let errRealUsd = 0, errUnrealUsd = 0, errOpen = 0, errClosed = 0, errCommissionUsd = 0;
+    let errOpenCommissionUsd = 0;
     for (const t of trades) {
       const fx = await ibkrUsdPerCcy(t.currency);
       const dir = t.side === 'sell' ? -1 : 1;
@@ -15872,8 +15873,13 @@ app.get('/api/ibkr/trades', async (req, res) => {
       t.commissionUsd = +commissionUsd.toFixed(2);
       const realizedGrossUsd = +(t.realizedLocal * fx).toFixed(2);
       t.realizedUsdGross = realizedGrossUsd;
-      // Net of brokerage so site PnL lines up with IB (commissions are costs).
-      t.realizedUsd = +(realizedGrossUsd - commissionUsd).toFixed(2);
+      // Commission stays in Brokerage while the lot is open. Realised becomes
+      // gross exit PnL minus all commissions only on the final close.
+      const lotClosed = !(t.openQty > 0);
+      t.commissionInRealized = lotClosed;
+      t.realizedUsd = lotClosed
+        ? +(realizedGrossUsd - commissionUsd).toFixed(2)
+        : +realizedGrossUsd.toFixed(2);
       let mark = markMap[t.ticker] && Number(markMap[t.ticker].price) > 0 ? Number(markMap[t.ticker].price) : null;
       // LSE fills are in pence (ccyScale=100); IB sometimes ticks in pounds.
       if (mark != null && t.ccyScale === 100 && t.avgEntry > 0 && mark * 10 < t.avgEntry) mark *= 100;
@@ -15888,41 +15894,35 @@ app.get('/api/ibkr/trades', async (req, res) => {
       if (t.errorTrade) {
         errRealUsd += t.realizedUsd;
         errCommissionUsd += t.commissionUsd;
+        if (!lotClosed) errOpenCommissionUsd += t.commissionUsd;
         if (t.unrealizedUsd != null) errUnrealUsd += t.unrealizedUsd;
         if (t.status === 'closed') errClosed++; else errOpen++;
       } else {
         totRealUsd += t.realizedUsd;
         totRealGrossUsd += t.realizedUsdGross;
         totCommissionUsd += t.commissionUsd;
+        if (!lotClosed) totOpenCommissionUsd += t.commissionUsd;
         if (t.unrealizedUsd != null) totUnrealUsd += t.unrealizedUsd;
         if (t.status === 'closed') {
           closedCount++;
           if (t.realizedUsd > 0) wins++; else if (t.realizedUsd < 0) losses++;
         } else openCount++;
       }
-      // Daily realized: attribute each exit fill's PnL (vs avg entry) to its day,
-      // minus that fill's commission (entry commissions attributed on first exit day).
+      // Daily realised: exit-fill price PnL only. All commissions hit realised
+      // on the close day (last exit, or last fill if the lot is gone with no sale).
       for (const f of t.fills) {
         if (f.role === 'entry') continue;
         const day = String(f.time).slice(0, 10);
-        const c = Number(f.commission);
-        const cFx = (c > 0 || c < 0)
-          ? await ibkrUsdPerCcy(String(f.commissionCcy || t.currency || 'USD'))
-          : 0;
-        const pnlUsd = ((f.price - t.avgEntry) * f.qty * dir / (t.ccyScale || 1)) * fx
-          - ((c > 0 || c < 0) ? Math.abs(c) * cFx : 0);
+        const pnlUsd = ((f.price - t.avgEntry) * f.qty * dir / (t.ccyScale || 1)) * fx;
         if (t.errorTrade) dailyError.set(day, (dailyError.get(day) || 0) + pnlUsd);
         else daily.set(day, (daily.get(day) || 0) + pnlUsd);
       }
-      // Entry commissions with no exits yet — count toward open trade costs on entry day.
-      if (t.exitQty === 0) {
-        for (const f of t.fills) {
-          if (f.role !== 'entry') continue;
-          const c = Number(f.commission);
-          if (!(c > 0) && !(c < 0)) continue;
-          const day = String(f.time).slice(0, 10);
-          const cFx = await ibkrUsdPerCcy(String(f.commissionCcy || t.currency || 'USD'));
-          const cost = -Math.abs(c) * cFx;
+      if (lotClosed && commissionUsd) {
+        const lastExit = t.fills.filter(f => f.role !== 'entry').slice(-1)[0]
+          || t.fills.slice(-1)[0];
+        const day = String((lastExit && lastExit.time) || t.lastTime || t.entryTime || '').slice(0, 10);
+        if (day) {
+          const cost = -commissionUsd;
           if (t.errorTrade) dailyError.set(day, (dailyError.get(day) || 0) + cost);
           else daily.set(day, (daily.get(day) || 0) + cost);
         }
@@ -15959,7 +15959,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
     const reconReport = loadIbkrReconReport();
     const accountSnapRaw = loadIbkrAccountSnapshot();
     const accountSnap = finalizeIbkrAccountSnapshot({ ...(accountSnapRaw || {}) });
-    applyBookEquityExtremes(accountSnap, totRealUsd + totUnrealUsd);
+    applyBookEquityExtremes(accountSnap, totRealUsd + totUnrealUsd - totOpenCommissionUsd);
     try { saveIbkrAccountSnapshot(accountSnap); } catch (_) {}
     const currentBalance = accountSnap
       ? Number(accountSnap.currentBalance != null ? accountSnap.currentBalance : accountSnap.netLiquidation)
@@ -16232,12 +16232,14 @@ app.get('/api/ibkr/trades', async (req, res) => {
         realizedUsd: +totRealUsd.toFixed(2),
         realizedUsdGross: +totRealGrossUsd.toFixed(2),
         commissionUsd: +totCommissionUsd.toFixed(2),
+        openCommissionUsd: +totOpenCommissionUsd.toFixed(2),
         unrealizedUsd: +totUnrealUsd.toFixed(2),
         openCount, closedCount, wins, losses,
         winRate: (wins + losses) ? Math.round(wins / (wins + losses) * 100) : null,
         errorRealizedUsd: +errRealUsd.toFixed(2),
         errorUnrealizedUsd: +errUnrealUsd.toFixed(2),
         errorCommissionUsd: +errCommissionUsd.toFixed(2),
+        errorOpenCommissionUsd: +errOpenCommissionUsd.toFixed(2),
         errorOpenCount: errOpen,
         errorClosedCount: errClosed
       },
