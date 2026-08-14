@@ -8,14 +8,16 @@
  *   Polls GET /api/ibkr/events and mirrors the AlphaSignal exit spec exactly:
  *
  *     entry        → parent MARKET / US-extended LMT entry (recommended price sizes shares + gates US pre/post):
- *                      • US pre/post: IBKR bid/ask/last first. If that print is at/better
- *                        than the model entry, LMT @ the live print (buy 224.1 / pre 222 → 222).
- *                        Yahoo pre/post is fallback only when IB has no extended tick.
- *                        Unfilled into 09:30 ET → OPG/MKT at the cash open even if the
- *                        open is above the buy entry (below for a sell).
- *                      • US RTH: MKT (chase cap skipped when converting a missed pre/OPG).
+ *                      • US pre/post: if the live print is at/better than the model entry,
+ *                        LMT @ the recommended cap immediately (buy rec 224 / pre 222 →
+ *                        LMT 224, fills at ~222). Never MKT-EXT (IB queues those until 09:30).
+ *                        Unfilled into 09:28 ET → OPG; keep OPG through the 09:30 auction
+ *                        (do not cancel at the bell). After ~2 min of RTH still unfilled → MKT.
+ *                      • US RTH first fire: MKT with chase cap; skipped when converting a
+ *                        missed pre/OPG so the open print is taken.
  *                      • US fully closed: MOO for next open
- *                      • JP / HK / EU / UK: MOO before the open; MKT in RTH
+ *                      • JP / HK / EU / UK: OPG before the open; hold OPG through the auction
+ *                        (~2 min); only then MKT if still unfilled.
  *                      • Unfilled HK/JP still open on the model are re-armed
  *                        (missed Asia opens are chased while the signal is live)
  *                    + STP stop  @ SL   for the FULL quantity  (pre-TP1 an SL hit
@@ -408,11 +410,21 @@ function sessionPhase(contract, nowMs = Date.now()) {
   return 'closed'; // after close → MOO for tomorrow's open
 }
 
+/** Keep OPG live through the opening auction; do not cancel at the bell. */
+const AUCTION_HOLD_MIN = 2;
+
 /** Minutes until US 09:30 ET (DST window in sessionPhase). Negative = already RTH. */
 function minutesUntilUsRth(nowMs = Date.now()) {
   const d = new Date(nowMs);
   const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
   return (13 * 60 + 30) - utcMin;
+}
+
+/** Minutes since US 09:30 ET (DST window). Negative = still pre. */
+function minutesSinceUsRth(nowMs = Date.now()) {
+  const d = new Date(nowMs);
+  const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
+  return utcMin - (13 * 60 + 30);
 }
 
 /** Minutes since Xetra / Euronext / LSE cash open (07:00 UTC in summer). */
@@ -444,16 +456,13 @@ function isUsExtStyle(style) {
   return style === 'LMT-EXT' || style === 'MKT-EXT';
 }
 
-/** Live extended fill cap: buy at the pre/post print, never above the model entry
- *  (224.1 recommended + pre 222 → LMT 222). Sell is the mirror. */
+/** Marketable pre/post LMT at the model cap. Rec 224 / pre 222 → LMT 224, which
+ *  still fills at ~222. A tight LMT-at-print misses on a 1-tick move. */
 function extendedFillLimit(side, entryPx, quotePx, contract) {
   const e = Number(entryPx);
-  const q = Number(quotePx);
   if (!(e > 0)) return null;
   const sell = String(side || '').toLowerCase() === 'sell';
-  let lmt = e;
-  if (q > 0) lmt = sell ? Math.max(e, q) : Math.min(e, q);
-  return roundPx(lmt, contract, sell ? 'down' : 'up');
+  return roundPx(e, contract, sell ? 'down' : 'up');
 }
 
 /**
@@ -501,7 +510,8 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
     }
     if (phase === 'pre' || phase === 'post') {
       // Premarket / post: only lift if quote is at or better than recommendation.
-      // Must be LMT — IB SMART ignores outsideRth on MKT (2109) and holds until RTH (399).
+      // Must be LMT — IB SMART ignores outsideRth on MKT (2109 / 399) and holds
+      // until 09:30, which is NOT a pre-market fill.
       if (premarketFavorable(side, entryPx, quotePx)) {
         const lmt = extendedFillLimit(side, entryPx, quotePx, contract);
         return {
@@ -1844,7 +1854,8 @@ async function main() {
 
   /** US extended quote: IBKR bid/ask/last first; Yahoo only if IB has no tick. */
   async function fetchEntryQuote(ticker, phase, side) {
-    const ib = await waitIbExtQuote(ticker);
+    const waitMs = (phase === 'pre' || phase === 'post') ? 5000 : 1800;
+    const ib = await waitIbExtQuote(ticker, waitMs);
     const ibPx = ibExtTradePx(side, ib);
     if ((phase === 'pre' || phase === 'post') && ibPx > 0) {
       log('IBKR ext quote', ticker, 'phase=' + phase,
@@ -3068,10 +3079,10 @@ async function main() {
 
       // 0. Re-arm unfilled parents still open on the model.
       //   • HK / JP: chase while model open (missed OPG must not stay dead)
-      //   • EU / UK: OPG before open; if still unfilled once RTH starts → MKT
-      //   • US: OPG overnight; in pre/extended upgrade to LMT-EXT only when the
-      //     live quote is at/better than the AlphaSignal entry; else stay OPG.
-      //     (MKT-EXT is treated as broken — IB queues those until 09:30.)
+      //   • EU / UK: OPG before open; hold through the auction; then MKT
+      //   • US: OPG overnight; in pre/extended upgrade to LMT-EXT immediately
+      //     when the live quote is at/better than the AlphaSignal entry; else
+      //     stay OPG through 09:30. Never MKT-EXT (IB queues those until RTH).
       for (const [key, row] of Object.entries(state.byKey)) {
         if (row.closed || !row.ticker) continue;
         if (keyState.get(key) !== 'open') continue;
@@ -3156,7 +3167,7 @@ async function main() {
         } else if (eu && phase === 'rth' && (row.entryStyle === 'OPG' || row.restoreAfterFalseOrphan)) {
           if (row.restoreAfterFalseOrphan) {
             reason = 'eu-restore-after-orphan';
-          } else if (minutesSinceEuRth() < 2) {
+          } else if (minutesSinceEuRth() < AUCTION_HOLD_MIN) {
             log('RECONCILE: hold EU/UK OPG through auction', key, 'minsSinceRth=', minutesSinceEuRth());
           } else {
             reason = 'eu-rth-after-opg';
@@ -3167,7 +3178,7 @@ async function main() {
             // Last 2 minutes of US pre: park unfilled LMT-EXT into the opening
             // auction so a gap-up still fills at 09:30 even above the buy entry.
             if (phase === 'pre' && isUsExtStyle(row.entryStyle)
-              && minutesUntilUsRth() <= 2) {
+              && minutesUntilUsRth() <= AUCTION_HOLD_MIN) {
               reason = 'us-pre-handoff-opg';
               log('RECONCILE: US pre handoff to OPG for cash open', key, 'minsToRth=', minutesUntilUsRth());
             } else {
@@ -3179,9 +3190,7 @@ async function main() {
             } else if (fav && row.entryStyle === 'LMT-EXT') {
               const want = extendedFillLimit(row.side, row.entry, q.px, contract);
               const have = Number(row.extLmt) || Number(row.entry) || 0;
-              const sell = String(row.side || '').toLowerCase() === 'sell';
-              const better = want > 0 && have > 0 && (sell ? want > have + 1e-6 : want < have - 1e-6);
-              if (better) {
+              if (want > 0 && have > 0 && Math.abs(want - have) > 1e-6) {
                 reason = 'us-pre-reprice';
                 log('RECONCILE: US pre/post reprice', key, 'phase=' + phase, 'quote=', q.px, '(' + (q.src || '?') + ') lmt', have, '→', want);
               }
@@ -3192,7 +3201,11 @@ async function main() {
             }
             }
           } else if (phase === 'rth' && (row.entryStyle === 'OPG' || isUsExtStyle(row.entryStyle))) {
-            reason = 'us-rth-after-opg';
+            if (row.entryStyle === 'OPG' && minutesSinceUsRth() < AUCTION_HOLD_MIN) {
+              log('RECONCILE: hold US OPG through auction', key, 'minsSinceRth=', minutesSinceUsRth());
+            } else {
+              reason = 'us-rth-after-opg';
+            }
           } else if (phase === 'closed' && isUsExtStyle(row.entryStyle)) {
             // Overnight leftover extended order — convert to next-open OPG
             reason = 'us-overnight-to-opg';
@@ -3201,12 +3214,12 @@ async function main() {
         if (!reason) continue;
 
         const last = row.lastRearmAt ? Date.parse(row.lastRearmAt) : 0;
-        const minGap = (reason === 'asia-rth-retry' || reason === 'us-pre-mkt-to-lmt'
-          || reason === 'us-pre-reprice' || reason === 'us-pre-handoff-opg'
-          || reason === 'us-rth-after-opg' || reason === 'eu-restore-after-orphan'
-          || reason === 'eu-rth-after-opg')
-          ? (reason === 'us-pre-handoff-opg' || reason === 'us-rth-after-opg'
-            || reason === 'eu-restore-after-orphan' || reason === 'eu-rth-after-opg' ? 0 : 2 * 60 * 1000)
+        const auctionNow = reason === 'us-pre-handoff-opg' || reason === 'us-rth-after-opg'
+          || reason === 'eu-restore-after-orphan' || reason === 'eu-rth-after-opg'
+          || reason === 'us-pre-favorable' || reason === 'us-pre-mkt-to-lmt'
+          || reason === 'us-pre-reprice' || reason === 'us-pre-unfavorable-to-opg';
+        const minGap = (reason === 'asia-rth-retry' || auctionNow)
+          ? (auctionNow ? 0 : 2 * 60 * 1000)
           : 15 * 60 * 1000;
         if (last && Date.now() - last < minGap) continue;
 
@@ -3676,6 +3689,12 @@ async function main() {
             forceReconcile = true;
             break;
           }
+        }
+        const euMkt = row.contract.market;
+        if ((euMkt === 'XETRA' || euMkt === 'EURONEXT' || euMkt === 'LSE')
+          && sessionPhase(row.contract) === 'rth' && row.entryStyle === 'OPG') {
+          forceReconcile = true;
+          break;
         }
       }
     }
