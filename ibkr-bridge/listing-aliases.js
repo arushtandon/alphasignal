@@ -1,7 +1,13 @@
 'use strict';
 /**
  * Dual-list / bare-IB symbol aliases — single source of truth for server + bridge.
- * Keep Euronext/Xetra pairs and bare portfolio symbols (SU, DHL, AIR, DSY) in sync.
+ *
+ * Yahoo suffix is the listing venue (not a nickname):
+ *   .DE = Germany / Xetra     = Bloomberg GY  = IB primaryExch IBIS
+ *   .PA = France / Euronext   = Bloomberg FP  = IB primaryExch SBF
+ * Orders must stay on that venue. LISTING_ALIASES only means IB may report
+ * the same ISIN under the other suffix (one paper position) — never send a
+ * .PA (FP) order to IBIS or a .DE (GY) order to SBF.
  */
 const LISTING_ALIASES = {
   'AIR.DE': ['AIR.PA', 'AIR'],
@@ -14,6 +20,47 @@ const LISTING_ALIASES = {
   'DSY.DE': ['DSY.PA', 'DSY'],
   'HSBA.L': ['HSBA', 'HSBA.L']
 };
+
+/** Yahoo suffix → Bloomberg yellow-key + IB listing. */
+const YAHOO_LISTING = {
+  '.DE': { bloomberg: 'GY', venue: 'Xetra', country: 'Germany', ibPrimary: 'IBIS', market: 'XETRA' },
+  '.PA': { bloomberg: 'FP', venue: 'Euronext Paris', country: 'France', ibPrimary: 'SBF', market: 'EURONEXT' },
+  '.AS': { bloomberg: 'NA', venue: 'Euronext Amsterdam', country: 'Netherlands', ibPrimary: 'AEB', market: 'EURONEXT' },
+  '.MI': { bloomberg: 'IM', venue: 'Borsa Italiana', country: 'Italy', ibPrimary: 'BVME', market: 'EURONEXT' },
+  '.L':  { bloomberg: 'LN', venue: 'LSE', country: 'United Kingdom', ibPrimary: 'LSE', market: 'LSE' },
+  '.HK': { bloomberg: 'HK', venue: 'SEHK', country: 'Hong Kong', ibPrimary: 'SEHK', market: 'HK' },
+  '.T':  { bloomberg: 'JT', venue: 'TSE', country: 'Japan', ibPrimary: 'TSEJ', market: 'JP' }
+};
+
+function listingMeta(yahoo) {
+  const y = String(yahoo || '').toUpperCase().trim();
+  const i = y.lastIndexOf('.');
+  if (i < 0) return null;
+  return YAHOO_LISTING[y.slice(i)] || null;
+}
+
+/** SAP.DE → "SAP GY"; DSY.PA → "DSY FP". */
+function bloombergTicker(yahoo) {
+  const y = String(yahoo || '').toUpperCase().trim();
+  const i = y.lastIndexOf('.');
+  if (i < 0) return y;
+  const meta = YAHOO_LISTING[y.slice(i)];
+  if (!meta) return y;
+  return y.slice(0, i) + ' ' + meta.bloomberg;
+}
+
+/** IB primaryExch → Yahoo suffix. IBIS = GY/.DE, SBF = FP/.PA. */
+function yahooSuffixFromIbPrimary(primaryExch) {
+  const e = String(primaryExch || '').toUpperCase();
+  if (e === 'SBF' || e === 'SBF.SBF') return '.PA';
+  if (e === 'IBIS' || e === 'IBIS-EUREX' || e === 'FWB' || e === 'XETRA') return '.DE';
+  if (e === 'AEB') return '.AS';
+  if (e === 'BVME') return '.MI';
+  if (e === 'LSE') return '.L';
+  if (e === 'SEHK') return '.HK';
+  if (e === 'TSEJ') return '.T';
+  return null;
+}
 
 function normalizeYahooTicker(t) {
   const y = String(t || '').toUpperCase().trim();
@@ -45,7 +92,11 @@ function setHasYahooAlias(set, t) {
 
 module.exports = {
   LISTING_ALIASES,
+  YAHOO_LISTING,
   normalizeYahooTicker,
   yahooAliases,
-  setHasYahooAlias
+  setHasYahooAlias,
+  listingMeta,
+  bloombergTicker,
+  yahooSuffixFromIbPrimary
 };

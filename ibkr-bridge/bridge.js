@@ -141,10 +141,11 @@ function singaporeToDateString(ms = Date.now()) {
 
 /** Dual-list aliases — same conId identity; authorize by provenance not name. */
 const {
-  LISTING_ALIASES,
   normalizeYahooTicker,
   yahooAliases,
-  setHasYahooAlias
+  setHasYahooAlias,
+  bloombergTicker,
+  yahooSuffixFromIbPrimary
 } = require('./listing-aliases.js');
 
 /**
@@ -347,13 +348,13 @@ function toContract(ticker) {
   }
   // SMART routing everywhere (primaryExch pins the listing) — direct routing
   // trips TWS's "higher trade fees" API precaution and orders get discarded.
-  if (t.endsWith('.L'))  return { symbol: t.replace(/\.L$/, ''),  secType: 'STK', exchange: 'SMART', primaryExch: 'LSE',  currency: 'GBP', penceQuoted: true, market: 'LSE' };
-  if (t.endsWith('.DE')) return { symbol: t.replace(/\.DE$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'IBIS', currency: 'EUR', market: 'XETRA' };
-  if (t.endsWith('.PA')) return { symbol: t.replace(/\.PA$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'SBF',  currency: 'EUR', market: 'EURONEXT' };
-  if (t.endsWith('.AS')) return { symbol: t.replace(/\.AS$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'AEB',  currency: 'EUR', market: 'EURONEXT' };
-  if (t.endsWith('.MI')) return { symbol: t.replace(/\.MI$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'BVME', currency: 'EUR', market: 'EURONEXT' };
-  if (t.endsWith('.HK')) return { symbol: String(parseInt(t.replace(/\.HK$/, ''), 10)), secType: 'STK', exchange: 'SMART', primaryExch: 'SEHK', currency: 'HKD', lotHint: 100, market: 'HK' };
-  if (t.endsWith('.T'))  return { symbol: t.replace(/\.T$/, ''),  secType: 'STK', exchange: 'SMART', primaryExch: 'TSEJ', currency: 'JPY', lotHint: 100, market: 'JP' };
+  if (t.endsWith('.L'))  return { symbol: t.replace(/\.L$/, ''),  secType: 'STK', exchange: 'SMART', primaryExch: 'LSE',  currency: 'GBP', penceQuoted: true, market: 'LSE', yahooTicker: t, bloomberg: bloombergTicker(t) };
+  if (t.endsWith('.DE')) return { symbol: t.replace(/\.DE$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'IBIS', currency: 'EUR', market: 'XETRA', yahooTicker: t, bloomberg: bloombergTicker(t), listingCountry: 'Germany' };
+  if (t.endsWith('.PA')) return { symbol: t.replace(/\.PA$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'SBF',  currency: 'EUR', market: 'EURONEXT', yahooTicker: t, bloomberg: bloombergTicker(t), listingCountry: 'France' };
+  if (t.endsWith('.AS')) return { symbol: t.replace(/\.AS$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'AEB',  currency: 'EUR', market: 'EURONEXT', yahooTicker: t, bloomberg: bloombergTicker(t) };
+  if (t.endsWith('.MI')) return { symbol: t.replace(/\.MI$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'BVME', currency: 'EUR', market: 'EURONEXT', yahooTicker: t, bloomberg: bloombergTicker(t) };
+  if (t.endsWith('.HK')) return { symbol: String(parseInt(t.replace(/\.HK$/, ''), 10)), secType: 'STK', exchange: 'SMART', primaryExch: 'SEHK', currency: 'HKD', lotHint: 100, market: 'HK', yahooTicker: t, bloomberg: bloombergTicker(t) };
+  if (t.endsWith('.T'))  return { symbol: t.replace(/\.T$/, ''),  secType: 'STK', exchange: 'SMART', primaryExch: 'TSEJ', currency: 'JPY', lotHint: 100, market: 'JP', yahooTicker: t, bloomberg: bloombergTicker(t) };
   if (t.includes('.'))   return null;                                 // unknown suffix
   const symbol = t === 'BRK.B' ? 'BRK B' : t;
   return { symbol, secType: 'STK', exchange: 'SMART', currency: 'USD', primaryExch: 'NASDAQ', usRth: true, market: 'US' };
@@ -412,6 +413,13 @@ function minutesUntilUsRth(nowMs = Date.now()) {
   const d = new Date(nowMs);
   const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
   return (13 * 60 + 30) - utcMin;
+}
+
+/** Minutes since Xetra / Euronext / LSE cash open (07:00 UTC in summer). */
+function minutesSinceEuRth(nowMs = Date.now()) {
+  const d = new Date(nowMs);
+  const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
+  return utcMin - (7 * 60);
 }
 
 /** Human label for fill/session stamps on the IBKR tab. */
@@ -661,7 +669,8 @@ function enrichSessionMeta(c) {
   else if (ccy === 'JPY') c.market = 'JP';
   else if (ccy === 'GBP') c.market = 'LSE';
   else if (ccy === 'EUR') {
-    c.market = (String(c.primaryExch || '') === 'SBF') ? 'EURONEXT' : 'XETRA';
+    const suf = yahooSuffixFromIbPrimary(c.primaryExch);
+    c.market = (suf === '.PA' || suf === '.AS' || suf === '.MI') ? 'EURONEXT' : 'XETRA';
   }
   return c;
 }
@@ -710,7 +719,9 @@ function orderContractFromPos(c) {
   } else if (out.currency === 'JPY') {
     out.primaryExch = 'TSEJ';
   } else if (out.currency === 'EUR') {
-    out.primaryExch = 'IBIS';
+    // Never invent IBIS (GY / .DE). A French listing (FP / .PA) with omitted
+    // primaryExch would be remapped onto Xetra. conId is enough for IB.
+    if (!(conId > 0)) out.primaryExch = 'IBIS';
   } else if (out.currency === 'GBP') {
     out.primaryExch = 'LSE';
   } else if (out.currency === 'USD') {
@@ -1293,11 +1304,9 @@ async function main() {
           aliases.add(row.ticker);
         }
       }
-      // Bare EUR "AIR" → also try .DE / .PA spellings used on the site.
-      if (contract.currency === 'EUR' && contract.symbol) {
-        aliases.add(String(contract.symbol) + '.DE');
-        aliases.add(String(contract.symbol) + '.PA');
-      }
+      // Venue-correct Yahoo only. Do not stamp both .DE (GY) and .PA (FP) —
+      // that made a Xetra name look Paris-listed (and the reverse). Dual-list
+      // names still alias via conId / LISTING_ALIASES above.
       // HK padded aliases (5.HK ↔ 0005.HK)
       for (const a of [...aliases]) {
         aliases.add(normalizeYahooTicker(a));
@@ -1366,14 +1375,22 @@ async function main() {
     if (ccy === 'JPY') return sym + '.T';
     if (ccy === 'GBP') return sym + '.L';
     if (ccy === 'EUR') {
-      if (c.primaryExch === 'SBF' || c.primaryExch === 'SBF.SBF') return sym + '.PA';
-      if (c.primaryExch === 'AEB') return sym + '.AS';
-      if (c.primaryExch === 'BVME') return sym + '.MI';
-      // IB often omits primaryExch on portfolio updates — prefer .PA when the
-      // listing-alias table has a Euronext pair (SU/AIR/DHL/DSY).
-      const u = String(sym || '').toUpperCase();
-      if (LISTING_ALIASES[u + '.PA']) return u + '.PA';
-      return sym + '.DE';
+      const suf = yahooSuffixFromIbPrimary(c.primaryExch)
+        || yahooSuffixFromIbPrimary(c.exchange);
+      if (suf) return String(sym).toUpperCase() + suf;
+      // IB often omits primaryExch. Do not invent GY vs FP — match the open
+      // model ticker by conId, else return the bare symbol (aliases still hit).
+      const conId = Number(c.conId);
+      if (conId > 0) {
+        for (const row of Object.values(state.byKey || {})) {
+          if (!row || !row.ticker) continue;
+          if (row.contract && Number(row.contract.conId) === conId) {
+            const yt = normalizeYahooTicker(row.ticker);
+            if (/\.(DE|PA|AS|MI)$/.test(yt)) return yt;
+          }
+        }
+      }
+      return String(sym || '').toUpperCase();
     }
     return sym;
   }
@@ -1954,8 +1971,10 @@ async function main() {
       const sizeNote = contract.secType === 'FUT'
         ? ` futMonth=${contract.lastTradeDateOrContractMonth} mult=${contract.multiplier}`
         : (contract.secType === 'CRYPTO' ? ' crypto' : '');
-      log('Placed bracket', evt.ticker, evt.side,
-        `style=${entryStyle} phase=${sessionPhase(contract)} qty=${split.total} sizePx=${roundPx(evt.entry, contract)} stop=${stopPx}(full) tp1=${tp1Px}x${split.sold} runner=${split.runner}${sizeNote}${gateNote}`);
+      const bb = contract.bloomberg || bloombergTicker(evt.ticker);
+      const listingNote = bb ? ` ${bb}` : '';
+      log('Placed bracket', evt.ticker + listingNote, evt.side,
+        `exch=${contract.primaryExch || contract.market || ''} style=${entryStyle} phase=${sessionPhase(contract)} qty=${split.total} sizePx=${roundPx(evt.entry, contract)} stop=${stopPx}(full) tp1=${tp1Px}x${split.sold} runner=${split.runner}${sizeNote}${gateNote}`);
     }
     return {
       parentId, stopId, tp1Id,
@@ -3135,7 +3154,13 @@ async function main() {
           } else if (phase !== 'rth' && phase !== 'lunch' && row.entryStyle === 'MKT') reason = 'asia-to-opg';
           else if (!row.entryStyle) reason = 'asia-missing-style';
         } else if (eu && phase === 'rth' && (row.entryStyle === 'OPG' || row.restoreAfterFalseOrphan)) {
-          reason = row.restoreAfterFalseOrphan ? 'eu-restore-after-orphan' : 'eu-rth-after-opg';
+          if (row.restoreAfterFalseOrphan) {
+            reason = 'eu-restore-after-orphan';
+          } else if (minutesSinceEuRth() < 2) {
+            log('RECONCILE: hold EU/UK OPG through auction', key, 'minsSinceRth=', minutesSinceEuRth());
+          } else {
+            reason = 'eu-rth-after-opg';
+          }
         } else if (us) {
           if (phase === 'pre' || phase === 'post') {
             ensureMktData(row.ticker, contract);
@@ -3178,9 +3203,10 @@ async function main() {
         const last = row.lastRearmAt ? Date.parse(row.lastRearmAt) : 0;
         const minGap = (reason === 'asia-rth-retry' || reason === 'us-pre-mkt-to-lmt'
           || reason === 'us-pre-reprice' || reason === 'us-pre-handoff-opg'
-          || reason === 'us-rth-after-opg' || reason === 'eu-restore-after-orphan')
+          || reason === 'us-rth-after-opg' || reason === 'eu-restore-after-orphan'
+          || reason === 'eu-rth-after-opg')
           ? (reason === 'us-pre-handoff-opg' || reason === 'us-rth-after-opg'
-            || reason === 'eu-restore-after-orphan' ? 0 : 2 * 60 * 1000)
+            || reason === 'eu-restore-after-orphan' || reason === 'eu-rth-after-opg' ? 0 : 2 * 60 * 1000)
           : 15 * 60 * 1000;
         if (last && Date.now() - last < minGap) continue;
 
@@ -3212,7 +3238,7 @@ async function main() {
             t: new Date().toISOString(),
             forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-overnight-to-opg'
               || reason === 'us-pre-unfavorable-to-opg',
-            skipChase: reason === 'us-rth-after-opg'
+            skipChase: reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg'
           });
           if (placed) {
             placed.lastRearmAt = new Date().toISOString();

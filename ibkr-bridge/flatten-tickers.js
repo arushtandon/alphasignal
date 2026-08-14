@@ -15,6 +15,8 @@ const CLIENT_ID = parseInt(process.env.IBKR_CLIENT_ID || '19', 10);
 
 function log(...a) { console.log(new Date().toISOString(), ...a); }
 
+const { yahooSuffixFromIbPrimary } = require('./listing-aliases.js');
+
 function yahooFromContract(c) {
   if (!c) return null;
   const sym = String(c.symbol || '');
@@ -23,10 +25,10 @@ function yahooFromContract(c) {
   if (ccy === 'JPY') return sym + '.T';
   if (ccy === 'GBP') return sym + '.L';
   if (ccy === 'EUR') {
-    if (c.primaryExch === 'SBF') return sym + '.PA';
-    if (c.primaryExch === 'AEB') return sym + '.AS';
-    if (c.primaryExch === 'BVME') return sym + '.MI';
-    return sym + '.DE';
+    const suf = yahooSuffixFromIbPrimary(c.primaryExch)
+      || yahooSuffixFromIbPrimary(c.exchange);
+    if (suf) return String(sym).toUpperCase() + suf;
+    return String(sym || '').toUpperCase();
   }
   return sym;
 }
