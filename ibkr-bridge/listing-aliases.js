@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Dual-list / bare-IB symbol aliases — single source of truth for server + bridge.
- * Keep Euronext/Xetra pairs and bare portfolio symbols (SU, DHL, AIR) in sync.
+ * Keep Euronext/Xetra pairs and bare portfolio symbols (SU, DHL, AIR, DSY) in sync.
  */
 const LISTING_ALIASES = {
   'AIR.DE': ['AIR.PA', 'AIR'],
@@ -10,6 +10,8 @@ const LISTING_ALIASES = {
   'SU.DE': ['SU.PA', 'SU'],
   'DHL.PA': ['DHL.DE', 'DHL'],
   'DHL.DE': ['DHL.PA', 'DHL'],
+  'DSY.PA': ['DSY.DE', 'DSY'],
+  'DSY.DE': ['DSY.PA', 'DSY'],
   'HSBA.L': ['HSBA', 'HSBA.L']
 };
 

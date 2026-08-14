@@ -12686,7 +12686,9 @@ const { LISTING_ALIASES: IBKR_LISTING_ALIASES, yahooAliases: _sharedYahooAliases
         'SU.PA': ['SU.DE', 'SU'],
         'SU.DE': ['SU.PA', 'SU'],
         'DHL.PA': ['DHL.DE', 'DHL'],
-        'DHL.DE': ['DHL.PA', 'DHL']
+        'DHL.DE': ['DHL.PA', 'DHL'],
+        'DSY.PA': ['DSY.DE', 'DSY'],
+        'DSY.DE': ['DSY.PA', 'DSY']
       },
       yahooAliases: null
     };

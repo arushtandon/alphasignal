@@ -791,6 +791,7 @@ async function main() {
     return `${String(c.symbol).toUpperCase()}|${c.currency}`;
   };
   const _flattenTried = new Map(); // pk -> last reconcile-flatten attempt ts
+  const _orphanFlattenedConIds = new Set(); // conIds we sold as "IB-only orphan"
   // Persist debounce across restarts (in-memory Map was resetting to 1/2 every boot).
   if (!state.unauthStreak || typeof state.unauthStreak !== 'object') state.unauthStreak = {};
   const _cancelWaiters = new Map(); // orderId -> { resolve, timer }
@@ -1368,10 +1369,10 @@ async function main() {
       if (c.primaryExch === 'SBF' || c.primaryExch === 'SBF.SBF') return sym + '.PA';
       if (c.primaryExch === 'AEB') return sym + '.AS';
       if (c.primaryExch === 'BVME') return sym + '.MI';
-      // IB often omits primaryExch on portfolio updates — prefer .PA for known
-      // dual-lists so orphan-flatten does not treat SU as IB-only vs SU.PA.
+      // IB often omits primaryExch on portfolio updates — prefer .PA when the
+      // listing-alias table has a Euronext pair (SU/AIR/DHL/DSY).
       const u = String(sym || '').toUpperCase();
-      if (u === 'SU' || u === 'AIR' || u === 'DHL') return u + '.PA';
+      if (LISTING_ALIASES[u + '.PA']) return u + '.PA';
       return sym + '.DE';
     }
     return sym;
@@ -2215,6 +2216,16 @@ async function main() {
     });
     if (!need.length) return;
     log('exec-history: recovering exits for', need.map(t => t.ticker).join(','));
+    const thesisOpen = new Set();
+    try {
+      const ev = await fetchJson('/api/ibkr/events?since=0&limit=4000&tail=1');
+      const last = new Map();
+      for (const e of (ev.events || [])) {
+        if (!e || !e.key || (e.type !== 'entry' && e.type !== 'exit')) continue;
+        last.set(e.key, e.type);
+      }
+      for (const [k, typ] of last) if (typ === 'entry') thesisOpen.add(k);
+    } catch (e) { log('exec-history: events fetch failed', e.message); }
 
     const earliest = Math.min(
       ...need.map(t => Date.parse(t.entryTime || 0) || Date.now())
@@ -2284,6 +2295,22 @@ async function main() {
       });
       if (!matches.length) {
         log('exec-history: no closing fills for', t.ticker, t.key);
+        continue;
+      }
+      // Live model thesis still open: an IB sell is a false orphan flatten
+      // (DSY.PA vs DSY.DE), not a model exit. Do not close the model key.
+      if (!t.errorTrade && thesisOpen.has(t.key)) {
+        log('exec-history: skip model close — thesis still open', t.key,
+          '(IB exit belongs on Error book, not model realised)');
+        const cid = Number((state.byKey[t.key] && state.byKey[t.key].contract
+          && state.byKey[t.key].contract.conId) || 0);
+        if (cid > 0) _orphanFlattenedConIds.add(cid);
+        if (state.byKey[t.key]) {
+          state.byKey[t.key].restoreAfterFalseOrphan = true;
+          state.byKey[t.key].entryFilled = false;
+          state.byKey[t.key].closed = false;
+          saveState(state);
+        }
         continue;
       }
       let qSum = 0, vSum = 0;
@@ -3048,7 +3075,18 @@ async function main() {
           row.entryFilled = false;
           saveState(state);
         }
-        if (row.entryFilled || parentFilledQty > 0) {
+        const cid = Number(contract.conId) || 0;
+        const falseOrphanFlat = posInDir <= 0
+          && !(row.errorTrade)
+          && (row.restoreAfterFalseOrphan
+            || (cid > 0 && _orphanFlattenedConIds.has(cid)));
+        if (falseOrphanFlat && (row.entryFilled || parentFilledQty > 0) && phase === 'rth') {
+          log('RECONCILE: restoring model lot after false orphan flatten', key, 'conId=' + cid);
+          row.entryFilled = false;
+          row.restoreAfterFalseOrphan = true;
+          row.entryStyle = 'OPG';
+          saveState(state);
+        } else if (row.entryFilled || parentFilledQty > 0) {
           if (!row.entryFilled && parentFilledQty > 0) {
             row.entryFilled = true;
             saveState(state);
@@ -3096,8 +3134,8 @@ async function main() {
             reason = 'asia-rth-retry';
           } else if (phase !== 'rth' && phase !== 'lunch' && row.entryStyle === 'MKT') reason = 'asia-to-opg';
           else if (!row.entryStyle) reason = 'asia-missing-style';
-        } else if (eu && phase === 'rth' && row.entryStyle === 'OPG') {
-          reason = 'eu-rth-after-opg';
+        } else if (eu && phase === 'rth' && (row.entryStyle === 'OPG' || row.restoreAfterFalseOrphan)) {
+          reason = row.restoreAfterFalseOrphan ? 'eu-restore-after-orphan' : 'eu-rth-after-opg';
         } else if (us) {
           if (phase === 'pre' || phase === 'post') {
             ensureMktData(row.ticker, contract);
@@ -3140,8 +3178,9 @@ async function main() {
         const last = row.lastRearmAt ? Date.parse(row.lastRearmAt) : 0;
         const minGap = (reason === 'asia-rth-retry' || reason === 'us-pre-mkt-to-lmt'
           || reason === 'us-pre-reprice' || reason === 'us-pre-handoff-opg'
-          || reason === 'us-rth-after-opg')
-          ? (reason === 'us-pre-handoff-opg' || reason === 'us-rth-after-opg' ? 0 : 2 * 60 * 1000)
+          || reason === 'us-rth-after-opg' || reason === 'eu-restore-after-orphan')
+          ? (reason === 'us-pre-handoff-opg' || reason === 'us-rth-after-opg'
+            || reason === 'eu-restore-after-orphan' ? 0 : 2 * 60 * 1000)
           : 15 * 60 * 1000;
         if (last && Date.now() - last < minGap) continue;
 
@@ -3381,10 +3420,17 @@ async function main() {
         const cMeta = enrichSessionMeta(contract);
         const y = normalizeYahooTicker(yahooFromContract(cMeta) || '');
         if (!y) continue;
-        if (setHasYahooAlias(protectedYahoo, y) || setHasYahooAlias(openYahoo, y)
+        const posConId = Number(cMeta.conId || contract.conId) || 0;
+        const modelOwnsConId = posConId > 0 && Object.entries(state.byKey).some(([k, row]) => {
+          if (!row || row.closed || !row.contract) return false;
+          if (row.errorTrade || /\|error\|/.test(k)) return false;
+          return Number(row.contract.conId) === posConId;
+        });
+        if (modelOwnsConId || setHasYahooAlias(protectedYahoo, y) || setHasYahooAlias(openYahoo, y)
           || setHasYahooAlias(recentEntryYahoo, y)) {
           const aliases = [...yahooAliases(y)];
-          log('RECONCILE: skip orphan flatten — alias protected', y, 'aliases=', aliases.join(','));
+          log('RECONCILE: skip orphan flatten — alias protected', y, 'aliases=', aliases.join(','),
+            modelOwnsConId ? ('conId=' + posConId) : '');
           if (state.unauthStreak[pk]) { delete state.unauthStreak[pk]; saveState(state); }
           continue;
         }
@@ -3444,6 +3490,7 @@ async function main() {
           pk, 'pos=' + pos, 'ticker=' + y, 'streak=' + streak,
           'exch=' + oc.exchange, 'conId=' + conId,
           useOpg ? ('OPG→next open (' + phase + ')') : 'MKT RTH');
+        if (conId > 0) _orphanFlattenedConIds.add(conId);
         transmitOrder(fid, oc, baseOrder({
           orderId: fid, action,
           orderType: 'MKT', totalQuantity: qty, tif, transmit: true,
