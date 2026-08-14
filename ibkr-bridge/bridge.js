@@ -3632,6 +3632,7 @@ async function main() {
     if (!forceReconcile && positionsReady) {
       for (const row of Object.values(state.byKey)) {
         if (row.closed && row.holdCancelledUnfilled) { forceReconcile = true; break; }
+        if (row.restoreAfterFalseOrphan && !row.closed && !row.entryFilled) { forceReconcile = true; break; }
         if (row.closed || row.entryFilled || !row.contract) continue;
         if (row.contract.market === 'HK'
           && sessionPhase(row.contract) === 'rth' && row.entryStyle !== 'MKT') {
