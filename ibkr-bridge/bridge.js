@@ -3121,7 +3121,7 @@ async function main() {
       //     stay OPG through 09:30. Never MKT-EXT (IB queues those until RTH).
       for (const [key, row] of Object.entries(state.byKey)) {
         if (row.closed || !row.ticker) continue;
-        if (keyState.get(key) !== 'open') continue;
+        if (keyState.get(key) !== 'open' && !row.userReentry) continue;
         const contract = row.contract || toContract(row.ticker);
         if (!contract) continue;
         const market = contract.market || (contract.usRth ? 'US' : '');
@@ -3616,6 +3616,7 @@ async function main() {
           } catch (_) { /* ignore */ }
           continue;
         }
+        if (row.userReentry && !row.entryFilled) continue;
         row.closed = true;
         row.updated = new Date().toISOString();
         log('RECONCILE: marking', key, 'closed (flat at IB, model exited)');
