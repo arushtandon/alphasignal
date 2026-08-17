@@ -358,8 +358,17 @@ function toContract(ticker) {
   if (t.endsWith('.HK')) return { symbol: String(parseInt(t.replace(/\.HK$/, ''), 10)), secType: 'STK', exchange: 'SMART', primaryExch: 'SEHK', currency: 'HKD', lotHint: 100, market: 'HK', yahooTicker: t, bloomberg: bloombergTicker(t) };
   if (t.endsWith('.T'))  return { symbol: t.replace(/\.T$/, ''),  secType: 'STK', exchange: 'SMART', primaryExch: 'TSEJ', currency: 'JPY', lotHint: 100, market: 'JP', yahooTicker: t, bloomberg: bloombergTicker(t) };
   if (t.includes('.'))   return null;                                 // unknown suffix
-  const symbol = t === 'BRK.B' ? 'BRK B' : t;
-  return { symbol, secType: 'STK', exchange: 'SMART', currency: 'USD', primaryExch: 'NASDAQ', usRth: true, market: 'US' };
+  // Yahoo uses BRK-B; IB's local symbol is "BRK B". Sending "BRK-B" is error 200.
+  const US_SHARE_CLASS = {
+    'BRK-B': 'BRK B', 'BRK.B': 'BRK B', BRKB: 'BRK B',
+    'BRK-A': 'BRK A', 'BRK.A': 'BRK A', BRKA: 'BRK A',
+    'BF-B': 'BF B', 'BF.B': 'BF B'
+  };
+  const symbol = US_SHARE_CLASS[t] || t;
+  return {
+    symbol, secType: 'STK', exchange: 'SMART', currency: 'USD',
+    primaryExch: 'NYSE', usRth: true, market: 'US', yahooTicker: t
+  };
 }
 
 /**
@@ -980,6 +989,17 @@ async function main() {
         return;
       }
       log('IB error', code, 'reqId=' + reqId, err && err.message ? err.message : err);
+      if (Number(code) === 200) {
+        for (const [key, row] of Object.entries(state.byKey || {})) {
+          if (!row || row.closed || row.entryFilled) continue;
+          if (row.parentId !== reqId && row.stopId !== reqId && row.tp1Id !== reqId) continue;
+          row.contractRejected = true;
+          row.updated = new Date().toISOString();
+          saveState(state);
+          forceReconcile = true;
+          log('IB error 200 — will retry contract', key, row.ticker);
+        }
+      }
     });
     ib.on(EventName.orderStatus, (orderId, status, filled, remaining, avgFillPrice, permId, parentId, lastFillPrice) => {
       orderFills[orderId] = Number(filled) || 0;
@@ -1949,7 +1969,16 @@ async function main() {
     });
     if (parentSpec.defer) {
       log('defer entry', evt.ticker, parentSpec.entryStyle, 'phase=', sessionPhase(contract));
-      return null;
+      // Keep a stub so lunch/closed names re-arm at the next session instead of
+      // vanishing (0669.HK 17 Aug: DEFER-LUNCH returned null → no row → no 13:00 fire).
+      return {
+        parentId: null, stopId: null, tp1Id: null,
+        ticker: evt.ticker, hz: evt.hz, side: evt.side,
+        entry: evt.entry, stopPx, tp1Px, entryStyle: parentSpec.entryStyle,
+        extLmt: null, qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
+        contract, tp1Done: false, closed: false, deferred: true,
+        entryFilled: false, updated: evt.t || new Date().toISOString(), dry: DRY
+      };
     }
     const { entryStyle, defer, ...parentFields } = parentSpec;
     const parent = baseOrder({ orderId: parentId, ...parentFields });
@@ -2092,8 +2121,15 @@ async function main() {
       const prior = state.byKey[key];
       // Allow re-entry after a closed row (orphan flatten / error close). Same-day
       // key must not be blocked forever by a leftover parentId.
-      if (prior && prior.parentId && !prior.closed) {
+      if (prior && prior.contractRejected && !prior.entryFilled && !prior.closed) {
+        log('retry entry after IB contract reject', key, prior.ticker);
+        delete state.byKey[key];
+        saveState(state);
+      } else if (prior && prior.parentId && !prior.closed) {
         log('skip duplicate entry', key);
+        return;
+      } else if (prior && prior.deferred && !prior.closed) {
+        log('skip duplicate entry (deferred stub)', key);
         return;
       }
       if (prior && prior.closed) {
@@ -3157,7 +3193,9 @@ async function main() {
         if (asia) {
           if (phase === 'lunch') {
             // Wait for 13:00 HKT reopen — do not cancel/replace during the break
-          } else if (phase === 'rth' && row.entryStyle !== 'MKT') reason = 'asia-rth';
+          } else if (phase === 'rth' && (row.entryStyle !== 'MKT' || row.contractRejected || row.deferred)) {
+            reason = 'asia-rth';
+          }
           else if (phase === 'rth' && row.entryStyle === 'MKT' && row.lastRearmAt
             && (Date.now() - Date.parse(row.lastRearmAt)) > 2 * 60 * 1000) {
             // Prior MKT place rejected (lot/tick/contract/lunch) — retry
@@ -3209,6 +3247,8 @@ async function main() {
           } else if (phase === 'closed' && isUsExtStyle(row.entryStyle)) {
             // Overnight leftover extended order — convert to next-open OPG
             reason = 'us-overnight-to-opg';
+          } else if (phase === 'rth' && row.contractRejected) {
+            reason = 'contract-retry';
           }
         }
         if (!reason) continue;
@@ -3217,7 +3257,8 @@ async function main() {
         const auctionNow = reason === 'us-pre-handoff-opg' || reason === 'us-rth-after-opg'
           || reason === 'eu-restore-after-orphan' || reason === 'eu-rth-after-opg'
           || reason === 'us-pre-favorable' || reason === 'us-pre-mkt-to-lmt'
-          || reason === 'us-pre-reprice' || reason === 'us-pre-unfavorable-to-opg';
+          || reason === 'us-pre-reprice' || reason === 'us-pre-unfavorable-to-opg'
+          || reason === 'asia-rth' || reason === 'contract-retry';
         const minGap = (reason === 'asia-rth-retry' || auctionNow)
           ? (auctionNow ? 0 : 2 * 60 * 1000)
           : 15 * 60 * 1000;
@@ -3674,7 +3715,8 @@ async function main() {
         if (row.restoreAfterFalseOrphan && !row.closed && !row.entryFilled) { forceReconcile = true; break; }
         if (row.closed || row.entryFilled || !row.contract) continue;
         if (row.contract.market === 'HK'
-          && sessionPhase(row.contract) === 'rth' && row.entryStyle !== 'MKT') {
+          && sessionPhase(row.contract) === 'rth'
+          && (row.entryStyle !== 'MKT' || row.deferred || row.contractRejected)) {
           forceReconcile = true;
           break;
         }
