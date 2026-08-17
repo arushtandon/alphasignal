@@ -64,6 +64,15 @@ function yahooSuffixFromIbPrimary(primaryExch) {
 
 function normalizeYahooTicker(t) {
   const y = String(t || '').toUpperCase().trim();
+  // IB uses a space in US share-class symbols, Yahoo uses a hyphen. Keep one
+  // canonical identity everywhere so a valid model position is never treated
+  // as an IB-only orphan (for example BRK B vs BRK-B).
+  const usShareClass = {
+    'BRK B': 'BRK-B', 'BRK.B': 'BRK-B', BRKB: 'BRK-B',
+    'BRK A': 'BRK-A', 'BRK.A': 'BRK-A', BRKA: 'BRK-A',
+    'BF B': 'BF-B', 'BF.B': 'BF-B', BFB: 'BF-B'
+  };
+  if (usShareClass[y]) return usShareClass[y];
   const hk = y.match(/^0*([1-9]\d*)\.HK$/);
   if (hk) return hk[1].padStart(4, '0') + '.HK';
   return y;

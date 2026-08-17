@@ -8791,7 +8791,7 @@ function earningsHistoryFromChart(result) {
     });
 }
 
-/** Tracked universe (same intent as client TRACKED_TICKERS) — calendar merge + Yahoo gap-fill */
+/** High-priority universe names — used for source gap-fill and sorting only. */
 const EARNINGS_CAL_SYMBOLS = [
   'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'JPM', 'BRK.B',
   'V', 'MA', 'JNJ', 'UNH', 'PG', 'HD', 'AVGO', 'LLY', 'XOM', 'CVX', 'ABBV', 'KO', 'PEP',
@@ -8804,7 +8804,44 @@ const EARNINGS_CAL_SYMBOLS = [
 ];
 
 function normalizeTickerMatch(s) {
-  return String(s || '').trim().toUpperCase().replace(/^BRK-B$/i, 'BRK.B').replace(/-/g, '.');
+  let out = String(s || '').trim().toUpperCase().replace(/^BRK-B$/i, 'BRK.B').replace(/-/g, '.');
+  const hk = out.match(/^0*([1-9]\d*)\.HK$/);
+  if (hk) out = hk[1].padStart(4, '0') + '.HK';
+  return out;
+}
+
+let earningsUniverseCache = { ts: 0, tickers: [], canonicalByMatch: new Map() };
+
+/**
+ * Canonical equity universe for the earnings calendar. This is the same
+ * S&P 500 / Nasdaq 100 + international index universe used by the scanner;
+ * futures, commodities and crypto are excluded because they do not report earnings.
+ */
+async function earningsCalendarUniverse() {
+  if (earningsUniverseCache.tickers.length && Date.now() - earningsUniverseCache.ts < 6 * 3600 * 1000) {
+    return earningsUniverseCache;
+  }
+  let rows = [];
+  try {
+    rows = await buildFullUniverse(fetch, fmpAnyApiKey());
+  } catch (e) {
+    console.warn('Earnings universe build:', e.message);
+  }
+  const tickers = [...new Set(
+    (rows || [])
+      .filter((r) => r && r.market !== 'COMMODITIES')
+      .map((r) => String(r.t || '').trim().toUpperCase())
+      .filter(Boolean)
+  )];
+  if (!tickers.length) tickers.push(...EARNINGS_CAL_SYMBOLS);
+  const canonicalByMatch = new Map();
+  for (const ticker of tickers) canonicalByMatch.set(normalizeTickerMatch(ticker), ticker);
+  earningsUniverseCache = { ts: Date.now(), tickers, canonicalByMatch };
+  return earningsUniverseCache;
+}
+
+function canonicalEarningsUniverseTicker(sym, universe) {
+  return universe?.canonicalByMatch?.get(normalizeTickerMatch(sym)) || null;
 }
 
 /** Drop bogus vendor dates (wrong field / stale cache shapes) outside the fetch window */
@@ -9306,12 +9343,6 @@ function bridgeEarningsToCalendarRow(bbEarn, tick) {
   };
 }
 
-const WANT_SYM = new Set(EARNINGS_CAL_SYMBOLS.map((t) => normalizeTickerMatch(t)));
-
-function tickerInOurUniverse(sym) {
-  return WANT_SYM.has(normalizeTickerMatch(sym));
-}
-
 /** Cap payload / UI size when merging full-market calendars */
 const EARNINGS_CALENDAR_MAX = 400;
 
@@ -9505,8 +9536,12 @@ let earningsMergeDiag = {
 
 async function mergedEarningsCalendarWidget(fromISO, toISO) {
   const byTicker = new Map();
-  const displayEndISO = addUTCISODays(toISO, 135);
-  const vendorEndISO  = addUTCISODays(toISO, 90);
+  const displayEndISO = toISO;
+  const vendorEndISO = toISO;
+  const universe = await earningsCalendarUniverse();
+  const prioritySymbols = EARNINGS_CAL_SYMBOLS.filter((t) =>
+    universe.canonicalByMatch.has(normalizeTickerMatch(t))
+  );
 
   // ── STEP 1: Bloomberg Bridge (skip when URL is LAN/loopback on a public host — saves long TCP stalls)
   let bloombergTrackedHits = 0;
@@ -9521,8 +9556,8 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
   }
   if (!skipBbCal) {
   const BB_CHUNK = 15; // bigger chunk = faster (bridge handles parallel fine)
-  for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i += BB_CHUNK) {
-    const chunk = EARNINGS_CAL_SYMBOLS.slice(i, i + BB_CHUNK);
+  for (let i = 0; i < prioritySymbols.length; i += BB_CHUNK) {
+    const chunk = prioritySymbols.slice(i, i + BB_CHUNK);
     await Promise.all(
       chunk.map(async (tick) => {
         try {
@@ -9536,11 +9571,11 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
         } catch (_) {}
       })
     );
-    if (i + BB_CHUNK < EARNINGS_CAL_SYMBOLS.length) {
+    if (i + BB_CHUNK < prioritySymbols.length) {
       await new Promise(r => setTimeout(r, 25)); // minimal delay, bridge is local
     }
   }
-  console.log(`Earnings calendar: Bloomberg bridge ${bloombergTrackedHits}/${EARNINGS_CAL_SYMBOLS.length} hits`);
+  console.log(`Earnings calendar: Bloomberg bridge ${bloombergTrackedHits}/${prioritySymbols.length} priority hits`);
   }
 
   // ── STEP 2: Finnhub bulk calendar — fills tickers Bloomberg didn't return ──
@@ -9553,8 +9588,8 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
     finnhubPath = 'symbol_fallback';
     const acc = [];
     const FH_SYM_CHUNK = 14;
-    for (let i = 0; i < EARNINGS_CAL_SYMBOLS.length; i += FH_SYM_CHUNK) {
-      const chunk = EARNINGS_CAL_SYMBOLS.slice(i, i + FH_SYM_CHUNK);
+    for (let i = 0; i < prioritySymbols.length; i += FH_SYM_CHUNK) {
+      const chunk = prioritySymbols.slice(i, i + FH_SYM_CHUNK);
       await Promise.all(
         chunk.map(async (tick) => {
           for (const fv of finnhubTickerVariants(tick)) {
@@ -9566,7 +9601,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
           }
         })
       );
-      if (i + FH_SYM_CHUNK < EARNINGS_CAL_SYMBOLS.length) {
+      if (i + FH_SYM_CHUNK < prioritySymbols.length) {
         await new Promise((r) => setTimeout(r, 90));
       }
     }
@@ -9575,14 +9610,15 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
 
   const fmpRows = await fmpEarningCalendarByRange(fromISO, vendorEndISO);
 
-  // Full-window merge (not limited to ~55 watchlist names) so the widget reflects the real market.
-  // ── STEP 3: Finnhub + FMP — bulk merge, Bloomberg always wins ─────────────
+  // ── STEP 3: Finnhub + FMP — only canonical app-universe equities ──────────
   fhRaw
     .filter((x) => x && x.symbol && isUpcomingCalRow(x, fromISO, displayEndISO))
     .forEach((e) => {
       const row = mapFinnhubCalRow(e);
-      const k = normalizeTickerMatch(row.ticker);
-      if (!k) return;
+      const canonical = canonicalEarningsUniverseTicker(row.ticker, universe);
+      if (!canonical) return;
+      row.ticker = canonical;
+      const k = normalizeTickerMatch(canonical);
       const prev = byTicker.get(k);
       if (prev && prev.source === 'bloomberg_bridge') return; // Bloomberg always wins
       byTicker.set(k, row);
@@ -9591,11 +9627,14 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
   fmpRows.forEach((e) => {
     const sym = fmpSymbol(e);
     if (!sym || !isUpcomingCalRow(e, fromISO, displayEndISO)) return;
-    const k = normalizeTickerMatch(sym);
-    if (!k) return;
+    const canonical = canonicalEarningsUniverseTicker(sym, universe);
+    if (!canonical) return;
+    const k = normalizeTickerMatch(canonical);
     const prev = byTicker.get(k);
     if (prev && (prev.source === 'bloomberg_bridge' || prev.source === 'finnhub')) return;
-    byTicker.set(k, mapFmpCalRow(e));
+    const row = mapFmpCalRow(e);
+    row.ticker = canonical;
+    byTicker.set(k, row);
   });
 
   for (const [, row] of byTicker) {
@@ -9616,7 +9655,7 @@ async function mergedEarningsCalendarWidget(fromISO, toISO) {
 
   // ── STEP 4: Yahoo gap-fill — ONLY for tickers Bloomberg + Finnhub + FMP missed ──
   // Skip tickers already covered by Bloomberg (Bloomberg wins always)
-  const missingTickers = EARNINGS_CAL_SYMBOLS.filter(t => !byTicker.has(normalizeTickerMatch(t)));
+  const missingTickers = prioritySymbols.filter(t => !byTicker.has(normalizeTickerMatch(t)));
   if (missingTickers.length > 0) {
     console.log(`Earnings calendar: Yahoo gap-fill for ${missingTickers.length} tickers Bloomberg/Finnhub/FMP missed`);
     const GAP_CHUNK = 8;
@@ -12675,7 +12714,11 @@ try {
 
 /** Dual-listed names that must not open two IBKR brackets for the same thesis.
  *  Resolved once via aliases + IB conId — not per-endpoint name collapses. */
-const { LISTING_ALIASES: IBKR_LISTING_ALIASES, yahooAliases: _sharedYahooAliases } = (() => {
+const {
+  LISTING_ALIASES: IBKR_LISTING_ALIASES,
+  yahooAliases: _sharedYahooAliases,
+  normalizeYahooTicker: _sharedNormalizeYahooTicker
+} = (() => {
   try {
     return require('./ibkr-bridge/listing-aliases.js');
   } catch (_) {
@@ -12690,16 +12733,17 @@ const { LISTING_ALIASES: IBKR_LISTING_ALIASES, yahooAliases: _sharedYahooAliases
         'DSY.PA': ['DSY.DE', 'DSY'],
         'DSY.DE': ['DSY.PA', 'DSY']
       },
-      yahooAliases: null
+      yahooAliases: null,
+      normalizeYahooTicker: null
     };
   }
 })();
 
 function ibkrYahooAliases(ticker) {
   if (typeof _sharedYahooAliases === 'function') return _sharedYahooAliases(ticker);
-  const y = String(ticker || '').toUpperCase();
+  const y = normalizeIbkrYahooTicker(ticker);
   const out = new Set([y]);
-  for (const a of (IBKR_LISTING_ALIASES[y] || [])) out.add(String(a).toUpperCase());
+  for (const a of (IBKR_LISTING_ALIASES[y] || [])) out.add(normalizeIbkrYahooTicker(a));
   if (y.includes('.')) out.add(y.split('.')[0]);
   else {
     for (const k of Object.keys(IBKR_LISTING_ALIASES)) {
@@ -12711,19 +12755,19 @@ function ibkrYahooAliases(ticker) {
 
 /** Resolve IB position for a yahoo ticker via exact match, listing alias, or conId. */
 function resolveIbPosForYahoo(yahoo, ibByY, ibByConId) {
-  const y = String(yahoo || '').toUpperCase();
+  const y = normalizeIbkrYahooTicker(yahoo);
   if (ibByY && ibByY.has(y)) return ibByY.get(y);
   for (const a of ibkrYahooAliases(y)) {
     if (a !== y && ibByY && ibByY.has(a)) return ibByY.get(a);
   }
   if (ibByConId && ibByConId.size) {
     for (const [cid, canonY] of ibByConId) {
-      if (!ibkrYahooAliases(y).has(String(canonY || '').toUpperCase())) continue;
+      if (!ibkrYahooAliases(y).has(normalizeIbkrYahooTicker(canonY))) continue;
       if (ibByY && ibByY.has(canonY)) return ibByY.get(canonY);
       // conId map may store yahoo string; look up any alias row with that conId
       for (const [ty, row] of ibByY || []) {
         if (Number(row && row.conId) === Number(cid)) return row;
-        if (ibkrYahooAliases(ty).has(String(canonY || '').toUpperCase())) return row;
+        if (ibkrYahooAliases(ty).has(normalizeIbkrYahooTicker(canonY))) return row;
       }
     }
   }
@@ -12772,7 +12816,7 @@ function hasOpenEmittedEntryForTicker(ticker) {
     for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
       let e; try { e = JSON.parse(line); } catch (_) { continue; }
       if (!e || !e.key) continue;
-      const t = String(e.key.split('|')[0] || '').toUpperCase();
+      const t = normalizeIbkrYahooTicker(e.key.split('|')[0]);
       if (!aliases.has(t)) continue;
       if (e.type === 'entry') open.add(e.key);
       else if (e.type === 'exit') open.delete(e.key);
@@ -12838,10 +12882,7 @@ function ibkrHasOpenEntryFor(ticker, hz, entryDate) {
 function ibkrLiveEntrySide(ticker, hz, entryDate) {
   const entryMs = Date.parse(entryDate || Date.now());
   const keyDay = singaporeToDateString(Number.isFinite(entryMs) ? entryMs : Date.now());
-  const aliases = new Set([String(ticker || '').toUpperCase()]);
-  for (const a of (IBKR_LISTING_ALIASES[String(ticker || '').toUpperCase()] || [])) {
-    aliases.add(String(a).toUpperCase());
-  }
+  const aliases = ibkrYahooAliases(ticker);
   const open = new Map(); // key -> side
   try {
     if (!fs.existsSync(TRADE_EVENTS_FILE)) return null;
@@ -12851,7 +12892,7 @@ function ibkrLiveEntrySide(ticker, hz, entryDate) {
         const e = JSON.parse(line);
         if (!e || !e.key) continue;
         const [t, ehz, day] = String(e.key).split('|');
-        if (!aliases.has(String(t || '').toUpperCase())) continue;
+        if (!aliases.has(normalizeIbkrYahooTicker(t))) continue;
         if (String(ehz) !== String(hz || 'short')) continue;
         if (day && day !== keyDay) continue;
         if (e.type === 'entry') open.set(e.key, e.side === 'sell' ? 'sell' : 'buy');
@@ -13351,6 +13392,7 @@ function isReconFamilyFill(r) {
 /** IB sync pads/trims belong on the model key — not Error ledger. */
 function isModelIbSyncFill(r) {
   if (!r) return false;
+  if (r.userReentry === true) return true;
   const recon = String(r.recon || '');
   const exec = String(r.execId || '');
   if (recon === 'qty-pad' || recon === 'qty-trim' || recon === 'avg-correct') return true;
@@ -14120,6 +14162,7 @@ app.post('/api/ibkr/report', (req, res) => {
       session: phase,
       sessionLabel: r.sessionLabel || ibkrSessionLabel(phase),
       errorTrade: r.errorTrade === true || isForceIbkrErrorTicker(r.ticker),
+      userReentry: r.userReentry === true || undefined,
       synthetic: r.synthetic === true || undefined,
       recon: r.recon ? String(r.recon) : undefined,
       markSrc: r.markSrc ? String(r.markSrc) : undefined
@@ -14617,7 +14660,16 @@ function ingestIbkrChargesFromBody(body) {
   } catch (_) { return 0; }
 }
 function normalizeIbkrYahooTicker(t) {
-  const s = String(t || '').toUpperCase();
+  if (typeof _sharedNormalizeYahooTicker === 'function') {
+    return _sharedNormalizeYahooTicker(t);
+  }
+  const s = String(t || '').toUpperCase().trim();
+  const shareClass = {
+    'BRK B': 'BRK-B', 'BRK.B': 'BRK-B', BRKB: 'BRK-B',
+    'BRK A': 'BRK-A', 'BRK.A': 'BRK-A', BRKA: 'BRK-A',
+    'BF B': 'BF-B', 'BF.B': 'BF-B', BFB: 'BF-B'
+  };
+  if (shareClass[s]) return shareClass[s];
   const m = s.match(/^(\d+)\.HK$/);
   if (m) return m[1].padStart(4, '0') + '.HK';
   return s;
@@ -14877,9 +14929,10 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
             for (const o of opens) {
               if (o.mark > 0) continue;
               const aliases = ibkrYahooAliases(o.ticker || o.rawTicker);
-              if (!aliases.has(String(t).toUpperCase())
-                && String(o.ticker).toUpperCase() !== String(t).toUpperCase()
-                && String(o.rawTicker || '').toUpperCase() !== String(t).toUpperCase()) continue;
+              const normalizedT = normalizeIbkrYahooTicker(t);
+              if (!aliases.has(normalizedT)
+                && normalizeIbkrYahooTicker(o.ticker) !== normalizedT
+                && normalizeIbkrYahooTicker(o.rawTicker) !== normalizedT) continue;
               o.mark = m.price;
               o.markSrc = m.src || 'ghost-mark';
             }
@@ -14995,7 +15048,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
               for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
                 let e; try { e = JSON.parse(line); } catch (_) { continue; }
                 if (!e || !e.key || e.type !== 'entry') continue;
-                const t = String(e.key.split('|')[0] || '').toUpperCase();
+                const t = normalizeIbkrYahooTicker(e.key.split('|')[0]);
                 if (!aliases.has(t)) continue;
                 const ts = Date.parse(e.t || e.entryDate || 0);
                 if (Number.isFinite(ts) && ts > lastEntryMs) lastEntryMs = ts;

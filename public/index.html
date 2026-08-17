@@ -560,12 +560,20 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
         <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer" onclick="toggleEarningsWidget()">
           <div style="display:flex;align-items:center;gap:8px">
             <span id="earningsChevron" style="font-size:10px;color:var(--m1);transition:transform .2s;display:inline-block">▶</span>
-            <div style="font-size:11px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--m1)">📅 Earnings This Week</div>
+            <div style="font-size:11px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.1em;color:var(--m1)">📅 Earnings Calendar</div>
             <span id="earningsSummaryPill" style="font-size:9px;background:var(--buyb);color:var(--buy);padding:1px 7px;border-radius:10px;font-family:DM Mono,monospace"></span>
           </div>
           <button class="btn" style="font-size:9px;padding:2px 8px" onclick="event.stopPropagation();loadEarningsCalendar(true)">↻</button>
         </div>
         <div id="earningsCollapsible" style="display:none;padding:0 14px 12px">
+          <div style="display:grid;grid-template-columns:auto 1fr auto;gap:6px;align-items:center;margin:0 0 10px">
+            <button class="btn" style="font-size:10px;padding:5px 8px" onclick="changeEarningsWeek(-1)" title="Previous week">←</button>
+            <input id="earningsWeekPicker" type="week" onchange="selectEarningsWeek(this.value)"
+              style="width:100%;box-sizing:border-box;background:var(--s1);color:var(--tx);border:1px solid var(--b1);border-radius:6px;padding:5px 7px;font:10px 'DM Mono',monospace;color-scheme:dark"
+              aria-label="Select earnings calendar week" />
+            <button class="btn" style="font-size:10px;padding:5px 8px" onclick="changeEarningsWeek(1)" title="Next week">→</button>
+          </div>
+          <div id="earningsWeekLabel" style="font:9px 'DM Mono',monospace;color:var(--m1);margin-bottom:9px;text-align:center"></div>
           <div id="earningsContent" style="font-size:11px">Loading...</div>
         </div>
       </div>
@@ -7252,22 +7260,6 @@ window.recoverHistory = function() {
 // ══════════════════════════════════════════════
 // EARNINGS CALENDAR
 // ══════════════════════════════════════════════
-const TRACKED_TICKERS = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','JPM','BRK.B',
-  'V','MA','JNJ','UNH','PG','HD','AVGO','LLY','XOM','CVX','ABBV','KO','PEP','COST','WMT',
-  'NFLX','AMD','ADBE','CRM','TMO','ORCL','ACN','IBM','GS','MS','BAC','MCD',
-  'RELIANCE.NS','TCS.NS','HDFCBANK.NS','INFY.NS','ICICIBANK.NS','BAJFINANCE.NS',
-  'ASML.AS','SAP.DE','MC.PA','AZN.L','SHEL.L','0700.HK','9988.HK','7203.T'];
-
-function normTickerTier(s) {
-  return String(s||'').trim().toUpperCase().replace(/^BRK-B$/i,'BRK.B').replace(/-/g,'.');
-}
-/** Lower = listed earlier in TRACKED_TICKERS */
-function trackedTierForEarnings(t) {
-  var k = normTickerTier(t), i, best = 9999;
-  for (i=0;i<TRACKED_TICKERS.length;i++) if (normTickerTier(TRACKED_TICKERS[i])===k){ best=i; break; }
-  return best;
-}
-
 /** Shift YYYY-MM-DD by N days in UTC (server merge uses UTC windows; avoids local-vs-UTC wiping rows). */
 function addUtcCalendarDaysISO(isoDate, days) {
   var pts = String(isoDate).slice(0, 10).split('-');
@@ -7280,9 +7272,56 @@ function addUtcCalendarDaysISO(isoDate, days) {
 // Earnings calendar — cached, date-sorted, grouped by day
 let earningsCache = null;
 let earningsCacheTs = 0;
-/** When set, must match dashboard query so we do not reuse an unfiltered payload. */
-let earningsCacheMcapMin = NaN;
-let earningsCacheTopPerDay = NaN;
+let earningsCacheWeek = '';
+let earningsSelectedWeek = '';
+
+function isoWeekValueForDate(date) {
+  var d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  var day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  var week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return d.getUTCFullYear() + '-W' + String(week).padStart(2, '0');
+}
+
+function currentEarningsWeek() {
+  return isoWeekValueForDate(new Date(localCalendarISO() + 'T12:00:00Z'));
+}
+
+function earningsWeekRange(weekValue) {
+  var m = String(weekValue || '').match(/^(\d{4})-W(\d{2})$/);
+  if (!m) return null;
+  var year = +m[1], week = +m[2];
+  var jan4 = new Date(Date.UTC(year, 0, 4));
+  var jan4Day = jan4.getUTCDay() || 7;
+  var monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - jan4Day + 1 + (week - 1) * 7);
+  var from = monday.toISOString().slice(0, 10);
+  return { from: from, to: addUtcCalendarDaysISO(from, 6) };
+}
+
+function earningsWeekLabel(range) {
+  if (!range) return '';
+  var a = new Date(range.from + 'T12:00:00Z');
+  var b = new Date(range.to + 'T12:00:00Z');
+  return a.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric', timeZone:'UTC' })
+    + ' — ' + b.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric', timeZone:'UTC' });
+}
+
+function selectEarningsWeek(value) {
+  earningsSelectedWeek = value || currentEarningsWeek();
+  loadEarningsCalendar(false);
+}
+
+function changeEarningsWeek(delta) {
+  var current = earningsWeekRange(earningsSelectedWeek || currentEarningsWeek());
+  var nextMonday = new Date(current.from + 'T12:00:00Z');
+  nextMonday.setUTCDate(nextMonday.getUTCDate() + delta * 7);
+  earningsSelectedWeek = isoWeekValueForDate(nextMonday);
+  var picker = document.getElementById('earningsWeekPicker');
+  if (picker) picker.value = earningsSelectedWeek;
+  loadEarningsCalendar(false);
+}
 
 async function loadEarningsCalendar(force) {
   const widget = document.getElementById('earningsWidget');
@@ -7290,19 +7329,23 @@ async function loadEarningsCalendar(force) {
   if(!widget || !elContent) return;
   widget.style.display = 'block';
 
-  if(!force && earningsCache && earningsCacheTopPerDay === 7 && earningsCacheMcapMin === 0 && (Date.now()-earningsCacheTs) < 3600000) {
+  if (!earningsSelectedWeek) earningsSelectedWeek = currentEarningsWeek();
+  var picker = document.getElementById('earningsWeekPicker');
+  if (picker) picker.value = earningsSelectedWeek;
+  var range = earningsWeekRange(earningsSelectedWeek);
+  var weekLabel = document.getElementById('earningsWeekLabel');
+  if (weekLabel) weekLabel.textContent = earningsWeekLabel(range) + ' · app universe only';
+
+  if(!force && earningsCache && earningsCacheWeek === earningsSelectedWeek && (Date.now()-earningsCacheTs) < 3600000) {
     renderEarningsWidget(earningsCache, elContent); return;
   }
   // Don't auto-open - user clicks to expand
   elContent.innerHTML = '<div style="display:flex;align-items:center;gap:8px;color:var(--m1);font-size:11px"><div class="sp"></div><span>Loading earnings calendar...</span></div>';
   try {
-    // Browser UTC anchor: fixes empty calendar when Render/container clock is wrong (still querying 2024).
-    var utcAnchor = new Date().toISOString().slice(0, 10);
     var calParams = new URLSearchParams();
-    calParams.set('anchor', utcAnchor);
-    calParams.set('days', '45');
+    calParams.set('from', range.from);
+    calParams.set('to', range.to);
     calParams.set('mcapMin', '0');
-    calParams.set('topPerDay', '7');
     if (force) calParams.set('force', '1');
     var calSig = null;
     try {
@@ -7320,31 +7363,21 @@ async function loadEarningsCalendar(force) {
       earnings = [];
     }
     if(!Array.isArray(earnings)) earnings = [];
-    /* Server merge uses UTC day bounds; filter in UTC — do not skip rows on bogus reported flags. */
-    const utcToday = new Date().toISOString().slice(0, 10);
-    const filterFrom = addUtcCalendarDaysISO(utcToday, -2);
-    const end2Weeks = addUtcCalendarDaysISO(utcToday, 14);
-    function inWin(e, endD) {
-      if(!e||!e.date) return false;
-      const d = String(e.date).slice(0, 10);
-      if(d < filterFrom) return false;
-      if(d > endD) return false;
-      return true;
-    }
-    var filtered = earnings.filter(function(e){ return inWin(e, end2Weeks); });
-    if (!filtered.length && earnings.length) {
-      var endWide = addUtcCalendarDaysISO(utcToday, 90);
-      filtered = earnings.filter(function(e){ return inWin(e, endWide); }).slice(0, 120);
-    }
-    earnings = filtered.sort(function(a,b){
+    earnings = earnings.filter(function(e) {
+      var d = e && e.date ? String(e.date).slice(0, 10) : '';
+      return d >= range.from && d <= range.to;
+    }).sort(function(a,b){
       var c=a.date.localeCompare(b.date);
       if(c!==0)return c;
-      var ta=trackedTierForEarnings(a.ticker), tb=trackedTierForEarnings(b.ticker);
-      if(ta!==tb)return ta-tb;
       return a.ticker.localeCompare(b.ticker);
     });
-    if(!earnings.length) { elContent.innerHTML='<span style="color:var(--m1)">No upcoming earnings in this window. Check <code>/api/health</code> and Finnhub/FMP keys; broaden date range from the dashboard or retry.</span>'; return; }
-    earningsCache=earnings; earningsCacheTs=Date.now(); earningsCacheMcapMin=0; earningsCacheTopPerDay=7;
+    earningsCache=earnings; earningsCacheTs=Date.now(); earningsCacheWeek=earningsSelectedWeek;
+    if(!earnings.length) {
+      var pillEmpty = document.getElementById('earningsSummaryPill');
+      if (pillEmpty) pillEmpty.textContent = '0 reports';
+      elContent.innerHTML='<div style="color:var(--m1);padding:8px 0;text-align:center">No companies in the app universe report during this week.</div>';
+      return;
+    }
     renderEarningsWidget(earnings, elContent);
   } catch(e) {
     console.error('Earnings:',e);
@@ -7361,7 +7394,7 @@ function renderEarningsWidget(earnings, elContent) {
   // Update pill in header
   const todayCnt = earnings.filter(e=>e.date===todayISO).length;
   const pill = document.getElementById('earningsSummaryPill');
-  if(pill) pill.textContent = 'Top 7 by mcap / day · '+(todayCnt?todayCnt+' today · ':'')+earnings.length+' slots (next 14 days)';
+  if(pill) pill.textContent = (todayCnt?todayCnt+' today · ':'')+earnings.length+' report'+(earnings.length===1?'':'s');
   // Keep collapsed - user expands manually
   // Group by date
   const byDate = {};
@@ -7377,9 +7410,8 @@ function renderEarningsWidget(earnings, elContent) {
       +(isToday?'📍 ':isTomorrow?'📅 ':'')+dayLabel+'</div>'
       +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
       +items.map(e => {
-        const tracked = TRACKED_TICKERS.includes(e.ticker);
         const safeName = (e.name||'').replace(/[^a-zA-Z0-9 .,&()-]/g,'');
-        return '<div style="background:var(--s1);border:1px solid '+(tracked?'var(--ac)':'var(--b1)')+';border-radius:7px;padding:7px 10px;min-width:160px;cursor:pointer" data-t="'+e.ticker+'" data-n="'+safeName+'" onclick="sbAn(this.dataset.t,this.dataset.n,this.dataset.n)">'
+        return '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:7px;padding:7px 10px;min-width:160px;cursor:pointer" data-t="'+e.ticker+'" data-n="'+safeName+'" onclick="sbAn(this.dataset.t,this.dataset.n,this.dataset.n)">'
           +'<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">'
           +'<span style="font-family:DM Mono,monospace;font-size:11px;font-weight:600">'+e.ticker+'</span>'
           +(e.time?'<span style="font-size:9px;padding:1px 5px;border-radius:4px;background:rgba(255,255,255,.07);color:'+timeColor(e.time)+'">'+timeLabel(e.time)+'</span>':'')

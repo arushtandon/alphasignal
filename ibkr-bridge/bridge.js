@@ -1050,6 +1050,7 @@ async function main() {
             currency: row.contract && row.contract.currency || 'USD',
             ccyScale: row.contract && row.contract.penceQuoted ? 100 : 1,
             errorTrade: !!(row.errorTrade || ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())),
+            userReentry: row.userReentry === true,
             session: phase,
             sessionLabel: sessionLabel(phase),
             time: fillAt
@@ -2528,6 +2529,23 @@ async function main() {
   function collectRiskFindings(keyState, reconResp) {
     const findings = [];
     const resp = reconResp || lastIbReconResp;
+    const isLocallyAuthorizedPosition = (ibRow) => {
+      if (!ibRow || !ibRow.ticker) return false;
+      const ibTicker = normalizeYahooTicker(ibRow.ticker);
+      const ibConId = Number(ibRow.conId) || 0;
+      const ibQty = Number(ibRow.qty) || 0;
+      for (const [key, row] of Object.entries(state.byKey || {})) {
+        if (!row || row.closed || row.errorTrade || !row.entryFilled) continue;
+        const modelTicker = normalizeYahooTicker(row.ticker || key.split('|')[0]);
+        const aliasesMatch = setHasYahooAlias(yahooAliases(modelTicker), ibTicker);
+        const modelConId = Number(row.contract && row.contract.conId) || 0;
+        const conIdMatch = ibConId > 0 && modelConId > 0 && ibConId === modelConId;
+        if (!aliasesMatch && !conIdMatch) continue;
+        const sideMatches = row.side === 'sell' ? ibQty < 0 : ibQty > 0;
+        if (sideMatches) return true;
+      }
+      return false;
+    };
     if (!positionsReady) {
       findings.push({ sev: 'warn', code: 'positions-not-ready', text: 'IB position snapshot not ready — reconcile deferred' });
     }
@@ -2536,13 +2554,21 @@ async function main() {
     }
     if (resp && resp.ok !== false) {
       if ((resp.untrackedIb || 0) > 0) {
-        const rows = (resp.untrackedIbRows || []).slice(0, 8)
+        // The deployed server can briefly retain an older symbol/provenance
+        // snapshot. Never alert or flatten when the live bridge state proves
+        // the same conId/ticker, side and filled model key are still open.
+        const untrackedRows = (resp.untrackedIbRows || [])
+          .filter(r => !isLocallyAuthorizedPosition(r));
+        const rows = untrackedRows.slice(0, 8)
           .map(r => `${r.ticker || '?'}×${r.qty != null ? r.qty : '?'}`).join(', ');
-        findings.push({
-          sev: 'error',
-          code: 'untracked',
-          text: `Untracked IB position(s): ${resp.untrackedIb}${rows ? ' (' + rows + ')' : ''}`
-        });
+        if (untrackedRows.length || !(resp.untrackedIbRows || []).length) {
+          const count = untrackedRows.length || Number(resp.untrackedIb) || 0;
+          findings.push({
+            sev: 'error',
+            code: 'untracked',
+            text: `Untracked IB position(s): ${count}${rows ? ' (' + rows + ')' : ''}`
+          });
+        }
       }
       if ((resp.errors || 0) > 0) {
         const errs = (resp.issues || []).filter(i => i && i.severity === 'error').slice(0, 6)
