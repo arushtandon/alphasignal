@@ -3166,7 +3166,8 @@ async function main() {
         }
         // Never chase keys older than the event-age gate (prevents Aug 05
         // shorts / BP.L weekend re-keys being MKT-bought days later).
-        {
+        // Explicit user re-entry (e.g. Friday BRK-B missed on error 200) is exempt.
+        if (!row.userReentry) {
           const srcAge = entryByKey.get(key);
           const tradeTs = Date.parse((srcAge && (srcAge.entryDate || srcAge.t)) || 0);
           const keyDayTs = Date.parse(String(key.split('|')[2] || ''));
@@ -3244,11 +3245,13 @@ async function main() {
             } else {
               reason = 'us-rth-after-opg';
             }
-          } else if (phase === 'closed' && isUsExtStyle(row.entryStyle)) {
+          } else if (phase === 'closed' && (isUsExtStyle(row.entryStyle) || row.userReentry)) {
             // Overnight leftover extended order — convert to next-open OPG
             reason = 'us-overnight-to-opg';
           } else if (phase === 'rth' && row.contractRejected) {
             reason = 'contract-retry';
+          } else if (row.userReentry && row.parentId == null) {
+            reason = phase === 'rth' ? 'contract-retry' : 'us-overnight-to-opg';
           }
         }
         if (!reason) continue;
@@ -3258,7 +3261,8 @@ async function main() {
           || reason === 'eu-restore-after-orphan' || reason === 'eu-rth-after-opg'
           || reason === 'us-pre-favorable' || reason === 'us-pre-mkt-to-lmt'
           || reason === 'us-pre-reprice' || reason === 'us-pre-unfavorable-to-opg'
-          || reason === 'asia-rth' || reason === 'contract-retry';
+          || reason === 'asia-rth' || reason === 'contract-retry'
+          || reason === 'us-overnight-to-opg';
         const minGap = (reason === 'asia-rth-retry' || auctionNow)
           ? (auctionNow ? 0 : 2 * 60 * 1000)
           : 15 * 60 * 1000;
@@ -3299,6 +3303,7 @@ async function main() {
             placed.rearmReason = reason;
             placed.rearmCount = (Number(row.rearmCount) || 0) + 1;
             placed.entryFilled = false;
+            if (row.userReentry) placed.userReentry = true;
             state.byKey[key] = placed;
             log('RECONCILE: re-armed', key, 'reason=' + reason, '→', placed.entryStyle,
               'lot=' + (placed.contract && placed.contract.lotHint));
@@ -3713,6 +3718,7 @@ async function main() {
       for (const row of Object.values(state.byKey)) {
         if (row.closed && row.holdCancelledUnfilled) { forceReconcile = true; break; }
         if (row.restoreAfterFalseOrphan && !row.closed && !row.entryFilled) { forceReconcile = true; break; }
+        if (row.userReentry && !row.closed && !row.entryFilled) { forceReconcile = true; break; }
         if (row.closed || row.entryFilled || !row.contract) continue;
         if (row.contract.market === 'HK'
           && sessionPhase(row.contract) === 'rth'
