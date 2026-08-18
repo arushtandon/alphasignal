@@ -309,7 +309,7 @@ const YAHOO_CRYPTO = {
   'ETH-USD': { symbol: 'ETH', exchange: 'PAXOS', currency: 'USD', market: 'CRYPTO', lotHint: 0.001 }
 };
 
-/** Yahoo-style ticker → IB contract stub. Futures/crypto need resolveInstrument(). */
+/** Yahoo-style ticker → IB contract stub. Live orders are qualified by resolveInstrument(). */
 function toContract(ticker) {
   const t = String(ticker || '').toUpperCase();
   if (YAHOO_FUTURES[t]) {
@@ -350,7 +350,13 @@ function toContract(ticker) {
   }
   // SMART routing everywhere (primaryExch pins the listing) — direct routing
   // trips TWS's "higher trade fees" API precaution and orders get discarded.
-  if (t.endsWith('.L'))  return { symbol: t.replace(/\.L$/, ''),  secType: 'STK', exchange: 'SMART', primaryExch: 'LSE',  currency: 'GBP', penceQuoted: true, market: 'LSE', yahooTicker: t, bloomberg: bloombergTicker(t) };
+  if (t.endsWith('.L')) {
+    // Yahoo drops punctuation from some LSE symbols. BAE Systems is BA. on
+    // LSE/IB; bare BA is Boeing's US symbol and IB rejects BA/LSE/GBP.
+    const base = t.replace(/\.L$/, '');
+    const ibSymbol = t === 'BA.L' ? 'BA.' : base;
+    return { symbol: ibSymbol, localSymbol: t === 'BA.L' ? 'BA.' : undefined, secType: 'STK', exchange: 'SMART', primaryExch: 'LSE', currency: 'GBP', penceQuoted: true, market: 'LSE', yahooTicker: t, bloomberg: bloombergTicker(t) };
+  }
   if (t.endsWith('.DE')) return { symbol: t.replace(/\.DE$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'IBIS', currency: 'EUR', market: 'XETRA', yahooTicker: t, bloomberg: bloombergTicker(t), listingCountry: 'Germany' };
   if (t.endsWith('.PA')) return { symbol: t.replace(/\.PA$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'SBF',  currency: 'EUR', market: 'EURONEXT', yahooTicker: t, bloomberg: bloombergTicker(t), listingCountry: 'France' };
   if (t.endsWith('.AS')) return { symbol: t.replace(/\.AS$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'AEB',  currency: 'EUR', market: 'EURONEXT', yahooTicker: t, bloomberg: bloombergTicker(t) };
@@ -369,6 +375,11 @@ function toContract(ticker) {
     symbol, secType: 'STK', exchange: 'SMART', currency: 'USD',
     primaryExch: 'NYSE', usRth: true, market: 'US', yahooTicker: t
   };
+}
+
+function riskFindingsFingerprint(findings) {
+  const list = Array.isArray(findings) ? findings : [];
+  return list.map(f => f.fingerprint || (f.code + ':' + f.text)).sort().join('|') || 'ok';
 }
 
 /**
@@ -1490,13 +1501,102 @@ async function main() {
   }
 
   /**
-   * Resolve futures front-month (or crypto conId) via IB contract details.
+   * Resolve stocks, futures front-month, or crypto via IB contract details.
+   * International stocks must have a conId before an order is submitted:
+   * symbol-only stubs can be ambiguous (BA = Boeing vs BA. = BAE Systems).
    * Mutates and returns the contract stub.
    */
+  const _stockContractCache = new Map(); // yahooTicker -> qualified fields
   const _futFrontCache = new Map(); // yahooTicker -> { at, contract }
   async function resolveInstrument(contract) {
     if (!contract) return null;
     enrichSessionMeta(contract);
+    if ((contract.secType || 'STK') === 'STK') {
+      if (contract.conId > 0 || DRY || !ib || !EventName) return contract;
+      const yKey = String(contract.yahooTicker || '').toUpperCase();
+      const cached = _stockContractCache.get(yKey);
+      if (cached && (Date.now() - cached.at) < 24 * 3600 * 1000) {
+        Object.assign(contract, cached.contract);
+        delete contract.contractResolutionFailed;
+        return contract;
+      }
+      const symbols = [String(contract.localSymbol || contract.symbol || '')];
+      // Controlled LSE punctuation fallback. Keep the normal symbol first so
+      // MNDI.L/HSBA.L continue to resolve exactly as before.
+      if (contract.market === 'LSE' && yKey === 'BA.L' && !symbols.includes('BA.')) symbols.push('BA.');
+      if (contract.market === 'LSE' && contract.symbol && !String(contract.symbol).endsWith('.')) {
+        symbols.push(String(contract.symbol) + '.');
+      }
+      const uniqueSymbols = [...new Set(symbols.filter(Boolean))];
+      const tryCandidate = (symbol) => new Promise(resolve => {
+        const reqId = nextDetailsId++;
+        const matches = [];
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          try { ib.off(EventName.contractDetails, onDet); } catch (_) {}
+          try { ib.off(EventName.contractDetailsEnd, onEnd); } catch (_) {}
+          const wantedCcy = String(contract.currency || '').toUpperCase();
+          const wantedPrimary = String(contract.primaryExch || '').toUpperCase();
+          const pick = matches.find(c => {
+            const ccyOk = !wantedCcy || String(c.currency || '').toUpperCase() === wantedCcy;
+            const exch = String(c.primaryExch || c.exchange || '').toUpperCase();
+            const venueOk = !wantedPrimary || exch === wantedPrimary || String(c.validExchanges || '').toUpperCase().split(',').includes(wantedPrimary);
+            return ccyOk && venueOk;
+          }) || matches.find(c => !wantedCcy || String(c.currency || '').toUpperCase() === wantedCcy);
+          resolve(pick || null);
+        };
+        const timer = setTimeout(finish, 4500);
+        const onDet = (id, details) => {
+          if (Number(id) !== reqId) return;
+          const c = (details && details.contract) || {};
+          if (Number(c.conId) > 0) matches.push({ ...c, validExchanges: details && details.validExchanges });
+        };
+        const onEnd = (id) => {
+          if (Number(id) !== reqId) return;
+          finish();
+        };
+        ib.on(EventName.contractDetails, onDet);
+        ib.on(EventName.contractDetailsEnd, onEnd);
+        try {
+          ib.reqContractDetails(reqId, {
+            symbol,
+            localSymbol: symbol.endsWith('.') ? symbol : undefined,
+            secType: 'STK',
+            exchange: 'SMART',
+            currency: contract.currency,
+            primaryExch: contract.primaryExch
+          });
+        } catch (_) { finish(); }
+      });
+      let pick = null;
+      for (const symbol of uniqueSymbols) {
+        pick = await tryCandidate(symbol);
+        if (pick) break;
+      }
+      if (pick && Number(pick.conId) > 0) {
+        const qualified = {
+          conId: Number(pick.conId),
+          symbol: String(pick.symbol || contract.symbol),
+          localSymbol: pick.localSymbol ? String(pick.localSymbol) : contract.localSymbol,
+          primaryExch: pick.primaryExch || contract.primaryExch,
+          tradingClass: pick.tradingClass || contract.tradingClass
+        };
+        Object.assign(contract, qualified);
+        delete contract.contractResolutionFailed;
+        _stockContractCache.set(yKey, { at: Date.now(), contract: qualified });
+        log('stock contract', yKey || contract.symbol, '→',
+          (contract.localSymbol || contract.symbol), 'conId=' + contract.conId,
+          'primary=' + (contract.primaryExch || '?'));
+      } else {
+        contract.contractResolutionFailed = true;
+        log('stock contract NOT FOUND for', yKey || contract.symbol,
+          'candidates=' + uniqueSymbols.join(','));
+      }
+      return contract;
+    }
     if (contract.secType === 'CRYPTO') {
       if (contract.conId > 0 || DRY || !ib || !EventName) return contract;
       return new Promise(resolve => {
@@ -1951,6 +2051,21 @@ async function main() {
     }
     const tp1Px = roundPx(evt.tp1, contract, isSell ? 'down' : 'up');
     if (!(stopPx > 0)) { log('skip entry — no stop level for', evt.ticker); return null; }
+    if (!DRY && contract.secType === 'STK' && !(Number(contract.conId) > 0)) {
+      // Never manufacture order IDs for a contract IB could not qualify. This
+      // row remains recoverable by reconcile, but no phantom "Placed bracket"
+      // or order-not-found cancellations are produced.
+      log('defer entry — IB stock contract unresolved:', evt.ticker);
+      return {
+        parentId: null, stopId: null, tp1Id: null,
+        ticker: evt.ticker, hz: evt.hz, side: evt.side,
+        entry: evt.entry, stopPx, tp1Px, entryStyle: 'CONTRACT-RETRY',
+        extLmt: null, qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
+        contract, tp1Done: false, closed: false, deferred: true,
+        contractRejected: true, entryFilled: false,
+        updated: evt.t || new Date().toISOString(), dry: DRY
+      };
+    }
     const rthOk = !!(contract.usRth || contract.secType === 'FUT' || contract.secType === 'CRYPTO');
     const parentId = nid(), stopId = nid(), tp1Id = tp1Px > 0 && split.sold > 0 ? nid() : null;
 
@@ -2611,14 +2726,18 @@ async function main() {
       const ageMs = row.updated ? (now - Date.parse(row.updated)) : (row.placedAt ? (now - Date.parse(row.placedAt)) : 0);
       const ageOk = Number.isFinite(ageMs) ? ageMs : 0;
       // Alert once the working order has had enough RTH time (or re-arm age).
-      const rearmAge = row.lastRearmAt ? (now - Number(row.lastRearmAt)) : ageOk;
+      const rearmTs = row.lastRearmAt ? Date.parse(row.lastRearmAt) : NaN;
+      const rearmAge = Number.isFinite(rearmTs) ? (now - rearmTs) : ageOk;
       const waitMs = Math.max(ageOk, rearmAge || 0);
       if (waitMs < UNFILLED_ALERT_MIN_MS) continue;
       const mins = Math.round(waitMs / 60000);
       findings.push({
         sev: 'error',
-        code: 'unfilled-rth',
-        text: `Order NOT executed (RTH ${mins}m): ${key} style=${row.entryStyle || '?'} side=${row.side || '?'}`
+        code: row.contractRejected ? 'contract-rejected' : 'unfilled-rth',
+        fingerprint: `${row.contractRejected ? 'contract-rejected' : 'unfilled-rth'}:${key}:${row.entryStyle || '?'}:${row.side || '?'}`,
+        text: row.contractRejected
+          ? `IB contract rejected (RTH ${mins}m): ${key} style=${row.entryStyle || '?'} side=${row.side || '?'}`
+          : `Order NOT executed (RTH ${mins}m): ${key} style=${row.entryStyle || '?'} side=${row.side || '?'}`
       });
     }
 
@@ -2641,7 +2760,9 @@ async function main() {
   async function maybeSendRiskAlert(findings, { force = false } = {}) {
     if (!telegramConfigured() || DRY) return;
     const list = Array.isArray(findings) ? findings : [];
-    const fp = list.map(f => f.code + ':' + f.text).sort().join('|') || 'ok';
+    // Human-readable elapsed minutes may change every poll; fingerprint only
+    // the underlying incident so the configured alert cadence is respected.
+    const fp = riskFindingsFingerprint(list);
     const now = Date.now();
     const meta = state.alertMeta || (state.alertMeta = {});
     const hadIssues = list.length > 0;
@@ -3237,6 +3358,8 @@ async function main() {
           } else {
             reason = 'eu-rth-after-opg';
           }
+        } else if (eu && phase === 'rth' && row.contractRejected) {
+          reason = 'contract-retry';
         } else if (us) {
           if (phase === 'pre' || phase === 'post') {
             ensureMktData(row.ticker, contract);
@@ -3287,11 +3410,17 @@ async function main() {
           || reason === 'eu-restore-after-orphan' || reason === 'eu-rth-after-opg'
           || reason === 'us-pre-favorable' || reason === 'us-pre-mkt-to-lmt'
           || reason === 'us-pre-reprice' || reason === 'us-pre-unfavorable-to-opg'
-          || reason === 'asia-rth' || reason === 'contract-retry'
+          || reason === 'asia-rth'
           || reason === 'us-overnight-to-opg';
-        const minGap = (reason === 'asia-rth-retry' || auctionNow)
-          ? (auctionNow ? 0 : 2 * 60 * 1000)
-          : 15 * 60 * 1000;
+        const contractRetryGap = Math.min(
+          15 * 60 * 1000,
+          Math.max(60 * 1000, Math.pow(2, Math.min(4, Number(row.rearmCount) || 0)) * 60 * 1000)
+        );
+        const minGap = reason === 'contract-retry'
+          ? contractRetryGap
+          : ((reason === 'asia-rth-retry' || auctionNow)
+            ? (auctionNow ? 0 : 2 * 60 * 1000)
+            : 15 * 60 * 1000);
         if (last && Date.now() - last < minGap) continue;
 
         try {
@@ -3767,7 +3896,8 @@ async function main() {
         }
         const euMkt = row.contract.market;
         if ((euMkt === 'XETRA' || euMkt === 'EURONEXT' || euMkt === 'LSE')
-          && sessionPhase(row.contract) === 'rth' && row.entryStyle === 'OPG') {
+          && sessionPhase(row.contract) === 'rth'
+          && (row.entryStyle === 'OPG' || row.contractRejected)) {
           forceReconcile = true;
           break;
         }
@@ -3786,7 +3916,11 @@ async function main() {
   }
 }
 
-main().catch(e => {
-  console.error(e);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(e => {
+    console.error(e);
+    process.exit(1);
+  });
+}
+
+module.exports = { toContract, riskFindingsFingerprint };

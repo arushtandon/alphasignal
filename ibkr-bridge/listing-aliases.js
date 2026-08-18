@@ -32,6 +32,12 @@ const YAHOO_LISTING = {
   '.T':  { bloomberg: 'JT', venue: 'TSE', country: 'Japan', ibPrimary: 'TSEJ', market: 'JP' }
 };
 
+// Bloomberg substitutes "/" for the terminal punctuation in a small number
+// of London tickers. BAE Systems is BA/ LN Equity, not generic BA LN.
+const BLOOMBERG_TICKER_OVERRIDES = {
+  'BA.L': 'BA/ LN'
+};
+
 function listingMeta(yahoo) {
   const y = String(yahoo || '').toUpperCase().trim();
   const i = y.lastIndexOf('.');
@@ -42,6 +48,7 @@ function listingMeta(yahoo) {
 /** SAP.DE → "SAP GY"; DSY.PA → "DSY FP". */
 function bloombergTicker(yahoo) {
   const y = String(yahoo || '').toUpperCase().trim();
+  if (BLOOMBERG_TICKER_OVERRIDES[y]) return BLOOMBERG_TICKER_OVERRIDES[y];
   const i = y.lastIndexOf('.');
   if (i < 0) return y;
   const meta = YAHOO_LISTING[y.slice(i)];
