@@ -7753,6 +7753,18 @@ function pnlBadge(dollar, pct) {
 
 </script>
 
+<button id="logoutBtn" type="button" title="Sign out of AlphaSignal"
+  style="position:fixed;right:14px;bottom:14px;z-index:9999;border:1px solid #405173;border-radius:9px;padding:8px 12px;background:#111a2d;color:#cbd7ed;font:600 12px Inter,system-ui;cursor:pointer">
+  Sign out
+</button>
+<script>
+document.getElementById('logoutBtn').addEventListener('click', async function () {
+  this.disabled = true;
+  try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (_) {}
+  location.replace('/login');
+});
+</script>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js" defer></script>
 
 </body>

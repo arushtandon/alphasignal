@@ -7,3 +7,7 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: AUTH_SESSION_SECRET
+        generateValue: true
+      - key: AUTH_MACHINE_TOKEN_HASH
+        value: 2d475b237b0d63b6a6e1eb47760e92921f68de3b744b8567a20175efda95d610

@@ -196,7 +196,6 @@ function saveState(st) {
 
 function fetchJson(urlPath) {
   const u = new URL(BASE + urlPath);
-  if (TOKEN) u.searchParams.set('token', TOKEN);
   const lib = u.protocol === 'https:' ? https : http;
   return new Promise((resolve, reject) => {
     const req = lib.get(u, { headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {} }, res => {
@@ -1415,7 +1414,7 @@ async function main() {
       return sym + '.HK';
     }
     if (ccy === 'JPY') return sym + '.T';
-    if (ccy === 'GBP') return sym + '.L';
+    if (ccy === 'GBP') return String(sym).replace(/\.$/, '') + '.L';
     if (ccy === 'EUR') {
       const suf = yahooSuffixFromIbPrimary(c.primaryExch)
         || yahooSuffixFromIbPrimary(c.exchange);

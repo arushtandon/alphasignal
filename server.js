@@ -3,6 +3,7 @@ const path = require('path');
 const https = require('https');
 const http = require('http');
 const fs = require('fs');
+const crypto = require('crypto');
 const { buildFullUniverse, MARKET_LABEL: UNIVERSE_MARKET_LABEL } = require('./universe');
 
 const app = express();
@@ -19,6 +20,139 @@ process.on('uncaughtException', (err) => {
 });
 
 app.use(express.json({ limit: '10mb' }));
+
+// ── Human sessions + bridge machine authentication ────────────────────────
+// Passwords are never stored. These are salted scrypt hashes for exactly three
+// generated users; rotate the records and credentials together.
+const AUTH_USERS = [
+  { username: 'alphasignal-admin', salt: 'cfc418fb4fa5e98f0493a11d66a00730', hash: '1cef62c2352b557795608e856c37636209fbe8b3e038eb1a3a7135d2b31fc4dd81cf9951271e5ada7b784b618394a08bb85628fcac2005afcdd62012de831404' },
+  { username: 'alphasignal-user2', salt: '829b40710a66b6a2148e0679abce0e40', hash: '4821bbf363fa184e35016750b6aa9c58959a7eb7bea343cd39a4daeaafa45141f3a75e8f9098b4887e826d141479666d2392bef9e3f08ae66a5145a8c21f1f21' },
+  { username: 'alphasignal-user3', salt: 'aac3f827f2afeb9c2c515fa34b7f7d3f', hash: 'fdc71a09b1d25207acc20a07437fa28dd7289c513f54dda5b3697584f8eede3cd2050df8c370f7b8d7b8dca1a78974c5aa2569cc106e61a526c3894e9fefc0b6' }
+];
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const configuredSessionSecret = String(process.env.AUTH_SESSION_SECRET || '');
+const configuredMachineTokenHash = String(
+  process.env.AUTH_MACHINE_TOKEN_HASH
+  || '2d475b237b0d63b6a6e1eb47760e92921f68de3b744b8567a20175efda95d610'
+).toLowerCase();
+const AUTH_SESSION_SECRET = Buffer.from(
+  configuredSessionSecret || crypto.randomBytes(32).toString('base64url')
+);
+const AUTH_MACHINE_TOKEN_HASH = configuredMachineTokenHash;
+const AUTH_COOKIE = 'alphasignal_session';
+const AUTH_SESSION_MS = 12 * 60 * 60 * 1000;
+const authFailures = new Map();
+if (IS_PRODUCTION) app.set('trust proxy', 1);
+if (IS_PRODUCTION && Buffer.byteLength(configuredSessionSecret) < 32) {
+  console.warn('AUTH_SESSION_SECRET missing/short — sessions will reset on process restart');
+}
+
+function parseCookies(req) {
+  const out = {};
+  for (const part of String(req.headers.cookie || '').split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return out;
+}
+
+function safeEqualHex(a, b) {
+  try {
+    const aa = Buffer.from(String(a || ''), 'hex');
+    const bb = Buffer.from(String(b || ''), 'hex');
+    return aa.length > 0 && aa.length === bb.length && crypto.timingSafeEqual(aa, bb);
+  } catch (_) { return false; }
+}
+
+function signSession(username, expiresAt) {
+  const payload = Buffer.from(JSON.stringify({ username, expiresAt })).toString('base64url');
+  const signature = crypto.createHmac('sha256', AUTH_SESSION_SECRET).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function sessionUser(req) {
+  const token = parseCookies(req)[AUTH_COOKIE];
+  if (!token) return null;
+  const [payload, signature] = token.split('.');
+  if (!payload || !signature) return null;
+  const expected = crypto.createHmac('sha256', AUTH_SESSION_SECRET).update(payload).digest();
+  let supplied;
+  try { supplied = Buffer.from(signature, 'base64url'); } catch (_) { return null; }
+  if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return null;
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (!data.username || Number(data.expiresAt) <= Date.now()) return null;
+    return AUTH_USERS.some(u => u.username === data.username) ? data.username : null;
+  } catch (_) { return null; }
+}
+
+function machineAuthorized(req) {
+  if (!AUTH_MACHINE_TOKEN_HASH) return false;
+  const auth = String(req.headers.authorization || '');
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  if (!match) return false;
+  const got = crypto.createHash('sha256').update(match[1]).digest('hex');
+  return safeEqualHex(got, AUTH_MACHINE_TOKEN_HASH);
+}
+
+app.get('/login', (req, res) => {
+  if (sessionUser(req)) return res.redirect('/');
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const ip = String(req.ip || req.socket.remoteAddress || 'unknown');
+  const now = Date.now();
+  const bucket = authFailures.get(ip) || { count: 0, resetAt: now + 15 * 60 * 1000 };
+  if (bucket.resetAt <= now) { bucket.count = 0; bucket.resetAt = now + 15 * 60 * 1000; }
+  if (bucket.count >= 5) {
+    res.set('Retry-After', String(Math.ceil((bucket.resetAt - now) / 1000)));
+    return res.status(429).json({ ok: false, error: 'Unable to sign in' });
+  }
+  const username = String(req.body && req.body.username || '').trim();
+  const password = String(req.body && req.body.password || '');
+  const user = AUTH_USERS.find(u => u.username === username);
+  const derived = crypto.scryptSync(password, user ? user.salt : '00000000000000000000000000000000', 64).toString('hex');
+  if (!user || !safeEqualHex(derived, user.hash)) {
+    bucket.count++;
+    authFailures.set(ip, bucket);
+    return res.status(401).json({ ok: false, error: 'Unable to sign in' });
+  }
+  authFailures.delete(ip);
+  const expiresAt = now + AUTH_SESSION_MS;
+  res.set('Cache-Control', 'no-store');
+  res.cookie(AUTH_COOKIE, signSession(username, expiresAt), {
+    httpOnly: true, secure: IS_PRODUCTION,
+    sameSite: 'strict', maxAge: AUTH_SESSION_MS, path: '/'
+  });
+  res.json({ ok: true, username, expiresAt });
+});
+
+app.use((req, res, next) => {
+  if (req.path === '/api/health' || req.path === '/login' || req.path === '/api/auth/login') return next();
+  if (!IS_PRODUCTION && process.env.AUTH_TEST_BYPASS === '1') return next();
+  const username = sessionUser(req);
+  if (username) { req.authUser = username; return next(); }
+  if (machineAuthorized(req)) { req.machineAuthorized = true; return next(); }
+  res.set('Cache-Control', 'no-store');
+  if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Authentication required' });
+  return res.redirect(303, '/login');
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.clearCookie(AUTH_COOKIE, {
+    httpOnly: true, secure: IS_PRODUCTION, sameSite: 'strict', path: '/'
+  });
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  if (!req.authUser) return res.status(401).json({ error: 'Authentication required' });
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, username: req.authUser });
+});
 
 // ── Price headers ─────────────────────────────────────────────────────────
 const YF_HEADERS = {
@@ -13146,11 +13280,10 @@ function readTradeEvents(sinceSeq, limit, tail) {
 }
 
 function ibkrEventsAuthorized(req) {
-  const want = process.env.IBKR_EVENTS_TOKEN || '';
-  if (!want) return true; // open when no token configured (paper/dev)
-  const got = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
-    || String(req.query.token || '');
-  return got && got === want;
+  // Browser operators arrive through the signed session middleware; the local
+  // bridge uses its independent Bearer token. Query-string tokens are rejected
+  // because URLs leak into logs, browser history, and monitoring systems.
+  return !!(req.authUser || req.machineAuthorized || machineAuthorized(req));
 }
 
 app.get('/api/ibkr/events', (req, res) => {

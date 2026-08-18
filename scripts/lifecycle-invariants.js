@@ -12,6 +12,7 @@ const http = require('http');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'as-lifecycle-'));
 process.env.DATA_DIR = tmp;
 process.env.IBKR_EVENTS_ENABLED = '1';
+process.env.AUTH_TEST_BYPASS = '1';
 process.env.PORT = '0'; // unused — we never listen
 
 const S = require('../server.js');
