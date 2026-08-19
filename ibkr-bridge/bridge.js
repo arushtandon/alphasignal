@@ -489,7 +489,7 @@ function extendedFillLimit(side, entryPx, quotePx, contract) {
  * opts: { side, entryPx, quotePx } — quotePx gates US pre/extended only.
  */
 function parentEntrySpec(contract, action, qty, opts = {}) {
-  const phase = sessionPhase(contract);
+  const phase = opts.phaseOverride || sessionPhase(contract);
   const side = opts.side || (String(action).toUpperCase() === 'SELL' ? 'sell' : 'buy');
   const entryPx = Number(opts.entryPx);
   const quotePx = Number(opts.quotePx);
@@ -550,6 +550,19 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
   if (phase === 'lunch') {
     // SEHK midday break — do not submit (IB often returns error 200).
     return { defer: true, entryStyle: 'DEFER-LUNCH', action, totalQuantity: qty };
+  }
+  if (contract.market === 'LSE') {
+    // LSE SMART rejects MKT+OPG for some listings (BA/ LN: IB error 201).
+    // Queue a DAY limit at the recommendation price for the cash open instead.
+    // A buy cannot fill above the model entry; a sell cannot fill below it.
+    if (entryPx > 0) {
+      return {
+        orderType: 'LMT', action, totalQuantity: qty,
+        lmtPrice: roundPx(entryPx, contract, side === 'sell' ? 'down' : 'up'),
+        tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'LMT-OPEN'
+      };
+    }
+    return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MKT-OPEN' };
   }
   // Pre-open or after previous close → opening auction (EU/UK/Asia)
   return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
@@ -999,7 +1012,7 @@ async function main() {
         return;
       }
       log('IB error', code, 'reqId=' + reqId, err && err.message ? err.message : err);
-      if (Number(code) === 200) {
+      if (Number(code) === 200 || Number(code) === 201) {
         for (const [key, row] of Object.entries(state.byKey || {})) {
           if (!row || row.closed || row.entryFilled) continue;
           if (row.parentId !== reqId && row.stopId !== reqId && row.tp1Id !== reqId) continue;
@@ -1007,7 +1020,7 @@ async function main() {
           row.updated = new Date().toISOString();
           saveState(state);
           forceReconcile = true;
-          log('IB error 200 — will retry contract', key, row.ticker);
+          log('IB entry rejected — will retry', key, row.ticker, 'code=' + code);
         }
       }
     });
@@ -3749,6 +3762,9 @@ async function main() {
       // 2. Rows flat at IB but never closed in state (exit filled while down).
       for (const [key, row] of Object.entries(state.byKey)) {
         if (row.closed || !row.contract) continue;
+        // A pending or rejected parent with no fill is not a closed trade merely
+        // because IB has no position yet. Re-arm logic owns these rows.
+        if (!row.entryFilled) continue;
         const held = posMap.get(posKeyOf(row.contract));
         const flatAtIb = held ? held.pos === 0 : !posMap.has(posKeyOf(row.contract));
         if (!flatAtIb) continue;
@@ -3922,4 +3938,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { toContract, riskFindingsFingerprint };
+module.exports = { toContract, parentEntrySpec, riskFindingsFingerprint };

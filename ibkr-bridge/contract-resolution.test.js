@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { toContract, riskFindingsFingerprint } = require('./bridge');
+const { toContract, parentEntrySpec, riskFindingsFingerprint } = require('./bridge');
 
 const bae = toContract('BA.L');
 assert.strictEqual(bae.symbol, 'BA.');
@@ -7,6 +7,13 @@ assert.strictEqual(bae.localSymbol, 'BA.');
 assert.strictEqual(bae.primaryExch, 'LSE');
 assert.strictEqual(bae.currency, 'GBP');
 assert.strictEqual(bae.bloomberg, 'BA/ LN');
+const baePre = parentEntrySpec(bae, 'BUY', 330, {
+  side: 'buy', entryPx: 2230, quotePx: null, phaseOverride: 'pre'
+});
+assert.strictEqual(baePre.orderType, 'LMT');
+assert.strictEqual(baePre.tif, 'DAY');
+assert.strictEqual(baePre.lmtPrice, 2230);
+assert.strictEqual(baePre.entryStyle, 'LMT-OPEN');
 
 const mondi = toContract('MNDI.L');
 assert.strictEqual(mondi.symbol, 'MNDI');
