@@ -6657,22 +6657,18 @@ function hasPriorDayOpenInDirection(ticker, wantSell) {
 }
 
 /**
- * Drop board rows that are still-open History names from a prior SGT day.
- * Dashboard = today's rotating board; open book lives on History / IBKR.
+ * Drop rows copied from open History. Recommendation panes contain only picks
+ * selected by the current generation cycle; the open book lives separately.
  */
 function stripPriorDayOpenPicksFromDashData(dashData) {
   if (!dashData || typeof dashData !== 'object') return dashData;
-  const paneSell = { shortSell: true, medSell: true, longSell: true };
   const out = { ...dashData };
   for (const pane of ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell']) {
     const arr = Array.isArray(dashData[pane]) ? dashData[pane] : [];
-    const wantSell = !!paneSell[pane];
     out[pane] = arr.filter((r) => {
       if (!r || !r.ticker) return false;
-      // Only drop History-restored ghosts — not a same-day regenerated pick that
-      // happens to share a ticker with an older open (e.g. long copper HG=F).
-      if (r._fromOpenHistory && hasPriorDayOpenInDirection(r.ticker, wantSell)) {
-        console.log('Board strip prior-day open-history row:', r.ticker, pane);
+      if (r._fromOpenHistory) {
+        console.log('Board strip open-history row:', r.ticker, pane);
         return false;
       }
       return true;
@@ -7194,33 +7190,6 @@ app.get('/api/dashboard/picks', (req, res) => {
   const fromDisk = loadDashboardPicksFile();
   if (fromDisk) dashboardPicksCache = fromDisk;
   if (!dashboardPicksCache || !dashboardPicksCache.dashData) {
-    // Only today's opens — never seed the board with yesterday's DHL/KHC.
-    const seeded = mergeLiveOpenHistoryIntoDashData(null, { onlyToday: true });
-    if (seeded.added > 0) {
-      const dashData = stripPriorDayOpenPicksFromDashData(filterDashDataBySLCooldown(seeded.dashData));
-      dashboardPicksCache = {
-        version: DASHBOARD_PICKS_VERSION,
-        schemaVersion: 1,
-        dashTs: Date.now(),
-        filteredAt: Date.now(),
-        dashData: sanitizeDashDataForServer(dashData)
-      };
-      saveDashboardPicksFile(dashboardPicksCache);
-      return res.json({
-        version: DASHBOARD_PICKS_VERSION,
-        schemaVersion: 1,
-        dashTs: dashboardPicksCache.dashTs,
-        filteredAt: dashboardPicksCache.filteredAt,
-        picksAgeHours: 0,
-        sgtDay: singaporeDateKey(),
-        lastPicksDateKey: typeof _lastPicksDateKey !== 'undefined' ? _lastPicksDateKey : null,
-        summary: dashboardPicksSummary(dashData),
-        sellPicksDisabled: !SELL_PICKS_ENABLED,
-        disabledBrackets: [...DISABLED_BRACKETS],
-        restoredFromHistory: seeded.added,
-        dashData
-      });
-    }
     return res.json({ version: DASHBOARD_PICKS_VERSION, dashData: null, dashTs: null, summary: '' });
   }
   // The daily published board is a point-in-time recommendation set. Intraday
@@ -7228,11 +7197,9 @@ app.get('/api/dashboard/picks', (req, res) => {
   // recommendations from the board on a GET.
   let dashData = dashboardPicksCache.dashData;
   const before = countDashPicks(dashData);
-  // Purge prior-day opens that were glued onto the board (DHL etc.).
+  // Purge any open-History rows previously glued onto recommendation panes.
   dashData = stripPriorDayOpenPicksFromDashData(dashData);
-  const merged = mergeLiveOpenHistoryIntoDashData(dashData, { onlyToday: true });
-  dashData = merged.dashData;
-  const stripped = before !== countDashPicks(dashData) || merged.added > 0;
+  const stripped = before !== countDashPicks(dashData);
   if (stripped) {
     dashboardPicksCache = {
       version: dashboardPicksCache.version || DASHBOARD_PICKS_VERSION,
@@ -7247,7 +7214,7 @@ app.get('/api/dashboard/picks', (req, res) => {
     saveDashboardPicksFile(dashboardPicksCache);
     console.log(
       'Board open-history reconcile:', before, '→', countDashPicks(dashData),
-      '(today-only restore', merged.added || 0, ')'
+      '(recommendations only)'
     );
   }
   res.json({
@@ -7263,7 +7230,7 @@ app.get('/api/dashboard/picks', (req, res) => {
     summary: dashboardPicksSummary(dashData),
     sellPicksDisabled: !SELL_PICKS_ENABLED, // backtest: sells have no edge — reference-only
     disabledBrackets: [...DISABLED_BRACKETS],
-    restoredFromHistory: merged.added || 0,
+    restoredFromHistory: 0,
     dashData
   });
 });
@@ -7759,7 +7726,6 @@ async function generateServerPicksFromShortlist(opts = {}) {
 
     // Only TODAY's opens may stay on the board (same SGT day). Prior-day opens
     // (DHL yesterday, KHC last week) stay on History — never as recycled picks.
-    dashData = mergeLiveOpenHistoryIntoDashData(dashData, { onlyToday: true }).dashData;
     dashData = stripPriorDayOpenPicksFromDashData(dashData);
 
     // Never clobber a good board with an empty/sparse one (open-trade + rotation
@@ -17760,6 +17726,7 @@ module.exports = {
   isExecutableRecommendRating,
   deriveActionRating,
   applyServerPriceLevels,
+  stripPriorDayOpenPicksFromDashData,
   mutateFillLedger,
   isPhantomIbkrKey,
   readIbkrFillRows,

@@ -509,11 +509,29 @@ function ok(name, cond, detail) {
       ok('T22 confirmed re-entry allowed', !!rearmed && !S.isCorrectiveCyclePending(key));
     })();
 
+    // ── T23 Open trades never masquerade as new recommendations ─────────────
+    (function t23() {
+      const cleaned = S.stripPriorDayOpenPicksFromDashData({
+        short: [{ ticker: 'COHR', _fromOpenHistory: true }],
+        medium: [],
+        long: [
+          { ticker: 'BA.L', _fromOpenHistory: true },
+          { ticker: 'NEW.L', action: 'Buy' }
+        ],
+        shortSell: [], medSell: [], longSell: []
+      });
+      ok('T23 restored COHR removed from recommendations', cleaned.short.length === 0);
+      ok('T23 restored BA.L removed from recommendations',
+        cleaned.long.every(r => r.ticker !== 'BA.L'));
+      ok('T23 genuine generated recommendation retained',
+        cleaned.long.some(r => r.ticker === 'NEW.L'));
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T22 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T23 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();
