@@ -215,6 +215,9 @@ function fetchJson(urlPath) {
       let raw = '';
       res.on('data', c => { raw += c; });
       res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return reject(new Error(`HTTP ${res.statusCode}`));
+        }
         try { resolve(JSON.parse(raw)); }
         catch (e) { reject(new Error(`Bad JSON ${res.statusCode}: ${raw.slice(0, 200)}`)); }
       });
@@ -284,6 +287,9 @@ function postJson(urlPath, body) {
       let raw = '';
       res.on('data', c => { raw += c; });
       res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return reject(new Error(`HTTP ${res.statusCode}`));
+        }
         try { resolve(JSON.parse(raw)); }
         catch (e) { reject(new Error(`Bad JSON ${res.statusCode}: ${raw.slice(0, 200)}`)); }
       });
@@ -392,6 +398,10 @@ function toContract(ticker) {
 function riskFindingsFingerprint(findings) {
   const list = Array.isArray(findings) ? findings : [];
   return list.map(f => f.fingerprint || (f.code + ':' + f.text)).sort().join('|') || 'ok';
+}
+function shouldAlertReconFailure(resp) {
+  return !!(resp && resp.ok === false && resp.error
+    && (!resp.transient || Number(resp.failureMs) >= 3 * 60 * 1000));
 }
 
 /**
@@ -2617,6 +2627,7 @@ async function main() {
   // opens match DU1764495. Untracked IB leftovers are reported, not invented.
   let lastIbReconAt = 0;
   let lastIbReconResp = null;
+  let reconFailureSince = 0;
   async function postIbRecon() {
     if (DRY || !ib || !positionsReady) return null;
     const positions = [];
@@ -2669,6 +2680,7 @@ async function main() {
       lastIbReconAt = Date.now();
       lastIbReconResp = resp;
       if (resp && resp.ok) {
+        reconFailureSince = 0;
         const bits = [
           'matched=' + (resp.matched || 0),
           'adjusted=' + (resp.adjusted || 0),
@@ -2690,7 +2702,17 @@ async function main() {
     } catch (e) {
       if (charges.length) restorePendingCharges(charges);
       log('RECONCILE: IB↔AS recon failed', e.message);
-      lastIbReconResp = { ok: false, error: e.message, inSync: false };
+      const now = Date.now();
+      if (!reconFailureSince) reconFailureSince = now;
+      const transient = /^HTTP 5\d\d$/i.test(String(e.message || ''))
+        || /timeout|ECONNRESET|EAI_AGAIN|socket hang up/i.test(String(e.message || ''));
+      lastIbReconResp = {
+        ok: false,
+        error: e.message,
+        inSync: false,
+        transient,
+        failureMs: now - reconFailureSince
+      };
       return lastIbReconResp;
     }
   }
@@ -2708,7 +2730,12 @@ async function main() {
       const ibConId = Number(ibRow.conId) || 0;
       const ibQty = Number(ibRow.qty) || 0;
       for (const [key, row] of Object.entries(state.byKey || {})) {
-        if (!row || row.closed || row.errorTrade || !row.entryFilled) continue;
+        if (!row || !row.entryFilled) continue;
+        const correctiveClosePending = !!(row.errorTrade && (row.closeIds || []).length);
+        if (row.closed && !correctiveClosePending) continue;
+        // A known error-cycle position with a submitted corrective close is
+        // tracked until that close fills; it is not an unknown IB orphan.
+        if (row.errorTrade && !correctiveClosePending) continue;
         const modelTicker = normalizeYahooTicker(row.ticker || key.split('|')[0]);
         const aliasesMatch = setHasYahooAlias(yahooAliases(modelTicker), ibTicker);
         const modelConId = Number(row.contract && row.contract.conId) || 0;
@@ -2722,7 +2749,7 @@ async function main() {
     if (!positionsReady) {
       findings.push({ sev: 'warn', code: 'positions-not-ready', text: 'IB position snapshot not ready — reconcile deferred' });
     }
-    if (resp && resp.ok === false && resp.error) {
+    if (shouldAlertReconFailure(resp)) {
       findings.push({ sev: 'error', code: 'recon-http', text: 'IB↔AS recon failed: ' + resp.error });
     }
     if (resp && resp.ok !== false) {
@@ -3988,5 +4015,6 @@ module.exports = {
   toContract,
   parentEntrySpec,
   scheduledEntryReleaseAllowed,
+  shouldAlertReconFailure,
   riskFindingsFingerprint
 };

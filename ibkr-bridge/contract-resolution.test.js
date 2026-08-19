@@ -3,6 +3,7 @@ const {
   toContract,
   parentEntrySpec,
   scheduledEntryReleaseAllowed,
+  shouldAlertReconFailure,
   riskFindingsFingerprint
 } = require('./bridge');
 
@@ -29,6 +30,15 @@ assert.strictEqual(scheduledEntryReleaseAllowed({
 assert.strictEqual(scheduledEntryReleaseAllowed({
   t: '2026-08-19T05:00:00.000Z', reason: 'rearm-model-entry'
 }), true, 'confirmed corrective/user re-entry bypasses the schedule gate');
+assert.strictEqual(shouldAlertReconFailure({
+  ok: false, error: 'HTTP 502', transient: true, failureMs: 60_000
+}), false, 'brief deploy 502 must not page Telegram');
+assert.strictEqual(shouldAlertReconFailure({
+  ok: false, error: 'HTTP 502', transient: true, failureMs: 180_000
+}), true, 'sustained 502 must still alert');
+assert.strictEqual(shouldAlertReconFailure({
+  ok: false, error: 'HTTP 401', transient: false, failureMs: 0
+}), true, 'non-transient auth failures alert immediately');
 
 const mondi = toContract('MNDI.L');
 assert.strictEqual(mondi.symbol, 'MNDI');
