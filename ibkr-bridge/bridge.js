@@ -3577,29 +3577,40 @@ async function main() {
         } else if (us) {
           if (phase === 'pre' || phase === 'post') {
             ensureMktData(row.ticker, contract);
+            const sourceEntry = entryByKey.get(key) || {};
+            const forceCorrectiveExt = String(sourceEntry.reason || '') === 'rearm-model-entry';
             // Last 2 minutes of US pre: park unfilled LMT-EXT into the opening
             // auction so a gap-up still fills at 09:30 even above the buy entry.
             if (phase === 'pre' && isUsExtStyle(row.entryStyle)
-              && minutesUntilUsRth() <= AUCTION_HOLD_MIN) {
+              && !forceCorrectiveExt && minutesUntilUsRth() <= AUCTION_HOLD_MIN) {
               reason = 'us-pre-handoff-opg';
               log('RECONCILE: US pre handoff to OPG for cash open', key, 'minsToRth=', minutesUntilUsRth());
             } else {
             const q = await fetchEntryQuote(row.ticker, phase, row.side);
-            const fav = premarketFavorable(row.side, row.entry, q.px);
-            if (fav && row.entryStyle !== 'LMT-EXT') {
+            const mark = ibQuoteForTicker(row.ticker);
+            const forcedPx = forceCorrectiveExt && mark > 0
+              ? mark * (row.side === 'sell' ? 0.98 : 1.02)
+              : null;
+            const gatePx = q.px > 0 ? q.px : forcedPx;
+            const fav = premarketFavorable(row.side, row.entry, gatePx);
+            if (forceCorrectiveExt && gatePx > 0 && row.entryStyle !== 'LMT-EXT') {
+              reason = 'us-pre-corrective-reentry';
+              log('RECONCILE: forcing confirmed corrective re-entry in extended hours',
+                key, 'quote=', gatePx, '(' + (q.src || 'portfolio-cap') + ')');
+            } else if (fav && row.entryStyle !== 'LMT-EXT') {
               reason = row.entryStyle === 'MKT-EXT' ? 'us-pre-mkt-to-lmt' : 'us-pre-favorable';
-              log('RECONCILE: US pre/post gate OPEN', key, 'phase=' + phase, 'quote=', q.px, '(' + (q.src || '?') + ') entry=', row.entry, 'side=', row.side, 'was=', row.entryStyle);
+              log('RECONCILE: US pre/post gate OPEN', key, 'phase=' + phase, 'quote=', gatePx, '(' + (q.src || '?') + ') entry=', row.entry, 'side=', row.side, 'was=', row.entryStyle);
             } else if (fav && row.entryStyle === 'LMT-EXT') {
-              const want = extendedFillLimit(row.side, row.entry, q.px, contract);
+              const want = extendedFillLimit(row.side, row.entry, gatePx, contract);
               const have = Number(row.extLmt) || Number(row.entry) || 0;
               if (want > 0 && have > 0 && Math.abs(want - have) > 1e-6) {
                 reason = 'us-pre-reprice';
-                log('RECONCILE: US pre/post reprice', key, 'phase=' + phase, 'quote=', q.px, '(' + (q.src || '?') + ') lmt', have, '→', want);
+                log('RECONCILE: US pre/post reprice', key, 'phase=' + phase, 'quote=', gatePx, '(' + (q.src || '?') + ') lmt', have, '→', want);
               }
-            } else if (q.px > 0 && !fav && isUsExtStyle(row.entryStyle)) {
+            } else if (gatePx > 0 && !fav && isUsExtStyle(row.entryStyle) && !forceCorrectiveExt) {
               // Was chasing extended; quote no longer good → park at next open
               reason = 'us-pre-unfavorable-to-opg';
-              log('RECONCILE: US pre/post gate CLOSED', key, 'quote=', q.px, 'entry=', row.entry, '→ OPG');
+              log('RECONCILE: US pre/post gate CLOSED', key, 'quote=', gatePx, 'entry=', row.entry, '→ OPG');
             }
             }
           } else if (phase === 'rth' && (row.entryStyle === 'OPG' || isUsExtStyle(row.entryStyle))) {
@@ -3623,6 +3634,7 @@ async function main() {
         const auctionNow = reason === 'us-pre-handoff-opg' || reason === 'us-rth-after-opg'
           || reason === 'eu-restore-after-orphan' || reason === 'eu-rth-after-opg'
           || reason === 'us-pre-favorable' || reason === 'us-pre-mkt-to-lmt'
+          || reason === 'us-pre-corrective-reentry'
           || reason === 'us-pre-reprice' || reason === 'us-pre-unfavorable-to-opg'
           || reason === 'asia-rth'
           || reason === 'us-overnight-to-opg';
@@ -3663,6 +3675,7 @@ async function main() {
             sl: src.sl != null ? src.sl : row.stopPx,
             trailSl: src.trailSl != null ? src.trailSl : (src.sl != null ? src.sl : row.stopPx),
             t: new Date().toISOString(),
+            reason: src.reason,
             forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-overnight-to-opg'
               || reason === 'us-pre-unfavorable-to-opg',
             skipChase: reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg'
