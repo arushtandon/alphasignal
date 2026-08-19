@@ -3153,7 +3153,9 @@ async function main() {
       const keyState = new Map(); // key -> 'open' | 'closed'
       for (const e of events) {
         if (!e.key) continue;
-        if (e.type === 'entry') { if (!keyState.has(e.key)) keyState.set(e.key, 'open'); }
+        // Chronological state machine: a confirmed corrective re-entry after an
+        // exit must reopen the same-day key instead of remaining closed forever.
+        if (e.type === 'entry') keyState.set(e.key, 'open');
         else if (e.type === 'exit') keyState.set(e.key, 'closed');
       }
       // Open model lots by normalized Yahoo ticker (not SYM|CCY — that merged
