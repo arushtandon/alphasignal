@@ -2,6 +2,7 @@ const assert = require('assert');
 const {
   toContract,
   parentEntrySpec,
+  correctiveExtExitSpec,
   scheduledEntryReleaseAllowed,
   shouldAlertReconFailure,
   riskFindingsFingerprint
@@ -39,6 +40,11 @@ assert.strictEqual(shouldAlertReconFailure({
 assert.strictEqual(shouldAlertReconFailure({
   ok: false, error: 'HTTP 401', transient: false, failureMs: 0
 }), true, 'non-transient auth failures alert immediately');
+const correctiveExit = correctiveExtExitSpec(toContract('COHR'), 'buy', 32, 309.17);
+assert.strictEqual(correctiveExit.action, 'SELL');
+assert.strictEqual(correctiveExit.orderType, 'LMT');
+assert.strictEqual(correctiveExit.lmtPrice, 309.1);
+assert.strictEqual(correctiveExit.outsideRth, true);
 
 const mondi = toContract('MNDI.L');
 assert.strictEqual(mondi.symbol, 'MNDI');

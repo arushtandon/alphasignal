@@ -591,6 +591,21 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
   return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
 }
 
+function correctiveExtExitSpec(contract, originalSide, qty, quotePx) {
+  const action = String(originalSide || '').toLowerCase() === 'sell' ? 'BUY' : 'SELL';
+  const px = roundPx(quotePx, contract, action === 'SELL' ? 'down' : 'up');
+  if (!(qty > 0) || !(px > 0)) return null;
+  return {
+    action,
+    orderType: 'LMT',
+    totalQuantity: qty,
+    lmtPrice: px,
+    tif: 'DAY',
+    outsideRth: true,
+    transmit: true
+  };
+}
+
 // ── FX sizing ────────────────────────────────────────────────────────────────
 // NOTIONAL is USD. Convert to the contract currency so a ¥2,800 or 450p stock
 // gets a genuine ~$10k position instead of 3 shares.
@@ -705,7 +720,13 @@ function roundPx(x, contract, dir) {
     else stepped = Math.round(n / tick) * tick;
     return +stepped.toFixed(dp);
   }
-  return n >= 1000 ? +n.toFixed(0) : n >= 100 ? +n.toFixed(1) : +n.toFixed(2);
+  const tick = n >= 1000 ? 1 : n >= 100 ? 0.1 : 0.01;
+  const dp = tick >= 1 ? 0 : (String(tick).split('.')[1] || '').length;
+  let stepped;
+  if (dir === 'down') stepped = Math.floor(n / tick + 1e-12) * tick;
+  else if (dir === 'up') stepped = Math.ceil(n / tick - 1e-12) * tick;
+  else stepped = Math.round(n / tick) * tick;
+  return +stepped.toFixed(dp);
 }
 
 /**
@@ -3383,6 +3404,40 @@ async function main() {
         }
       } catch (e) { log('RECONCILE: recover-entry import failed', e.message); }
 
+      // Corrective US exits should not wait for the opening auction once
+      // extended hours are available. Modify the existing held MKT/OPG order
+      // in place to a marketable LMT-EXT, then re-enter only after its fill.
+      for (const [key, row] of Object.entries(state.byKey)) {
+        if (!row || !row.errorTrade || !row.correctiveReentry || !row.ticker) continue;
+        const contract = row.contract || toContract(row.ticker);
+        if (!contract || !contract.usRth || sessionPhase(contract) !== 'pre') continue;
+        const held = posMap.get(posKeyOf(contract));
+        const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+        if (!(posInDir > 0)) continue;
+        const lastExtAt = Date.parse(row.correctiveExtAt || 0);
+        if (Number.isFinite(lastExtAt) && Date.now() - lastExtAt < 60 * 1000) continue;
+        ensureMktData(row.ticker, contract);
+        const exitSide = row.side === 'sell' ? 'buy' : 'sell';
+        const q = await fetchEntryQuote(row.ticker, 'pre', exitSide);
+        const spec = correctiveExtExitSpec(contract, row.side, Math.abs(posInDir), q.px);
+        if (!spec) {
+          log('RECONCILE: corrective pre-market exit waiting for live quote', key);
+          continue;
+        }
+        let exitId = (row.closeIds || [])[row.closeIds.length - 1];
+        if (exitId == null) {
+          exitId = nid();
+          row.closeIds = [...(row.closeIds || []), exitId];
+        }
+        transmitOrder(exitId, contract, baseOrder(spec), 'corrective LMT-EXT ' + key);
+        row.correctiveExitStyle = 'LMT-EXT';
+        row.correctiveExtLmt = spec.lmtPrice;
+        row.correctiveExtAt = new Date().toISOString();
+        row.correctiveExitQty = Math.abs(posInDir);
+        row.updated = row.correctiveExtAt;
+        saveState(state);
+      }
+
       // 0. Re-arm unfilled parents still open on the model.
       //   • HK / JP: chase while model open (missed OPG must not stay dead)
       //   • EU / UK: OPG before open; hold through the auction; then MKT
@@ -4052,6 +4107,7 @@ if (require.main === module) {
 module.exports = {
   toContract,
   parentEntrySpec,
+  correctiveExtExitSpec,
   scheduledEntryReleaseAllowed,
   shouldAlertReconFailure,
   riskFindingsFingerprint
