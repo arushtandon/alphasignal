@@ -7997,7 +7997,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260819-trade-lifecycle-v8.1.1',
+    server_build: '20260819-trade-lifecycle-v8.1.2',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -15208,6 +15208,8 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
 
     const rows = readIbkrFillRows();
     const opens = aggregateIbkrOpenFromFills(rows, { forRecon: true });
+    const errorOpens = aggregateIbkrOpenFromFills(rows)
+      .filter(o => o && Number(o.openQty) > 0 && isIbkrOverlayErrorLot(o));
     const pending = loadIbkrReconPending();
     const matched = [];
     const adjusted = [];
@@ -15308,8 +15310,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       // Error-cycle fills intentionally live on |cursor-err while the bridge's
       // corrective sell waits for the next eligible session. The IB shares and
       // error ledger agree; this is tracked pending work, not an orphan diff.
-      const knownErrorLot = opens.find(o => {
-        if (!o || !(Number(o.openQty) > 0) || !isIbkrOverlayErrorLot(o)) return false;
+      const knownErrorLot = errorOpens.find(o => {
         const oy = normalizeIbkrYahooTicker(o.ticker || o.rawTicker);
         return [...aliases].some(a => ibkrYahooAliases(oy).has(normalizeIbkrYahooTicker(a)));
       });
