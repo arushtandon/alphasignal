@@ -7997,7 +7997,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260819-trade-lifecycle-v8.1.0',
+    server_build: '20260819-trade-lifecycle-v8.1.1',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -15213,6 +15213,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     const adjusted = [];
     const issues = [];
     const untrackedIb = [];
+    const correctivePending = [];
     const newFills = [];
     const avgCorrections = new Map(); // key -> avgEntry
     const touchedPending = new Set();
@@ -15302,6 +15303,26 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       // Open model entry (KHC after false stale-abandon) is fill-lag, not an orphan.
       if ([...aliases].some(a => isPositionAuthorizedByProvenance(a))) {
         if (cid > 0) seenUntrackedCon.add(cid);
+        continue;
+      }
+      // Error-cycle fills intentionally live on |cursor-err while the bridge's
+      // corrective sell waits for the next eligible session. The IB shares and
+      // error ledger agree; this is tracked pending work, not an orphan diff.
+      const knownErrorLot = opens.find(o => {
+        if (!o || !(Number(o.openQty) > 0) || !isIbkrOverlayErrorLot(o)) return false;
+        const oy = normalizeIbkrYahooTicker(o.ticker || o.rawTicker);
+        return [...aliases].some(a => ibkrYahooAliases(oy).has(normalizeIbkrYahooTicker(a)));
+      });
+      if (knownErrorLot) {
+        if (cid > 0) seenUntrackedCon.add(cid);
+        correctivePending.push({
+          ticker: y,
+          qty: ib.qty,
+          avgCost: ib.avgCost,
+          conId: cid || null,
+          key: knownErrorLot.key,
+          note: 'Known Error-cycle position — corrective exit queued at IBKR'
+        });
         continue;
       }
       if (cid > 0) seenUntrackedCon.add(cid);
@@ -15589,10 +15610,12 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       pendingIssues: issues.filter(i => i.severity === 'pending').length,
       errors: issues.filter(i => i.severity === 'error').length,
       untrackedIb: untrackedIb.length,
+      correctivePending: correctivePending.length,
       matchedRows: matched,
       adjustedRows: adjusted,
       issues,
       untrackedIbRows: untrackedIb,
+      correctivePendingRows: correctivePending,
       storedFills: stored,
       avgFixed,
       // Snapshot used by /api/ibkr/trades to overlay live IB qty/avg on the tab
@@ -15613,10 +15636,12 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       pendingIssues: report.pendingIssues,
       errors: report.errors,
       untrackedIb: report.untrackedIb,
+      correctivePending: report.correctivePending,
       matchedRows: matched,
       adjustedRows: adjusted,
       issues,
       untrackedIbRows: untrackedIb,
+      correctivePendingRows: correctivePending,
       storedFills: stored,
       avgFixed,
       at: report.at
@@ -16635,8 +16660,10 @@ app.get('/api/ibkr/trades', async (req, res) => {
         pendingIssues: reconReport.pendingIssues || 0,
         errors: reconReport.errors || 0,
         untrackedIb: reconReport.untrackedIb || 0,
+        correctivePending: reconReport.correctivePending || 0,
         issues: (reconReport.issues || []).slice(0, 20),
         untrackedIbRows: (reconReport.untrackedIbRows || []).slice(0, 20),
+        correctivePendingRows: (reconReport.correctivePendingRows || []).slice(0, 20),
         adjustedRows: (reconReport.adjustedRows || []).slice(0, 20)
       } : null
     });

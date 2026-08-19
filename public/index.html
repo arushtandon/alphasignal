@@ -2094,10 +2094,16 @@ async function renderIbkr(force){
     const errNet = (tt.errorRealizedUsd||0) + (tt.errorUnrealizedUsd||0) - (tt.errorOpenCommissionUsd||0);
     const rc = d.reconcile;
     const rcOk = rc && rc.ok;
-    const rcColor = !rc ? 'var(--m1)' : rcOk ? 'var(--buy)' : ((rc.errors||0) > 0 ? 'var(--sell)' : '#F5C842');
+    const rcCorrective = rc ? (rc.correctivePending||0) : 0;
+    const rcColor = !rc ? 'var(--m1)' : rcOk ? (rcCorrective ? '#F5C842' : 'var(--buy)') : ((rc.errors||0) > 0 ? 'var(--sell)' : '#F5C842');
     const rcLabel = !rc ? 'No snapshot yet'
-      : rcOk ? 'All trades matched'
+      : rcOk ? (rcCorrective ? 'Reconciled — corrective exits pending' : 'All trades matched')
       : ((rc.errors||0) > 0 ? 'Mismatch' : 'Differences');
+    const correctiveLines = rc
+      ? (rc.correctivePendingRows || []).slice(0, 8).map(function (u) {
+          return (u.ticker || '?') + ' × ' + u.qty + ' — corrective exit queued at IBKR';
+        })
+      : [];
     const diffLines = [];
     if (rc && !rcOk) {
       (rc.issues || []).slice(0, 12).forEach(function (i) {
@@ -2114,9 +2120,12 @@ async function renderIbkr(force){
     const rcBanner = !rc
       ? '<div style="font-size:11px;color:var(--m2);font-family:DM Mono,monospace;margin:-6px 0 12px;padding:10px 12px;background:var(--s1);border:1px solid var(--b1);border-radius:8px">IBKR recon — waiting for bridge position snapshot</div>'
       : (rcOk
-        ? '<div style="font-size:11px;color:var(--buy);font-family:DM Mono,monospace;margin:-6px 0 12px;padding:10px 12px;background:var(--s1);border:1px solid var(--b1);border-radius:8px"><strong>All trades matched</strong> — site open lots agree with IB'
+        ? '<div style="font-size:11px;color:' + rcColor + ';font-family:DM Mono,monospace;margin:-6px 0 12px;padding:10px 12px;background:var(--s1);border:1px solid var(--b1);border-radius:8px"><strong>' + rcLabel + '</strong> — all IB positions are accounted for'
           + (rc.matched ? (' (' + rc.matched + ')') : '')
           + (rc.at ? ' · ' + String(rc.at).slice(11, 19) + 'Z' : '')
+          + (correctiveLines.length
+            ? '<ul style="margin:6px 0 0;padding-left:18px;line-height:1.55">' + correctiveLines.map(function (l) { return '<li>' + l + '</li>'; }).join('') + '</ul>'
+            : '')
           + '</div>'
         : '<div style="font-size:11px;color:var(--m2);font-family:DM Mono,monospace;margin:-6px 0 12px;padding:10px 12px;background:var(--s1);border:1px solid var(--b1);border-radius:8px">'
           + '<div style="color:' + rcColor + ';font-weight:600;margin-bottom:6px">IBKR recon — ' + rcLabel + ' (showing differences)</div>'
