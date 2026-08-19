@@ -2381,7 +2381,7 @@ async function main() {
       if (placed) state.byKey[key] = placed;
       return;
     }
-    const row = state.byKey[key];
+    let row = state.byKey[key];
     if (evt.type === 'entry_finalized') {
       // Entries are MOO / MKT (outsideRth) — there is no parent limit to re-price.
       // Keep the finalized open on the row for analytics / slippage vs model only.
@@ -2416,6 +2416,44 @@ async function main() {
       return;
     }
     if (evt.type === 'exit') {
+      // A restart can prune a closed/error state row while IB still physically
+      // holds the shares. Re-adopt that live position so a durable server exit
+      // cannot become a no-op merely because the local row is missing.
+      if (!row && evt.ticker) {
+        const baseContract = toContract(evt.ticker);
+        let held = posMap.get(posKeyOf(baseContract));
+        if (!held) {
+          const wanted = normalizeYahooTicker(evt.ticker);
+          for (const candidate of posMap.values()) {
+            if (!candidate || !candidate.pos || !candidate.contract) continue;
+            const actual = normalizeYahooTicker(yahooFromContract(candidate.contract));
+            if (setHasYahooAlias(yahooAliases(wanted), actual)) {
+              held = candidate;
+              break;
+            }
+          }
+        }
+        if (held && held.pos) {
+          const liveContract = orderContractFromPos(held.contract || baseContract) || {};
+          row = {
+            ticker: evt.ticker,
+            hz: evt.hz || 'short',
+            side: evt.side === 'sell' ? 'sell' : 'buy',
+            contract: { ...baseContract, ...liveContract },
+            qtyTotal: Math.abs(Number(held.pos) || 0),
+            qtySold: 0,
+            qtyRunner: Math.abs(Number(held.pos) || 0),
+            entryFilled: true,
+            closed: false,
+            errorTrade: evt.errorTrade === true,
+            correctiveReentry: evt.correctiveReentry === true,
+            updated: new Date().toISOString()
+          };
+          state.byKey[key] = row;
+          saveState(state);
+          log('exit adopted live IB position for missing state row', key, 'qty=' + row.qtyTotal);
+        }
+      }
       if (row && evt.errorTrade === true) row.errorTrade = true;
       if (row && evt.correctiveReentry === true) row.correctiveReentry = true;
       closeOut(key, row, 'server exit: ' + (evt.status || evt.exitReason || ''));

@@ -490,11 +490,30 @@ function ok(name, cond, detail) {
         'qty=' + qty + ' n=' + live.length);
     })();
 
+    // ── T22 Corrective flatten must finish before board re-entry ─────────────
+    (function t22() {
+      const key = 'CORR.X|short|Wed Aug 19 2026';
+      const base = {
+        key, ticker: 'CORR.X', hz: 'short', side: 'buy',
+        entry: 100, sl: 90, tp1: 112, status: 'open'
+      };
+      S.emitTradeEvent('entry', base);
+      S.emitTradeEvent('exit', {
+        key, ticker: 'CORR.X', hz: 'short', side: 'buy',
+        errorTrade: true, correctiveReentry: true
+      });
+      const blocked = S.emitTradeEvent('entry', base);
+      ok('T22 corrective cycle pending', S.isCorrectiveCyclePending(key));
+      ok('T22 ordinary board re-entry blocked', blocked === null);
+      const rearmed = S.emitTradeEvent('entry', { ...base, reason: 'rearm-model-entry' });
+      ok('T22 confirmed re-entry allowed', !!rearmed && !S.isCorrectiveCyclePending(key));
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T21 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T22 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();

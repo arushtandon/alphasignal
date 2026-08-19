@@ -7223,7 +7223,10 @@ app.get('/api/dashboard/picks', (req, res) => {
     }
     return res.json({ version: DASHBOARD_PICKS_VERSION, dashData: null, dashTs: null, summary: '' });
   }
-  let dashData = filterDashDataBySLCooldown(dashboardPicksCache.dashData);
+  // The daily published board is a point-in-time recommendation set. Intraday
+  // score/cooldown changes drive exits separately; they must not silently erase
+  // recommendations from the board on a GET.
+  let dashData = dashboardPicksCache.dashData;
   const before = countDashPicks(dashData);
   // Purge prior-day opens that were glued onto the board (DHL etc.).
   dashData = stripPriorDayOpenPicksFromDashData(dashData);
@@ -7994,7 +7997,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260819-trade-lifecycle-v8.0.0',
+    server_build: '20260819-trade-lifecycle-v8.1.0',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -11321,25 +11324,10 @@ setTimeout(async function bootDashHistorySync() {
     migrateLegacyTightStops();
     const cached = loadDashboardPicksFile() || dashboardPicksCache;
     if (cached?.dashData) {
-      let dd = filterDashDataBySLCooldown(cached.dashData);
-      const beforeCount = countDashPicks(dd);
-      const tickers = [...new Set(Object.keys(DASH_PANE_MAP).flatMap(k => (dd[k] || []).map(s => s.ticker).filter(Boolean)))];
-      if (tickers.length) {
-        const techMap = await getTechnicalsMapForSymbols(tickers, { maxMs: 45000 });
-        const filtered = filterDashDataByQuantTechMap(dd, techMap);
-        const afterCount = countDashPicks(filtered);
-        // Deploy/restart must not gut the board when Yahoo/FMP flips many names
-        // to Hold under a short time budget (looked like "no recommendations").
-        const collapsed = beforeCount >= 3 && afterCount < Math.min(3, Math.ceil(beforeCount * 0.4));
-        if (collapsed) {
-          console.warn(
-            'Boot: pick revalidation too destructive (', afterCount, 'vs', beforeCount,
-            ') — keeping pre-filter board'
-          );
-        } else {
-          dd = filtered;
-        }
-      }
+      // Never re-score and rewrite a published daily board during deploy/boot.
+      // The 06:00 SGT generation is the recommendation snapshot; exits are
+      // handled by the strategy lifecycle without retroactively changing it.
+      const dd = cached.dashData;
       // CRITICAL: do NOT stamp dashTs=Date.now() here. That made yesterday's
       // tickers look "fresh" after every deploy/restart and tricked operators
       // (and previously the scheduler) into thinking the morning regen had run.
@@ -12603,10 +12591,12 @@ app.post('/api/history/cleanup-entries', async (req, res) => {
 });
 
 
-// POST /api/history/revalidate — refresh FMP/fundamentals analytics on history rows;
-// removes only today's open trades that contradict current regime/signal. Runs on page load.
+// POST /api/history/revalidate — refresh FMP/fundamentals analytics on history rows.
+// Published open recommendations are immutable by default; strategy exit events,
+// not a page-load analytics refresh, own their lifecycle.
 app.post('/api/history/revalidate', express.json(), async (req, res) => {
   const dryRun = req.body?.dryRun === true;
+  const allowRemove = req.body?.allowRemove === true;
   const sinceMs = req.body?.since ? new Date(req.body.since).getTime() : 0;
   const caches = {};
   const removed = [];
@@ -12646,7 +12636,7 @@ app.post('/api/history/revalidate', express.json(), async (req, res) => {
     const isOpen = (trade[hz + 'Status'] || trade.status || 'open') === 'open';
     if (!isOpen) continue;
 
-    if (shouldRemoveOpenHistoryTrade(trade, result.shell, hz)) {
+    if (allowRemove && shouldRemoveOpenHistoryTrade(trade, result.shell, hz)) {
       toRemoveKeys.add(key);
       const sig = result.shell.quantSignal[hz];
       removed.push({
@@ -12988,13 +12978,20 @@ function hasOpenEmittedEntryForKey(key) {
   const wanted = String(key || '');
   if (!wanted || isCursorErrIbkrKey(wanted)) return false;
   let open = false;
+  let correctivePending = false;
   try {
     if (!fs.existsSync(TRADE_EVENTS_FILE)) return false;
     for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
       let e; try { e = JSON.parse(line); } catch (_) { continue; }
       if (!e || String(e.key || '') !== wanted) continue;
-      if (e.type === 'entry') open = true;
-      else if (e.type === 'exit') open = false;
+      if (e.type === 'entry') {
+        if (correctivePending && String(e.reason || '') !== 'rearm-model-entry') continue;
+        if (String(e.reason || '') === 'rearm-model-entry') correctivePending = false;
+        open = true;
+      } else if (e.type === 'exit') {
+        open = false;
+        if (e.correctiveReentry === true) correctivePending = true;
+      }
     }
   } catch (_) { return false; }
   return open;
@@ -13059,6 +13056,7 @@ function ibkrLiveEntrySide(ticker, hz, entryDate) {
   const keyDay = singaporeToDateString(Number.isFinite(entryMs) ? entryMs : Date.now());
   const aliases = ibkrYahooAliases(ticker);
   const open = new Map(); // key -> side
+  const correctivePending = new Set();
   try {
     if (!fs.existsSync(TRADE_EVENTS_FILE)) return null;
     const lines = fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean);
@@ -13070,13 +13068,35 @@ function ibkrLiveEntrySide(ticker, hz, entryDate) {
         if (!aliases.has(normalizeIbkrYahooTicker(t))) continue;
         if (String(ehz) !== String(hz || 'short')) continue;
         if (day && day !== keyDay) continue;
-        if (e.type === 'entry') open.set(e.key, e.side === 'sell' ? 'sell' : 'buy');
-        else if (e.type === 'exit') open.delete(e.key);
+        if (e.type === 'entry') {
+          if (correctivePending.has(e.key) && String(e.reason || '') !== 'rearm-model-entry') continue;
+          if (String(e.reason || '') === 'rearm-model-entry') correctivePending.delete(e.key);
+          open.set(e.key, e.side === 'sell' ? 'sell' : 'buy');
+        } else if (e.type === 'exit') {
+          open.delete(e.key);
+          if (e.correctiveReentry === true) correctivePending.add(e.key);
+        }
       } catch (_) { /* skip */ }
     }
   } catch (_) { return null; }
   if (!open.size) return null;
   return open.values().next().value;
+}
+
+function isCorrectiveCyclePending(key) {
+  const wanted = String(key || '');
+  if (!wanted) return false;
+  let pending = false;
+  try {
+    if (!fs.existsSync(TRADE_EVENTS_FILE)) return false;
+    for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
+      let e; try { e = JSON.parse(line); } catch (_) { continue; }
+      if (!e || String(e.key || '') !== wanted) continue;
+      if (e.type === 'exit' && e.correctiveReentry === true) pending = true;
+      else if (e.type === 'entry' && String(e.reason || '') === 'rearm-model-entry') pending = false;
+    }
+  } catch (_) { return false; }
+  return pending;
 }
 
 function shouldEmitIbkrEntry(trade, hz) {
@@ -13092,6 +13112,11 @@ function shouldEmitIbkrEntry(trade, hz) {
     return false;
   }
   const snap = tradeEventSnapshot(trade, hz);
+  if (isCorrectiveCyclePending(snap.key)) {
+    console.log('IBKR entry skipped (corrective flatten pending):', snap.key);
+    auditLog('ibkr_entry_blocked_corrective_pending', { key: snap.key, ticker: snap.ticker, hz: snap.hz });
+    return false;
+  }
   if (snap.side !== 'buy' && snap.side !== 'sell') return false;
   if (!(snap.entry > 0) || !(snap.sl > 0)) return false;
   const z = hz || trade.hz || 'short';
@@ -13162,6 +13187,11 @@ async function backfillIbkrEntriesFromOpenBoard() {
 function emitTradeEvent(type, payload) {
   if (process.env.IBKR_EVENTS_ENABLED === '0') return null;
   if (type === 'entry') {
+    if (payload && isCorrectiveCyclePending(payload.key)
+      && String(payload.reason || '') !== 'rearm-model-entry') {
+      console.log('IBKR entry skipped (corrective flatten pending):', payload.key);
+      return null;
+    }
     if (!payload || (payload.side !== 'buy' && payload.side !== 'sell')) {
       console.log('IBKR entry skipped (not Buy/Sell):', payload && payload.key);
       return null;
@@ -14153,11 +14183,18 @@ function restoreOpenModelFillsFromCursorErr(positionsOverride) {
     try {
       if (fs.existsSync(TRADE_EVENTS_FILE)) {
         const open = new Set();
+        const correctivePending = new Set();
         for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
           let e; try { e = JSON.parse(line); } catch (_) { continue; }
           if (!e || !e.key || isCursorErrIbkrKey(e.key)) continue;
-          if (e.type === 'entry') open.add(e.key);
-          else if (e.type === 'exit') open.delete(e.key);
+          if (e.type === 'entry') {
+            if (correctivePending.has(e.key) && String(e.reason || '') !== 'rearm-model-entry') continue;
+            if (String(e.reason || '') === 'rearm-model-entry') correctivePending.delete(e.key);
+            open.add(e.key);
+          } else if (e.type === 'exit') {
+            open.delete(e.key);
+            if (e.correctiveReentry === true) correctivePending.add(e.key);
+          }
         }
         for (const k of open) openKeys.add(k);
       }
@@ -17703,6 +17740,7 @@ module.exports = {
   hasOpenEmittedEntryForTicker,
   isPositionAuthorizedByProvenance,
   ibkrLiveEntrySide,
+  isCorrectiveCyclePending,
   aggregateIbkrOpenFromFills,
   quarantineFillForLedger,
   quarantineErrorFillsOffModelKeys,
