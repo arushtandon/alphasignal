@@ -3419,10 +3419,19 @@ async function main() {
         ensureMktData(row.ticker, contract);
         const exitSide = row.side === 'sell' ? 'buy' : 'sell';
         const q = await fetchEntryQuote(row.ticker, 'pre', exitSide);
-        const spec = correctiveExtExitSpec(contract, row.side, Math.abs(posInDir), q.px);
+        const portfolioMark = ibQuoteForTicker(row.ticker);
+        const fallbackPx = portfolioMark > 0
+          ? portfolioMark * (row.side === 'sell' ? 1.005 : 0.995)
+          : null;
+        const quotePx = q.px > 0 ? q.px : fallbackPx;
+        const spec = correctiveExtExitSpec(contract, row.side, Math.abs(posInDir), quotePx);
         if (!spec) {
           log('RECONCILE: corrective pre-market exit waiting for live quote', key);
           continue;
+        }
+        if (!(q.px > 0)) {
+          log('RECONCILE: corrective pre-market exit using portfolio-mark limit',
+            key, 'mark=' + portfolioMark, 'limit=' + spec.lmtPrice);
         }
         let exitId = (row.closeIds || [])[row.closeIds.length - 1];
         if (exitId == null) {
