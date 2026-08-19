@@ -11380,6 +11380,14 @@ function singaporeParts(ms = Date.now()) {
   };
 }
 function singaporeDateKey(ms = Date.now()) { return singaporeParts(ms).key; }
+function picksGeneratedBeforeDailyRelease(picksTs, now = Date.now()) {
+  const ts = Number(picksTs) || 0;
+  if (!(ts > 0)) return true;
+  const generated = singaporeParts(ts);
+  const current = singaporeParts(now);
+  if (generated.key !== current.key) return false;
+  return (generated.hour * 60 + generated.minute) < PICKS_REFRESH_HOUR_SGT * 60;
+}
 
 /** Same shape as Date#toDateString(), but always in Asia/Singapore (UTC+8).
  *  IBKR trade keys and history day matching must not depend on the host TZ
@@ -11423,18 +11431,20 @@ async function scanSchedulerTick(boot = false) {
     const pastScanTime = sgtMinutes >= SCAN_PRE_MINUTES_SGT;
     const newSgtDay = _lastPicksDateKey !== todayKey;
     const overdue = picksAge > PICKS_MAX_AGE_MS;
+    const beforeDailyRelease = picksGeneratedBeforeDailyRelease(picksTs, now);
+    const needsDailyRefresh = newSgtDay || beforeDailyRelease;
 
     // 04:45 SGT (or overdue): refresh the universe pool on a new SGT day so
     // we are not re-ranking yesterday's shortlist into the same top-5 forever.
-    // Runs BEFORE the 05:00 picks regen so the board is built from fresh candidates.
-    if (pastScanTime && newSgtDay && !shortlistStale && !universeScanState.running) {
+    // Runs BEFORE the 06:00 picks regen so the board is built from fresh candidates.
+    if (pastScanTime && needsDailyRefresh && !shortlistStale && !universeScanState.running) {
       console.log('Scheduler: new SGT morning (04:45+) → universe rescan for fresh candidates');
       runUniverseScan({ reason: 'morning' });
     }
 
     // Morning regeneration — overdue is a retry condition, not permission to
     // publish a new recommendation before the configured SGT release time.
-    if (pastRefreshHour && (newSgtDay || overdue)) {
+    if (pastRefreshHour && (needsDailyRefresh || overdue)) {
       console.log(
         'Scheduler: regenerating picks',
         JSON.stringify({
@@ -11442,14 +11452,15 @@ async function scanSchedulerTick(boot = false) {
           sgtHour: hour,
           lastKey: _lastPicksDateKey,
           picksAgeH: Number.isFinite(picksAge) ? +(picksAge / 3600000).toFixed(1) : null,
+          beforeDailyRelease,
           overdue,
           boot,
           rotationH: PICKS_ROTATION_HOURS
         })
       );
       const r = await generateServerPicksFromShortlist({
-        force: newSgtDay || overdue,
-        unlockBoard: newSgtDay || overdue
+        force: needsDailyRefresh || overdue,
+        unlockBoard: needsDailyRefresh || overdue
       }).catch(e => ({ ok: false, error: e.message }));
       if (r && r.ok) {
         _lastPicksDateKey = todayKey;
@@ -14589,11 +14600,14 @@ app.post('/api/ibkr/repair-fills', express.json({ limit: '32kb' }), (req, res) =
 app.post('/api/ibkr/correct-off-schedule-cycle', express.json({ limit: '16kb' }), (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   const key = String((req.body && req.body.key) || '').trim();
+  const cancelUnfilled = req.body && req.body.cancelUnfilled === true;
+  const reenterAfterFill = !(req.body && req.body.reenterAfterFill === false);
   if (!key || isCursorErrIbkrKey(key)) return res.status(400).json({ error: 'valid model key required' });
   const fills = readIbkrFillRows().filter(r => r && String(r.key || '') === key);
   const entryQty = fills.filter(r => r.role === 'entry').reduce((s, r) => s + (Number(r.qty) || 0), 0);
   const exitQty = fills.filter(r => r.role !== 'entry').reduce((s, r) => s + (Number(r.qty) || 0), 0);
-  if (!(entryQty > exitQty)) {
+  const openQty = Math.max(0, entryQty - exitQty);
+  if (!(openQty > 0) && !cancelUnfilled) {
     return res.status(409).json({ error: 'model key has no open filled quantity', entryQty, exitQty });
   }
   const [ticker, hz] = key.split('|');
@@ -14605,20 +14619,23 @@ app.post('/api/ibkr/correct-off-schedule-cycle', express.json({ limit: '16kb' })
     hz: hz || sample.hz || 'short',
     side: sample.side === 'sell' ? 'sell' : 'buy',
     reason: 'off-schedule-recommendation-correction',
-    exitReason: 'Off-schedule recommendation — classify as Error and re-enter after confirmed exit',
+    exitReason: openQty > 0 && reenterAfterFill
+      ? 'Off-schedule recommendation — classify as Error and re-enter after confirmed exit'
+      : 'Off-schedule recommendation — cancel/exit invalid cycle',
     errorTrade: true,
-    correctiveReentry: true
+    correctiveReentry: openQty > 0 && reenterAfterFill
   });
   auditLog('ibkr_off_schedule_cycle_correction', {
-    key, entryQty, exitQty, openQty: entryQty - exitQty, moved, seq: evt && evt.seq
+    key, entryQty, exitQty, openQty, moved, cancelUnfilled,
+    reenterAfterFill: openQty > 0 && reenterAfterFill, seq: evt && evt.seq
   });
   res.json({
     ok: !!evt,
     key,
-    openQty: entryQty - exitQty,
+    openQty,
     movedToError: moved,
     exitEventSeq: evt && evt.seq,
-    reentry: 'after-confirmed-flatten'
+    reentry: openQty > 0 && reenterAfterFill ? 'after-confirmed-flatten' : 'disabled'
   });
 });
 
