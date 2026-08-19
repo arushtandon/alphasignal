@@ -554,6 +554,13 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
       // Premarket / post: only lift if quote is at or better than recommendation.
       // Must be LMT — IB SMART ignores outsideRth on MKT (2109 / 399) and holds
       // until 09:30, which is NOT a pre-market fill.
+      if (opts.forceExt && quotePx > 0) {
+        return {
+          orderType: 'LMT', action, totalQuantity: qty,
+          lmtPrice: roundPx(quotePx, contract, side === 'sell' ? 'down' : 'up'),
+          tif: 'DAY', outsideRth: true, transmit: false, entryStyle: 'LMT-EXT'
+        };
+      }
       if (premarketFavorable(side, entryPx, quotePx)) {
         const lmt = extendedFillLimit(side, entryPx, quotePx, contract);
         return {
@@ -2154,10 +2161,19 @@ async function main() {
       const q = await fetchEntryQuote(evt.ticker, usPhase, evt.side);
       quotePx = q.px;
       quoteSrc = q.src;
+      if (!(quotePx > 0) && usPhase === 'pre' && String(evt.reason || '') === 'rearm-model-entry') {
+        const mark = ibQuoteForTicker(evt.ticker);
+        if (mark > 0) {
+          quotePx = mark * (evt.side === 'sell' ? 0.98 : 1.02);
+          quoteSrc = 'portfolio-cap';
+        }
+      }
     }
     const parentSpec = parentEntrySpec(contract, openAction, split.total, {
       side: evt.side, entryPx: evt.entry, quotePx,
-      forceOpg: !!evt.forceOpg, skipChase: !!evt.skipChase
+      forceOpg: !!evt.forceOpg,
+      forceExt: String(evt.reason || '') === 'rearm-model-entry',
+      skipChase: !!evt.skipChase
     });
     if (parentSpec.defer) {
       log('defer entry', evt.ticker, parentSpec.entryStyle, 'phase=', sessionPhase(contract));
@@ -3421,7 +3437,7 @@ async function main() {
         const q = await fetchEntryQuote(row.ticker, 'pre', exitSide);
         const portfolioMark = ibQuoteForTicker(row.ticker);
         const fallbackPx = portfolioMark > 0
-          ? portfolioMark * (row.side === 'sell' ? 1.005 : 0.995)
+          ? portfolioMark * (row.side === 'sell' ? 1.02 : 0.98)
           : null;
         const quotePx = q.px > 0 ? q.px : fallbackPx;
         const spec = correctiveExtExitSpec(contract, row.side, Math.abs(posInDir), quotePx);

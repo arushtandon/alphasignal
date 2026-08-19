@@ -45,6 +45,12 @@ assert.strictEqual(correctiveExit.action, 'SELL');
 assert.strictEqual(correctiveExit.orderType, 'LMT');
 assert.strictEqual(correctiveExit.lmtPrice, 309.1);
 assert.strictEqual(correctiveExit.outsideRth, true);
+const correctiveReentry = parentEntrySpec(toContract('COHR'), 'BUY', 32, {
+  side: 'buy', entryPx: 301, quotePx: 307.02, phaseOverride: 'pre', forceExt: true
+});
+assert.strictEqual(correctiveReentry.orderType, 'LMT');
+assert.strictEqual(correctiveReentry.lmtPrice, 307.1);
+assert.strictEqual(correctiveReentry.outsideRth, true);
 
 const mondi = toContract('MNDI.L');
 assert.strictEqual(mondi.symbol, 'MNDI');
