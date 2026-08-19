@@ -116,6 +116,19 @@ function loadErrorTradeTickers() {
   return out;
 }
 const ERROR_TRADE_TICKERS = loadErrorTradeTickers();
+const ENTRY_RELEASE_HOUR_SGT = Math.max(
+  0,
+  Math.min(23, parseInt(process.env.PICKS_REFRESH_HOUR_SGT || '6', 10) || 6)
+);
+function scheduledEntryReleaseAllowed(evt) {
+  if (!evt) return false;
+  if (evt.userReentry === true || evt.correctiveReentry === true
+    || String(evt.reason || '') === 'rearm-model-entry') return true;
+  const ts = Date.parse(evt.entryDate || evt.t || 0);
+  if (!Number.isFinite(ts)) return false;
+  const sgt = new Date(ts + 8 * 60 * 60 * 1000);
+  return sgt.getUTCHours() >= ENTRY_RELEASE_HOUR_SGT;
+}
 function isForceErrorTicker(ticker) {
   const y = normalizeYahooTicker(ticker);
   if (!y) return false;
@@ -1085,6 +1098,26 @@ async function main() {
           }
           state.pendingReports.push(report);
           saveState(state);
+          if (role === 'flatten' && row.correctiveReentry) {
+            row.correctiveExitFilled = (Number(row.correctiveExitFilled) || 0) + (Number(exec.shares) || 0);
+            const expected = Number(row.correctiveExitQty) || Number(row.qtyTotal) || 0;
+            if (!row.correctiveReentryTriggered && row.correctiveExitFilled >= expected) {
+              row.correctiveReentryTriggered = true;
+              saveState(state);
+              const reports = state.pendingReports.filter(r => r && r.key === key);
+              postJson('/api/ibkr/report', { reports }).then(() => {
+                state.pendingReports = state.pendingReports.filter(r => !reports.includes(r));
+                saveState(state);
+                return postJson('/api/ibkr/rearm', { key, force: true });
+              }).then(r => {
+                log('corrective re-entry emitted after confirmed flatten', key, JSON.stringify(r));
+              }).catch(e => {
+                row.correctiveReentryTriggered = false;
+                saveState(state);
+                log('corrective re-entry failed — retained for retry', key, e.message);
+              });
+            }
+          }
           if (Number(exec.price) !== px) {
             log('exec captured', role, key, exec.shares + '@' + px,
               '(IB exec.price=' + exec.price + ' avgFill=' + (oa.avgFillPrice || 'n/a') + ')');
@@ -2231,10 +2264,15 @@ async function main() {
     if (remaining > 0) {
       const fid = nid();
       row.closeIds = [...(row.closeIds || []), fid];
+      const phase = sessionPhase(row.contract);
+      const openingCorrection = !!(row.correctiveReentry && row.contract.usRth && phase !== 'rth');
+      if (row.correctiveReentry) row.correctiveExitQty = remaining;
       transmitOrder(fid, row.contract, baseOrder({
         orderId: fid,
         action: row.side === 'sell' ? 'BUY' : 'SELL',
-        orderType: 'MKT', totalQuantity: remaining, tif: 'DAY', transmit: true
+        orderType: 'MKT', totalQuantity: remaining,
+        tif: openingCorrection ? 'OPG' : 'DAY',
+        outsideRth: false, transmit: true
       }), 'flatten @exit ' + key);
     }
     row.closed = true;
@@ -2274,6 +2312,12 @@ async function main() {
       }
       if (ERROR_TRADE_TICKERS.has(String(evt.ticker || '').toUpperCase())) {
         log('skip entry (error-trade ticker blocklist):', key);
+        return;
+      }
+      if (!scheduledEntryReleaseAllowed(evt)) {
+        log('skip entry (before configured SGT recommendation release):', key,
+          'entryDate=', evt.entryDate || evt.t || 'missing',
+          'releaseHour=', ENTRY_RELEASE_HOUR_SGT);
         return;
       }
       if (!(Number(evt.entry) > 0) || !(Number(evt.trailSl != null ? evt.trailSl : evt.sl) > 0)) {
@@ -2362,6 +2406,8 @@ async function main() {
       return;
     }
     if (evt.type === 'exit') {
+      if (row && evt.errorTrade === true) row.errorTrade = true;
+      if (row && evt.correctiveReentry === true) row.correctiveReentry = true;
       closeOut(key, row, 'server exit: ' + (evt.status || evt.exitReason || ''));
       return;
     }
@@ -3938,4 +3984,9 @@ if (require.main === module) {
   });
 }
 
-module.exports = { toContract, parentEntrySpec, riskFindingsFingerprint };
+module.exports = {
+  toContract,
+  parentEntrySpec,
+  scheduledEntryReleaseAllowed,
+  riskFindingsFingerprint
+};

@@ -14582,6 +14582,47 @@ app.post('/api/ibkr/repair-fills', express.json({ limit: '32kb' }), (req, res) =
 });
 
 /**
+ * Correct an execution caused by an off-schedule recommendation. The existing
+ * cycle is moved to Error immediately; the bridge exits it at the next eligible
+ * session and emits a fresh model entry only after that flatten is confirmed.
+ */
+app.post('/api/ibkr/correct-off-schedule-cycle', express.json({ limit: '16kb' }), (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const key = String((req.body && req.body.key) || '').trim();
+  if (!key || isCursorErrIbkrKey(key)) return res.status(400).json({ error: 'valid model key required' });
+  const fills = readIbkrFillRows().filter(r => r && String(r.key || '') === key);
+  const entryQty = fills.filter(r => r.role === 'entry').reduce((s, r) => s + (Number(r.qty) || 0), 0);
+  const exitQty = fills.filter(r => r.role !== 'entry').reduce((s, r) => s + (Number(r.qty) || 0), 0);
+  if (!(entryQty > exitQty)) {
+    return res.status(409).json({ error: 'model key has no open filled quantity', entryQty, exitQty });
+  }
+  const [ticker, hz] = key.split('|');
+  const sample = fills.find(r => r.role === 'entry') || {};
+  const moved = quarantineKeyFillsToCursorErr(key, 'off-schedule-recommendation');
+  const evt = emitTradeEvent('exit', {
+    key,
+    ticker: ticker || sample.ticker,
+    hz: hz || sample.hz || 'short',
+    side: sample.side === 'sell' ? 'sell' : 'buy',
+    reason: 'off-schedule-recommendation-correction',
+    exitReason: 'Off-schedule recommendation — classify as Error and re-enter after confirmed exit',
+    errorTrade: true,
+    correctiveReentry: true
+  });
+  auditLog('ibkr_off_schedule_cycle_correction', {
+    key, entryQty, exitQty, openQty: entryQty - exitQty, moved, seq: evt && evt.seq
+  });
+  res.json({
+    ok: !!evt,
+    key,
+    openQty: entryQty - exitQty,
+    movedToError: moved,
+    exitEventSeq: evt && evt.seq,
+    reentry: 'after-confirmed-flatten'
+  });
+});
+
+/**
  * On-demand model re-arm after orphan/error close.
  * Body: { key: 'TICKER|hz|Day …', force?: true }
  * Alias: POST /api/ibkr/rearm-entry still accepted (maps ticker → today's long key).

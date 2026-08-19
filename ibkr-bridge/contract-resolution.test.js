@@ -1,5 +1,10 @@
 const assert = require('assert');
-const { toContract, parentEntrySpec, riskFindingsFingerprint } = require('./bridge');
+const {
+  toContract,
+  parentEntrySpec,
+  scheduledEntryReleaseAllowed,
+  riskFindingsFingerprint
+} = require('./bridge');
 
 const bae = toContract('BA.L');
 assert.strictEqual(bae.symbol, 'BA.');
@@ -14,6 +19,16 @@ assert.strictEqual(baePre.orderType, 'LMT');
 assert.strictEqual(baePre.tif, 'DAY');
 assert.strictEqual(baePre.lmtPrice, 2230);
 assert.strictEqual(baePre.entryStyle, 'LMT-OPEN');
+
+assert.strictEqual(scheduledEntryReleaseAllowed({
+  t: '2026-08-18T16:52:14.688Z'
+}), false, '00:52 SGT recommendation must be blocked');
+assert.strictEqual(scheduledEntryReleaseAllowed({
+  t: '2026-08-18T22:00:14.688Z'
+}), true, '06:00 SGT recommendation must be allowed');
+assert.strictEqual(scheduledEntryReleaseAllowed({
+  t: '2026-08-19T05:00:00.000Z', reason: 'rearm-model-entry'
+}), true, 'confirmed corrective/user re-entry bypasses the schedule gate');
 
 const mondi = toContract('MNDI.L');
 assert.strictEqual(mondi.symbol, 'MNDI');
