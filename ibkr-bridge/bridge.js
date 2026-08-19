@@ -3433,10 +3433,21 @@ async function main() {
           log('RECONCILE: corrective pre-market exit using portfolio-mark limit',
             key, 'mark=' + portfolioMark, 'limit=' + spec.lmtPrice);
         }
-        let exitId = (row.closeIds || [])[row.closeIds.length - 1];
+        let exitId = row.correctiveExtOrderId;
         if (exitId == null) {
+          const priorExitId = (row.closeIds || [])[row.closeIds.length - 1];
+          if (priorExitId != null) {
+            const cancelled = waitCancel(priorExitId, 5000);
+            cancelOrder(priorExitId, 'replace corrective OPG with LMT-EXT ' + key);
+            const cancelStatus = await cancelled;
+            if (cancelStatus === 'timeout') {
+              log('RECONCILE: corrective OPG cancel not confirmed; deferring replacement', key, priorExitId);
+              continue;
+            }
+          }
           exitId = nid();
           row.closeIds = [...(row.closeIds || []), exitId];
+          row.correctiveExtOrderId = exitId;
         }
         transmitOrder(exitId, contract, baseOrder(spec), 'corrective LMT-EXT ' + key);
         row.correctiveExitStyle = 'LMT-EXT';
