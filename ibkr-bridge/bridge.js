@@ -2163,10 +2163,13 @@ async function main() {
       quoteSrc = q.src;
       if (!(quotePx > 0) && usPhase === 'pre' && String(evt.reason || '') === 'rearm-model-entry') {
         const mark = ibQuoteForTicker(evt.ticker);
-        if (mark > 0) {
-          quotePx = mark * (evt.side === 'sell' ? 0.98 : 1.02);
-          quoteSrc = 'portfolio-cap';
-        }
+        const entryCap = Number(evt.entry) || 0;
+        quotePx = mark > 0
+          ? (evt.side === 'sell'
+            ? Math.max(entryCap, mark * 0.98)
+            : Math.min(entryCap, mark * 1.02))
+          : entryCap;
+        if (quotePx > 0) quoteSrc = mark > 0 ? 'portfolio-cap' : 'recommendation-cap';
       }
     }
     const parentSpec = parentEntrySpec(contract, openAction, split.total, {
@@ -3590,8 +3593,13 @@ async function main() {
             } else {
             const q = await fetchEntryQuote(row.ticker, phase, row.side);
             const mark = ibQuoteForTicker(row.ticker);
-            const forcedPx = forceCorrectiveExt && mark > 0
-              ? mark * (row.side === 'sell' ? 0.98 : 1.02)
+            const entryCap = Number(row.entry) || 0;
+            const forcedPx = forceCorrectiveExt
+              ? (mark > 0
+                ? (row.side === 'sell'
+                  ? Math.max(entryCap, mark * 0.98)
+                  : Math.min(entryCap, mark * 1.02))
+                : entryCap)
               : null;
             const gatePx = q.px > 0 ? q.px : forcedPx;
             const fav = premarketFavorable(row.side, row.entry, gatePx);
