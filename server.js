@@ -6595,10 +6595,16 @@ const PICKS_ROTATION_HOURS = Math.max(0, parseInt(process.env.PICKS_ROTATION_HOU
 function priorBoardCooldownSet(opts = {}) {
   const allowRepeat = opts.allowRepeat === true || PICKS_ROTATION_HOURS <= 0;
   if (allowRepeat) return new Set();
-  const prev = dashboardPicksCache && Array.isArray(dashboardPicksCache.priorPickTickers)
+  const prev = opts.cooldownFromCurrent === true
+    ? [...collectDashTickers(dashboardPicksCache && dashboardPicksCache.dashData)]
+    : (dashboardPicksCache && Array.isArray(dashboardPicksCache.priorPickTickers)
     ? dashboardPicksCache.priorPickTickers
-    : [...collectDashTickers(dashboardPicksCache && dashboardPicksCache.dashData)];
-  const prevTs = Number(dashboardPicksCache && (dashboardPicksCache.priorPickTs || dashboardPicksCache.dashTs)) || 0;
+    : [...collectDashTickers(dashboardPicksCache && dashboardPicksCache.dashData)]);
+  const prevTs = Number(dashboardPicksCache && (
+    opts.cooldownFromCurrent === true
+      ? dashboardPicksCache.dashTs
+      : (dashboardPicksCache.priorPickTs || dashboardPicksCache.dashTs)
+  )) || 0;
   if (!prev.length || !prevTs) return new Set();
   if (Date.now() - prevTs > PICKS_ROTATION_HOURS * 3600000) return new Set();
   return new Set(prev.map(t => String(t).toUpperCase()));
@@ -7780,7 +7786,7 @@ async function generateServerPicksFromShortlist(opts = {}) {
     }
 
     const sparseCollapse = cleanPrevCount >= 3 && newCount < Math.min(3, Math.ceil(cleanPrevCount * 0.4));
-    if ((newCount === 0 && cleanPrevCount > 0) || sparseCollapse) {
+    if (!opts.replaceInvalidBoard && ((newCount === 0 && cleanPrevCount > 0) || sparseCollapse)) {
       console.warn(
         'Server picks regen too thin (', newCount, 'vs prior', cleanPrevCount,
         ') — keeping previous board (prior-day opens stripped)'
@@ -11460,7 +11466,9 @@ async function scanSchedulerTick(boot = false) {
       );
       const r = await generateServerPicksFromShortlist({
         force: needsDailyRefresh || overdue,
-        unlockBoard: needsDailyRefresh || overdue
+        unlockBoard: needsDailyRefresh || overdue,
+        cooldownFromCurrent: beforeDailyRelease,
+        replaceInvalidBoard: beforeDailyRelease
       }).catch(e => ({ ok: false, error: e.message }));
       if (r && r.ok) {
         _lastPicksDateKey = todayKey;
@@ -14612,6 +14620,19 @@ app.post('/api/ibkr/correct-off-schedule-cycle', express.json({ limit: '16kb' })
   }
   const [ticker, hz] = key.split('|');
   const sample = fills.find(r => r.role === 'entry') || {};
+  let historyRemoved = 0;
+  if (!reenterAfterFill) {
+    const keyDay = String(key.split('|')[2] || '');
+    const beforeHistory = tradeHistory.length;
+    tradeHistory = tradeHistory.filter(h => !(
+      h
+      && String(h.ticker || '').toUpperCase() === String(ticker || '').toUpperCase()
+      && String(h.hz || 'short') === String(hz || 'short')
+      && historyTradeEntryDay(h) === keyDay
+    ));
+    historyRemoved = beforeHistory - tradeHistory.length;
+    if (historyRemoved) saveHistoryFile(tradeHistory);
+  }
   const moved = quarantineKeyFillsToCursorErr(key, 'off-schedule-recommendation');
   const evt = emitTradeEvent('exit', {
     key,
@@ -14627,13 +14648,15 @@ app.post('/api/ibkr/correct-off-schedule-cycle', express.json({ limit: '16kb' })
   });
   auditLog('ibkr_off_schedule_cycle_correction', {
     key, entryQty, exitQty, openQty, moved, cancelUnfilled,
-    reenterAfterFill: openQty > 0 && reenterAfterFill, seq: evt && evt.seq
+    reenterAfterFill: openQty > 0 && reenterAfterFill,
+    historyRemoved, seq: evt && evt.seq
   });
   res.json({
     ok: !!evt,
     key,
     openQty,
     movedToError: moved,
+    historyRemoved,
     exitEventSeq: evt && evt.seq,
     reentry: openQty > 0 && reenterAfterFill ? 'after-confirmed-flatten' : 'disabled'
   });
