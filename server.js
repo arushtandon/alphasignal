@@ -11221,6 +11221,11 @@ function purgeOpenCooldownBuysFromHistory() {
  *  • entered today (SGT) — grace for OPG / not-yet-filled board picks.
  */
 function pruneStaleOpenHistoryRows() {
+  // Model lifecycle is authoritative. Absence from today's rotating board or
+  // from an IB snapshot is not an exit signal: an execution/reconciliation
+  // fault can temporarily make both false and must not liquidate a valid thesis.
+  // Genuine exits are settled by the strategy's TP/SL/trailing/signal logic.
+  if (process.env.IBKR_ALLOW_STALE_MODEL_EXIT !== '1') return 0;
   const OPEN_ST = new Set(['open', 'tp1_open', 'pending', '']);
   const todayLong = singaporeToDateString();
 
@@ -11354,15 +11359,15 @@ setTimeout(async function bootDashHistorySync() {
 // ── Pick / universe scan scheduler ───────────────────────────────────────────
 // Cadence (Asia/Singapore — user local morning):
 //   • 04:45 SGT — universe rescan kicks off (fresh candidates for the day).
-//   • ≥05:00 SGT — regenerate picks so Japan names (Tokyo opens 08:00 SGT) are
+//   • ≥06:00 SGT — regenerate picks at the configured daily recommendation time.
 //     on the board and at IBKR well before the open.
-//   • Also force-regen if picks are >20h old (catches missed ticks / failed runs).
+//   • An overdue refresh may retry only after that daily time, never overnight.
 //   • SHORTLIST — rebuild when older than UNIVERSE_SHORTLIST_TTL (20h).
 // Singapore is always UTC+8 (no DST).
 // NOTE: this only fires while the server process is awake. On Render free tier
 // the service spins down without inbound traffic — the ibkr-bridge polling
 // every 15s doubles as the keep-alive, so keep the bridge running overnight.
-const PICKS_REFRESH_HOUR_SGT = Math.max(0, Math.min(23, parseInt(process.env.PICKS_REFRESH_HOUR_SGT || '5', 10) || 5));
+const PICKS_REFRESH_HOUR_SGT = Math.max(0, Math.min(23, parseInt(process.env.PICKS_REFRESH_HOUR_SGT || '6', 10) || 6));
 const SCAN_PRE_MINUTES_SGT = 4 * 60 + 45; // 04:45 SGT universe rescan
 const PICKS_MAX_AGE_MS = Math.max(6, parseInt(process.env.PICKS_MAX_AGE_HOURS || '20', 10) || 20) * 60 * 60 * 1000;
 const SGT_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -11427,8 +11432,9 @@ async function scanSchedulerTick(boot = false) {
       runUniverseScan({ reason: 'morning' });
     }
 
-    // Morning (or overdue) picks regeneration — only mark the day done on SUCCESS.
-    if ((pastRefreshHour && newSgtDay) || overdue) {
+    // Morning regeneration — overdue is a retry condition, not permission to
+    // publish a new recommendation before the configured SGT release time.
+    if (pastRefreshHour && (newSgtDay || overdue)) {
       console.log(
         'Scheduler: regenerating picks',
         JSON.stringify({
@@ -12959,6 +12965,22 @@ function hasOpenEmittedEntryForTicker(ticker) {
   } catch (_) { return false; }
 }
 
+function hasOpenEmittedEntryForKey(key) {
+  const wanted = String(key || '');
+  if (!wanted || isCursorErrIbkrKey(wanted)) return false;
+  let open = false;
+  try {
+    if (!fs.existsSync(TRADE_EVENTS_FILE)) return false;
+    for (const line of fs.readFileSync(TRADE_EVENTS_FILE, 'utf8').trim().split('\n').filter(Boolean)) {
+      let e; try { e = JSON.parse(line); } catch (_) { continue; }
+      if (!e || String(e.key || '') !== wanted) continue;
+      if (e.type === 'entry') open = true;
+      else if (e.type === 'exit') open = false;
+    }
+  } catch (_) { return false; }
+  return open;
+}
+
 function isPositionAuthorizedByProvenance(ticker, hz, entryDate) {
   if (hz != null) {
     if (ibkrLiveEntrySide(ticker, hz, entryDate)) return true;
@@ -13815,7 +13837,7 @@ function reArmModelEntry(key, opts) {
       x && String(x.ticker || '').toUpperCase() === ticker
       && String(x.hz || 'short') === hz
       && ['buy', 'sell'].includes(String(x[hz + 'Action'] || x.action || '').toLowerCase())
-      && ['open', 'tp1_open', ''].includes(String(x[hz + 'Status'] || x.status || 'open').toLowerCase())
+      && (force || ['open', 'tp1_open', ''].includes(String(x[hz + 'Status'] || x.status || 'open').toLowerCase()))
     );
     if (!h) {
       console.warn('reArmModelEntry: no open Buy/Sell in history', liveKey);
@@ -13824,6 +13846,12 @@ function reArmModelEntry(key, opts) {
     h.hz = hz;
     h[hz + 'Status'] = 'open';
     h.status = 'open';
+    delete h[hz + 'ExitReason'];
+    delete h[hz + 'ExitPrice'];
+    delete h[hz + 'ExitTs'];
+    delete h[hz + 'SettledTs'];
+    delete h[hz + 'PnlDollar'];
+    delete h[hz + 'PnlPct'];
     h.entryDate = new Date().toISOString();
     assertRiskStateReady('reArmModelEntry');
     let gateOk = true;
@@ -14294,7 +14322,11 @@ app.post('/api/ibkr/report', (req, res) => {
       time: fillTime,
       session: phase,
       sessionLabel: r.sessionLabel || ibkrSessionLabel(phase),
-      errorTrade: r.errorTrade === true || isForceIbkrErrorTicker(r.ticker),
+      // Exact open-event provenance wins over a stale bridge error flag. This
+      // preserves the genuine IB execution/commission on the model key while
+      // force-error tickers and fills without an open recommendation stay Error.
+      errorTrade: isForceIbkrErrorTicker(r.ticker)
+        || (r.errorTrade === true && !hasOpenEmittedEntryForKey(r.key)),
       userReentry: r.userReentry === true || undefined,
       synthetic: r.synthetic === true || undefined,
       recon: r.recon ? String(r.recon) : undefined,
@@ -14503,6 +14535,50 @@ app.post('/api/ibkr/purge', express.json({ limit: '32kb' }), (req, res) => {
     return true;
   }));
   res.json({ ok: true, before: beforeLen, after, removed: beforeLen - after });
+});
+
+/**
+ * Audited, execId-scoped ledger repair. Used only when a known synthetic repair
+ * duplicated a broker execution or a genuine fill was assigned to the wrong key.
+ */
+app.post('/api/ibkr/repair-fills', express.json({ limit: '32kb' }), (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const removeExecIds = new Set(((req.body && req.body.removeExecIds) || []).map(String).filter(Boolean));
+  const moves = new Map(((req.body && req.body.moves) || [])
+    .filter(x => x && x.execId && x.key)
+    .map(x => [String(x.execId), {
+      key: String(x.key),
+      errorTrade: x.errorTrade === true
+    }]));
+  if (!removeExecIds.size && !moves.size) {
+    return res.status(400).json({ error: 'removeExecIds or moves required' });
+  }
+  const hit = { removed: [], moved: [] };
+  const result = mutateFillLedger('execid_scoped_repair', (rows) => rows
+    .filter(r => {
+      if (!removeExecIds.has(String(r && r.execId || ''))) return true;
+      hit.removed.push(String(r.execId));
+      return false;
+    })
+    .map(r => {
+      const move = moves.get(String(r && r.execId || ''));
+      if (!move) return r;
+      hit.moved.push(String(r.execId));
+      return Object.assign({}, r, {
+        key: move.key,
+        errorTrade: move.errorTrade,
+        note: (r.note ? String(r.note) + ' ' : '') + '[audited execId repair]'
+      });
+    }), {
+    mayDropProtected: r => removeExecIds.has(String(r && r.execId || ''))
+  });
+  auditLog('ibkr_execid_scoped_repair', {
+    requestedRemove: [...removeExecIds],
+    requestedMoves: [...moves.keys()],
+    removed: hit.removed,
+    moved: hit.moved
+  });
+  res.json({ ok: true, before: result.before, after: result.after, ...hit });
 });
 
 /**
