@@ -25,8 +25,9 @@
  *                    + LMT TP1   @ TP1  for the partial (half) quantity
  *     TP1 fill     → IB orderStatus on the TP1 child only. Stop resized to the
  *                    runner and raised to breakeven. Server `tp1_partial` is ignored.
- *     tsl_update   → ignored. Live stop stays at the IB child (entry SL, or BE
- *                    after a real TP1 fill). History bar-sim must not ratchet it.
+ *     tsl_update   → after TP1 is done (IB fill or remaining runner), ratchet
+ *                    the live STP. Never loosen. Never apply if TP1 has not
+ *                    actually been banked. TP2 is a History reference only.
  *     exit         → flatten only on a live Buy↔Sell flip or an operational
  *                    close (unauthorized / abandon / IB-flat). Paper `tp1_then_sl`
  *                    / time-limit / simulated SL are ignored.
@@ -76,7 +77,8 @@ const {
   isManualEntryBypass
 } = require('../lib/schedule/entry-release');
 const {
-  isLiveAuthorizedServerExit
+  isLiveAuthorizedServerExit,
+  shouldApplyLiveTslUpdate
 } = require('../lib/ibkr/live-exit-authority');
 
 const DRY = process.env.IBKR_DRY_RUN !== '0';
@@ -2436,6 +2438,40 @@ async function main() {
   }
 
   // ── TP1 fill → resize stop to runner + raise to breakeven ─────────────────
+  function runnerStopPx(row, trail) {
+    const raw = Number(trail != null ? trail : row.stopPx) || 0;
+    const entryPx = Number(row.ibAvgFill || row.entry) || 0;
+    if (!(raw > 0) && !(entryPx > 0)) return 0;
+    const rounded = roundPx(raw || entryPx, row.contract);
+    if (!(entryPx > 0)) return rounded;
+    return row.side === 'sell'
+      ? Math.min(rounded, roundPx(entryPx, row.contract))
+      : Math.max(rounded, roundPx(entryPx, row.contract));
+  }
+
+  /** Remaining shares are the runner: no TP1 child, STP at TSL (BE floor). */
+  function restoreRunnerStop(key, row, qty) {
+    if (!row || !(qty > 0) || !row.contract) return false;
+    const stp = runnerStopPx(row, row.stopPx);
+    if (!(stp > 0)) return false;
+    if (row.tp1Id != null) {
+      cancelOrder(row.tp1Id, 'runner resume — no TP1 ' + key);
+      row.tp1Id = null;
+    }
+    const sid = nid();
+    row.stopId = sid;
+    row.stopPx = stp;
+    row.qtyRunner = qty;
+    row.qtySold = Math.max(0, (Number(row.qtyTotal) || qty) - qty);
+    row.tp1Done = true;
+    transmitOrder(sid, row.contract, baseOrder({
+      orderId: sid,
+      action: row.side === 'sell' ? 'BUY' : 'SELL',
+      orderType: 'STP', auxPrice: stp, totalQuantity: qty, transmit: true
+    }), 'runner TSL restore ' + key);
+    return true;
+  }
+
   function onTp1Filled(key, row) {
     if (row.tp1Done || row.closed) return;
     row.tp1Done = true;
@@ -2631,9 +2667,38 @@ async function main() {
       return;
     }
     if (evt.type === 'tsl_update') {
-      // History trail is display-only. Live stop is the IB child set at entry
-      // (resized to runner/BE only after a real TP1 fill).
-      log('tsl_update ignored (IB stop is the live authority)', key);
+      if (!row || row.closed) { log('tsl_update for unknown/closed key', key); return; }
+      if (!shouldApplyLiveTslUpdate(row)) {
+        log('tsl_update ignored (runner TSL not active yet)', key);
+        return;
+      }
+      const newStop = roundPx(evt.trailSl, row.contract);
+      if (!(newStop > 0)) return;
+      const entryPx = Number(row.ibAvgFill || row.entry) || 0;
+      const floored = entryPx > 0
+        ? (row.side === 'sell'
+          ? Math.min(newStop, roundPx(entryPx, row.contract))
+          : Math.max(newStop, roundPx(entryPx, row.contract)))
+        : newStop;
+      const improves = row.side === 'sell' ? floored < row.stopPx : floored > row.stopPx;
+      if (!improves) return;
+      row.stopPx = floored;
+      const held = row.contract ? posMap.get(posKeyOf(row.contract)) : null;
+      const liveQty = held
+        ? (row.side === 'sell' ? Math.max(0, -held.pos) : Math.max(0, held.pos))
+        : 0;
+      const qty = liveQty > 0 ? liveQty : (Number(row.qtyRunner) || Number(row.qtyTotal) || 0);
+      if (!(qty > 0) || row.stopId == null) {
+        log('tsl_update skipped — no live qty/stop', key);
+        return;
+      }
+      transmitOrder(row.stopId, row.contract, baseOrder({
+        orderId: row.stopId, action: row.side === 'sell' ? 'BUY' : 'SELL',
+        orderType: 'STP', auxPrice: floored, totalQuantity: qty,
+        transmit: true
+      }), 'tsl ratchet ' + key);
+      row.updated = evt.t;
+      saveState(state);
       return;
     }
     if (evt.type === 'tp1_partial') {
@@ -3427,6 +3492,30 @@ async function main() {
         row.staleCancelled = false;
         row.entryFilled = true;
         log('RECONCILE: re-opened', key, '— IB still holds', posInDir, 'shares');
+        saveState(state);
+      }
+
+      // 0a3. Paper TSL flattened the runner on the site, but IB still holds it
+      // (DSY.PA: 207 sold, 206 live, TP1 never filled). Resume runner TSL only —
+      // do not place TP1 again, do not flatten the remainder.
+      for (const [key, row] of Object.entries(state.byKey)) {
+        if (!row || !row.closed || !row.contract) continue;
+        if (row.errorTrade || row.preReleaseCancelled || row.holdCancelledUnfilled
+          || row.staleUnfilledAbandoned) continue;
+        const held = posMap.get(posKeyOf(row.contract));
+        const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+        if (!(posInDir > 0)) continue;
+        const total = Number(row.qtyTotal) || 0;
+        const halfish = total > 0 && posInDir < total
+          && posInDir >= total * 0.4 && posInDir <= total * 0.6;
+        if (!(row.tp1Done || halfish)) continue;
+        row.closed = false;
+        row.entryFilled = true;
+        row.tp1Done = true;
+        row.qtyRunner = posInDir;
+        row.qtySold = Math.max(0, total - posInDir);
+        restoreRunnerStop(key, row, posInDir);
+        log('RECONCILE: resume runner TSL', key, 'qty', posInDir, 'stp', row.stopPx);
         saveState(state);
       }
 

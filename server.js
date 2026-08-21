@@ -6912,6 +6912,26 @@ function historyTradeEntryDay(trade) {
   return Number.isFinite(ms) ? singaporeToDateString(ms) : singaporeToDateString();
 }
 
+/** Open IBKR model qty for a History row (excludes Error / |cursor-err). */
+function ibkrModelOpenQtyForHistory(h, hz) {
+  try {
+    const ticker = String(h && h.ticker || '').toUpperCase();
+    const z = hz || (h && h.hz) || 'short';
+    const day = historyTradeEntryDay(h);
+    if (!ticker || !day) return 0;
+    const liveKey = ticker + '|' + z + '|' + day;
+    let entry = 0, exit = 0;
+    for (const r of readIbkrFillRows()) {
+      if (!r || r.errorTrade) continue;
+      if (String(r.key || '') !== liveKey) continue;
+      const q = Number(r.qty) || 0;
+      if (r.role === 'entry') entry += q;
+      else exit += q;
+    }
+    return Math.max(0, entry - exit);
+  } catch (_) { return 0; }
+}
+
 function isHistoryTradeFromToday(trade) {
   return historyTradeEntryDay(trade) === singaporeToDateString();
 }
@@ -13456,9 +13476,10 @@ async function backfillIbkrEntriesFromOpenBoard() {
 
 function emitTradeEvent(type, payload) {
   if (process.env.IBKR_EVENTS_ENABLED === '0') return null;
-  // Live TP1 / TSL belong to IB child orders. History bar-sim must not emit them.
-  if (type === 'tp1_partial' || type === 'tsl_update') {
-    console.log('IBKR', type, 'not emitted — live TP1/TSL is IB-fill only',
+  // Live TP1 belongs to IB child fills. TSL ratchets may emit after the runner
+  // is live. History bar-sim must never emit tp1_partial.
+  if (type === 'tp1_partial') {
+    console.log('IBKR tp1_partial not emitted — live TP1 is IB-fill only',
       payload && payload.key);
     return null;
   }
@@ -17979,7 +18000,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
       // Never flip on the SAME DAY as entry (enteredToday): a pick and its instant
       // same-price "Signal exit" ($0) is pure churn. Give every trade at least one
       // full session before the flip rule can close it.
-      const flip = (!enteredToday && (st === 'open' || !st || st === 'n/a'))
+      const flip = (!enteredToday && (st === 'open' || st === 'tp1_open' || !st || st === 'n/a'))
         ? liveSignalFlipExit(h.ticker, hz, isSell, techLiveMap) : null;
       if (flip) {
         const pct = ((curr - entry) / entry) * dir;
@@ -18022,12 +18043,20 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         rowChanged = true;
       }
       const pathExit = (bars && entry) ? await simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, curr, true, shareSplit.frac) : null;
+      const ibLiveQty = ibkrModelOpenQtyForHistory(h, hz);
+      // Live IB still holds the runner: paper TSL/time must not settle History
+      // or flatten the remainder. Keep TP1-banked + TSL/TP2 active.
+      if (pathExit && ibLiveQty > 0 && !pathExit.open) {
+        pathExit.open = true;
+        pathExit.status = pathExit.tp1Hit ? 'tp1_open' : 'open';
+      }
 
       // Fixed $10k notional for the $ figure. Sizing by floor(10000/entry) shares
       // collapses to 0 shares for high-priced names (e.g. ¥-denominated stocks),
       // which made the $ PnL show $0 even when the % was non-zero.
       const NOTIONAL = 10000;
       if (pathExit) {
+        const prevTsl = h[hz + 'LiveTrailSL'];
         const prevSettled = !!h[hz + 'SettledTs'];
         // res.ret is already directional (profit>0 for both long & short) and
         // already blends the TP1 partial — use it directly, don't re-apply `dir`.
@@ -18071,10 +18100,24 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
           h[hz + 'SettledTs'] = Date.now();
           auditLog('trade_settled', { ticker: h.ticker, hz, status: pathExit.status, pnl: h[hz + 'PnlDollar'], exit: h[hz + 'ExitPrice'] || null });
         }
+        if (ibLiveQty > 0 && pathExit.open && pathExit.tp1Hit) {
+          if (h[hz + 'SettledTs'] || h[hz + 'ExitTs']) {
+            h[hz + 'SettledTs'] = undefined;
+            h[hz + 'ExitTs'] = undefined;
+            h[hz + 'ExitPrice'] = undefined;
+            auditLog('trade_reopened_runner', { ticker: h.ticker, hz, ibLiveQty });
+          }
+        }
         if (pathExit.stopLoss) h[hz + 'StopLoss'] = pathExit.stopLoss;
         if (pathExit.status === 'sl_hit') setSLCooldown(h.ticker, hz);
-        // History path-sim is display/accounting only. Live IBKR closes on
-        // real TP1/stop fills or a live Buy↔Sell flip — never on daily-bar TP1/TSL.
+        // Live TSL ratchet after TP1 is banked (IB fill or remaining runner).
+        // Never emit tp1_partial from daily-bar prints. Never emit paper exits.
+        try {
+          if (pathExit.tp1Hit && h[hz + 'LiveTrailSL'] != null
+            && h[hz + 'LiveTrailSL'] !== prevTsl) {
+            emitTradeEvent('tsl_update', tradeEventSnapshot(h, hz, { prevTrailSl: prevTsl }));
+          }
+        } catch (_) {}
         rowChanged = true;
       } else if (horizonTimeLimitExceededServer(hz, h.entryDate || h.timestamp)) {
         const pct = ((curr - entry) / entry) * dir;
@@ -18431,6 +18474,7 @@ module.exports = {
   ACCEPTANCE_DEFAULT_TICKERS,
   runBracketAcceptance,
   emitTradeEvent,
+  ibkrModelOpenQtyForHistory,
   isLiveAuthorizedServerExit,
   tradeEventSnapshot,
   writeOpenRowAction,

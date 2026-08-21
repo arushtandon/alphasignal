@@ -4,7 +4,8 @@ const {
   isLiveSignalFlipExit,
   isOperationalIbkrExit,
   isLiveAuthorizedServerExit,
-  isPaperPathSimExit
+  isPaperPathSimExit,
+  shouldApplyLiveTslUpdate
 } = require('../lib/ibkr/live-exit-authority');
 
 assert.strictEqual(isPaperPathSimExit({
@@ -39,8 +40,13 @@ assert.strictEqual(isLiveAuthorizedServerExit({
 assert.strictEqual(isLiveAuthorizedServerExit({
   status: 'time_limit', exitReason: 'Horizon time limit exit'
 }), false);
-assert.strictEqual(isLiveAuthorizedServerExit({
-  status: 'sl_hit', exitReason: 'Stop loss / trailing stop hit'
-}), false);
+assert.strictEqual(shouldApplyLiveTslUpdate({ tp1Done: true, closed: false }), true);
+assert.strictEqual(shouldApplyLiveTslUpdate({ tp1Done: false, closed: false }), false);
+assert.strictEqual(shouldApplyLiveTslUpdate({
+  tp1Done: true, closed: true
+}), false, 'closed lots do not ratchet');
+assert.strictEqual(shouldApplyLiveTslUpdate({
+  closed: false, tp1Done: false, qtyTotal: 413, qtySold: 207, qtyRunner: 206
+}), true, 'remaining runner after partial');
 
 console.log('PASS live-exit-authority');

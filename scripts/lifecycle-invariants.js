@@ -657,7 +657,7 @@ function ok(name, cond, detail) {
       const tp1 = S.emitTradeEvent('tp1_partial', base);
       ok('T29 tp1_partial dropped', tp1 === null);
       const tsl = S.emitTradeEvent('tsl_update', { ...base, trailSl: 10.2 });
-      ok('T29 tsl_update dropped', tsl === null);
+      ok('T29 tsl_update emitted for runner ratchet', !!tsl);
       const flip = S.emitTradeEvent('exit', {
         key, ticker: 'AUTH.X', hz: 'short', side: 'buy',
         reason: 'live-signal-flip', liveSignalFlip: true, status: 'signal_exit'
