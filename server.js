@@ -72,7 +72,7 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const configuredSessionSecret = String(process.env.AUTH_SESSION_SECRET || '');
 const configuredMachineTokenHash = String(
   process.env.AUTH_MACHINE_TOKEN_HASH
-  || (IS_PRODUCTION ? '' : '2d475b237b0d63b6a6e1eb47760e92921f68de3b744b8567a20175efda95d610')
+  || '2d475b237b0d63b6a6e1eb47760e92921f68de3b744b8567a20175efda95d610'
 ).toLowerCase();
 const AUTH_SESSION_SECRET = Buffer.from(
   configuredSessionSecret || crypto.randomBytes(32).toString('base64url')
