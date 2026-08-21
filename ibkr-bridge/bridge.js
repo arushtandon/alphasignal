@@ -43,7 +43,7 @@
  *   IBKR_ACCOUNT         paper account id (optional; IB default if unset)
  *   IBKR_DRY_RUN         1 = log only, no orders (default 1)
  *   IBKR_POLL_MS         default 15000
- *   IBKR_NOTIONAL        default 10000 (USD per trade, FX-converted per market)
+ *   RISK_PER_TRADE_PCT   default 0.003 (0.30% of IBKR NLV before caps)
  *   IBKR_MAX_EVENT_AGE_H default 24 — entry events older than this are skipped
  *                        (prevents replaying stale history on a fresh cursor)
  *   IBKR_ALLOW_NSE       1 = attempt NSE orders (default skip — IB restricts
@@ -61,7 +61,13 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
+const Holidays = require('date-holidays');
 const { telegramConfigured, sendTelegramAlert } = require('./telegram');
+const { calculateRiskSize, DEFAULT_LIMITS: RISK_SIZING_LIMITS } = require('../lib/risk/sizing');
+const { evaluatePortfolioAddition } = require('../lib/risk/portfolio');
+const { BridgeSqliteStore } = require('../lib/storage/bridge-sqlite');
+const { atomicWriteJsonSync } = require('../lib/storage/atomic-json');
 
 const DRY = process.env.IBKR_DRY_RUN !== '0';
 const BASE = String(process.env.ALPHASIGNAL_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
@@ -76,10 +82,10 @@ const CLIENT_ID = (() => {
 })();
 const ACCOUNT = process.env.IBKR_ACCOUNT || '';
 const POLL_MS = Math.max(5000, parseInt(process.env.IBKR_POLL_MS || '15000', 10));
-const NOTIONAL = Math.max(1000, parseInt(process.env.IBKR_NOTIONAL || '10000', 10));
 const MAX_EVENT_AGE_MS = Math.max(1, parseFloat(process.env.IBKR_MAX_EVENT_AGE_H || '24')) * 3600 * 1000;
 const ALLOW_NSE = process.env.IBKR_ALLOW_NSE === '1';
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, 'bridge-state.json');
+const STATE_DB_FILE = process.env.STATE_DB_FILE || path.join(__dirname, 'bridge-state.sqlite');
 /** Full reconcile + risk-alert cadence (default 15 min). */
 const SWEEP_MS = Math.max(
   60 * 1000,
@@ -128,6 +134,20 @@ function scheduledEntryReleaseAllowed(evt) {
   if (!Number.isFinite(ts)) return false;
   const sgt = new Date(ts + 8 * 60 * 60 * 1000);
   return sgt.getUTCHours() >= ENTRY_RELEASE_HOUR_SGT;
+}
+
+function dashboardPaneFor(hz, side) {
+  if (String(side || '').toLowerCase() === 'sell') {
+    return hz === 'medium' ? 'medSell' : hz === 'long' ? 'longSell' : 'shortSell';
+  }
+  return hz === 'medium' ? 'medium' : hz === 'long' ? 'long' : 'short';
+}
+
+function publishedBoardHasPick(dashData, ticker, hz, side) {
+  if (!dashData || !ticker) return false;
+  const pane = dashboardPaneFor(hz, side);
+  const y = normalizeYahooTicker(ticker);
+  return (dashData[pane] || []).some(r => r && setHasYahooAlias(yahooAliases(y), normalizeYahooTicker(r.ticker)));
 }
 function isForceErrorTicker(ticker) {
   const y = normalizeYahooTicker(ticker);
@@ -199,12 +219,34 @@ function log(...a) {
   }
 }
 
+let bridgeStore;
+function getBridgeStore() {
+  if (bridgeStore !== undefined) return bridgeStore;
+  try { bridgeStore = new BridgeSqliteStore(STATE_DB_FILE); }
+  catch (error) {
+    console.error('Bridge SQLite unavailable; atomic JSON fallback active:', error.message);
+    bridgeStore = null;
+  }
+  return bridgeStore;
+}
 function loadState() {
-  try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); }
-  catch (_) { return { since: 0, byKey: {} }; }
+  try {
+    const store = getBridgeStore();
+    const persisted = store && store.loadState();
+    if (persisted) return persisted;
+  } catch (error) { console.error('Bridge SQLite load failed:', error.message); }
+  let legacy;
+  try { legacy = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); }
+  catch (_) { legacy = { since: 0, byKey: {} }; }
+  try { const store = getBridgeStore(); if (store) store.saveState(legacy); } catch (_) {}
+  return legacy;
 }
 function saveState(st) {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(st, null, 2));
+  const payload = JSON.stringify(st);
+  const checksum = crypto.createHash('sha256').update(payload).digest('hex');
+  const store = getBridgeStore();
+  if (store) store.saveState(st, checksum);
+  atomicWriteJsonSync(STATE_FILE, st, 2);
 }
 
 function fetchJson(urlPath) {
@@ -395,6 +437,10 @@ function toContract(ticker) {
   };
 }
 
+function isAuctionEntryStyle(style) {
+  return style === 'OPG' || style === 'LMT-OPEN' || style === 'MKT-OPEN';
+}
+
 function riskFindingsFingerprint(findings) {
   const list = Array.isArray(findings) ? findings : [];
   return list.map(f => f.fingerprint || (f.code + ':' + f.text)).sort().join('|') || 'ok';
@@ -404,52 +450,62 @@ function shouldAlertReconFailure(resp) {
     && (!resp.transient || Number(resp.failureMs) >= 3 * 60 * 1000));
 }
 
-/**
- * Session phase for the listing. Approximate local RTH windows in UTC —
- * used for MOO vs MKT and to stamp fills as Market / Pre / Post.
- * Returns 'pre' | 'rth' | 'post' | 'lunch' | 'closed'.
- */
+const MARKET_CLOCKS = Object.freeze({
+  US: { timeZone: 'America/New_York', country: 'US', open: 570, close: 960, preOpen: 240, postClose: 1200 },
+  JP: { timeZone: 'Asia/Tokyo', country: 'JP', open: 540, close: 900, lunchStart: 690, lunchEnd: 750 },
+  HK: { timeZone: 'Asia/Hong_Kong', country: 'HK', open: 570, close: 960, lunchStart: 720, lunchEnd: 780 },
+  XETRA: { timeZone: 'Europe/Berlin', country: 'DE', open: 540, close: 1050 },
+  EURONEXT: { timeZone: 'Europe/Paris', country: 'FR', open: 540, close: 1050 },
+  LSE: { timeZone: 'Europe/London', country: 'GB', open: 480, close: 990 }
+});
+const holidayCalendars = new Map();
+function localClock(nowMs, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone, weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(new Date(nowMs));
+  const get = type => (parts.find(p => p.type === type) || {}).value;
+  return {
+    minutes: Number(get('hour')) * 60 + Number(get('minute')),
+    weekend: ['Sat', 'Sun'].includes(get('weekday')),
+    date: `${get('year')}-${get('month')}-${get('day')}`
+  };
+}
+function isMarketHoliday(clock, country) {
+  if (!country) return false;
+  try {
+    if (!holidayCalendars.has(country)) holidayCalendars.set(country, new Holidays(country));
+    return Boolean(holidayCalendars.get(country).isHoliday(new Date(`${clock.date}T12:00:00Z`)));
+  } catch (_) { return false; }
+}
+/** DST-, weekend-, and holiday-aware listing session phase. */
 function sessionPhase(contract, nowMs = Date.now()) {
   const d = new Date(nowMs);
   const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
   const dow = d.getUTCDay(); // 0=Sun
-  if (dow === 0 || dow === 6) return 'closed';
   const m = contract.market || (contract.usRth ? 'US' : 'OTHER');
-  // Windows are [open, close) in UTC minutes. Summer EU (CEST=UTC+2) used as
-  // the default European window — winter is 60 min later, still correct for
-  // "are we in cash hours?" decisions within a few minutes of the open.
-  const windows = {
-    // US: pre 04:00–09:30 ET, RTH 09:30–16:00, post 16:00–20:00 ET (UTC-4 DST)
-    US:       { open: 13 * 60 + 30, close: 20 * 60, preOpen: 8 * 60, postClose: 24 * 60 },
-    JP:       { open: 0 * 60,       close: 6 * 60 },                     // 09:00–15:00 JST
-    // HK: 09:30–12:00 & 13:00–16:00 HKT (lunch 12:00–13:00 — IB rejects many orders)
-    HK:       { open: 1 * 60 + 30, close: 8 * 60, lunchStart: 4 * 60, lunchEnd: 5 * 60 },
-    XETRA:    { open: 7 * 60,       close: 15 * 60 + 30 },               // 09:00–17:30 CEST
-    EURONEXT: { open: 7 * 60,       close: 15 * 60 + 30 },
-    LSE:      { open: 7 * 60,       close: 15 * 60 + 30 },               // 08:00–16:30 BST
-    // CME Globex / crypto: nearly 24h Sun–Fri. Treat weekday as RTH; Sat closed;
-    // Sun before ~22:00 UTC still closed (Globex reopen ~6pm ET Sunday).
-    GLOBE:    { open: 0, close: 24 * 60 },
-    CRYPTO:   { open: 0, close: 24 * 60 }
-  };
-  const w = windows[m] || windows.XETRA;
   if (m === 'GLOBE' || m === 'CRYPTO') {
     if (dow === 6) return 'closed';
     if (dow === 0 && utcMin < 22 * 60) return 'closed';
     return 'rth';
   }
+  const w = MARKET_CLOCKS[m] || MARKET_CLOCKS.XETRA;
+  const clock = localClock(nowMs, w.timeZone);
+  if (clock.weekend || isMarketHoliday(clock, w.country)) return 'closed';
+  const localMin = clock.minutes;
   if (m === 'US') {
-    if (utcMin >= w.open && utcMin < w.close) return 'rth';
-    if (utcMin >= (w.preOpen || 0) && utcMin < w.open) return 'pre';
-    if (utcMin >= w.close && utcMin < (w.postClose || 24 * 60)) return 'post';
+    if (localMin >= w.open && localMin < w.close) return 'rth';
+    if (localMin >= w.preOpen && localMin < w.open) return 'pre';
+    if (localMin >= w.close && localMin < w.postClose) return 'post';
     return 'closed';
   }
   if (m === 'HK' && w.lunchStart != null
-    && utcMin >= w.lunchStart && utcMin < w.lunchEnd) return 'lunch';
-  if (utcMin >= w.open && utcMin < w.close) return 'rth';
-  // Before open same calendar day → pre (MOO queues for today's auction)
-  if (utcMin < w.open) return 'pre';
-  return 'closed'; // after close → MOO for tomorrow's open
+    && localMin >= w.lunchStart && localMin < w.lunchEnd) return 'lunch';
+  if (m === 'JP' && w.lunchStart != null
+    && localMin >= w.lunchStart && localMin < w.lunchEnd) return 'lunch';
+  if (localMin >= w.open && localMin < w.close) return 'rth';
+  if (localMin < w.open) return 'pre';
+  return 'closed';
 }
 
 /** Keep OPG live through the opening auction; do not cancel at the bell. */
@@ -457,23 +513,17 @@ const AUCTION_HOLD_MIN = 2;
 
 /** Minutes until US 09:30 ET (DST window in sessionPhase). Negative = already RTH. */
 function minutesUntilUsRth(nowMs = Date.now()) {
-  const d = new Date(nowMs);
-  const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
-  return (13 * 60 + 30) - utcMin;
+  return MARKET_CLOCKS.US.open - localClock(nowMs, MARKET_CLOCKS.US.timeZone).minutes;
 }
 
 /** Minutes since US 09:30 ET (DST window). Negative = still pre. */
 function minutesSinceUsRth(nowMs = Date.now()) {
-  const d = new Date(nowMs);
-  const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
-  return utcMin - (13 * 60 + 30);
+  return localClock(nowMs, MARKET_CLOCKS.US.timeZone).minutes - MARKET_CLOCKS.US.open;
 }
 
 /** Minutes since Xetra / Euronext / LSE cash open (07:00 UTC in summer). */
 function minutesSinceEuRth(nowMs = Date.now()) {
-  const d = new Date(nowMs);
-  const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
-  return utcMin - (7 * 60);
+  return localClock(nowMs, MARKET_CLOCKS.XETRA.timeZone).minutes - MARKET_CLOCKS.XETRA.open;
 }
 
 /** Human label for fill/session stamps on the IBKR tab. */
@@ -614,8 +664,7 @@ function correctiveExtExitSpec(contract, originalSide, qty, quotePx) {
 }
 
 // ── FX sizing ────────────────────────────────────────────────────────────────
-// NOTIONAL is USD. Convert to the contract currency so a ¥2,800 or 450p stock
-// gets a genuine ~$10k position instead of 3 shares.
+// Convert the contract currency to USD for NLV/stop-risk sizing.
 const FX_SYMBOLS = { JPY: 'USDJPY=X', HKD: 'USDHKD=X', INR: 'USDINR=X', EUR: 'EURUSD=X', GBP: 'GBPUSD=X' };
 const _fxCache = { at: 0, rates: {} };
 async function usdToCurrency(ccy) {
@@ -642,52 +691,37 @@ async function usdToCurrency(ccy) {
 }
 
 /** Whole-share / contract / crypto-qty split of the FX-adjusted notional. */
-async function shareSplit(entry, contract, lotOverride) {
+async function shareSplit(entry, contract, lotOverride, riskInput = {}) {
   const e = Number(entry);
   if (!(e > 0)) return { total: 0, sold: 0, runner: 0 };
   const lot = Math.max(Number(lotOverride || contract.lotHint) || 1, contract.secType === 'CRYPTO' ? 1e-8 : 1);
-
-  // Futures: size by contract value (price × multiplier). Paper always takes at
-  // least 1 contract so HG/CL etc. still execute when $10k < 1 contract value.
-  if (contract.secType === 'FUT') {
-    const mult = Math.max(1, Number(contract.multiplier) || 1);
-    const contractUsd = e * mult;
-    let total = Math.floor(NOTIONAL / contractUsd);
-    if (total < 1) {
-      total = 1;
-      log('futures sizing: notional $' + NOTIONAL + ' < 1×' + contract.symbol
-        + ' (~$' + Math.round(contractUsd) + ') — forcing 1 contract');
-    }
-    let sold = Math.floor(total / 2);
-    if (sold < 1 && total >= 2) sold = 1;
-    if (total === 1) sold = 0; // whole position is the runner
-    return { total, sold, runner: total - sold };
+  const localPerUsd = await usdToCurrency(contract.currency);
+  const penceScale = contract.penceQuoted ? 100 : 1;
+  const normalizedEntry = e / penceScale;
+  const normalizedStop = Number(riskInput.stop) / penceScale;
+  const sizing = calculateRiskSize({
+    nlv: riskInput.nlv,
+    entry: normalizedEntry,
+    stop: normalizedStop,
+    fxToUsd: 1 / localPerUsd,
+    multiplier: contract.secType === 'FUT' ? Number(contract.multiplier) || 1 : 1,
+    lot: contract.secType === 'CRYPTO' ? (lot > 0 && lot < 1 ? lot : 0.0001) : lot,
+    allowFractional: contract.secType === 'CRYPTO',
+    secType: contract.secType,
+    advShares: riskInput.advShares,
+    spreadBps: riskInput.spreadBps,
+    drawdownPct: riskInput.drawdownPct,
+    capitalScale: riskInput.capitalScale
+  });
+  if (!sizing.eligible) {
+    log('risk sizing rejected', contract.symbol, sizing.reason,
+      'NLV=' + (Number(riskInput.nlv) || 0), 'entry=' + e, 'stop=' + riskInput.stop);
+    return { total: 0, sold: 0, runner: 0, risk: sizing };
   }
-
-  // Crypto: fractional qty allowed on PAXOS.
-  if (contract.secType === 'CRYPTO') {
-    const raw = NOTIONAL / e;
-    const step = lot > 0 && lot < 1 ? lot : 0.0001;
-    let total = Math.floor(raw / step) * step;
-    total = +total.toFixed(8);
-    if (total < step) {
-      total = step;
-      log('crypto sizing: forcing min lot', step, 'for', contract.symbol);
-    }
-    let sold = Math.floor((total / 2) / step) * step;
-    sold = +sold.toFixed(8);
-    if (sold < step) sold = 0;
-    return { total, sold, runner: +(total - sold).toFixed(8) };
-  }
-
-  let localNotional = NOTIONAL * await usdToCurrency(contract.currency);
-  if (contract.penceQuoted) localNotional *= 100; // LSE quotes in pence
-  let total = Math.floor(localNotional / e);
-  total = Math.floor(total / lot) * lot;
-  if (total < lot) return { total: 0, sold: 0, runner: 0 };
+  const total = sizing.quantity;
   let sold = Math.floor(total / 2 / lot) * lot;
   if (sold < lot) sold = 0; // too small to split — runner carries everything
-  return { total, sold, runner: total - sold };
+  return { total, sold, runner: total - sold, risk: sizing };
 }
 
 function hkTickSize(px) {
@@ -867,7 +901,7 @@ function placeableContract(contract) {
 // ── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
   const state = loadState();
-  log(`Bridge start | AlphaSignal=${BASE} | IB=${HOST}:${PORT} clientId=${CLIENT_ID} | dryRun=${DRY} | notional=$${NOTIONAL}`);
+  log(`Bridge start | AlphaSignal=${BASE} | IB=${HOST}:${PORT} clientId=${CLIENT_ID} | dryRun=${DRY} | risk/trade=${(RISK_SIZING_LIMITS.riskPct * 100).toFixed(2)}% NLV`);
   log(`Reconcile every ${(SWEEP_MS / 60000).toFixed(0)}m | Telegram alerts=${telegramConfigured() ? 'ON' : 'OFF (set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)'}`
     + (telegramConfigured() && EOD_ALERTS ? ' | EOD summary after US post-close' : ''));
   if (!state.alertMeta || typeof state.alertMeta !== 'object') {
@@ -932,6 +966,7 @@ async function main() {
     marginsUsed: null
   };
   const commissionByExec = new Map(); // execId -> { commission, currency, realizedPNL }
+  const postedCommissionExecIds = new Set();
   // Durable charge/dividend events queued for AlphaSignal (ibkr_charges.jsonl).
   if (!Array.isArray(state.pendingCharges)) state.pendingCharges = [];
   const _lastChargeVal = Object.create(null); // tag -> last numeric value
@@ -1121,6 +1156,17 @@ async function main() {
             kind: 'exec', execId: exec.execId, key,
             ticker: row.ticker, hz: row.hz, side: row.side, role,
             orderId, qty: Number(exec.shares), price: px,
+            decisionId: row.decisionId || null,
+            rulesVersion: row.rulesVersion || null,
+            modelEntry: Number(row.entry) || null,
+            arrivalPrice: Number(row.arrivalPrice) || null,
+            quoteSource: row.quoteSource || null,
+            orderType: row.entryStyle || null,
+            orderSubmittedAt: row.orderSubmittedAt || null,
+            implementationShortfallBps: role === 'entry' && Number(row.entry) > 0
+              ? +(((row.side === 'sell' ? Number(row.entry) - px : px - Number(row.entry))
+                / Number(row.entry)) * 10000).toFixed(2)
+              : null,
             currency: row.contract && row.contract.currency || 'USD',
             ccyScale: row.contract && row.contract.penceQuoted ? 100 : 1,
             errorTrade: !!(row.errorTrade || ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())),
@@ -1213,7 +1259,10 @@ async function main() {
     // actually held (orderFills is in-memory only and dies with each restart).
     ib.on(EventName.position, (account, contract, pos) => {
       if (ACCOUNT && account !== ACCOUNT) return;
-      posMap.set(posKeyOf(contract), { pos: Number(pos) || 0, contract: enrichSessionMeta(contract) });
+      const key = posKeyOf(contract);
+      const quantity = Number(pos) || 0;
+      if (!quantity) posMap.delete(key);
+      else posMap.set(key, { pos: quantity, contract: enrichSessionMeta(contract) });
     });
     ib.on(EventName.positionEnd, () => {
       positionsReady = true;
@@ -1413,7 +1462,19 @@ async function main() {
       const pos = Number(position) || 0;
       const px = Number(marketPrice);
       const avgCost = Number(averageCost);
-      if (!contract || !(px > 0) || !pos) return;
+      if (!contract) return;
+      if (!pos) {
+        posMap.delete(posKeyOf(contract));
+        return;
+      }
+      if (!(px > 0)) return;
+      posMap.set(posKeyOf(contract), {
+        pos,
+        contract: enrichSessionMeta(contract),
+        marketPrice: px,
+        marketValue: Number(marketValue),
+        averageCost: avgCost
+      });
       const now = Date.now();
       const aliases = new Set();
       const y = yahooFromContract(contract);
@@ -2119,14 +2180,105 @@ async function main() {
     const isSell = evt.side === 'sell';
     const lot = await resolveLot(contract);
     contract.lotHint = lot;
-    const split = await shareSplit(evt.entry, contract, lot);
-    if (!(split.total > 0)) { log('skip entry — zero size for', evt.ticker, 'entry', evt.entry, 'lot', lot); return null; }
+    const rawStop = evt.trailSl != null ? evt.trailSl : evt.sl;
+    const nlv = Number(accountSnap.netLiquidation || evt.accountNlv);
+    ensureMktData(evt.ticker, contract);
+    const sizingQuote = DRY ? null : await waitIbExtQuote(evt.ticker, 800);
+    const sizingMid = sizingQuote && sizingQuote.bid > 0 && sizingQuote.ask > 0
+      ? (sizingQuote.bid + sizingQuote.ask) / 2 : 0;
+    const liveSpreadBps = sizingMid > 0
+      ? ((sizingQuote.ask - sizingQuote.bid) / sizingMid) * 10000 : null;
+    const split = await shareSplit(evt.entry, contract, lot, {
+      nlv,
+      stop: rawStop,
+      advShares: evt.advShares,
+      spreadBps: Number.isFinite(liveSpreadBps) ? liveSpreadBps : evt.spreadBps,
+      drawdownPct: Number(evt.drawdownPct) || 0,
+      capitalScale: evt.capitalScale
+    });
+    if (!(split.total > 0)) {
+      log('skip entry — zero size for', evt.ticker, 'entry', evt.entry, 'lot', lot);
+      postJson('/api/ibkr/risk-decision', {
+        decisionId: evt.decisionId || null,
+        ticker: evt.ticker,
+        allowed: false,
+        reasons: [split.risk && split.risk.reason || 'zero-size'],
+        sizing: split.risk || null
+      }).catch(error => log('risk-decision report failed', error.message));
+      return null;
+    }
+    const existingPositions = [];
+    for (const held of posMap.values()) {
+      if (!held || !held.pos || !held.contract) continue;
+      const heldContract = enrichSessionMeta(held.contract);
+      const localPerUsd = await usdToCurrency(heldContract.currency);
+      const heldPx = Number(held.marketPrice || held.averageCost) || 0;
+      const heldScale = heldContract.penceQuoted ? 100 : 1;
+      const notionalUsd = Math.abs(Number(held.pos)) * (heldPx / heldScale)
+        * (heldContract.secType === 'FUT' ? Number(heldContract.multiplier) || 1 : 1)
+        / localPerUsd;
+      const heldTicker = yahooFromContract(heldContract);
+      const heldState = Object.values(state.byKey || {}).find(row => row && !row.closed && (
+        normalizeYahooTicker(row.ticker) === normalizeYahooTicker(heldTicker)
+        || (row.contract && Number(row.contract.conId) > 0
+          && Number(row.contract.conId) === Number(heldContract.conId))
+      ));
+      existingPositions.push({
+        ticker: heldTicker,
+        side: Number(held.pos) < 0 ? 'sell' : 'buy',
+        notionalUsd,
+        stopRiskUsd: Number(heldState && heldState.riskSizing && heldState.riskSizing.stopRiskUsd) || 0,
+        sector: heldState && heldState.sector,
+        country: heldState && heldState.country || heldContract.market,
+        currency: heldContract.currency,
+        cluster: heldState && heldState.correlationCluster || heldContract.market
+      });
+    }
+    const dailyNewRiskUsd = Object.values(state.byKey || {}).reduce((sum, row) => {
+      if (!row || !row.riskSizing) return sum;
+      const at = Date.parse(row.admittedAt || 0);
+      return Number.isFinite(at) && singaporeToDateString(at) === singaporeToDateString()
+        ? sum + (Number(row.riskSizing.stopRiskUsd) || 0) : sum;
+    }, 0);
+    const portfolioGate = evaluatePortfolioAddition({
+      nlv,
+      positions: existingPositions,
+      ticker: evt.ticker,
+      side: evt.side,
+      notionalUsd: split.risk.notionalUsd,
+      stopRiskUsd: split.risk.stopRiskUsd,
+      dailyNewRiskUsd,
+      sector: evt.sector,
+      country: evt.country || contract.market,
+      currency: contract.currency,
+      cluster: evt.correlationCluster || evt.sector || contract.market
+    });
+    if (!portfolioGate.allowed) {
+      log('portfolio risk rejected', evt.ticker, portfolioGate.reasons.join(','),
+        'gross=' + ((portfolioGate.projected && portfolioGate.projected.grossPct || 0) * 100).toFixed(2) + '%');
+      postJson('/api/ibkr/risk-decision', {
+        decisionId: evt.decisionId || null,
+        ticker: evt.ticker,
+        allowed: false,
+        reasons: portfolioGate.reasons,
+        sizing: split.risk,
+        projected: portfolioGate.projected
+      }).catch(error => log('risk-decision report failed', error.message));
+      return null;
+    }
+    postJson('/api/ibkr/risk-decision', {
+      decisionId: evt.decisionId || null,
+      ticker: evt.ticker,
+      allowed: true,
+      reasons: [],
+      sizing: split.risk,
+      projected: portfolioGate.projected
+    }).catch(error => log('risk-decision report failed', error.message));
     const openAction = isSell ? 'SELL' : 'BUY';
     const closeAction = isSell ? 'BUY' : 'SELL';
     // Stops: round away from the market so STP is valid on SEHK tick grid.
     // Nudge one extra HK tick — IB rejected 44.65 (error 110) even though it
     // sits on the 0.05 band; child reject leaves parent transmit=false.
-    const rawStop = evt.trailSl != null ? evt.trailSl : evt.sl;
     let stopPx = roundPx(rawStop, contract, isSell ? 'up' : 'down');
     if (contract.market === 'HK' && stopPx > 0) {
       const tick = hkTickSize(stopPx);
@@ -2146,6 +2298,12 @@ async function main() {
         extLmt: null, qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
         contract, tp1Done: false, closed: false, deferred: true,
         contractRejected: true, entryFilled: false,
+        decisionId: evt.decisionId || null, rulesVersion: evt.rulesVersion || null,
+        admittedAt: evt.admittedAt || evt.t || new Date().toISOString(),
+        sector: evt.sector || null, country: evt.country || contract.market,
+        correlationCluster: evt.correlationCluster || evt.sector || contract.market,
+        riskSizing: split.risk,
+        portfolioAdmission: portfolioGate,
         updated: evt.t || new Date().toISOString(), dry: DRY
       };
     }
@@ -2188,7 +2346,13 @@ async function main() {
         entry: evt.entry, stopPx, tp1Px, entryStyle: parentSpec.entryStyle,
         extLmt: null, qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
         contract, tp1Done: false, closed: false, deferred: true,
-        entryFilled: false, updated: evt.t || new Date().toISOString(), dry: DRY
+        entryFilled: false, decisionId: evt.decisionId || null,
+        rulesVersion: evt.rulesVersion || null,
+        admittedAt: evt.admittedAt || evt.t || new Date().toISOString(),
+        sector: evt.sector || null, country: evt.country || contract.market,
+        correlationCluster: evt.correlationCluster || evt.sector || contract.market,
+        riskSizing: split.risk, portfolioAdmission: portfolioGate,
+        updated: evt.t || new Date().toISOString(), dry: DRY
       };
     }
     const { entryStyle, defer, ...parentFields } = parentSpec;
@@ -2233,7 +2397,18 @@ async function main() {
       entry: evt.entry, stopPx, tp1Px, entryStyle,
       extLmt: parent.lmtPrice != null ? Number(parent.lmtPrice) : null,
       qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
-      contract, tp1Done: false, closed: false, updated: evt.t || new Date().toISOString(), dry: DRY
+      contract, tp1Done: false, closed: false,
+      decisionId: evt.decisionId || null,
+      rulesVersion: evt.rulesVersion || null,
+      admittedAt: evt.admittedAt || evt.t || new Date().toISOString(),
+      sector: evt.sector || null, country: evt.country || contract.market,
+      correlationCluster: evt.correlationCluster || evt.sector || contract.market,
+      arrivalPrice: quotePx || Number(evt.entry) || null,
+      quoteSource: quoteSrc || null,
+      orderSubmittedAt: new Date().toISOString(),
+      riskSizing: split.risk,
+      portfolioAdmission: portfolioGate,
+      updated: evt.t || new Date().toISOString(), dry: DRY
     };
   }
 
@@ -2886,12 +3061,21 @@ async function main() {
       if (!row.contract) continue;
       const phase = sessionPhase(row.contract);
       if (phase !== 'rth') continue;
+      const market = row.contract.market;
+      const eu = market === 'XETRA' || market === 'EURONEXT' || market === 'LSE';
+      // Opening-auction working orders are supposed to fill at the bell. Do not
+      // page Telegram until the auction hold has elapsed (NWG.L LMT-OPEN).
+      if (isAuctionEntryStyle(row.entryStyle) && !row.contractRejected) {
+        if (eu && minutesSinceEuRth(now) < AUCTION_HOLD_MIN) continue;
+        if (row.contract.usRth && minutesSinceUsRth(now) < AUCTION_HOLD_MIN) continue;
+      }
+      const rthMins = eu ? minutesSinceEuRth(now)
+        : (row.contract.usRth ? minutesSinceUsRth(now) : null);
       const ageMs = row.updated ? (now - Date.parse(row.updated)) : (row.placedAt ? (now - Date.parse(row.placedAt)) : 0);
       const ageOk = Number.isFinite(ageMs) ? ageMs : 0;
-      // Alert once the working order has had enough RTH time (or re-arm age).
       const rearmTs = row.lastRearmAt ? Date.parse(row.lastRearmAt) : NaN;
       const rearmAge = Number.isFinite(rearmTs) ? (now - rearmTs) : ageOk;
-      const waitMs = Math.max(ageOk, rearmAge || 0);
+      const waitMs = Number.isFinite(rthMins) && rthMins >= 0 ? rthMins * 60000 : Math.max(ageOk, rearmAge || 0);
       if (waitMs < UNFILLED_ALERT_MIN_MS) continue;
       const mins = Math.round(waitMs / 60000);
       findings.push({
@@ -2930,7 +3114,6 @@ async function main() {
     const meta = state.alertMeta || (state.alertMeta = {});
     const hadIssues = list.length > 0;
     const sameFp = meta.lastFp === fp;
-    const withinGap = (now - (Number(meta.lastAt) || 0)) < ALERT_MIN_MS;
 
     // All-clear once when we recover from a prior alert state.
     if (!hadIssues) {
@@ -2952,7 +3135,9 @@ async function main() {
       return;
     }
 
-    if (!force && sameFp && withinGap) return;
+    // Same incident must not re-page every reconcile sweep. Alert once until
+    // the fingerprint changes (fill, cancel, new name) or an all-clear fires.
+    if (!force && sameFp) return;
 
     const errors = list.filter(f => f.sev === 'error');
     const warns = list.filter(f => f.sev !== 'error');
@@ -3292,6 +3477,25 @@ async function main() {
         }
       } catch (e) { log('RECONCILE: history Hold-check failed', e.message); }
 
+      // 0z0. Cancel unfilled parents that were seeded from a pre-6am SGT emit
+      // (NWG.L 21 Aug: poll correctly skipped, then seed placed LMT-OPEN anyway).
+      for (const [key, row] of Object.entries(state.byKey || {})) {
+        if (!row || row.closed || row.entryFilled) continue;
+        if (row.userReentry || row.correctiveReentry) continue;
+        const src = entryByKey.get(key);
+        if (!src) continue;
+        if (scheduledEntryReleaseAllowed(src)) continue;
+        log('RECONCILE: cancelling unfilled pre-release entry', key,
+          'entryDate=', src.entryDate || src.t || 'missing');
+        if (row.parentId != null) cancelOrder(row.parentId, 'pre-release-cancel parent ' + key);
+        if (row.stopId != null) cancelOrder(row.stopId, 'pre-release-cancel stop ' + key);
+        if (row.tp1Id != null) cancelOrder(row.tp1Id, 'pre-release-cancel tp1 ' + key);
+        row.closed = true;
+        row.preReleaseCancelled = true;
+        row.updated = new Date().toISOString();
+        saveState(state);
+      }
+
       // 0z. Seed missing state for open entry events (state loss / cursor past
       // entry / history-gate false skip). Recent entries, all markets.
       const SEED_MAX_AGE_MS = MAX_EVENT_AGE_MS; // same 24h gate as live entries
@@ -3324,6 +3528,22 @@ async function main() {
         if (!Number.isFinite(oldest) || oldest === Infinity || (Date.now() - oldest) > SEED_MAX_AGE_MS) {
           log('RECONCILE: skip seed (stale key)', key);
           continue;
+        }
+        if (!scheduledEntryReleaseAllowed(src)) {
+          log('RECONCILE: skip seed (before configured SGT recommendation release)', key,
+            'entryDate=', src.entryDate || src.t || 'missing',
+            'releaseHour=', ENTRY_RELEASE_HOUR_SGT);
+          continue;
+        }
+        try {
+          const picks = await fetchJson('/api/dashboard/picks');
+          if (picks && picks.dashData
+            && !publishedBoardHasPick(picks.dashData, src.ticker, src.hz || 'short', src.side)) {
+            log('RECONCILE: skip seed (not on published board)', key);
+            continue;
+          }
+        } catch (e) {
+          log('RECONCILE: board check failed (continuing with schedule gate only)', key, e.message);
         }
         // If IB already holds this symbol in the trade direction, assume the
         // original fill survived state loss — mark filled, do not double-enter.
@@ -3488,6 +3708,11 @@ async function main() {
       for (const [key, row] of Object.entries(state.byKey)) {
         if (row.closed || !row.ticker) continue;
         if (keyState.get(key) !== 'open' && !row.userReentry) continue;
+        const srcEvt = entryByKey.get(key);
+        if (srcEvt && !scheduledEntryReleaseAllowed(srcEvt)) {
+          log('RECONCILE: skip re-arm of pre-release entry', key);
+          continue;
+        }
         const contract = row.contract || toContract(row.ticker);
         if (!contract) continue;
         const market = contract.market || (contract.usRth ? 'US' : '');
@@ -3569,11 +3794,12 @@ async function main() {
             reason = 'asia-rth-retry';
           } else if (phase !== 'rth' && phase !== 'lunch' && row.entryStyle === 'MKT') reason = 'asia-to-opg';
           else if (!row.entryStyle) reason = 'asia-missing-style';
-        } else if (eu && phase === 'rth' && (row.entryStyle === 'OPG' || row.restoreAfterFalseOrphan)) {
+        } else if (eu && phase === 'rth' && (isAuctionEntryStyle(row.entryStyle) || row.restoreAfterFalseOrphan)) {
           if (row.restoreAfterFalseOrphan) {
             reason = 'eu-restore-after-orphan';
           } else if (minutesSinceEuRth() < AUCTION_HOLD_MIN) {
-            log('RECONCILE: hold EU/UK OPG through auction', key, 'minsSinceRth=', minutesSinceEuRth());
+            log('RECONCILE: hold EU/UK opening order through auction', key,
+              'style=', row.entryStyle, 'minsSinceRth=', minutesSinceEuRth());
           } else {
             reason = 'eu-rth-after-opg';
           }
@@ -3666,18 +3892,25 @@ async function main() {
           const oldParent = row.parentId, oldStop = row.stopId, oldTp1 = row.tp1Id;
           const cancelWaits = [];
           if (oldParent != null) {
-            cancelOrder(oldParent, 'rearm parent ' + key);
             cancelWaits.push(waitCancel(oldParent, 3500));
+            cancelOrder(oldParent, 'rearm parent ' + key);
           }
           if (oldStop != null) {
-            cancelOrder(oldStop, 'rearm stop ' + key);
             cancelWaits.push(waitCancel(oldStop, 3500));
+            cancelOrder(oldStop, 'rearm stop ' + key);
           }
           if (oldTp1 != null) {
-            cancelOrder(oldTp1, 'rearm tp1 ' + key);
             cancelWaits.push(waitCancel(oldTp1, 3500));
+            cancelOrder(oldTp1, 'rearm tp1 ' + key);
           }
-          if (cancelWaits.length) await Promise.all(cancelWaits);
+          const cancelStatuses = cancelWaits.length ? await Promise.all(cancelWaits) : [];
+          if (cancelStatuses.some(status => status === 'timeout')) {
+            row.lastRearmAt = new Date().toISOString();
+            row.rearmBlocked = 'cancel-timeout';
+            saveState(state);
+            log('RECONCILE: rearm aborted — cancellation not confirmed', key, reason);
+            continue;
+          }
           const placed = await placeBracket({
             key, ticker: row.ticker, hz: row.hz, side: row.side || src.side,
             entry: src.entry != null ? src.entry : row.entry,
@@ -3686,6 +3919,11 @@ async function main() {
             trailSl: src.trailSl != null ? src.trailSl : (src.sl != null ? src.sl : row.stopPx),
             t: new Date().toISOString(),
             reason: src.reason,
+            decisionId: src.decisionId || row.decisionId,
+            admittedAt: row.admittedAt,
+            sector: src.sector || row.sector,
+            country: src.country || row.country,
+            correlationCluster: src.correlationCluster || row.correlationCluster,
             forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-overnight-to-opg'
               || reason === 'us-pre-unfavorable-to-opg',
             skipChase: reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg'
@@ -4061,10 +4299,18 @@ async function main() {
   }
 
   async function pollOnce() {
+    if (!positionsReady) {
+      log('event poll deferred — waiting for IB position/open-state snapshot');
+      return;
+    }
     const data = await fetchJson(`/api/ibkr/events?since=${state.since}&limit=100`);
     const events = data.events || [];
     for (const evt of events) {
-      try { await handleEvent(evt); } catch (e) { log('event error', evt.type, evt.ticker, e.message); }
+      try {
+        await handleEvent(evt);
+        const store = getBridgeStore();
+        if (store) store.appendEvent(`server-seq:${evt.seq}`, evt.type, evt);
+      } catch (e) { log('event error', evt.type, evt.ticker, e.message); }
       if (evt.seq > state.since) state.since = evt.seq;
     }
     if (events.length) { saveState(state); log(`Processed ${events.length} event(s); since=${state.since}`); }
@@ -4075,13 +4321,35 @@ async function main() {
   // real paper-account PnL. Reports stay queued until the server confirms.
   async function flushReports() {
     const pending = state.pendingReports || [];
-    if (!pending.length) return;
+    for (const r of pending) {
+      if (!r || !r.execId || r.commission != null) continue;
+      const comm = commissionByExec.get(String(r.execId));
+      if (!comm) continue;
+      r.commission = comm.commission;
+      r.commissionCcy = comm.currency;
+      if (comm.realizedPNL != null) r.ibRealizedPnl = comm.realizedPNL;
+    }
+    const extra = [];
+    for (const [execId, comm] of commissionByExec) {
+      if (!comm || postedCommissionExecIds.has(execId)) continue;
+      extra.push({
+        kind: 'commission',
+        execId,
+        commission: comm.commission,
+        commissionCcy: comm.currency,
+        ibRealizedPnl: comm.realizedPNL,
+        time: new Date().toISOString()
+      });
+    }
+    const reports = pending.concat(extra);
+    if (!reports.length) return;
     try {
-      const resp = await postJson('/api/ibkr/report', { reports: pending });
+      const resp = await postJson('/api/ibkr/report', { reports });
       if (resp && resp.ok) {
         state.pendingReports = [];
+        for (const r of extra) postedCommissionExecIds.add(String(r.execId));
         saveState(state);
-        log(`Reported ${pending.length} execution(s) to AlphaSignal (stored=${resp.stored}, dup=${resp.skipped})`);
+        log(`Reported ${reports.length} execution(s) to AlphaSignal (stored=${resp.stored}, dup=${resp.skipped}, commPatch=${resp.commissionsPatched || 0})`);
       }
     } catch (e) { log('report flush failed (will retry):', e.message); }
   }
@@ -4167,7 +4435,13 @@ module.exports = {
   toContract,
   parentEntrySpec,
   correctiveExtExitSpec,
+  sessionPhase,
+  minutesUntilUsRth,
+  minutesSinceUsRth,
+  shareSplit,
   scheduledEntryReleaseAllowed,
+  publishedBoardHasPick,
   shouldAlertReconFailure,
-  riskFindingsFingerprint
+  riskFindingsFingerprint,
+  isAuctionEntryStyle
 };

@@ -11,11 +11,45 @@ AI-powered stock analysis across S&P 500, NASDAQ, FTSE, HSI, Nikkei, DAX, CAC, E
  - **Build Command:** `npm install`
  - **Start Command:** `npm start`
  - **Environment:** Node
-5. Click Deploy
+5. Deploy the Blueprint in `render.yaml`. It provisions PostgreSQL plus a
+   persistent `/var/data` disk. Set `AUTH_MACHINE_TOKEN_HASH` to the SHA-256
+   hash of the raw token used by the local bridge.
+
+## Capital-readiness controls
+
+- One versioned decision policy is shared by live recommendations and research.
+- Backtests report returns after modeled commissions, spread, slippage, taxes,
+  FX and short borrow.
+- Live quantity is based on IBKR net liquidation value and entry-to-stop risk,
+  with notional, lot, ADV, spread and futures-contract limits.
+- Portfolio admission enforces gross/net, name, sector, country, currency,
+  correlation-cluster, open-stop-risk and daily-new-risk limits.
+- New entries scale down at 5% and 7.5% broker drawdown and pause at 10%.
+- Server state is mirrored transactionally to PostgreSQL; the bridge uses
+  SQLite WAL and keeps atomic JSON backups.
+
+Run deterministic checks:
+
+```bash
+npm run test:capital
+npm run lifecycle
+node ibkr-bridge/contract-resolution.test.js
+```
+
+Run the canonical, cost-adjusted walk-forward report:
+
+```bash
+npm run validate:capital
+```
+
+Results land in `scripts/capital-readiness-report.json`. A failed report blocks
+capital promotion; it is not an instruction to loosen thresholds.
 
 ## Bracket acceptance
 
-Criteria: **WR ≥55% OR avg ≥+0.30%/trade**, and **PF ≥1.5**.
+Capital promotion requires a sufficient sample, positive net expectancy,
+**PF ≥1.5**, **Sharpe ≥1.2**, **max drawdown ≤10%**, and the horizon-specific
+win-rate guardrail.
 
 ```bash
 npm run acceptance

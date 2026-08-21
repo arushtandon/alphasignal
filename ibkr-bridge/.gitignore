@@ -1,5 +1,8 @@
 node_modules/
 bridge-state.json
+bridge-state.sqlite
+bridge-state.sqlite-shm
+bridge-state.sqlite-wal
 .env
 local-secrets.ps1
 *.log

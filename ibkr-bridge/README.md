@@ -14,8 +14,11 @@ On Render (or local `.env`):
 
 | Variable | Meaning |
 |----------|---------|
-| `IBKR_EVENTS_TOKEN` | Shared secret (recommended). Bridge sends it as Bearer / `?token=` |
+| `AUTH_MACHINE_TOKEN_HASH` | Server-side SHA-256 hash of the bridge token |
 | `IBKR_EVENTS_ENABLED` | Default on; set `0` to silence the feed |
+
+The local bridge uses the raw value as `IBKR_EVENTS_TOKEN` and sends it as a
+Bearer token. Never put the raw token in Render or source control.
 
 Endpoints:
 
@@ -57,19 +60,22 @@ $env:IBKR_ACCOUNT = "DUxxxxxx"   # optional paper account id
 npm start
 ```
 
-State / cursor: `bridge-state.json` (gitignored locally — do not commit secrets).
+Canonical state / cursor: `bridge-state.sqlite` in WAL mode. An atomic
+`bridge-state.json` backup is retained for migration and recovery. Both are
+gitignored locally.
 
 ## 4. What gets placed on `entry`
 
-Position size = `IBKR_NOTIONAL` (default $10k) **converted to the local currency**
-(¥ / HK$ / € / £ / ₹) so every market gets a genuine ~$10k position, rounded to
-exchange lots (100 for SEHK/TSEJ).
+Position size is calculated from current IBKR net liquidation value and the
+entry-to-stop distance. The default risk budget is 0.30% NLV, capped at 2.5%
+NLV notional and 1% of 20-day ADV, then rounded down to the exchange lot.
+Sizing is reduced at 5% and 7.5% drawdown and disabled at 10%.
 
 **Futures (`GC=F`, `HG=F`, `CL=F`, …)** and **crypto (`BTC-USD`, `ETH-USD`)** are
-executable. Front-month futures are resolved via IB `reqContractDetails`. When
-$10k is below one contract’s notional value (e.g. copper HG), the bridge still
-places **1 contract** so the signal is not skipped. Crypto uses fractional qty
-on PAXOS.
+executable. Front-month futures are resolved via IB `reqContractDetails`.
+If one futures contract or the minimum exchange lot exceeds the risk budget,
+the order is rejected; the bridge never forces an oversized position. Crypto
+uses fractional quantity on PAXOS.
 
 | Leg | IB order | Size | Notes |
 |-----|----------|------|-------|

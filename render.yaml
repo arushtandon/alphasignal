@@ -1,13 +1,28 @@
+databases:
+  - name: alphasignal-db
+    databaseName: alphasignal
+    user: alphasignal
+
 services:
   - type: web
     name: alphasignal
     env: node
     buildCommand: npm install
     startCommand: npm start
+    disk:
+      name: alphasignal-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
+      - key: DATA_DIR
+        value: /var/data
+      - key: DATABASE_URL
+        fromDatabase:
+          name: alphasignal-db
+          property: connectionString
       - key: AUTH_SESSION_SECRET
         generateValue: true
       - key: AUTH_MACHINE_TOKEN_HASH
-        value: 2d475b237b0d63b6a6e1eb47760e92921f68de3b744b8567a20175efda95d610
+        sync: false

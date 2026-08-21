@@ -5,9 +5,40 @@ const http = require('http');
 const fs = require('fs');
 const crypto = require('crypto');
 const { buildFullUniverse, MARKET_LABEL: UNIVERSE_MARKET_LABEL } = require('./universe');
+const {
+  DEFAULT_POLICY: DECISION_POLICY,
+  deriveActionRating: deriveCanonicalActionRating,
+  evaluateSignalDecision,
+  createDecisionSnapshot
+} = require('./lib/strategy/decision-engine');
+const {
+  EXIT_POLICY_VERSION,
+  horizonHoldDays,
+  normalizePartialFraction
+} = require('./lib/strategy/exit-engine');
+const { COST_MODEL_VERSION, applyCosts } = require('./lib/research/cost-model');
+const { summarizeReturns, summarizeDatedPortfolio, promotionDecision } = require('./lib/research/performance');
+const { dailyToWeeklyBars, weeklyBarsVisibleAt } = require('./lib/research/weekly-bars');
+const { atomicWriteFileSync, atomicWriteJsonSync } = require('./lib/storage/atomic-json');
+const { PostgresStore } = require('./lib/storage/postgres-store');
+const {
+  CAPITAL_SCALE,
+  normalizeStage,
+  evaluateStagePromotion,
+  revertForIntegrityBreach
+} = require('./lib/risk/promotion');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const durableStore = new PostgresStore(process.env.DATABASE_URL, {
+  ssl: process.env.DATABASE_SSL !== '0'
+});
+const durableReady = durableStore.init()
+  .then(ready => console.log('Durable PostgreSQL store:', ready ? 'ready' : 'disabled'))
+  .catch(error => {
+    console.warn('Durable PostgreSQL init failed; atomic disk fallback active:', error.message);
+    return false;
+  });
 
 // Defense-in-depth: never let a single request-scoped bug crash-loop the whole
 // service on Render. Log loudly and keep serving. (The real fix is still to not
@@ -16,7 +47,9 @@ process.on('unhandledRejection', (reason) => {
   console.error('UNHANDLED REJECTION (kept alive):', reason && reason.stack ? reason.stack : reason);
 });
 process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT EXCEPTION (kept alive):', err && err.stack ? err.stack : err);
+  console.error('UNCAUGHT EXCEPTION (terminating safely):', err && err.stack ? err.stack : err);
+  process.exitCode = 1;
+  setTimeout(() => process.exit(1), 250).unref();
 });
 
 app.use(express.json({ limit: '10mb' }));
@@ -33,7 +66,7 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const configuredSessionSecret = String(process.env.AUTH_SESSION_SECRET || '');
 const configuredMachineTokenHash = String(
   process.env.AUTH_MACHINE_TOKEN_HASH
-  || '2d475b237b0d63b6a6e1eb47760e92921f68de3b744b8567a20175efda95d610'
+  || (IS_PRODUCTION ? '' : '2d475b237b0d63b6a6e1eb47760e92921f68de3b744b8567a20175efda95d610')
 ).toLowerCase();
 const AUTH_SESSION_SECRET = Buffer.from(
   configuredSessionSecret || crypto.randomBytes(32).toString('base64url')
@@ -45,6 +78,9 @@ const authFailures = new Map();
 if (IS_PRODUCTION) app.set('trust proxy', 1);
 if (IS_PRODUCTION && Buffer.byteLength(configuredSessionSecret) < 32) {
   console.warn('AUTH_SESSION_SECRET missing/short — sessions will reset on process restart');
+}
+if (IS_PRODUCTION && !configuredMachineTokenHash) {
+  console.warn('AUTH_MACHINE_TOKEN_HASH missing — bridge machine endpoints will reject requests');
 }
 
 function parseCookies(req) {
@@ -1008,35 +1044,9 @@ function calcSupertrendByHorizon(daily) {
   };
 }
 
-/** Build weekly OHLCV bars from daily series (for walk-forward backtest). */
-function dailyToWeeklyBars(daily) {
-  if (!daily || !daily.length) return null;
-  const weeks = [];
-  let w = null;
-  for (const bar of daily) {
-    const d = new Date((bar.t || 0) * 1000);
-    const weekKey = `${d.getUTCFullYear()}-W${Math.floor((d.getUTCDate() + 6) / 7)}-${d.getUTCMonth()}`;
-    if (!w || w.key !== weekKey) {
-      if (w) weeks.push(w);
-      w = { key: weekKey, t: bar.t, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: bar.v || 0 };
-    } else {
-      w.h = Math.max(w.h, bar.h);
-      w.l = Math.min(w.l, bar.l);
-      w.c = bar.c;
-      w.v = (w.v || 0) + (bar.v || 0);
-    }
-  }
-  if (w) weeks.push(w);
-  return weeks.length >= 10 ? weeks : null;
-}
-
 function sliceWeeklyForDailyIndex(daily, weeklyAll, idx) {
-  if (weeklyAll && weeklyAll.length) {
-    const cutT = daily[idx]?.t || 0;
-    const sliced = weeklyAll.filter(w => (w.t || 0) <= cutT);
-    if (sliced.length >= 10) return sliced;
-  }
-  return dailyToWeeklyBars(daily.slice(0, idx + 1));
+  const cutT = daily[idx]?.t || 0;
+  return weeklyBarsVisibleAt(weeklyAll, cutT, daily.slice(0, idx + 1));
 }
 
 const BACKTEST_WINDOW_BARS = 1260; // ~5 years of daily bars
@@ -1047,7 +1057,7 @@ const BACKTEST_WARMUP = 220;
 const BACKTEST_TECH_WINDOW = 280;
 
 function horizonHoldDaysServer(hz) {
-  return hz === 'short' ? 20 : hz === 'medium' ? 63 : 180;
+  return horizonHoldDays(hz);
 }
 
 // Build full technicals for the bar at index `i` using only a bounded trailing
@@ -1057,15 +1067,13 @@ function horizonHoldDaysServer(hz) {
 function techAtBoundedIndex(data, weeklyAll, i) {
   const lo = Math.max(0, i - (BACKTEST_TECH_WINDOW - 1));
   const dw = data.slice(lo, i + 1);
-  let weekly;
-  if (weeklyAll && weeklyAll.length) {
-    const cutT = data[i]?.t || 0;
-    weekly = weeklyAll.filter(w => (w.t || 0) <= cutT).slice(-160);
-    if (!weekly || weekly.length < 10) weekly = dailyToWeeklyBars(dw);
-  } else {
-    weekly = dailyToWeeklyBars(dw);
-  }
+  const cutT = data[i]?.t || 0;
+  const weekly = weeklyBarsVisibleAt(weeklyAll, cutT, dw);
   return buildFullTechResult('X', dw, weekly);
+}
+
+function signalTechAtEntry(data, weeklyAll, entryIdx) {
+  return techAtBoundedIndex(data, weeklyAll, Math.max(0, entryIdx - 1));
 }
 
 /** Trailing stop from current technicals (no TP — capture full move, ratchet SL at EOD). */
@@ -1369,6 +1377,7 @@ function findTp1PrintMs(bars, entryMs, tp1, isSell) {
 }
 
 async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund = null, markPrice = null, liveMark = false, partialFrac = 0.5) {
+  partialFrac = normalizePartialFraction(partialFrac, 'short');
   const holdDays = Math.min(15, horizonHoldDaysServer('short')); // banks quickly
   const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
   const lastIdx = data.length - 1;
@@ -1379,7 +1388,7 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
   // historical bars) rather than the last daily close — otherwise a trade entered
   // at yesterday's close shows ~0 PnL until the next daily bar prints.
   const markAt = (idx, fallback) => (markPrice && idx >= lastIdx) ? markPrice : fallback;
-  const eTech = techAtBoundedIndex(data, weeklyAll, entryIdx);
+  const eTech = signalTechAtEntry(data, weeklyAll, entryIdx);
   const lv = computeMeanReversionLevels(eTech, entry, isSell) || {};
   const target = lv.target;
   let trailingSl = lv.stop;
@@ -1447,8 +1456,9 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
  *  refresh, so reported win rates match what the live rules would have done.
  *  SHORT horizon delegates to the mean-reversion exit; medium/long book a partial
  *  at TP1 (locks a win) and ride the remainder with a wide chandelier trail. */
-async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, fund = null, markPrice = null, liveMark = false, partialFrac = 0.5) {
+async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, fund = null, markPrice = null, liveMark = false, partialFrac = 0.5, exitOpts = null) {
   if (!data || entryIdx == null || !(entry > 0)) return null;
+  partialFrac = normalizePartialFraction(partialFrac, hz);
   if (hz === 'short') return simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund, markPrice, liveMark, partialFrac);
   const holdDays = horizonHoldDaysServer(hz);
   const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
@@ -1456,7 +1466,9 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
   const markAt = (idx, fallback) => (markPrice && idx >= lastIdx) ? markPrice : fallback;
   // Genuine time-limit only if the full hold elapsed; otherwise still OPEN.
   const heldFull = (entryIdx + holdDays) <= lastIdx;
-  const entryTech = techAtBoundedIndex(data, weeklyAll, entryIdx);
+  const disablePreTp1SignalExit = !!(exitOpts && exitOpts.disablePreTp1SignalExit);
+  const stopFirst = !!(exitOpts && exitOpts.stopFirst);
+  const entryTech = signalTechAtEntry(data, weeklyAll, entryIdx);
   const atrEntry = entryTech.atr || entry * 0.02;
   let trailingSl = computeTrailingStopFromTech(entryTech, entry, hz, isSell, fund);
   const tp1 = computeFirstTargetFromTech(entryTech, entry, hz, isSell, trailingSl);
@@ -1477,12 +1489,18 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
   for (let j = entryIdx + 1; j <= maxJ; j++) {
     if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r));
     const bar = data[j];
+    const hitStop = () => (!isSell && trailingSl && bar.l <= trailingSl)
+      || (isSell && trailingSl && bar.h >= trailingSl);
+    const hitTp1 = () => tp1 && ((!isSell && bar.h >= tp1) || (isSell && bar.l <= tp1));
+
+    if (stopFirst && !tp1Hit && hitStop()) return finish('sl_hit', j, trailingSl);
+
     // 1) TP1 partial — lock a win, move remainder stop to breakeven
-    if (!tp1Hit && tp1) {
-      if (!isSell && bar.h >= tp1) {
+    if (!tp1Hit && hitTp1()) {
+      if (!isSell) {
         realized += PARTIAL * longRet(tp1); remaining -= PARTIAL; tp1Hit = true;
         trailingSl = trailingSl == null ? entry : Math.max(trailingSl, entry);
-      } else if (isSell && bar.l <= tp1) {
+      } else {
         realized += PARTIAL * shortRet(tp1); remaining -= PARTIAL; tp1Hit = true;
         trailingSl = trailingSl == null ? entry : Math.min(trailingSl, entry);
       }
@@ -1496,11 +1514,12 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
       // died at the stop while time-limit exits won 83%. So pre-TP1 the stop
       // stays where it was set AT ENTRY (structure-based, horizon-wide); genuine
       // trend deterioration is handled by the signal-flip exit at the close.
-      const barTech = techAtBoundedIndex(data, weeklyAll, j);
-      const barSig = computeQuantSignal(barTech, fund, hz);
-      if (!isSell && trailingSl && bar.l <= trailingSl) return finish('sl_hit', j, trailingSl);
-      if (isSell && trailingSl && bar.h >= trailingSl)  return finish('sl_hit', j, trailingSl);
-      if (!liveMark && signalFlipped(barSig, isSell, hz)) return finish('signal_exit', j, bar.c);
+      if (hitStop()) return finish('sl_hit', j, trailingSl);
+      if (!liveMark && !disablePreTp1SignalExit) {
+        const barTech = techAtBoundedIndex(data, weeklyAll, j);
+        const barSig = computeQuantSignal(barTech, fund, hz);
+        if (signalFlipped(barSig, isSell, hz)) return finish('signal_exit', j, bar.c);
+      }
     } else {
       // TP2 is a REFERENCE level only — NEVER an actual exit. The first time it
       // prints we freeze the hypothetical "closed the runner at TP2" outcome so
@@ -2944,15 +2963,7 @@ function computeQuantSignal(tech, fund, hz, market = null) {
 // the server picks, and the full-analysis view never disagree. Thresholds match the
 // client (renderPicksPane gate at 62; Strong at 78/74).
 function deriveActionRating(buy, sell) {
-  buy = buy || 0; sell = sell || 0;
-  if (buy >= sell) {
-    if (buy >= 78) return { action: 'Buy', rating: 'Strong Buy' };
-    if (buy >= 62) return { action: 'Buy', rating: 'Buy' };
-    return { action: 'Hold', rating: 'Hold' };
-  }
-  if (sell >= 74) return { action: 'Sell', rating: 'Strong Sell' };
-  if (sell >= 62) return { action: 'Sell', rating: 'Sell' };
-  return { action: 'Hold', rating: 'Hold' };
+  return deriveCanonicalActionRating(buy, sell, DECISION_POLICY);
 }
 
 
@@ -2961,6 +2972,42 @@ function deriveActionRating(buy, sell) {
  * (TP1 partial + trailing remainder + hysteresis signal-flip) used in live history.
  * Uses the last ~5 years of daily bars. Reports supertrendWinRate separately.
  */
+function historicalEarningsBlocked(events, barTs, days = 5) {
+  if (!Array.isArray(events) || !events.length) return false;
+  const raw = Number(barTs);
+  const at = raw > 0 ? (raw < 1e12 ? raw * 1000 : raw) : Date.parse(barTs || 0);
+  if (!Number.isFinite(at)) return false;
+  const windowMs = Math.max(0, Number(days) || 0) * 86400000;
+  return events.some(event => {
+    const value = event && (event.date || event.reportDate || event.t || event.time);
+    const n = Number(value);
+    const eventAt = n > 0 ? (n < 1e12 ? n * 1000 : n) : Date.parse(value || 0);
+    return Number.isFinite(eventAt) && eventAt >= at && eventAt - at <= windowMs;
+  });
+}
+
+function closeAtOrBefore(bars, t) {
+  if (!Array.isArray(bars) || !bars.length || !(t > 0)) return null;
+  let lo = 0;
+  let hi = bars.length - 1;
+  let found = null;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const ts = Number(bars[mid] && bars[mid].t);
+    if (!(ts > 0)) { lo = mid + 1; continue; }
+    if (ts <= t) { found = bars[mid]; lo = mid + 1; }
+    else hi = mid - 1;
+  }
+  return found && found.c > 0 ? found.c : null;
+}
+
+function lookbackReturn(bars, idx, lookback) {
+  const now = bars[idx] && bars[idx].c;
+  const prev = bars[idx - lookback] && bars[idx - lookback].c;
+  if (!(now > 0) || !(prev > 0)) return null;
+  return now / prev - 1;
+}
+
 async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {}) {
   if (!data || data.length < BACKTEST_WARMUP + 30) return null;
   const windowBars = opts.windowBars || BACKTEST_WINDOW_BARS;
@@ -2971,10 +3018,15 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
   const earningsEvents = opts.earningsEvents || null; // [{date, score, sym, surp}]
   let marketLatest = null;
 
-  let wins = 0, losses = 0, trades = 0, totalReturn = 0, grossWin = 0, grossLoss = 0;
+  let wins = 0, losses = 0, trades = 0, totalReturn = 0, totalGrossReturn = 0;
+  let grossWin = 0, grossLoss = 0, totalCostPct = 0;
+  const tradeReturns = [];
+  const tradeResults = [];
   let stWins = 0, stTrades = 0;
   let nextAllowed = windowStart;
   let _yc = 0;
+  const rejectionCounts = {};
+  const reject = reason => { rejectionCounts[reason] = (rejectionCounts[reason] || 0) + 1; };
 
   for (let i = windowStart; i < data.length - 2; i += entryStep) {
     if (i < nextAllowed) continue;
@@ -2990,49 +3042,120 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
     const sig = computeQuantSignal(tech, fund, hz, market);
     const stHz = (tech.supertrendByHz && tech.supertrendByHz[hz]) || tech.supertrend;
 
-    // Entry only on a real, dominant signal (same 62 threshold as live picks).
-    const buyOk = sig.buyScore >= 62 && sig.buyScore > sig.sellScore;
-    const sellOk = sig.sellScore >= 62 && sig.sellScore > sig.buyScore;
-    if (!buyOk && !sellOk) continue;
-    const isBuy = buyOk && (!sellOk || sig.buyScore >= sig.sellScore);
-    const isSell = !isBuy;
+    // Use the same canonical score, confidence and side eligibility as live.
+    const decisionPolicy = opts.decisionPolicy || DECISION_POLICY;
+    const decision = evaluateSignalDecision({
+      signal: sig,
+      side: opts.side,
+      requireLevels: false,
+      earningsBlocked: historicalEarningsBlocked(earningsEvents, data[i].t, 5),
+      dataFresh: true,
+      bracketEnabled: true
+    }, decisionPolicy);
+    if (!decision.eligible) {
+      for (const reason of decision.rejectionReasons) reject(reason);
+      continue;
+    }
+    const isBuy = decision.side === 'buy';
+    const isSell = decision.side === 'sell';
     // Optional side filter — lets the backtest endpoint measure ONE side in isolation
     if (opts.side === 'sell' && !isSell) continue;
     if (opts.side === 'buy' && !isBuy) continue;
 
+    const px = Number(tech.currentPrice || data[i].c);
+    const atr = Number(tech.atr);
+    const ma20 = Number(tech.ma20);
+    if (hz === 'short' && isBuy && opts.shortStretchMinAtr != null) {
+      const stretch = (ma20 > 0 && atr > 0 && px > 0) ? (ma20 - px) / atr : null;
+      if (!(stretch >= Number(opts.shortStretchMinAtr))) { reject('shortStretch'); continue; }
+    }
+    if (opts.rel20Min != null && opts.spyBars && i >= 20) {
+      const stockRet = lookbackReturn(data, i, 20);
+      const spyNow = closeAtOrBefore(opts.spyBars, data[i].t);
+      const spyPrev = closeAtOrBefore(opts.spyBars, data[i - 20].t);
+      const spyRet = spyNow > 0 && spyPrev > 0 ? spyNow / spyPrev - 1 : null;
+      if (stockRet == null || spyRet == null) { reject('relStrength'); continue; }
+      const rel = stockRet - spyRet;
+      if (isBuy && rel < Number(opts.rel20Min)) { reject('relStrength'); continue; }
+      if (isSell && rel > -Number(opts.rel20Min || 0)) { reject('relStrength'); continue; }
+    }
+
     const entry = data[i + 1]?.o ?? data[i].c;
     if (!entry || entry <= 0) continue;
 
-    // Same hard 1.1:1 TP1-vs-SL gate as live recommendations — no TP2 escape.
-    if (hz !== 'short') {
-      const gSl = computeTrailingStopFromTech(tech, entry, hz, isSell, fund);
-      const gTp = computeFirstTargetFromTech(tech, entry, hz, isSell, gSl);
-      if (gSl != null && gTp != null && !levelsMeetMinRR(entry, gTp, gSl, isSell, PICKS_MIN_RR)) {
-        continue;
-      }
+    // Same hard TP1-vs-SL gate for every horizon as live recommendations.
+    const gSl = computeTrailingStopFromTech(tech, entry, hz, isSell, fund);
+    const gTp = computeFirstTargetFromTech(tech, entry, hz, isSell, gSl);
+    if (!(gSl > 0) || !(gTp > 0)) {
+      reject('missingLevels');
+      continue;
+    }
+    if (!levelsMeetMinRR(entry, gTp, gSl, isSell, PICKS_MIN_RR)) {
+      reject('rewardRisk');
+      continue;
     }
 
-    const res = await simulateHybridExit(data, i + 1, entry, hz, isSell, weeklyAll, fund);
-    if (!res || res.exitIdx == null) continue;
+    const res = await simulateHybridExit(data, i + 1, entry, hz, isSell, weeklyAll, fund, null, false, 0.5, {
+      disablePreTp1SignalExit: !!opts.disablePreTp1SignalExit,
+      stopFirst: !!opts.stopFirst
+    });
+    if (!res || res.exitIdx == null) { reject('noClosedExit'); continue; }
+    if (opts.closedOnly && (res.status === 'open' || res.status === 'tp1_open')) {
+      reject('openMark');
+      continue;
+    }
 
+    const entryRawTs = Number(data[i + 1] && data[i + 1].t);
+    const exitRawTs = Number(data[res.exitIdx] && data[res.exitIdx].t);
+    const entryTs = entryRawTs > 0 ? (entryRawTs < 1e12 ? entryRawTs * 1000 : entryRawTs) : null;
+    const exitTs = exitRawTs > 0 ? (exitRawTs < 1e12 ? exitRawTs * 1000 : exitRawTs) : null;
+    const heldDays = entryTs && exitTs ? Math.max(0, (exitTs - entryTs) / 86400000)
+      : Math.max(0, Number(res.exitIdx) - (i + 1));
+    const costed = applyCosts(res.ret, {
+      symbol: opts.symbol,
+      market: opts.market,
+      side: isSell ? 'sell' : 'buy',
+      holdDays: heldDays,
+      impactBps: opts.impactBps
+    });
+    const netRet = costed.netReturn;
     trades++;
-    totalReturn += res.ret;
-    if (res.ret > 0) { wins++; grossWin += res.ret; } else { losses++; grossLoss += Math.abs(res.ret); }
+    totalGrossReturn += res.ret;
+    totalReturn += netRet;
+    totalCostPct += costed.costPct;
+    tradeReturns.push(netRet);
+    tradeResults.push({
+      ret: netRet,
+      grossRet: res.ret,
+      entryTs,
+      exitTs,
+      heldDays,
+      side: isSell ? 'sell' : 'buy',
+      status: res.status
+    });
+    if (netRet > 0) { wins++; grossWin += netRet; } else { losses++; grossLoss += Math.abs(netRet); }
     nextAllowed = res.exitIdx + 1;
 
     const stAligned = (isBuy && stHz?.direction === 'bull') || (isSell && stHz?.direction === 'bear');
-    if (stAligned) { stTrades++; if (res.ret > 0) stWins++; }
+    if (stAligned) { stTrades++; if (netRet > 0) stWins++; }
   }
 
-  if (trades < 5) return null;
   return {
-    winRate: Math.round(wins / trades * 100),
+    winRate: trades ? Math.round(wins / trades * 100) : null,
     trades,
-    avgReturnPct: parseFloat((totalReturn / trades * 100).toFixed(2)),
-    profitFactor: grossLoss > 0 ? parseFloat((grossWin / grossLoss).toFixed(2)) : 99,
+    avgReturnPct: trades ? parseFloat((totalReturn / trades * 100).toFixed(2)) : null,
+    avgGrossReturnPct: trades ? parseFloat((totalGrossReturn / trades * 100).toFixed(2)) : null,
+    avgCostPct: trades ? parseFloat((totalCostPct / trades).toFixed(4)) : null,
+    profitFactor: trades ? (grossLoss > 0 ? parseFloat((grossWin / grossLoss).toFixed(2)) : 99) : null,
     supertrendWinRate: stTrades >= 5 ? Math.round(stWins / stTrades * 100) : null,
     supertrendTrades: stTrades,
     hybridExit: true,
+    decisionPolicyVersion: DECISION_POLICY.version,
+    exitPolicyVersion: EXIT_POLICY_VERSION,
+    costModelVersion: COST_MODEL_VERSION,
+    rejectionCounts,
+    tradeReturns,
+    tradeResults,
     windowYears: 5
   };
 }
@@ -6135,29 +6258,9 @@ function rerateQuantSignals(quantSignal) {
   ['short', 'medium', 'long'].forEach(hz => {
     const q = quantSignal[hz];
     if (!q) return;
-    const bs = q.buyScore || 0;
-    const ss = q.sellScore || 0;
-    if (bs >= ss) {
-      if (bs >= 84) {
-        q.action = 'Buy';
-        q.rating = 'Strong Buy';
-      } else if (bs >= 66) {
-        q.action = 'Buy';
-        q.rating = 'Buy';
-      } else {
-        q.action = 'Hold';
-        q.rating = 'Hold';
-      }
-    } else if (ss >= 80) {
-      q.action = 'Sell';
-      q.rating = 'Strong Sell';
-    } else if (ss >= 64) {
-      q.action = 'Sell';
-      q.rating = 'Sell';
-    } else {
-      q.action = 'Hold';
-      q.rating = 'Hold';
-    }
+    const ar = deriveActionRating(q.buyScore, q.sellScore);
+    q.action = ar.action;
+    q.rating = ar.rating;
   });
 }
 
@@ -7078,12 +7181,43 @@ console.log('History file:', HISTORY_FILE);
 // or call isNewEntryRiskBlocked() (avoids TDZ: entryDate advanced with no event).
 const RISK_STATE_FILE = path.join(path.dirname(HISTORY_FILE), 'risk_state.json');
 const RISK_POOL = 700000;
-const RISK_MAX_DD = 0.15;
+const RISK_MAX_DD = Math.max(0.01, Number(process.env.RISK_MAX_DD || 0.10));
+const RISK_RESUME_DD = Math.min(RISK_MAX_DD, Math.max(0, Number(process.env.RISK_RESUME_DD || 0.07)));
+const RISK_RECOVERY_MS = Math.max(1, Number(process.env.RISK_RECOVERY_SESSIONS || 5)) * 24 * 60 * 60 * 1000;
 const LIQ_PAUSE_PCT = Math.max(1, parseFloat(process.env.IBKR_LIQ_PAUSE_PCT || '15') || 15);
 const LIQ_RESUME_PCT = Math.max(LIQ_PAUSE_PCT + 1, parseFloat(process.env.IBKR_LIQ_RESUME_PCT || '20') || 20);
+const CAPITAL_PROMOTION_FILE = path.join(path.dirname(HISTORY_FILE), 'capital_promotion.json');
+const capitalPromotionLoadedFromDisk = fs.existsSync(CAPITAL_PROMOTION_FILE);
+let capitalPromotionState = {
+  stage: normalizeStage(process.env.CAPITAL_STAGE || 'paper'),
+  stageStartedAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+};
+try {
+  const loaded = JSON.parse(fs.readFileSync(CAPITAL_PROMOTION_FILE, 'utf8'));
+  capitalPromotionState = { ...capitalPromotionState, ...loaded, stage: normalizeStage(loaded.stage) };
+} catch (_) {}
+function saveCapitalPromotionState() {
+  atomicWriteJsonSync(CAPITAL_PROMOTION_FILE, capitalPromotionState);
+  durableStore.saveSnapshot('capital-promotion', capitalPromotionState, 1);
+}
+function currentCapitalScale() {
+  return CAPITAL_SCALE[normalizeStage(capitalPromotionState.stage)];
+}
+if (!capitalPromotionLoadedFromDisk && !process.env.DATABASE_URL) saveCapitalPromotionState();
+function revertCapitalStage(reason) {
+  const next = revertForIntegrityBreach(capitalPromotionState, reason);
+  if (next.stage === capitalPromotionState.stage) return false;
+  capitalPromotionState = next;
+  saveCapitalPromotionState();
+  auditLog('capital_stage_reverted', { stage: next.stage, reason, revertedFrom: next.revertedFrom });
+  return true;
+}
 let riskState = {
   peakEquity: RISK_POOL, equity: RISK_POOL, drawdownPct: 0, riskOff: false, updated: null,
   liquidityPct: null, liquidityRiskOff: false, currentBalance: null, netLiquidityAvailable: null,
+  brokerNlv: null, peakBrokerNlv: null, brokerDrawdownPct: null, brokerNlvAt: null,
+  riskScale: 1, recoverySince: null,
   _ready: true
 };
 try {
@@ -7122,7 +7256,14 @@ function loadHistoryFile() {
 }
 
 function saveHistoryFile(data) {
-  try { fs.writeFileSync(HISTORY_FILE, JSON.stringify({version: HISTORY_VERSION, data})); } 
+  try {
+    const snapshot = { version: HISTORY_VERSION, data };
+    atomicWriteJsonSync(HISTORY_FILE, snapshot);
+    durableStore.saveSnapshot('trade-history', snapshot, HISTORY_VERSION);
+    for (const row of data || []) {
+      for (const snap of Object.values(row && row.decisionSnapshots || {})) durableStore.saveDecision(snap);
+    }
+  }
   catch(e) { console.warn('History file save error:', e.message); }
 }
 
@@ -7161,7 +7302,12 @@ function loadDashboardPicksFile() {
 
 function saveDashboardPicksFile(payload) {
   try {
-    fs.writeFileSync(DASHBOARD_PICKS_FILE, JSON.stringify(payload));
+    atomicWriteJsonSync(DASHBOARD_PICKS_FILE, payload);
+    durableStore.saveSnapshot('dashboard-picks', payload, DASHBOARD_PICKS_VERSION);
+    const rows = payload && payload.dashData ? Object.values(payload.dashData).flat() : [];
+    for (const row of rows) {
+      for (const snap of Object.values(row && row.decisionSnapshots || {})) durableStore.saveDecision(snap);
+    }
   } catch (e) {
     console.warn('Dashboard picks save error:', e.message);
   }
@@ -7184,6 +7330,45 @@ let dashboardPicksCache = loadDashboardPicksFile();
 if (dashboardPicksCache) {
   console.log('Dashboard picks loaded:', DASHBOARD_PICKS_FILE, 'ts=', dashboardPicksCache.dashTs);
 }
+const snapshotRecoveryReady = durableReady.then(async ready => {
+  if (!ready) return;
+  try {
+    if (!tradeHistory.length) {
+      const savedHistory = await durableStore.loadSnapshot('trade-history');
+      if (savedHistory && Array.isArray(savedHistory.data) && savedHistory.data.length) {
+        tradeHistory = savedHistory.data;
+        atomicWriteJsonSync(HISTORY_FILE, savedHistory);
+        console.log('Recovered trade history from PostgreSQL:', tradeHistory.length);
+      }
+    }
+    if (!dashboardPicksCache) {
+      const savedPicks = await durableStore.loadSnapshot('dashboard-picks');
+      if (savedPicks && savedPicks.dashData) {
+        dashboardPicksCache = savedPicks;
+        atomicWriteJsonSync(DASHBOARD_PICKS_FILE, savedPicks);
+        console.log('Recovered dashboard picks from PostgreSQL');
+      }
+    }
+    if (!fs.existsSync(RISK_STATE_FILE)) {
+      const savedRisk = await durableStore.loadSnapshot('risk-state');
+      if (savedRisk && typeof savedRisk === 'object') {
+        riskState = { ...riskState, ...savedRisk, _ready: true };
+        atomicWriteJsonSync(RISK_STATE_FILE, riskState);
+        console.log('Recovered risk state from PostgreSQL');
+      }
+    }
+    if (!fs.existsSync(CAPITAL_PROMOTION_FILE)) {
+      const savedPromotion = await durableStore.loadSnapshot('capital-promotion');
+      if (savedPromotion && savedPromotion.stage) {
+        capitalPromotionState = { ...capitalPromotionState, ...savedPromotion, stage: normalizeStage(savedPromotion.stage) };
+        atomicWriteJsonSync(CAPITAL_PROMOTION_FILE, capitalPromotionState);
+        console.log('Recovered capital promotion state from PostgreSQL');
+      } else saveCapitalPromotionState();
+    }
+  } catch (error) {
+    console.warn('PostgreSQL snapshot recovery failed:', error.message);
+  }
+});
 
 app.get('/api/dashboard/picks', (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -7308,7 +7493,10 @@ function loadUniverseShortlistFile() {
   return null;
 }
 function saveUniverseShortlistFile(payload) {
-  try { fs.writeFileSync(UNIVERSE_SHORTLIST_FILE, JSON.stringify(payload)); }
+  try {
+    atomicWriteJsonSync(UNIVERSE_SHORTLIST_FILE, payload);
+    durableStore.saveSnapshot('universe-shortlist', payload, UNIVERSE_SHORTLIST_VERSION);
+  }
   catch (e) { console.warn('Universe shortlist save error:', e.message); }
 }
 universeShortlist = loadUniverseShortlistFile();
@@ -7434,13 +7622,17 @@ async function runUniverseScan(opts = {}) {
       };
       saveUniverseShortlistFile(universeShortlist);
       console.log(`Universe scan DONE: scored ${rows.length}/${universe.length}, shortlist ${shortlist.length} →`, JSON.stringify(byMarket));
-      // Immediately regenerate the final picks server-side so clients read finished
-      // picks without needing the page open.
-      const picksResult = await generateServerPicksFromShortlist().catch(e => {
-        console.warn('post-scan picks:', e.message);
-        return { ok: false, error: e.message };
-      });
-      if (picksResult && picksResult.ok) _lastPicksDateKey = singaporeDateKey();
+      // Overnight shortlist rebuilds must not publish a Friday board at 02:00 SGT
+      // (NWG.L 21 Aug: 20h TTL scan emitted IBKR entries before the 06:00 board).
+      if (!isAfterDailyRecommendationRelease()) {
+        console.log('post-scan picks deferred until SGT recommendation release');
+      } else {
+        const picksResult = await generateServerPicksFromShortlist().catch(e => {
+          console.warn('post-scan picks:', e.message);
+          return { ok: false, error: e.message };
+        });
+        if (picksResult && picksResult.ok) _lastPicksDateKey = singaporeDateKey();
+      }
     } catch (e) {
       universeScanState.lastError = e.message;
       console.warn('Universe scan error:', e.message);
@@ -7581,6 +7773,34 @@ async function generateServerPicksFromShortlist(opts = {}) {
       }
       row.action = row.shortAction;
       applyServerPriceLevels(row, tech.currentPrice, tech, fund);
+      row.decisionSnapshots = {};
+      for (const hz of ['short', 'medium', 'long']) {
+        const sig = qs[hz] || {};
+        const snapshot = createDecisionSnapshot({
+          ticker: t,
+          horizon: hz,
+          signal: sig,
+          confidence: row[hz + 'Conf'],
+          entry: row[hz + 'Entry'],
+          stop: row[hz + 'StopLoss'],
+          target: row[hz + 'Target1'],
+          bracketEnabled: bracketEnabled(
+            String(row[hz + 'Action'] || '').toLowerCase() === 'sell' ? 'sell' : 'buy',
+            hz
+          ),
+          cooldownBlocked: isSLCooldownActive(t, hz),
+          dataFresh: true,
+          requireLevels: true,
+          context: {
+            market: row.market,
+            tier: sig.tier || 0,
+            regime: sig.regime || null,
+            generatedAtSgt: singaporeDateKey()
+          }
+        }, DECISION_POLICY);
+        row.decisionSnapshots[hz] = snapshot;
+        row[hz + 'DecisionId'] = snapshot.decisionId;
+      }
       rows.push(row);
     }
 
@@ -7692,6 +7912,30 @@ async function generateServerPicksFromShortlist(opts = {}) {
             const fEntry = fundCache.get(r.ticker);
             const fnd = fEntry && Date.now() - fEntry.ts < TECH_TTL * 4 ? fEntry.data : null;
             applyServerPriceLevels(r, px, tech, fnd);
+            for (const hz of ['short', 'medium', 'long']) {
+              const prior = r.decisionSnapshots && r.decisionSnapshots[hz];
+              const sig = (tech && tech.quantSignal && tech.quantSignal[hz]) || {};
+              const snapshot = createDecisionSnapshot({
+                ticker: r.ticker,
+                horizon: hz,
+                asOf: prior && prior.asOf,
+                signal: sig,
+                confidence: r[hz + 'Conf'],
+                entry: r[hz + 'Entry'],
+                stop: r[hz + 'StopLoss'],
+                target: r[hz + 'Target1'],
+                requireLevels: true,
+                dataFresh: true,
+                context: {
+                  market: r.market,
+                  entryPending: !!r.entryPending,
+                  entrySource: r.entrySource || null
+                }
+              }, DECISION_POLICY);
+              r.decisionSnapshots = r.decisionSnapshots || {};
+              r.decisionSnapshots[hz] = snapshot;
+              r[hz + 'DecisionId'] = snapshot.decisionId;
+            }
           }
         }
       }
@@ -11285,7 +11529,7 @@ loadDanelfinCache();
 scanHistoryForSLCooldowns();
 purgeOpenCooldownBuysFromHistory();
 
-setTimeout(async function bootDashHistorySync() {
+if (process.env.RESEARCH_MODE !== '1') setTimeout(async function bootDashHistorySync() {
   try {
     migrateLegacyTightStops();
     const cached = loadDashboardPicksFile() || dashboardPicksCache;
@@ -11348,6 +11592,10 @@ function picksGeneratedBeforeDailyRelease(picksTs, now = Date.now()) {
   if (generated.key !== current.key) return false;
   return (generated.hour * 60 + generated.minute) < PICKS_REFRESH_HOUR_SGT * 60;
 }
+function isAfterDailyRecommendationRelease(ms = Date.now()) {
+  const { hour, minute } = singaporeParts(ms);
+  return (hour * 60 + minute) >= PICKS_REFRESH_HOUR_SGT * 60;
+}
 
 /** Same shape as Date#toDateString(), but always in Asia/Singapore (UTC+8).
  *  IBKR trade keys and history day matching must not depend on the host TZ
@@ -11379,8 +11627,9 @@ async function scanSchedulerTick(boot = false) {
     const shortlistStale = !universeShortlist
       || (now - (universeShortlist.ts || 0)) > UNIVERSE_SHORTLIST_TTL_MS;
 
-    // Refresh the candidate universe ~daily (was 7d — left shortlist stale for a week).
-    if (shortlistStale) {
+    // Refresh the candidate universe ~daily, but only from 04:45 SGT onward.
+    // A 20h TTL otherwise fires ~02:00 SGT and used to publish a fake morning board.
+    if (shortlistStale && (sgtMinutes >= SCAN_PRE_MINUTES_SGT)) {
       console.log('Scheduler: universe shortlist stale → rescan (reason=', boot ? 'boot' : 'daily-shortlist', ')');
       runUniverseScan({ reason: boot ? 'boot' : 'daily-shortlist' });
       // Fall through: still regen picks from the current shortlist so the morning
@@ -11437,8 +11686,10 @@ async function scanSchedulerTick(boot = false) {
 // Initial kick once the heavier boot sync has settled, then poll every 5 min
 // so the 05:00 SGT board lands by ~05:05 and failed attempts retry quickly
 // before the Tokyo open (08:00 SGT).
-setTimeout(() => scanSchedulerTick(true), 30000);
-setInterval(() => scanSchedulerTick(false), 5 * 60 * 1000);
+if (process.env.RESEARCH_MODE !== '1') {
+  setTimeout(() => scanSchedulerTick(true), 30000);
+  setInterval(() => scanSchedulerTick(false), 5 * 60 * 1000);
+}
 
 // Manual / client-triggered picks regeneration (does not wait for the clock).
 app.post('/api/dashboard/picks/regen', express.json({ limit: '32kb' }), async (req, res) => {
@@ -11968,12 +12219,10 @@ app.post('/api/analyze', async (req, res) => {
     // keeps Analyze responsive; full 3-horizon stays on the dashboard path.
     let btShort = null, btMedium = null, btLong = null;
     try {
-      const btOpts = { windowBars: BACKTEST_WINDOW_BARS, entryStep: 3 };
+      const btOpts = { windowBars: BACKTEST_WINDOW_BARS, entryStep: 3, symbol: sym };
       btShort = ohlcv ? await backtestSignal(ohlcv, 'short', weeklyBySym[sym], fund, btOpts) : null;
-      // Medium/long reuse short stats as a hint when history is thin; full
-      // multi-horizon backtest stays on the dashboard / dedicated endpoint.
-      btMedium = btShort;
-      btLong = btShort;
+      btMedium = ohlcv ? await backtestSignal(ohlcv, 'medium', weeklyBySym[sym], fund, btOpts) : null;
+      btLong = ohlcv ? await backtestSignal(ohlcv, 'long', weeklyBySym[sym], fund, btOpts) : null;
     } catch (e) {
       console.warn('backtest failed for', sym, '-', e.message);
     }
@@ -12826,6 +13075,19 @@ try {
     }
   }
 } catch (_) {}
+const eventRecoveryReady = durableReady.then(async ready => {
+  if (!ready || _tradeEventSeq > 0) return;
+  try {
+    const events = await durableStore.loadEvents('trade-events', 100000);
+    if (events.length) {
+      atomicWriteFileSync(TRADE_EVENTS_FILE, events.map(event => JSON.stringify(event)).join('\n') + '\n');
+      _tradeEventSeq = Math.max(...events.map(event => Number(event.seq) || 0), events.length);
+      console.log('Recovered trade events from PostgreSQL:', events.length);
+    }
+  } catch (error) {
+    console.warn('PostgreSQL event recovery failed:', error.message);
+  }
+});
 
 /** Dual-listed names that must not open two IBKR brackets for the same thesis.
  *  Resolved once via aliases + IB conId — not per-endpoint name collapses. */
@@ -13002,6 +13264,20 @@ function tradeEventSnapshot(h, hz, extra) {
       ? parseFloat(h[z + 'ExitPrice']) : null,
     pnlDollar: h[z + 'PnlDollar'] ?? null,
     entryDate: h.entryDate || h.timestamp || null,
+    decisionId: h[z + 'DecisionId']
+      || (h.decisionSnapshots && h.decisionSnapshots[z] && h.decisionSnapshots[z].decisionId)
+      || h.decisionId || null,
+    rulesVersion: DECISION_POLICY.version,
+    accountNlv: Number(riskState.brokerNlv || riskState.currentBalance) || null,
+    drawdownPct: Number(riskState.brokerDrawdownPct) / 100 || 0,
+    riskScale: Number(riskState.riskScale) || 0,
+    capitalStage: normalizeStage(capitalPromotionState.stage),
+    capitalScale: currentCapitalScale(),
+    sector: h.sector || h._fmpSector || null,
+    country: countryOfSymbol(h.ticker),
+    currency: h.currency || null,
+    correlationCluster: h.sector || h._fmpSector || countryOfSymbol(h.ticker),
+    advShares: Number(h.advShares || h.avgVolume20 || h.averageVolume) || null,
     key: `${h.ticker}|${z}|${keyDay}`,
     ...(extra || {})
   };
@@ -13068,6 +13344,10 @@ function isCorrectiveCyclePending(key) {
 function shouldEmitIbkrEntry(trade, hz) {
   assertRiskStateReady('shouldEmitIbkrEntry');
   if (!trade || !isHistoryBuySellRecord(trade)) return false;
+  if (!isAfterDailyRecommendationRelease()) {
+    console.log('IBKR entry skipped (before SGT recommendation release):', trade && trade.ticker);
+    return false;
+  }
   if (isNewEntryRiskBlocked()) {
     console.log('IBKR entry skipped (risk-off / liquidity gate):', trade.ticker,
       riskState.liquidityRiskOff ? ('liq=' + riskState.liquidityPct + '%') : ('dd=' + riskState.drawdownPct + '%'));
@@ -13117,6 +13397,10 @@ function shouldEmitIbkrEntry(trade, hz) {
 async function backfillIbkrEntriesFromOpenBoard() {
   const dash = dashboardPicksCache && dashboardPicksCache.dashData;
   if (!dash || typeof dash !== 'object') return 0;
+  if (!isAfterDailyRecommendationRelease()) {
+    console.log('IBKR board backfill skipped (before SGT recommendation release)');
+    return 0;
+  }
   if (isNewEntryRiskBlocked()) {
     console.log('IBKR board backfill skipped (risk-off / liquidity gate)');
     return 0;
@@ -13200,6 +13484,13 @@ function emitTradeEvent(type, payload) {
   } catch (e) {
     console.warn('trade event write failed:', e.message);
   }
+  durableStore.appendEvent({
+    idempotencyKey: `trade-event:${evt.seq}`,
+    stream: 'trade-events',
+    type,
+    decisionId: evt.decisionId,
+    payload: evt
+  });
   auditLog('trade_event', { type, seq: evt.seq, ticker: payload && payload.ticker, hz: payload && payload.hz });
   return evt;
 }
@@ -14239,6 +14530,7 @@ function restoreOpenModelFillsFromCursorErr(positionsOverride) {
   }
 }
 let _ibkrExecIds = new Set();
+const _pendingIbkrCommissions = new Map();
 try {
   if (fs.existsSync(IBKR_FILLS_FILE)) {
     for (const line of fs.readFileSync(IBKR_FILLS_FILE, 'utf8').trim().split('\n')) {
@@ -14246,6 +14538,18 @@ try {
     }
   }
 } catch (_) {}
+const executionRecoveryReady = durableReady.then(async ready => {
+  if (!ready || _ibkrExecIds.size) return;
+  try {
+    const rows = await durableStore.loadExecutions();
+    if (rows.length) {
+      writeIbkrFillRows(rows);
+      console.log('Recovered IBKR executions from PostgreSQL:', rows.length);
+    }
+  } catch (error) {
+    console.warn('PostgreSQL execution recovery failed:', error.message);
+  }
+});
 
 /** Listing market for Yahoo/IBKR tickers — mirrors bridge.js windows. */
 function ibkrMarketFromTicker(ticker) {
@@ -14341,6 +14645,15 @@ app.post('/api/ibkr/report', (req, res) => {
       qty: Number(r.qty), price: Number(r.price),
       currency: String(r.currency || 'USD'), ccyScale: Number(r.ccyScale) || 1,
       orderId: r.orderId ?? null,
+      decisionId: r.decisionId ? String(r.decisionId) : null,
+      rulesVersion: r.rulesVersion ? String(r.rulesVersion) : null,
+      modelEntry: Number(r.modelEntry) || null,
+      arrivalPrice: Number(r.arrivalPrice) || null,
+      quoteSource: r.quoteSource ? String(r.quoteSource) : null,
+      orderType: r.orderType ? String(r.orderType) : null,
+      orderSubmittedAt: r.orderSubmittedAt || null,
+      implementationShortfallBps: Number.isFinite(Number(r.implementationShortfallBps))
+        ? Number(r.implementationShortfallBps) : null,
       time: fillTime,
       session: phase,
       sessionLabel: r.sessionLabel || ibkrSessionLabel(phase),
@@ -14375,16 +14688,30 @@ app.post('/api/ibkr/report', (req, res) => {
           stored++;
         }
         for (const p of commissionPatches) {
+          const want = String(p.execId || '').toLowerCase();
           let hit = false;
           for (const row of rows) {
-            if (String(row.execId) !== p.execId) continue;
+            if (String(row.execId || '').toLowerCase() !== want) continue;
             row.commission = p.commission;
             row.commissionCcy = p.commissionCcy;
             if (p.ibRealizedPnl != null) row.ibRealizedPnl = p.ibRealizedPnl;
             hit = true;
             commissionsPatched++;
           }
-          if (!hit) skipped++;
+          if (hit) _pendingIbkrCommissions.delete(want);
+          else {
+            _pendingIbkrCommissions.set(want, p);
+            skipped++;
+          }
+        }
+        for (const row of rows) {
+          const pending = _pendingIbkrCommissions.get(String(row.execId || '').toLowerCase());
+          if (!pending || row.commission != null) continue;
+          row.commission = pending.commission;
+          row.commissionCcy = pending.commissionCcy;
+          if (pending.ibRealizedPnl != null) row.ibRealizedPnl = pending.ibRealizedPnl;
+          _pendingIbkrCommissions.delete(String(row.execId || '').toLowerCase());
+          commissionsPatched++;
         }
         return rows;
       });
@@ -14396,6 +14723,137 @@ app.post('/api/ibkr/report', (req, res) => {
   }
   if (stored || commissionsPatched) auditLog('ibkr_fills', { stored, skipped, commissionsPatched });
   res.json({ ok: true, stored, skipped, commissionsPatched, totalExecs: _ibkrExecIds.size });
+});
+
+app.post('/api/ibkr/risk-decision', (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const row = {
+    at: new Date().toISOString(),
+    decisionId: req.body && req.body.decisionId || null,
+    ticker: String(req.body && req.body.ticker || ''),
+    allowed: req.body && req.body.allowed === true,
+    reasons: Array.isArray(req.body && req.body.reasons) ? req.body.reasons : [],
+    sizing: req.body && req.body.sizing || null,
+    projected: req.body && req.body.projected || null
+  };
+  auditLog('portfolio_risk_decision', row);
+  durableStore.appendEvent({
+    idempotencyKey: `risk:${row.decisionId || row.ticker}:${Date.parse(row.at)}`,
+    stream: 'risk-decisions',
+    type: row.allowed ? 'allowed' : 'rejected',
+    decisionId: row.decisionId,
+    payload: row
+  });
+  res.json({ ok: true });
+});
+
+app.get('/api/ibkr/execution-quality', (req, res) => {
+  if (!ibkrEventsAuthorized(req) && !req.authUser) return res.status(401).json({ error: 'unauthorized' });
+  const entries = readIbkrFillRows().filter(row => row && row.role === 'entry');
+  const buckets = new Map();
+  for (const row of entries) {
+    const key = `${row.session || 'unknown'}|${row.orderType || 'unknown'}`;
+    if (!buckets.has(key)) buckets.set(key, { session: row.session || 'unknown', orderType: row.orderType || 'unknown', fills: 0, shortfallBps: 0, withShortfall: 0, commissions: 0 });
+    const bucket = buckets.get(key);
+    bucket.fills++;
+    if (Number.isFinite(Number(row.implementationShortfallBps))) {
+      bucket.shortfallBps += Number(row.implementationShortfallBps);
+      bucket.withShortfall++;
+    }
+    if (Number.isFinite(Number(row.commission))) bucket.commissions += Number(row.commission);
+  }
+  const bySessionAndOrder = [...buckets.values()].map(bucket => ({
+    ...bucket,
+    avgImplementationShortfallBps: bucket.withShortfall
+      ? +(bucket.shortfallBps / bucket.withShortfall).toFixed(2) : null,
+    commissions: +bucket.commissions.toFixed(2)
+  }));
+  res.json({
+    ok: true,
+    fills: entries.length,
+    linkedDecisionIds: entries.filter(row => row.decisionId).length,
+    bySessionAndOrder
+  });
+});
+
+function capitalPromotionEvidence() {
+  let canonicalReportPass = false;
+  try {
+    const report = JSON.parse(fs.readFileSync(path.join(__dirname, 'scripts', 'capital-readiness-report.json'), 'utf8'));
+    const requiredWindows = [252, 504, 1260];
+    const requiredKeys = new Set(requiredWindows.flatMap(window => (
+      ['buy', 'sell'].flatMap(side => ['short', 'medium', 'long'].map(hz => `${side}:${hz}:${window}`))
+    )));
+    const reportKeys = new Set((report.runs || []).map(run => run.key));
+    const versionsMatch = (report.runs || []).every(run => run.policyVersions
+      && run.policyVersions.decision === DECISION_POLICY.version
+      && run.policyVersions.exit === EXIT_POLICY_VERSION
+      && run.policyVersions.costs === COST_MODEL_VERSION);
+    const generatedAt = Date.parse(report.generatedAt || 0);
+    canonicalReportPass = Number.isFinite(generatedAt) && Date.now() - generatedAt <= 7 * 86400000
+      && Array.isArray(report.methodology && report.methodology.tickers)
+      && report.methodology.tickers.length >= 40
+      && [...requiredKeys].every(key => reportKeys.has(key))
+      && versionsMatch
+      && report.runs.every(run => run.promotion && run.promotion.pass);
+  } catch (_) {}
+  const stageStartedAt = Date.parse(capitalPromotionState.stageStartedAt || 0);
+  const entries = readIbkrFillRows().filter(row => row && row.role === 'entry'
+    && !row.synthetic && !row.recon && !row.errorTrade && row.decisionId
+    && (!Number.isFinite(stageStartedAt) || Date.parse(row.time || 0) >= stageStartedAt));
+  const sessionDays = new Set(entries.map(row => String(row.time || '').slice(0, 10)).filter(Boolean));
+  const shortfalls = entries
+    .filter(row => row.implementationShortfallBps != null && row.implementationShortfallBps !== '')
+    .map(row => Number(row.implementationShortfallBps))
+    .filter(Number.isFinite);
+  const recon = loadIbkrReconReport();
+  const decisionIds = new Set();
+  for (const row of tradeHistory) {
+    for (const snap of Object.values(row && row.decisionSnapshots || {})) {
+      if (snap && snap.decisionId) decisionIds.add(snap.decisionId);
+    }
+  }
+  return {
+    canonicalReportPass,
+    reconciled: !!(recon && recon.inSync),
+    integrityBreaches: recon ? Number(recon.errors || 0) + Number(recon.untrackedIb || 0) : 1,
+    drawdownPct: Number(riskState.brokerDrawdownPct ?? riskState.drawdownPct) || 0,
+    shadowDecisions: decisionIds.size,
+    paperSessions: sessionDays.size,
+    paperFills: entries.length,
+    canarySessions: sessionDays.size,
+    avgShortfallBps: shortfalls.length ? shortfalls.reduce((a, b) => a + b, 0) / shortfalls.length : null,
+    shortfallCoverage: entries.length ? shortfalls.length / entries.length : 0,
+    modeledShortfallBps: Number(process.env.MODELED_SHORTFALL_BPS || 25)
+  };
+}
+
+app.get('/api/risk/promotion', (req, res) => {
+  const evidence = capitalPromotionEvidence();
+  res.json({
+    ok: true,
+    state: capitalPromotionState,
+    capitalScale: currentCapitalScale(),
+    evidence,
+    next: evaluateStagePromotion(capitalPromotionState, evidence)
+  });
+});
+
+app.post('/api/risk/promotion/advance', (req, res) => {
+  if (!req.authUser) return res.status(403).json({ error: 'Human administrator session required' });
+  const evidence = capitalPromotionEvidence();
+  const result = evaluateStagePromotion(capitalPromotionState, evidence);
+  if (!result.allowed) return res.status(409).json({ ok: false, result, evidence });
+  capitalPromotionState = {
+    ...capitalPromotionState,
+    stage: result.target,
+    stageStartedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    promotedBy: req.authUser
+  };
+  saveCapitalPromotionState();
+  auditLog('capital_stage_promoted', { stage: result.target, by: req.authUser, evidence });
+  res.json({ ok: true, state: capitalPromotionState, capitalScale: currentCapitalScale() });
 });
 
 /**
@@ -14425,8 +14883,12 @@ function readIbkrFillRows() {
 }
 
 function writeIbkrFillRows(rows) {
-  fs.writeFileSync(IBKR_FILLS_FILE, rows.map(r => JSON.stringify(r)).join('\n') + (rows.length ? '\n' : ''));
+  atomicWriteFileSync(IBKR_FILLS_FILE, rows.map(r => JSON.stringify(r)).join('\n') + (rows.length ? '\n' : ''));
   _ibkrExecIds = new Set(rows.map(r => r.execId).filter(Boolean));
+  for (const row of rows) {
+    if (!row || !row.execId) continue;
+    durableStore.saveExecution(row.execId, row.decisionId, row.orderId, row);
+  }
 }
 
 /** Synthetic / recon rows are never deleted by purge/phantom filters. */
@@ -14756,7 +15218,9 @@ function loadIbkrAccountSnapshot() {
 function saveIbkrAccountSnapshot(snap) {
   if (!snap || typeof snap !== 'object') return;
   try {
-    fs.writeFileSync(IBKR_ACCOUNT_FILE, JSON.stringify({ ...snap, savedAt: new Date().toISOString() }, null, 2));
+    const payload = { ...snap, savedAt: new Date().toISOString() };
+    atomicWriteJsonSync(IBKR_ACCOUNT_FILE, payload, 2);
+    durableStore.saveSnapshot('ibkr-account', payload, 1);
   } catch (_) {}
 }
 /** Prefer IB InitMarginReq as margin used; fall back to NLV − available funds. */
@@ -14979,7 +15443,10 @@ function loadIbkrReconReport() {
   catch (_) { return null; }
 }
 function saveIbkrReconReport(r) {
-  try { fs.writeFileSync(IBKR_RECON_FILE, JSON.stringify(r, null, 2)); } catch (_) {}
+  try {
+    atomicWriteJsonSync(IBKR_RECON_FILE, r, 2);
+    durableStore.saveSnapshot('ibkr-reconciliation', r, 1);
+  } catch (_) {}
 }
 try { quarantineExcessModelEntriesVsIb(); } catch (e) {
   console.warn('boot quarantine excess-vs-ib failed:', e.message);
@@ -15591,6 +16058,12 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       }))
     };
     saveIbkrReconReport(report);
+    if (!inSync) {
+      const reason = report.errors > 0 ? 'reconciliation-error'
+        : report.untrackedIb > 0 ? 'untracked-position'
+          : report.pendingIssues > 0 ? 'reconciliation-pending' : 'fill-adjustment';
+      revertCapitalStage(reason);
+    }
     // After IB snapshot lands, drop History Live ghosts not held / not on board.
     try { pruneStaleOpenHistoryRows(); } catch (ePrune) {
       console.warn('History prune after recon:', ePrune.message);
@@ -15761,7 +16234,10 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
     };
     n++;
   }
-  try { fs.writeFileSync(IBKR_MARKS_FILE, JSON.stringify(_ibkrLiveMarks)); } catch (_) {}
+  try {
+    atomicWriteJsonSync(IBKR_MARKS_FILE, _ibkrLiveMarks);
+    durableStore.saveSnapshot('ibkr-marks', _ibkrLiveMarks, 1);
+  } catch (_) {}
   res.json({ ok: true, updated: n, tickers: Object.keys(_ibkrLiveMarks).length });
 });
 
@@ -16685,6 +17161,30 @@ function updateLiquidityRiskGate(accountSnap) {
   riskState.currentBalance = +bal.toFixed(2);
   riskState.netLiquidityAvailable = +avail.toFixed(2);
   riskState.marginsUsed = +((bal - avail).toFixed(2));
+  const now = Date.now();
+  const peak = Math.max(Number(riskState.peakBrokerNlv) || bal, bal);
+  const dd = peak > 0 ? Math.min(1, Math.max(0, (peak - bal) / peak)) : 0;
+  const wasRiskOff = !!riskState.riskOff;
+  riskState.brokerNlv = +bal.toFixed(2);
+  riskState.peakBrokerNlv = +peak.toFixed(2);
+  riskState.brokerDrawdownPct = +(dd * 100).toFixed(3);
+  riskState.brokerNlvAt = new Date(now).toISOString();
+  riskState.riskScale = dd >= RISK_MAX_DD ? 0 : dd >= 0.075 ? 0.25 : dd >= 0.05 ? 0.5 : 1;
+  if (dd >= RISK_MAX_DD) {
+    riskState.riskOff = true;
+    riskState.recoverySince = null;
+  } else if (riskState.riskOff) {
+    if (dd < RISK_RESUME_DD) {
+      if (!riskState.recoverySince) riskState.recoverySince = new Date(now).toISOString();
+      if (now - Date.parse(riskState.recoverySince) >= RISK_RECOVERY_MS) {
+        riskState.riskOff = false;
+        riskState.recoverySince = null;
+      }
+    } else {
+      riskState.recoverySince = null;
+    }
+  }
+  riskState.drawdownPct = riskState.brokerDrawdownPct;
   riskState.updated = new Date().toISOString();
   if (was !== riskState.liquidityRiskOff) {
     auditLog(riskState.liquidityRiskOff ? 'liquidity_risk_off' : 'liquidity_risk_cleared', {
@@ -16698,6 +17198,15 @@ function updateLiquidityRiskGate(accountSnap) {
       'Liquidity risk gate:', riskState.liquidityRiskOff ? 'PAUSE new entries' : 'RESUME',
       'avail=', riskState.liquidityPct + '% of NLV'
     );
+  }
+  if (wasRiskOff !== riskState.riskOff) {
+    auditLog(riskState.riskOff ? 'broker_drawdown_pause' : 'broker_drawdown_resumed', {
+      brokerNlv: riskState.brokerNlv,
+      peakBrokerNlv: riskState.peakBrokerNlv,
+      drawdownPct: riskState.brokerDrawdownPct,
+      hardPausePct: RISK_MAX_DD * 100,
+      resumePct: RISK_RESUME_DD * 100
+    });
   }
   persistRiskState();
   return riskState;
@@ -16731,14 +17240,17 @@ function portfolioMarkedPnl() {
 }
 
 function persistRiskState() {
-  try { fs.writeFileSync(RISK_STATE_FILE, JSON.stringify(riskState)); } catch (_) {}
+  try {
+    atomicWriteJsonSync(RISK_STATE_FILE, riskState);
+    durableStore.saveSnapshot('risk-state', riskState, 1);
+  } catch (_) {}
 }
 
 function updateRiskState() {
   const pnl = portfolioMarkedPnl();
   const equity = RISK_POOL + pnl;
-  riskState.equity = Math.round(equity);
-  riskState.pnl = Math.round(pnl);
+  riskState.modelEquity = Math.round(equity);
+  riskState.modelPnl = Math.round(pnl);
   // Bootstrap / repair peak. A peak that has collapsed far below the pool is the
   // fingerprint of the old peak=1 corruption — rebuild it. A legitimately rebased
   // peak (e.g. after a manual reset to current equity) is left intact.
@@ -16749,9 +17261,19 @@ function updateRiskState() {
   const peak = Number(riskState.peakEquity) || RISK_POOL;
   // Clamp to [0,1] so a data glitch can never render an absurd drawdown %.
   const dd = peak > 0 ? Math.min(1, Math.max(0, (peak - equity) / peak)) : 0;
+  riskState.modelDrawdownPct = +(dd * 100).toFixed(2);
+  const brokerFresh = Date.now() - Date.parse(riskState.brokerNlvAt || 0) < 30 * 60 * 1000;
   const wasOff = !!riskState.riskOff;
-  riskState.riskOff = dd >= RISK_MAX_DD;
-  riskState.drawdownPct = +(dd * 100).toFixed(2);
+  if (!brokerFresh) {
+    riskState.equity = Math.round(equity);
+    riskState.pnl = Math.round(pnl);
+    riskState.riskOff = dd >= RISK_MAX_DD;
+    riskState.drawdownPct = riskState.modelDrawdownPct;
+    riskState.riskScale = dd >= RISK_MAX_DD ? 0 : dd >= 0.075 ? 0.25 : dd >= 0.05 ? 0.5 : 1;
+  } else {
+    riskState.equity = riskState.brokerNlv;
+    riskState.pnl = riskState.brokerNlv - (Number(riskState.peakBrokerNlv) || riskState.brokerNlv);
+  }
   riskState.updated = new Date().toISOString();
   if (riskState.riskOff !== wasOff) {
     auditLog(riskState.riskOff ? 'risk_off_engaged' : 'risk_off_cleared', {
@@ -17570,7 +18092,8 @@ async function runBracketAcceptance(opts = {}) {
   } catch (_) {}
   const useSector = MARKET_OVERLAY_ENABLED && SECTOR_OVERLAY_ENABLED && opts.sector !== false;
   const perTicker = [];
-  let tTrades = 0, tWins = 0, tRet = 0, gW = 0, gL = 0;
+  const allTradeReturns = [];
+  const allTradeResults = [];
   for (const sym of tickers) {
     try {
       const daily = await fetchOHLCV(sym, range, '1d').catch(() => null);
@@ -17590,26 +18113,54 @@ async function runBracketAcceptance(opts = {}) {
         const gk = earningsGroupKeyForSymbol(sym);
         if (gk) earningsEvents = ((await getGroupEarnings(gk).catch(() => null)) || {}).events || null;
       }
-      const bt = await backtestSignal(daily, hz, weekly, fund, { windowBars, side, entryStep: opts.entryStep || 2, marketSeries, earningsEvents });
-      if (!bt || !bt.trades) { perTicker.push({ ticker: sym, trades: 0 }); continue; }
-      perTicker.push({ ticker: sym, trades: bt.trades, winRate: bt.winRate, avgReturnPct: bt.avgReturnPct, profitFactor: bt.profitFactor });
-      tTrades += bt.trades;
-      tWins += Math.round(bt.winRate / 100 * bt.trades);
-      tRet += bt.avgReturnPct * bt.trades;
-      if (bt.profitFactor && bt.profitFactor < 99) { gW += bt.profitFactor; gL += 1; }
+      const bt = await backtestSignal(daily, hz, weekly, fund, {
+        windowBars,
+        side,
+        symbol: sym,
+        entryStep: opts.entryStep || 2,
+        marketSeries,
+        earningsEvents
+      });
+      if (!bt || !bt.trades) {
+        perTicker.push({ ticker: sym, trades: 0, rejectionCounts: bt && bt.rejectionCounts || {} });
+        continue;
+      }
+      perTicker.push({
+        ticker: sym,
+        trades: bt.trades,
+        winRate: bt.winRate,
+        avgReturnPct: bt.avgReturnPct,
+        avgCostPct: bt.avgCostPct,
+        profitFactor: bt.profitFactor,
+        rejectionCounts: bt.rejectionCounts || {}
+      });
+      if (Array.isArray(bt.tradeReturns)) allTradeReturns.push(...bt.tradeReturns);
+      if (Array.isArray(bt.tradeResults)) allTradeResults.push(...bt.tradeResults);
     } catch (e) { perTicker.push({ ticker: sym, error: e.message }); }
   }
+  const summary = summarizeReturns(allTradeReturns);
+  const portfolioSummary = summarizeDatedPortfolio(allTradeResults);
   const aggregate = {
-    totalTrades: tTrades,
-    winRate: tTrades ? Math.round(tWins / tTrades * 100) : null,
-    avgReturnPct: tTrades ? +(tRet / tTrades).toFixed(2) : null,
-    meanProfitFactor: gL ? +(gW / gL).toFixed(2) : null
+    totalTrades: summary.trades,
+    winRate: summary.winRate,
+    avgReturnPct: summary.avgReturnPct,
+    meanProfitFactor: summary.profitFactor,
+    sharpe: portfolioSummary.sharpe,
+    maxDrawdownPct: portfolioSummary.maxDrawdownPct,
+    cvar95Pct: portfolioSummary.cvar95Pct,
+    compoundedReturnPct: portfolioSummary.compoundedReturnPct,
+    portfolioDays: portfolioSummary.days
   };
-  const acceptance = evaluateAcceptance(aggregate);
+  const acceptance = promotionDecision(summary, { side, horizon: hz });
   return {
     hz, side, windowBars, range, tickersTested: tickers.length,
     aggregate, acceptance,
-    note: 'Replays CURRENT signal + hybrid exit. Entry = next-bar open.',
+    policyVersions: {
+      decision: DECISION_POLICY.version,
+      exit: EXIT_POLICY_VERSION,
+      costs: COST_MODEL_VERSION
+    },
+    note: 'Replays canonical live eligibility + hybrid exit. Entry = next-bar open. Returns are net of modeled costs.',
     perTicker: perTicker.sort((a, b) => (b.trades || 0) - (a.trades || 0))
   };
 }
@@ -17672,6 +18223,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 if (require.main === module) {
+Promise.all([snapshotRecoveryReady, eventRecoveryReady, executionRecoveryReady]).then(() => {
 app.listen(PORT, () => {
   console.log('AlphaSignal on port', PORT);
     console.log('Anthropic API key set:', !!anthropicApiKey());
@@ -17700,6 +18252,10 @@ app.listen(PORT, () => {
     setInterval(() => refreshMarketRegime().then(() => refreshSectorRegimes()).catch(() => {}), MARKET_REGIME_TTL);
     setInterval(() => refreshEarningsTides().catch(() => {}), EARNINGS_TTL_MS);
   });
+}).catch(error => {
+  console.error('Fatal startup recovery error:', error && error.stack ? error.stack : error);
+  process.exit(1);
+});
 }
 
 module.exports = {
@@ -17715,6 +18271,9 @@ module.exports = {
   simulateHybridExit,
   TECH_TTL,
   techAtBoundedIndex,
+  dailyToWeeklyBars,
+  weeklyBarsVisibleAt,
+  buildMarketRegime,
   evaluateAcceptance,
   ACCEPTANCE_DEFAULT_TICKERS,
   runBracketAcceptance,

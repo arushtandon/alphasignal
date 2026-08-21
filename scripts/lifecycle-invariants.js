@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * AlphaSignal recommendation-lifecycle invariants (T1–T21).
+ * AlphaSignal recommendation-lifecycle invariants.
  * Uses an isolated DATA_DIR so production disk is untouched.
  */
 'use strict';
@@ -16,6 +16,9 @@ process.env.AUTH_TEST_BYPASS = '1';
 process.env.PORT = '0'; // unused — we never listen
 
 const S = require('../server.js');
+const { calculateRiskSize } = require('../lib/risk/sizing');
+const { evaluatePortfolioAddition } = require('../lib/risk/portfolio');
+const { createDecisionSnapshot } = require('../lib/strategy/decision-engine');
 let failed = 0;
 function ok(name, cond, detail) {
   if (cond) console.log('PASS', name);
@@ -527,11 +530,42 @@ function ok(name, cond, detail) {
         cleaned.long.some(r => r.ticker === 'NEW.L'));
     })();
 
+    // ── T24 Decision provenance is deterministic and versioned ───────────────
+    (function t24() {
+      const input = {
+        ticker: 'AAPL', horizon: 'short', asOf: '2026-08-20T00:00:00.000Z',
+        signal: { buyScore: 70, sellScore: 10, winRateHint: 65 },
+        entry: 100, stop: 95, target: 107
+      };
+      const a = createDecisionSnapshot(input);
+      const b = createDecisionSnapshot(input);
+      ok('T24 deterministic decision id', a.decisionId === b.decisionId, a.decisionId);
+      ok('T24 eligibility checks persisted', a.decision.eligible && a.rulesVersion, JSON.stringify(a));
+    })();
+
+    // ── T25 Futures never force a contract beyond risk budget ────────────────
+    (function t25() {
+      const sized = calculateRiskSize({
+        nlv: 100000, entry: 5, stop: 4.5, multiplier: 25000, lot: 1, secType: 'FUT'
+      });
+      ok('T25 oversized future rejected', !sized.eligible && sized.quantity === 0, JSON.stringify(sized));
+    })();
+
+    // ── T26 Portfolio caps reject correlated concentration ───────────────────
+    (function t26() {
+      const gate = evaluatePortfolioAddition({
+        nlv: 1000000,
+        positions: [{ ticker: 'MSFT', side: 'buy', notionalUsd: 90000, stopRiskUsd: 10000, sector: 'TECH' }],
+        ticker: 'AAPL', side: 'buy', notionalUsd: 25000, stopRiskUsd: 3000, sector: 'TECH'
+      });
+      ok('T26 sector cap blocks admission', !gate.allowed && gate.reasons.includes('sector'), JSON.stringify(gate));
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T23 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T26 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();

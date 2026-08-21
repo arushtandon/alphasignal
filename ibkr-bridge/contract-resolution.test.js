@@ -3,9 +3,13 @@ const {
   toContract,
   parentEntrySpec,
   correctiveExtExitSpec,
+  sessionPhase,
+  minutesSinceUsRth,
   scheduledEntryReleaseAllowed,
+  publishedBoardHasPick,
   shouldAlertReconFailure,
-  riskFindingsFingerprint
+  riskFindingsFingerprint,
+  isAuctionEntryStyle
 } = require('./bridge');
 
 const bae = toContract('BA.L');
@@ -21,6 +25,11 @@ assert.strictEqual(baePre.orderType, 'LMT');
 assert.strictEqual(baePre.tif, 'DAY');
 assert.strictEqual(baePre.lmtPrice, 2230);
 assert.strictEqual(baePre.entryStyle, 'LMT-OPEN');
+assert.strictEqual(isAuctionEntryStyle('LMT-OPEN'), true);
+const baeRth = parentEntrySpec(bae, 'BUY', 330, {
+  side: 'buy', entryPx: 2230, quotePx: 2231, phaseOverride: 'rth'
+});
+assert.strictEqual(baeRth.entryStyle, 'MKT', 'LSE unfilled open orders convert to RTH MKT');
 
 assert.strictEqual(scheduledEntryReleaseAllowed({
   t: '2026-08-18T16:52:14.688Z'
@@ -31,6 +40,17 @@ assert.strictEqual(scheduledEntryReleaseAllowed({
 assert.strictEqual(scheduledEntryReleaseAllowed({
   t: '2026-08-19T05:00:00.000Z', reason: 'rearm-model-entry'
 }), true, 'confirmed corrective/user re-entry bypasses the schedule gate');
+assert.strictEqual(scheduledEntryReleaseAllowed({
+  entryDate: '2026-08-20T18:10:12.649Z'
+}), false, 'NWG.L 02:10 SGT Friday emit must stay blocked');
+assert.strictEqual(publishedBoardHasPick({
+  short: [{ ticker: 'FAST' }],
+  medium: [{ ticker: 'DASH' }]
+}, 'NWG.L', 'short', 'buy'), false, 'NWG.L is not a published short buy');
+assert.strictEqual(publishedBoardHasPick({
+  short: [{ ticker: 'FAST' }],
+  medium: [{ ticker: 'DASH' }]
+}, 'FAST', 'short', 'buy'), true);
 assert.strictEqual(shouldAlertReconFailure({
   ok: false, error: 'HTTP 502', transient: true, failureMs: 60_000
 }), false, 'brief deploy 502 must not page Telegram');
@@ -68,5 +88,17 @@ const second = [{
   text: 'Order NOT executed (RTH 37m): BA.L|long|Tue Aug 18 2026 style=MKT side=buy'
 }];
 assert.strictEqual(riskFindingsFingerprint(first), riskFindingsFingerprint(second));
+
+// DST and holiday boundaries use exchange-local clocks, not fixed UTC offsets.
+const us = toContract('AAPL');
+assert.strictEqual(sessionPhase(us, Date.parse('2026-03-09T13:00:00Z')), 'pre');
+assert.strictEqual(sessionPhase(us, Date.parse('2026-03-09T14:00:00Z')), 'rth');
+assert.strictEqual(sessionPhase(us, Date.parse('2026-01-05T14:00:00Z')), 'pre');
+assert.strictEqual(sessionPhase(us, Date.parse('2026-01-05T15:00:00Z')), 'rth');
+assert.strictEqual(minutesSinceUsRth(Date.parse('2026-03-09T14:00:00Z')), 30);
+const sap = toContract('SAP.DE');
+assert.strictEqual(sessionPhase(sap, Date.parse('2026-01-05T08:30:00Z')), 'rth');
+assert.strictEqual(sessionPhase(sap, Date.parse('2026-08-20T07:30:00Z')), 'rth');
+assert.strictEqual(sessionPhase(us, Date.parse('2026-12-25T15:00:00Z')), 'closed');
 
 console.log('PASS BA.L contract identity and stable risk fingerprint');
