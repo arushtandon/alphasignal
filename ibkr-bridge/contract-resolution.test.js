@@ -6,6 +6,7 @@ const {
   sessionPhase,
   minutesSinceUsRth,
   scheduledEntryReleaseAllowed,
+  boardPublishedAtRelease,
   publishedBoardHasPick,
   shouldAlertReconFailure,
   riskFindingsFingerprint,
@@ -33,16 +34,23 @@ assert.strictEqual(baeRth.entryStyle, 'MKT', 'LSE unfilled open orders convert t
 
 assert.strictEqual(scheduledEntryReleaseAllowed({
   t: '2026-08-18T16:52:14.688Z'
-}), false, '00:52 SGT recommendation must be blocked');
+}, Date.parse('2026-08-18T22:05:00.000Z')), false, '00:52 SGT recommendation must be blocked');
 assert.strictEqual(scheduledEntryReleaseAllowed({
   t: '2026-08-18T22:00:14.688Z'
-}), true, '06:00 SGT recommendation must be allowed');
+}, Date.parse('2026-08-18T22:05:00.000Z')), true, '06:00 SGT recommendation must be allowed');
+assert.strictEqual(scheduledEntryReleaseAllowed({
+  t: '2026-08-19T05:00:00.000Z', userReentry: true
+}, Date.parse('2026-08-18T19:00:00.000Z')), true, 'confirmed user re-entry bypasses the schedule gate');
 assert.strictEqual(scheduledEntryReleaseAllowed({
   t: '2026-08-19T05:00:00.000Z', reason: 'rearm-model-entry'
-}), true, 'confirmed corrective/user re-entry bypasses the schedule gate');
+}, Date.parse('2026-08-18T19:00:00.000Z')), false, 'rearm-model-entry must not bypass a pre-release clock');
 assert.strictEqual(scheduledEntryReleaseAllowed({
   entryDate: '2026-08-20T18:10:12.649Z'
-}), false, 'NWG.L 02:10 SGT Friday emit must stay blocked');
+}, Date.parse('2026-08-21T09:05:00.000Z')), false, 'NWG.L 02:10 SGT Friday emit must stay blocked after 06:00');
+assert.strictEqual(boardPublishedAtRelease(
+  Date.parse('2026-08-20T18:10:12.649Z'),
+  Date.parse('2026-08-21T09:05:00.000Z')
+), false, 'overnight Friday scan is not the 06:00 board');
 assert.strictEqual(publishedBoardHasPick({
   short: [{ ticker: 'FAST' }],
   medium: [{ ticker: 'DASH' }]

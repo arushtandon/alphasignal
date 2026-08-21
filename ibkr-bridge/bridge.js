@@ -68,6 +68,12 @@ const { calculateRiskSize, DEFAULT_LIMITS: RISK_SIZING_LIMITS } = require('../li
 const { evaluatePortfolioAddition } = require('../lib/risk/portfolio');
 const { BridgeSqliteStore } = require('../lib/storage/bridge-sqlite');
 const { atomicWriteJsonSync } = require('../lib/storage/atomic-json');
+const {
+  ENTRY_RELEASE_HOUR_SGT,
+  scheduledEntryReleaseAllowed,
+  boardPublishedAtRelease,
+  isManualEntryBypass
+} = require('../lib/schedule/entry-release');
 
 const DRY = process.env.IBKR_DRY_RUN !== '0';
 const BASE = String(process.env.ALPHASIGNAL_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
@@ -122,19 +128,6 @@ function loadErrorTradeTickers() {
   return out;
 }
 const ERROR_TRADE_TICKERS = loadErrorTradeTickers();
-const ENTRY_RELEASE_HOUR_SGT = Math.max(
-  0,
-  Math.min(23, parseInt(process.env.PICKS_REFRESH_HOUR_SGT || '6', 10) || 6)
-);
-function scheduledEntryReleaseAllowed(evt) {
-  if (!evt) return false;
-  if (evt.userReentry === true || evt.correctiveReentry === true
-    || String(evt.reason || '') === 'rearm-model-entry') return true;
-  const ts = Date.parse(evt.entryDate || evt.t || 0);
-  if (!Number.isFinite(ts)) return false;
-  const sgt = new Date(ts + 8 * 60 * 60 * 1000);
-  return sgt.getUTCHours() >= ENTRY_RELEASE_HOUR_SGT;
-}
 
 function dashboardPaneFor(hz, side) {
   if (String(side || '').toLowerCase() === 'sell') {
@@ -2167,6 +2160,32 @@ async function main() {
 
   // ── Entry: full bracket ────────────────────────────────────────────────────
   async function placeBracket(evt) {
+    // Hard choke: poll, seed, and re-arm all go through here. A 02:10 SGT emit
+    // must not place even if reconcile thinks state is missing.
+    if (!scheduledEntryReleaseAllowed(evt)) {
+      log('placeBracket blocked (SGT release gate):', evt && (evt.key || evt.ticker),
+        'entryDate=', evt && (evt.entryDate || evt.t) || 'missing',
+        'releaseHour=', ENTRY_RELEASE_HOUR_SGT);
+      return null;
+    }
+    if (!isManualEntryBypass(evt)) {
+      try {
+        const picks = await fetchJson('/api/dashboard/picks');
+        if (!boardPublishedAtRelease(picks && picks.dashTs)) {
+          log('placeBracket blocked (board is not the 06:00 SGT publish):',
+            evt && (evt.key || evt.ticker), 'dashTs=', picks && picks.dashTs);
+          return null;
+        }
+        if (picks && picks.dashData
+          && !publishedBoardHasPick(picks.dashData, evt.ticker, evt.hz || 'short', evt.side)) {
+          log('placeBracket blocked (not on published board):', evt && (evt.key || evt.ticker));
+          return null;
+        }
+      } catch (e) {
+        log('placeBracket blocked (board check failed closed):', evt && (evt.key || evt.ticker), e.message);
+        return null;
+      }
+    }
     let contract = toContract(evt.ticker);
     if (!contract) {
       log('skip entry (unsupported instrument for IB paper):', evt.ticker);
@@ -3543,7 +3562,8 @@ async function main() {
             continue;
           }
         } catch (e) {
-          log('RECONCILE: board check failed (continuing with schedule gate only)', key, e.message);
+          log('RECONCILE: skip seed (board check failed closed)', key, e.message);
+          continue;
         }
         // If IB already holds this symbol in the trade direction, assume the
         // original fill survived state loss — mark filled, do not double-enter.
@@ -3917,7 +3937,8 @@ async function main() {
             tp1: src.tp1 != null ? src.tp1 : row.tp1Px,
             sl: src.sl != null ? src.sl : row.stopPx,
             trailSl: src.trailSl != null ? src.trailSl : (src.sl != null ? src.sl : row.stopPx),
-            t: new Date().toISOString(),
+            entryDate: src.entryDate || src.t,
+            t: src.entryDate || src.t || new Date().toISOString(),
             reason: src.reason,
             decisionId: src.decisionId || row.decisionId,
             admittedAt: row.admittedAt,
@@ -4440,6 +4461,7 @@ module.exports = {
   minutesSinceUsRth,
   shareSplit,
   scheduledEntryReleaseAllowed,
+  boardPublishedAtRelease,
   publishedBoardHasPick,
   shouldAlertReconFailure,
   riskFindingsFingerprint,

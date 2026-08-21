@@ -27,6 +27,12 @@ const {
   evaluateStagePromotion,
   revertForIntegrityBreach
 } = require('./lib/risk/promotion');
+const {
+  isAfterDailyRecommendationRelease,
+  scheduledEntryReleaseAllowed,
+  boardPublishedAtRelease,
+  isManualEntryBypass
+} = require('./lib/schedule/entry-release');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -7718,6 +7724,10 @@ function serverPicksToHistoryRecords(dashData) {
 
 let serverPicksGenerating = false;
 async function generateServerPicksFromShortlist(opts = {}) {
+  if (!isAfterDailyRecommendationRelease() && !opts.allowBeforeRelease) {
+    console.log('Server picks blocked until SGT recommendation release');
+    return { ok: false, reason: 'before-daily-release' };
+  }
   if (serverPicksGenerating) return { ok: false, reason: 'already generating' };
   const list = universeShortlist && Array.isArray(universeShortlist.shortlist) ? universeShortlist.shortlist : [];
   if (!list.length) return { ok: false, reason: 'no shortlist' };
@@ -11592,10 +11602,6 @@ function picksGeneratedBeforeDailyRelease(picksTs, now = Date.now()) {
   if (generated.key !== current.key) return false;
   return (generated.hour * 60 + generated.minute) < PICKS_REFRESH_HOUR_SGT * 60;
 }
-function isAfterDailyRecommendationRelease(ms = Date.now()) {
-  const { hour, minute } = singaporeParts(ms);
-  return (hour * 60 + minute) >= PICKS_REFRESH_HOUR_SGT * 60;
-}
 
 /** Same shape as Date#toDateString(), but always in Asia/Singapore (UTC+8).
  *  IBKR trade keys and history day matching must not depend on the host TZ
@@ -13348,6 +13354,10 @@ function shouldEmitIbkrEntry(trade, hz) {
     console.log('IBKR entry skipped (before SGT recommendation release):', trade && trade.ticker);
     return false;
   }
+  if (!boardPublishedAtRelease(dashboardPicksCache && dashboardPicksCache.dashTs)) {
+    console.log('IBKR entry skipped (board is not the 06:00 SGT publish):', trade && trade.ticker);
+    return false;
+  }
   if (isNewEntryRiskBlocked()) {
     console.log('IBKR entry skipped (risk-off / liquidity gate):', trade.ticker,
       riskState.liquidityRiskOff ? ('liq=' + riskState.liquidityPct + '%') : ('dd=' + riskState.drawdownPct + '%'));
@@ -13401,6 +13411,10 @@ async function backfillIbkrEntriesFromOpenBoard() {
     console.log('IBKR board backfill skipped (before SGT recommendation release)');
     return 0;
   }
+  if (!boardPublishedAtRelease(dashboardPicksCache && dashboardPicksCache.dashTs)) {
+    console.log('IBKR board backfill skipped (board is not the 06:00 SGT publish)');
+    return 0;
+  }
   if (isNewEntryRiskBlocked()) {
     console.log('IBKR board backfill skipped (risk-off / liquidity gate)');
     return 0;
@@ -13448,6 +13462,16 @@ function emitTradeEvent(type, payload) {
     }
     if (!(payload.entry > 0) || !(payload.sl > 0)) {
       console.log('IBKR entry skipped (missing levels):', payload && payload.key);
+      return null;
+    }
+    if (process.env.AUTH_TEST_BYPASS !== '1' && !scheduledEntryReleaseAllowed(payload)) {
+      console.log('IBKR entry skipped (SGT release gate):', payload && payload.key,
+        'entryDate=', payload && (payload.entryDate || payload.t));
+      return null;
+    }
+    if (process.env.AUTH_TEST_BYPASS !== '1' && !isManualEntryBypass(payload)
+      && !boardPublishedAtRelease(dashboardPicksCache && dashboardPicksCache.dashTs)) {
+      console.log('IBKR entry skipped (board is not the 06:00 SGT publish):', payload && payload.key);
       return null;
     }
   }
@@ -13670,7 +13694,8 @@ const IBKR_LEGACY_ERROR_KEYS = new Set([
   'HSBA.L|short|Thu Aug 06 2026',
   'VTR|short|Wed Aug 05 2026',
   'FANG|short|Wed Aug 05 2026',
-  '8002.T|short|Mon Aug 03 2026'
+  '8002.T|short|Mon Aug 03 2026',
+  'NWG.L|short|Fri Aug 21 2026'
 ]);
 /** No longer unstamp AIR.DE — both Airbus listings are error trades. */
 const IBKR_UNSTAMP_ERROR_TICKERS = new Set();
