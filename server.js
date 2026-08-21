@@ -13876,6 +13876,22 @@ function isReconFamilyFill(r) {
 }
 
 /** IB sync pads/trims belong on the model key — not Error ledger. */
+function isIbkrQtyPadFill(r) {
+  if (!r) return false;
+  const recon = String(r.recon || '');
+  const exec = String(r.execId || '');
+  return recon === 'qty-pad' || exec.startsWith('recon-entry-');
+}
+
+function isGenuineIbExecFill(r) {
+  if (!r) return false;
+  if (r.synthetic === true) return false;
+  if (isIbkrQtyPadFill(r)) return false;
+  const exec = String(r.execId || '');
+  if (!exec) return false;
+  return !/^(recon-|recover-entry-|repair-ibflat-|cursor-err-|ibhist-|synth-)/.test(exec);
+}
+
 function isModelIbSyncFill(r) {
   if (!r) return false;
   if (r.userReentry === true) return true;
@@ -14067,10 +14083,19 @@ function quarantineExcessModelEntriesVsIb(positionsOverride) {
         const sum = group.reduce((s, o) => s + Number(o.openQty || 0), 0);
         if (!(sum > ibAbs)) continue;
         const keySet = new Set(group.map(o => o.key));
+        const rank = (r) => {
+          if (isIbkrQtyPadFill(r)) return 0;
+          if (r && r.synthetic) return 1;
+          return 2;
+        };
         const entries = out
           .map((r, idx) => ({ r, idx }))
           .filter(x => x.r && keySet.has(String(x.r.key)) && x.r.role === 'entry')
-          .sort((a, b) => String(a.r.time || '').localeCompare(String(b.r.time || '')));
+          .sort((a, b) => {
+            const d = rank(a.r) - rank(b.r);
+            if (d) return d;
+            return String(a.r.time || '').localeCompare(String(b.r.time || ''));
+          });
         if (entries.length < 2) continue;
         let pick = null;
         for (const e of entries) {
@@ -14484,8 +14509,9 @@ function restoreOpenModelFillsFromCursorErr(positionsOverride) {
     if (!openKeys.size) return 0;
 
     const before = readIbkrFillRows();
-    const out = before.map(r => Object.assign({}, r));
+    let out = before.map(r => Object.assign({}, r));
     let moved = 0;
+    const droppedPadExecIds = new Set();
 
     for (const liveKey of openKeys) {
       const parts = String(liveKey).split('|');
@@ -14494,21 +14520,99 @@ function restoreOpenModelFillsFromCursorErr(positionsOverride) {
       if (!meta || !(meta.abs > 0)) continue;
       const ibAbs = meta.abs;
       const side = meta.sign < 0 ? 'sell' : 'buy';
-
-      const liveEntries = out.filter(r => r && String(r.key) === liveKey && r.role === 'entry');
-      let liveQty = liveEntries.reduce((s, r) => s + (Number(r.qty) || 0), 0);
-      if (liveQty >= ibAbs) continue;
-
       const errKey = toCursorErrIbkrKey(liveKey);
+
+      const liveQtyOf = () => out
+        .filter(r => r && String(r.key) === liveKey && r.role === 'entry')
+        .reduce((s, r) => s + (Number(r.qty) || 0), 0);
+
+      const genuineErr = out
+        .filter(r => r && String(r.key) === errKey && r.role === 'entry' && isGenuineIbExecFill(r))
+        .sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+
+      // Genuine IB fills (with commissionReport) beat synthetic qty-pads.
+      // FAST: pad on live + real 0000dc8f… on |cursor-err must swap, not skip.
+      for (const errFill of genuineErr) {
+        const q = Number(errFill.qty) || 0;
+        if (!(q > 0)) continue;
+        const execId = String(errFill.execId || '');
+        if (execId && out.some(r => r && String(r.key) === liveKey && String(r.execId) === execId)) continue;
+
+        let liveQty = liveQtyOf();
+        if (liveQty + q > ibAbs) {
+          const pads = out
+            .map((r, idx) => ({ r, idx }))
+            .filter(x => x.r && String(x.r.key) === liveKey && x.r.role === 'entry' && isIbkrQtyPadFill(x.r))
+            .sort((a, b) => (Number(b.r.qty) || 0) - (Number(a.r.qty) || 0));
+          const dropIdxs = new Set();
+          let need = liveQty + q - ibAbs;
+          for (const p of pads) {
+            if (need <= 0) break;
+            dropIdxs.add(p.idx);
+            droppedPadExecIds.add(String(p.r.execId || ''));
+            need -= Number(p.r.qty) || 0;
+          }
+          if (dropIdxs.size) {
+            out = out.filter((_, i) => !dropIdxs.has(i));
+            moved += dropIdxs.size;
+          }
+        }
+
+        liveQty = liveQtyOf();
+        if (liveQty >= ibAbs) continue;
+        const idx = out.findIndex(r => r && String(r.execId) === execId && String(r.key) === errKey);
+        if (idx < 0) continue;
+        const src = out[idx];
+        const promoted = Object.assign({}, src, {
+          key: liveKey,
+          errorTrade: false,
+          synthetic: false,
+          note: (src.note ? String(src.note) + ' ' : '') + '[restore-open-model ← cursor-err]'
+        });
+        delete promoted.recon;
+        out[idx] = promoted;
+        moved++;
+      }
+
+      let liveQty = liveQtyOf();
+      if (liveQty >= ibAbs) {
+        // Qty already matches IB via a pad: still steal the genuine
+        // commissionReport so Brokerage is not stuck on |cursor-err.
+        for (const liveRow of out) {
+          if (!liveRow || String(liveRow.key) !== liveKey || liveRow.role !== 'entry') continue;
+          if (!isIbkrQtyPadFill(liveRow)) continue;
+          if (Number.isFinite(Number(liveRow.commission))) continue;
+          const donor = out.find(r => r && String(r.key) === errKey && r.role === 'entry'
+            && isGenuineIbExecFill(r)
+            && Number(r.qty) === Number(liveRow.qty)
+            && Number.isFinite(Number(r.commission)));
+          if (!donor) continue;
+          liveRow.commission = Number(donor.commission);
+          liveRow.commissionCcy = String(donor.commissionCcy || donor.currency || 'USD');
+          if (donor.ibRealizedPnl != null) liveRow.ibRealizedPnl = donor.ibRealizedPnl;
+          delete donor.commission;
+          delete donor.commissionCcy;
+          delete donor.ibRealizedPnl;
+          moved++;
+        }
+        continue;
+      }
+
       const errEntries = out
         .map((r, idx) => ({ r, idx }))
         .filter(x => x.r && String(x.r.key) === errKey && x.r.role === 'entry')
-        .sort((a, b) => String(a.r.time || '').localeCompare(String(b.r.time || '')));
+        .sort((a, b) => {
+          const ag = isGenuineIbExecFill(a.r) ? 0 : 1;
+          const bg = isGenuineIbExecFill(b.r) ? 0 : 1;
+          if (ag !== bg) return ag - bg;
+          return String(a.r.time || '').localeCompare(String(b.r.time || ''));
+        });
 
       for (const e of errEntries) {
         if (liveQty >= ibAbs) break;
         const q = Number(e.r.qty) || 0;
         if (!(q > 0)) continue;
+        if (out.some(r => r && String(r.key) === liveKey && String(r.execId) === String(e.r.execId))) continue;
         const promoted = Object.assign({}, e.r, {
           key: liveKey,
           errorTrade: false,
@@ -14516,20 +14620,24 @@ function restoreOpenModelFillsFromCursorErr(positionsOverride) {
           note: (e.r.note ? String(e.r.note) + ' ' : '') + '[restore-open-model ← cursor-err]'
         });
         delete promoted.recon;
-        out[e.idx] = promoted;
+        const freshIdx = out.findIndex(r => r && String(r.execId) === String(e.r.execId) && String(r.key) === errKey);
+        if (freshIdx < 0) continue;
+        out[freshIdx] = promoted;
         liveQty += q;
         moved++;
       }
 
       // Still short vs IB and no more err fills → durable qty-pad on live key.
+      liveQty = liveQtyOf();
       if (liveQty < ibAbs) {
         const delta = ibAbs - liveQty;
+        const liveEntries = out.filter(r => r && String(r.key) === liveKey && r.role === 'entry');
         const sample = liveEntries[0] || (errEntries[0] && errEntries[0].r);
         const px = Number(sample && sample.price) || Number(meta.avg) || 0;
         if (delta > 0 && px > 0) {
           const execId = `recon-entry-${liveKey}-pad${delta}`;
           if (!out.some(r => r && String(r.execId) === execId)) {
-            out.push({
+            const pad = {
               execId, key: liveKey, ticker, hz: parts[1] || 'short',
               side, role: 'entry', qty: delta, price: px,
               currency: (sample && sample.currency) || meta.currency || 'USD',
@@ -14537,7 +14645,13 @@ function restoreOpenModelFillsFromCursorErr(positionsOverride) {
               time: (sample && sample.time) || ibkrRecDayIsoFromKey(liveKey) || new Date().toISOString(),
               errorTrade: false, synthetic: true, recon: 'qty-pad',
               note: '[restore-open-model qty-pad]'
-            });
+            };
+            if (sample && Number.isFinite(Number(sample.commission))) {
+              pad.commission = Number(sample.commission);
+              pad.commissionCcy = String(sample.commissionCcy || sample.currency || 'USD');
+              if (sample.ibRealizedPnl != null) pad.ibRealizedPnl = sample.ibRealizedPnl;
+            }
+            out.push(pad);
             moved++;
           }
         }
@@ -14545,7 +14659,9 @@ function restoreOpenModelFillsFromCursorErr(positionsOverride) {
     }
 
     if (!moved) return 0;
-    mutateFillLedger('restore_open_model_from_cursor_err', () => out);
+    mutateFillLedger('restore_open_model_from_cursor_err', () => out, {
+      mayDropProtected: (row) => droppedPadExecIds.has(String(row && row.execId || ''))
+    });
     console.log('Restored', moved, 'fill(s) from |cursor-err / qty-pad onto open model keys');
     auditLog('ibkr_restore_open_model_fills', { moved });
     return moved;

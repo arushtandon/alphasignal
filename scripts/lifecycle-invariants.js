@@ -561,11 +561,89 @@ function ok(name, cond, detail) {
       ok('T26 sector cap blocks admission', !gate.allowed && gate.reasons.includes('sector'), JSON.stringify(gate));
     })();
 
+    // ── T27 Genuine IB fill + commission beat a covering qty-pad (FAST) ──────
+    (function t27() {
+      const liveKey = 'FAST|short|Fri Aug 21 2026';
+      const errKey = liveKey + '|cursor-err';
+      fs.appendFileSync(S.TRADE_EVENTS_FILE, JSON.stringify({
+        seq: 930001, t: '2026-08-20T18:10:12.649Z', type: 'entry',
+        key: liveKey, ticker: 'FAST', hz: 'short', side: 'buy',
+        entry: 50.68, sl: 49.04, tp1: 52.51, status: 'open'
+      }) + '\n');
+      S.mutateFillLedger('t27_seed', (rows) => {
+        rows.push(
+          {
+            execId: 'recon-entry-' + liveKey + '-pad197',
+            key: liveKey, ticker: 'FAST', hz: 'short', side: 'buy',
+            role: 'entry', qty: 197, price: 50.67370555, currency: 'USD', ccyScale: 1,
+            time: '2026-08-21T00:00:00.000Z', synthetic: true, recon: 'qty-pad',
+            errorTrade: false
+          },
+          {
+            execId: '0000dc8f.6b681192.01.01',
+            key: errKey, ticker: 'FAST', hz: 'short', side: 'buy',
+            role: 'entry', qty: 197, price: 50.67, currency: 'USD', ccyScale: 1,
+            time: '2026-08-20T18:10:29.021Z', errorTrade: true,
+            commission: 0.729998, commissionCcy: 'USD'
+          }
+        );
+        return rows;
+      });
+      const moved = S.restoreOpenModelFillsFromCursorErr([
+        { ticker: 'FAST', qty: 197, avgCost: 50.67370555, currency: 'USD' }
+      ]);
+      const live = S.readIbkrFillRows().filter(r => r.key === liveKey && r.role === 'entry');
+      const liveQty = live.reduce((s, r) => s + Number(r.qty || 0), 0);
+      ok('T27 FAST restore ran', moved >= 1, 'moved=' + moved);
+      ok('T27 FAST live qty 197 once', liveQty === 197 && live.length === 1,
+        'qty=' + liveQty + ' n=' + live.length);
+      ok('T27 FAST live has IB commission', live.some(r =>
+        String(r.execId) === '0000dc8f.6b681192.01.01'
+        && Number(r.commission) > 0.7 && !r.errorTrade),
+        JSON.stringify(live.map(r => ({ execId: r.execId, comm: r.commission, recon: r.recon }))));
+      ok('T27 FAST pad dropped', !live.some(r => r.recon === 'qty-pad'));
+    })();
+
+    // ── T28 Excess-vs-IB drops qty-pad, keeps genuine exec + commission ───────
+    (function t28() {
+      const liveKey = 'DASHX|medium|Fri Aug 21 2026';
+      S.mutateFillLedger('t28_seed', (rows) => {
+        rows.push(
+          {
+            execId: '00025b44.6a876a47.01.01',
+            key: liveKey, ticker: 'DASHX', hz: 'medium', side: 'buy',
+            role: 'entry', qty: 44, price: 222.97, currency: 'USD', ccyScale: 1,
+            time: '2026-08-20T18:10:33.271Z', commission: 0.491189, commissionCcy: 'USD'
+          },
+          {
+            execId: 'recon-entry-' + liveKey + '-pad44',
+            key: liveKey, ticker: 'DASHX', hz: 'medium', side: 'buy',
+            role: 'entry', qty: 44, price: 222.97, currency: 'USD', ccyScale: 1,
+            time: '2026-08-21T00:00:00.000Z', synthetic: true, recon: 'qty-pad'
+          }
+        );
+        return rows;
+      });
+      fs.writeFileSync(path.join(process.env.DATA_DIR, 'ibkr_recon.json'), JSON.stringify({
+        at: new Date().toISOString(),
+        positions: [{ ticker: 'DASHX', qty: 44, avgCost: 222.97, currency: 'USD' }]
+      }));
+      const moved = S.quarantineExcessModelEntriesVsIb();
+      const live = S.readIbkrFillRows().filter(r => r.key === liveKey && r.role === 'entry');
+      const liveQty = live.reduce((s, r) => s + Number(r.qty || 0), 0);
+      ok('T28 excess moved pad', moved >= 1, 'moved=' + moved);
+      ok('T28 live keeps genuine 44', liveQty === 44 && live.length === 1
+        && String(live[0].execId) === '00025b44.6a876a47.01.01',
+        'qty=' + liveQty + ' n=' + live.length + ' id=' + (live[0] && live[0].execId));
+      ok('T28 live commission kept', Number(live[0] && live[0].commission) > 0.4,
+        live[0] && live[0].commission);
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T26 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T28 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();
