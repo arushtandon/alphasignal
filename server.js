@@ -33,6 +33,9 @@ const {
   boardPublishedAtRelease,
   isManualEntryBypass
 } = require('./lib/schedule/entry-release');
+const {
+  isLiveAuthorizedServerExit
+} = require('./lib/ibkr/live-exit-authority');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11511,7 +11514,10 @@ function pruneStaleOpenHistoryRows() {
       if (!h[hz + 'SettledTs']) {
         h[hz + 'SettledTs'] = Date.now();
         try {
-          emitTradeEvent('exit', tradeEventSnapshot(h, hz, { exitReason: h[hz + 'ExitReason'] }));
+          emitTradeEvent('exit', tradeEventSnapshot(h, hz, {
+            exitReason: h[hz + 'ExitReason'],
+            reason: 'stale-open-not-ib'
+          }));
         } catch (_) { /* best-effort */ }
       }
       if (hz === (h.hz || 'short')) h.status = 'signal_exit';
@@ -13450,6 +13456,17 @@ async function backfillIbkrEntriesFromOpenBoard() {
 
 function emitTradeEvent(type, payload) {
   if (process.env.IBKR_EVENTS_ENABLED === '0') return null;
+  // Live TP1 / TSL belong to IB child orders. History bar-sim must not emit them.
+  if (type === 'tp1_partial' || type === 'tsl_update') {
+    console.log('IBKR', type, 'not emitted — live TP1/TSL is IB-fill only',
+      payload && payload.key);
+    return null;
+  }
+  if (type === 'exit' && payload && !isLiveAuthorizedServerExit(payload)) {
+    console.log('IBKR exit skipped (not live-authorized):', payload.key,
+      payload.status || payload.reason || payload.exitReason || '');
+    return null;
+  }
   if (type === 'entry') {
     if (payload && isCorrectiveCyclePending(payload.key)
       && String(payload.reason || '') !== 'rearm-model-entry') {
@@ -17976,7 +17993,14 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         if (!h[hz + 'SettledTs']) {
           h[hz + 'SettledTs'] = Date.now();
           auditLog('trade_settled', { ticker: h.ticker, hz, status: 'signal_exit', pnl: h[hz + 'PnlDollar'], exit: curr });
-          try { emitTradeEvent('exit', tradeEventSnapshot(h, hz, { exitReason: h[hz + 'ExitReason'] })); } catch (_) {}
+          try {
+            emitTradeEvent('exit', tradeEventSnapshot(h, hz, {
+              exitReason: h[hz + 'ExitReason'],
+              reason: 'live-signal-flip',
+              liveSignalFlip: true,
+              status: 'signal_exit'
+            }));
+          } catch (_) {}
         }
         rowChanged = true;
         signalExits++;
@@ -18004,8 +18028,6 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
       // which made the $ PnL show $0 even when the % was non-zero.
       const NOTIONAL = 10000;
       if (pathExit) {
-        const prevTp1 = !!h[hz + 'Tp1Hit'];
-        const prevTsl = h[hz + 'LiveTrailSL'];
         const prevSettled = !!h[hz + 'SettledTs'];
         // res.ret is already directional (profit>0 for both long & short) and
         // already blends the TP1 partial — use it directly, don't re-apply `dir`.
@@ -18051,18 +18073,8 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         }
         if (pathExit.stopLoss) h[hz + 'StopLoss'] = pathExit.stopLoss;
         if (pathExit.status === 'sl_hit') setSLCooldown(h.ticker, hz);
-        // IBKR lifecycle edges (once each)
-        try {
-          if (!prevTp1 && pathExit.tp1Hit) {
-            emitTradeEvent('tp1_partial', tradeEventSnapshot(h, hz));
-          }
-          if (h[hz + 'LiveTrailSL'] != null && h[hz + 'LiveTrailSL'] !== prevTsl) {
-            emitTradeEvent('tsl_update', tradeEventSnapshot(h, hz, { prevTrailSl: prevTsl }));
-          }
-          if (_fullExit && !prevSettled) {
-            emitTradeEvent('exit', tradeEventSnapshot(h, hz, { exitReason: h[hz + 'ExitReason'] }));
-          }
-        } catch (_) {}
+        // History path-sim is display/accounting only. Live IBKR closes on
+        // real TP1/stop fills or a live Buy↔Sell flip — never on daily-bar TP1/TSL.
         rowChanged = true;
       } else if (horizonTimeLimitExceededServer(hz, h.entryDate || h.timestamp)) {
         const pct = ((curr - entry) / entry) * dir;
@@ -18076,7 +18088,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         if (!h[hz + 'SettledTs']) {
           h[hz + 'SettledTs'] = Date.now();
           auditLog('trade_settled', { ticker: h.ticker, hz, status: 'time_limit', pnl: h[hz + 'PnlDollar'], exit: curr });
-          try { emitTradeEvent('exit', tradeEventSnapshot(h, hz, { exitReason: 'Horizon time limit exit' })); } catch (_) {}
+          // Horizon time-limit is History-only; do not flatten live IB.
         }
         rowChanged = true;
       } else if (st !== 'time_limit' && st !== 'sl_hit') {
@@ -18419,6 +18431,7 @@ module.exports = {
   ACCEPTANCE_DEFAULT_TICKERS,
   runBracketAcceptance,
   emitTradeEvent,
+  isLiveAuthorizedServerExit,
   tradeEventSnapshot,
   writeOpenRowAction,
   isOpenRowLatched,
@@ -18433,6 +18446,7 @@ module.exports = {
   writeIbkrFillRows,
   isProtectedIbkrFillRow,
   hasOpenEmittedEntryForTicker,
+  hasOpenEmittedEntryForKey,
   isPositionAuthorizedByProvenance,
   ibkrLiveEntrySide,
   isCorrectiveCyclePending,

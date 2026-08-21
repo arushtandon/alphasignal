@@ -639,11 +639,38 @@ function ok(name, cond, detail) {
         live[0] && live[0].commission);
     })();
 
+    // ── T29 Paper TP1/TSL must not emit a live IBKR exit ──────────────────────
+    (function t29() {
+      const key = 'AUTH.X|short|Fri Aug 21 2026';
+      const base = {
+        key, ticker: 'AUTH.X', hz: 'short', side: 'buy',
+        entry: 10, sl: 9, tp1: 12, status: 'open'
+      };
+      S.emitTradeEvent('entry', base);
+      const paper = S.emitTradeEvent('exit', {
+        key, ticker: 'AUTH.X', hz: 'short', side: 'buy',
+        status: 'tp1_then_sl',
+        exitReason: 'TP1 banked; trailing stop closed runner'
+      });
+      ok('T29 paper path-sim exit dropped', paper === null);
+      ok('T29 entry still open after paper exit', S.hasOpenEmittedEntryForKey(key));
+      const tp1 = S.emitTradeEvent('tp1_partial', base);
+      ok('T29 tp1_partial dropped', tp1 === null);
+      const tsl = S.emitTradeEvent('tsl_update', { ...base, trailSl: 10.2 });
+      ok('T29 tsl_update dropped', tsl === null);
+      const flip = S.emitTradeEvent('exit', {
+        key, ticker: 'AUTH.X', hz: 'short', side: 'buy',
+        reason: 'live-signal-flip', liveSignalFlip: true, status: 'signal_exit'
+      });
+      ok('T29 live signal-flip exit emitted', !!flip);
+      ok('T29 closed after signal flip', !S.hasOpenEmittedEntryForKey(key));
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T28 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T29 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();

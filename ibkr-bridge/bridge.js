@@ -23,12 +23,13 @@
  *                    + STP stop  @ SL   for the FULL quantity  (pre-TP1 an SL hit
  *                      exits the WHOLE position — same as the simulator)
  *                    + LMT TP1   @ TP1  for the partial (half) quantity
- *     TP1 fill     → stop is resized to the runner quantity and raised to
- *                    breakeven (never lower) — mirrors the sim's post-TP1 floor
- *     tsl_update   → stop price ratcheted (modify in place, never loosened)
- *     exit         → cancel all open child orders + flatten any remaining
- *                    position at market. NO ORPHANS: an exited trade always
- *                    ends with zero open orders and zero position.
+ *     TP1 fill     → IB orderStatus on the TP1 child only. Stop resized to the
+ *                    runner and raised to breakeven. Server `tp1_partial` is ignored.
+ *     tsl_update   → ignored. Live stop stays at the IB child (entry SL, or BE
+ *                    after a real TP1 fill). History bar-sim must not ratchet it.
+ *     exit         → flatten only on a live Buy↔Sell flip or an operational
+ *                    close (unauthorized / abandon / IB-flat). Paper `tp1_then_sl`
+ *                    / time-limit / simulated SL are ignored.
  *
  *   A reconciliation sweep runs every few minutes as a belt-and-braces pass:
  *   any open order belonging to a closed key is cancelled, and any key flat
@@ -74,6 +75,9 @@ const {
   boardPublishedAtRelease,
   isManualEntryBypass
 } = require('../lib/schedule/entry-release');
+const {
+  isLiveAuthorizedServerExit
+} = require('../lib/ibkr/live-exit-authority');
 
 const DRY = process.env.IBKR_DRY_RUN !== '0';
 const BASE = String(process.env.ALPHASIGNAL_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
@@ -2627,29 +2631,23 @@ async function main() {
       return;
     }
     if (evt.type === 'tsl_update') {
-      if (!row || row.closed) { log('tsl_update for unknown/closed key', key); return; }
-      const newStop = roundPx(evt.trailSl, row.contract);
-      if (!(newStop > 0)) return;
-      // Ratchet only — never loosen (mirror of the sim's "never down" rule).
-      const improves = row.side === 'sell' ? newStop < row.stopPx : newStop > row.stopPx;
-      if (!improves) return;
-      row.stopPx = newStop;
-      const qty = row.tp1Done ? row.qtyRunner : row.qtyTotal;
-      transmitOrder(row.stopId, row.contract, baseOrder({
-        orderId: row.stopId, action: row.side === 'sell' ? 'BUY' : 'SELL',
-        orderType: 'STP', auxPrice: newStop, totalQuantity: qty,
-        parentId: row.parentId, transmit: true
-      }), 'tsl ratchet ' + key);
-      row.updated = evt.t;
+      // History trail is display-only. Live stop is the IB child set at entry
+      // (resized to runner/BE only after a real TP1 fill).
+      log('tsl_update ignored (IB stop is the live authority)', key);
       return;
     }
     if (evt.type === 'tp1_partial') {
-      // Server-side confirmation (EOD). The realtime orderStatus handler usually
-      // got here first; this is the fallback when the bridge restarted mid-day.
-      if (row && !row.tp1Done && !row.closed) onTp1Filled(key, row);
+      // Server paper sim used to mark TP1 done without an IB fill (DSY.PA).
+      // Real TP1 is orderStatus on row.tp1Id only.
+      log('tp1_partial ignored (IB TP1 fill is the live authority)', key);
       return;
     }
     if (evt.type === 'exit') {
+      if (!isLiveAuthorizedServerExit(evt)) {
+        log('exit ignored (not live-authorized)', key,
+          evt.status || evt.reason || evt.exitReason || '');
+        return;
+      }
       // A restart can prune a closed/error state row while IB still physically
       // holds the shares. Re-adopt that live position so a durable server exit
       // cannot become a no-op merely because the local row is missing.
@@ -4465,5 +4463,6 @@ module.exports = {
   publishedBoardHasPick,
   shouldAlertReconFailure,
   riskFindingsFingerprint,
-  isAuctionEntryStyle
+  isAuctionEntryStyle,
+  isLiveAuthorizedServerExit: require('../lib/ibkr/live-exit-authority').isLiveAuthorizedServerExit
 };
