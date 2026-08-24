@@ -619,7 +619,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
       <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div>
           <div class="pt">Performance</div>
-          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Exit quality · brackets · TP/TSL/donation · $1,000,000 start · account high/low</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Exit quality · brackets · TP/TSL/donation · IBKR fill PnL high/low (not $1M book)</div>
         </div>
         <button class="btn" style="font-size:10px;padding:4px 10px" onclick="exportClosedExitQuality()">⬇ Exit quality CSV</button>
       </div>
@@ -1766,7 +1766,6 @@ function ibkrBal(v){
 }
 
 const IBKR_BOOK_START = '2026-08-06';
-const IBKR_STARTING_CAPITAL = 1000000;
 
 function ibkrOnOrAfterBookStart(iso) {
   const t = Date.parse(iso || '');
@@ -1807,24 +1806,24 @@ function ibkrPerfTiles(d) {
     ? p.signFlips[p.signFlips.length - 1]
     : null;
   const moveSub = lastFlip
-    ? (lastFlip.from + ' → ' + lastFlip.to + ' ' + (lastFlip.date || '')
+    ? ('IBKR trades · ' + lastFlip.from + ' → ' + lastFlip.to + ' ' + (lastFlip.date || '')
       + (lastFlip.pnlUsd != null ? ' · ' + ibkrFp(lastFlip.pnlUsd) : '')
       + (lastFlip.pnlPct != null ? ' / ' + (lastFlip.pnlPct>=0?'+':'') + lastFlip.pnlPct + '%' : ''))
-    : (p.alwaysProfit ? 'always profit vs $1M start' : (p.alwaysLoss ? 'always loss vs $1M start' : 'no sign flip yet'));
+    : (p.alwaysProfit ? 'IBKR trades · always profit from $0' : (p.alwaysLoss ? 'IBKR trades · always loss from $0' : 'IBKR trades from $0 PnL'));
   const dd = (p.drawdownUsd != null)
     ? (ibkrFp(-Math.abs(p.drawdownUsd)) + (p.drawdownPct != null ? ' / −' + p.drawdownPct + '%' : ''))
     : '—';
-  const ddSub = 'from peak ' + (p.peakEquity != null ? ibkrBal(p.peakEquity) : '—')
+  const ddSub = 'from IBKR PnL peak ' + (p.peakEquity != null ? ibkrFp(p.peakEquity) : '—')
     + (p.recoveryFromTroughUsd != null ? ' · recovered ' + ibkrFp(p.recoveryFromTroughUsd) + ' off trough' : '');
   const sh = p.sharpe != null ? String(p.sharpe) : '—';
   const shC = p.sharpe == null ? 'var(--m1)' : p.sharpe >= 1 ? 'var(--buy)' : p.sharpe >= 0 ? '#F5C842' : 'var(--sell)';
-  const shSub = (p.sharpeDays != null ? p.sharpeDays + ' daily returns' : 'need 2+ days')
+  const shSub = 'IBKR trades · ' + (p.sharpeDays != null ? p.sharpeDays + ' daily returns' : 'need 2+ days')
     + ' · peak→trough ' + (p.peakToTroughPct != null ? p.peakToTroughPct + '%' : '—');
   const risk = p.riskLevel || '—';
   const riskSub = p.riskOff
     ? ('entries paused · guard ' + (p.pausePct || 15) + '% DD')
-    : ('book DD ' + (p.drawdownPct != null ? p.drawdownPct + '%' : '—') + ' · pause at ' + (p.pausePct || 15) + '%');
-  return tile('ibkrCardMove','Account move', move, moveSub, ibkrPc(p.fromStartUsd))
+    : ('IBKR DD ' + (p.drawdownPct != null ? p.drawdownPct + '%' : '—') + ' of peak trade PnL');
+  return tile('ibkrCardMove','IBKR move', move, moveSub, ibkrPc(p.fromStartUsd))
     + tile('ibkrCardDD','Drawdown', dd, ddSub, p.drawdownUsd > 0 ? 'var(--sell)' : 'var(--m1)')
     + tile('ibkrCardSharpe','Sharpe', sh, shSub, shC)
     + tile('ibkrCardRisk','Risk', risk, riskSub, ibkrPerfColor(p.riskLevel));
@@ -1869,7 +1868,6 @@ function ibkrBookStats(trades) {
     }
   }
   const net = realizedUsd + unrealizedUsd - openCommissionUsd;
-  const start = IBKR_STARTING_CAPITAL;
   return {
     realizedUsd: +realizedUsd.toFixed(2),
     unrealizedUsd: +unrealizedUsd.toFixed(2),
@@ -1878,8 +1876,6 @@ function ibkrBookStats(trades) {
     closedCommissionUsd: +(commissionUsd - openCommissionUsd).toFixed(2),
     openCount, closedCount, wins, losses,
     net: +net.toFixed(2),
-    start,
-    returnPct: +(net / start * 100).toFixed(2),
     winRate: (wins + losses) ? Math.round(wins / (wins + losses) * 100) : null
   };
 }
@@ -1928,7 +1924,8 @@ function loadIbkrHistFilter() {
   });
   return window._ibkrHistAllowP;
 }
-function ibkrPeriodFromDaily(daily) {
+function ibkrPeriodFromDaily(daily, stake) {
+  const base = Math.max(Number(stake) || 0, 1);
   const months = {}, weeks = {};
   (daily || []).filter(function(x){ return String(x.date || '') >= IBKR_BOOK_START; }).forEach(function(x){
     const pnl = Number(x.realizedUsd) || 0;
@@ -1947,7 +1944,7 @@ function ibkrPeriodFromDaily(daily) {
   const fmt = function(obj, lastN){
     return Object.keys(obj).sort().slice(-lastN).map(function(k){
       const b = obj[k];
-      return { key:k, n:b.n, pnl:+b.pnl.toFixed(2), ret:+((b.pnl / IBKR_STARTING_CAPITAL) * 100).toFixed(2) };
+      return { key:k, n:b.n, pnl:+b.pnl.toFixed(2), ret:+((b.pnl / base) * 100).toFixed(2) };
     }).reverse();
   };
   return { monthly: fmt(months, 12), weekly: fmt(weeks, 8) };
@@ -1955,24 +1952,16 @@ function ibkrPeriodFromDaily(daily) {
 function renderIbkrPerformanceExtras() {
   const el = document.getElementById('ibkrPerfCapital');
   if (!el) return;
-  el.innerHTML = '<div style="font-size:10px;color:var(--m2);font-family:DM Mono,monospace;margin-bottom:8px">Loading $1,000,000 account high/low…</div>';
+  el.innerHTML = '<div style="font-size:10px;color:var(--m2);font-family:DM Mono,monospace;margin-bottom:8px">Loading IBKR trade high/low…</div>';
   fetchIbkrBook().then(function(d){
     const model = ibkrBookTrades(d, false);
     const st = ibkrBookStats(model);
-    const acct = d.account || {};
-    const start = Number(acct.startingCapital) > 0 ? Number(acct.startingCapital) : IBKR_STARTING_CAPITAL;
-    const startAt = IBKR_BOOK_START + 'T00:00:00.000Z';
-    const equity = start + st.net;
-    let peak = acct.peakBookEquity;
-    let peakAt = acct.peakBookEquityAt;
-    let trough = acct.troughBookEquity;
-    let troughAt = acct.troughBookEquityAt;
-    if (!(Number(peak) > 0) || Number(peak) < start) { peak = start; peakAt = startAt; }
-    if (!(Number(trough) > 0) || Number(trough) > start || Number(trough) < start * 0.85) {
-      trough = start; troughAt = startAt;
-    }
-    if (equity > Number(peak)) { peak = equity; peakAt = acct.at || startAt; }
-    if (equity < Number(trough)) { trough = equity; troughAt = acct.at || startAt; }
+    const p = d.performance || {};
+    const current = p.fromStartUsd != null ? Number(p.fromStartUsd) : st.net;
+    const peak = p.peakEquity != null ? Number(p.peakEquity) : Math.max(0, current);
+    const trough = p.troughEquity != null ? Number(p.troughEquity) : Math.min(0, current);
+    const stake = Math.max(Number(p.stake) || 0, Math.abs(peak), Math.abs(trough), 1);
+    const retPct = p.fromStartPct != null ? Number(p.fromStartPct) : +((current / stake) * 100).toFixed(2);
     const tile = function(l,v,sub,c){
       return '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-height:88px;flex:1;min-width:150px;display:flex;flex-direction:column;justify-content:center;gap:5px">'
         +'<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace">'+l+'</div>'
@@ -1981,7 +1970,7 @@ function renderIbkrPerformanceExtras() {
         +'</div>';
     };
     const wrC = st.winRate==null?'var(--m1)':st.winRate>=55?'var(--buy)':st.winRate>=40?'#F5C842':'var(--sell)';
-    const periods = ibkrPeriodFromDaily(d.daily || []);
+    const periods = ibkrPeriodFromDaily(d.daily || [], stake);
     const dailySrc = (d.daily || []).filter(function(x){ return String(x.date||'') >= IBKR_BOOK_START; });
     let dayCum = 0;
     const daily = dailySrc.map(function(x){
@@ -2008,7 +1997,7 @@ function renderIbkrPerformanceExtras() {
         +'</tr></thead><tbody>'+tr+'</tbody></table></div>';
     };
     const dRows = daily.map(function(x){
-      const ret = +((Number(x.realizedUsd)||0) / start * 100).toFixed(3);
+      const ret = +((Number(x.realizedUsd)||0) / stake * 100).toFixed(3);
       return '<tr>'
         +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;color:var(--m2)">'+x.date+'</td>'
         +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:'+ibkrPc(x.realizedUsd)+'">'+ibkrFp(x.realizedUsd)+'</td>'
@@ -2016,18 +2005,17 @@ function renderIbkrPerformanceExtras() {
         +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:'+ibkrPc(ret)+'">'+(ret>=0?'+':'')+ret+'%</td>'
         +'</tr>';
     }).join('');
-    el.innerHTML = '<div style="font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;margin:0 0 8px">USD 1,000,000 book — fill PnL, not IB net liquidation</div>'
+    el.innerHTML = '<div style="font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;margin:0 0 8px">IBKR trades — fill PnL from $0, not the $1M book or IB net liquidation</div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
-      + tile('Starting capital', ibkrBal(start), 'from '+IBKR_BOOK_START, 'var(--t1)')
-      + tile('Current account level', ibkrBal(equity), '$1,000,000 + net PnL', 'var(--t1)')
-      + tile('Highest account level', ibkrBal(peak), 'on '+ibkrFmtWhen(peakAt)+' · $1,000,000 book', 'var(--buy)')
-      + tile('Lowest account level', ibkrBal(trough), 'on '+ibkrFmtWhen(troughAt)+' · $1,000,000 book', 'var(--sell)')
+      + tile('IBKR move', ibkrFp(current)+(retPct!=null?' / '+(retPct>=0?'+':'')+retPct+'%':''), 'fill PnL since '+IBKR_BOOK_START, ibkrPc(current))
+      + tile('Highest IBKR PnL', ibkrFp(peak), 'on '+(p.peakAt ? ibkrFmtWhen(p.peakAt) : '—')+' · IBKR trades', ibkrPc(peak))
+      + tile('Lowest IBKR PnL', ibkrFp(trough), 'on '+(p.troughAt ? ibkrFmtWhen(p.troughAt) : '—')+' · IBKR trades', ibkrPc(trough))
       + '</div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
       + tile('Realised PnL', ibkrFp(st.realizedUsd), st.closedCount+' closed · brokerage on exit', ibkrPc(st.realizedUsd))
       + tile('Unrealised PnL', ibkrFp(st.unrealizedUsd), st.openCount+' open', ibkrPc(st.unrealizedUsd))
       + tile('Net PnL', ibkrFp(st.net), 'realised + unrealised − open brokerage', ibkrPc(st.net))
-      + tile('Return %', (st.returnPct>=0?'+':'')+st.returnPct+'%', 'Net PnL / $'+start.toLocaleString(), ibkrPc(st.returnPct))
+      + tile('Return %', (retPct>=0?'+':'')+retPct+'%', 'IBKR PnL / trade high-water '+ibkrFp(stake), ibkrPc(retPct))
       + tile('Win rate', st.winRate!=null?st.winRate+'%':'—', st.wins+'W / '+st.losses+'L', wrC)
       + '</div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'

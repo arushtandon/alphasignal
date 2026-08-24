@@ -17046,13 +17046,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
     try { saveIbkrAccountSnapshot(accountSnap); } catch (_) {}
     const netPnlUsd = totRealUsd + totUnrealUsd - totOpenCommissionUsd;
     const performance = computeAccountPerformance({
-      startingCapital: IBKR_STARTING_CAPITAL,
       bookStart: IBKR_BOOK_START,
-      bookEquity: accountSnap.bookEquity,
-      peakBookEquity: accountSnap.peakBookEquity,
-      peakBookEquityAt: accountSnap.peakBookEquityAt,
-      troughBookEquity: accountSnap.troughBookEquity,
-      troughBookEquityAt: accountSnap.troughBookEquityAt,
       netPnlUsd,
       daily: dailyArr,
       eod: readIbkrEodPerformance(90),
