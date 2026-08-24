@@ -8405,7 +8405,10 @@ app.get('/api/history/exit-quality', (req, res) => {
   for (const h of tradeHistory) {
     if (!isHistoryBuySellRecord(h)) continue;
     const hz = h.hz || 'short';
-    const st = h[hz + 'Status'] || h.status || 'open';
+    const st0 = h[hz + 'Status'] || h.status || 'open';
+    const reason0 = String(h[hz + 'ExitReason'] || '');
+    const st = FULL.includes(st0) ? st0
+      : (/stop loss|sl_hit/i.test(reason0) ? 'sl_hit' : st0);
     if (!FULL.includes(st)) continue;
     const isSell = String(h.action || '').toLowerCase() === 'sell';
     const pnl = h[hz + 'PnlDollar'];
@@ -16561,6 +16564,31 @@ function isIbkrSyntheticFillRow(f) {
   return /^(recon-|recover-entry-|ibhist-|synth-)/.test(e);
 }
 
+/** Map model exit strings + IB fill roles onto the IBKR Exit Quality buckets. */
+function ibkrExitQualityType(status, modelReason, hasTp1, hasStop, hasFlat, errorTrade) {
+  if (errorTrade && (status === 'closed' || hasFlat)) return 'error flatten';
+  const raw = String(modelReason || '').toLowerCase();
+  if (status !== 'closed') return hasTp1 ? 'tp1 banked — runner live' : null;
+  if (raw.includes('tp1_then_sl') || raw.includes('trailing stop closed runner')) {
+    return 'trailing stop (post-TP1)';
+  }
+  if (raw === 'sl_hit' || raw.includes('stop loss') || raw.includes('stop-loss')) {
+    return 'stop-loss (full)';
+  }
+  if (raw.includes('signal_exit') || raw.includes('signal reversal')
+    || raw.includes('time_limit') || raw.includes('time limit') || raw.includes('horizon time')) {
+    return 'signal/time exit';
+  }
+  if (raw.includes('tp1_hit') || raw.includes('tp2_hit') || raw.includes('tp1 target') || raw.includes('tp2')) {
+    return 'tp exit';
+  }
+  if (hasStop && hasTp1) return 'trailing stop (post-TP1)';
+  if (hasStop) return 'stop-loss (full)';
+  if (hasFlat) return 'flatten exit';
+  if (raw === 'flatten exit') return 'flatten exit';
+  return 'tp exit';
+}
+
 // Aggregated per-trade view of the paper account, built purely from real fills.
 // READ-ONLY: never mutate ibkr_fills.jsonl here (phantom drop / quarantine run in recon/boot).
 app.get('/api/ibkr/trades', async (req, res) => {
@@ -16783,20 +16811,15 @@ app.get('/api/ibkr/trades', async (req, res) => {
       const hasStop = t.fills.some(f => f.role === 'stop');
       const hasFlat = t.fills.some(f => f.role === 'flatten');
       t.hasFlatten = hasFlat;
-      // Prefer the AlphaSignal exit reason when present; only fall back to
-      // fill-role heuristics. Flatten fills used to be mislabeled "signal/time
-      // exit" even when the bridge force-closed on a Hold rewrite.
+      t.hasStop = hasStop;
+      t.hasTp1 = hasTp1;
+      // Keep the model sentence for the table; Exit Quality uses fill-role buckets
+      // so a real IB stop (HO.PA sl_hit) lands in "stop-loss (full)", not a raw
+      // status string that the box never counted.
       const modelReason = (rec.exitReason || rec.exitStatus) || null;
-      if (t.errorTrade && (t.status === 'closed' || hasFlat)) {
-        t.exitType = 'error flatten';
-      } else {
-        t.exitType = t.status !== 'closed' ? (hasTp1 ? 'tp1 banked — runner live' : null)
-          : modelReason ? String(modelReason)
-          : hasFlat ? 'flatten exit'
-          : hasStop && hasTp1 ? 'trailing stop (post-TP1)'
-          : hasStop ? 'stop-loss (full)'
-          : 'tp exit';
-      }
+      t.exitType = ibkrExitQualityType(
+        t.status, modelReason, hasTp1, hasStop, hasFlat, t.errorTrade
+      );
     }
 
     // Overlay IB paper qty/avg — allocate ONE position across multiple keys for
