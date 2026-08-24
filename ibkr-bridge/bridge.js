@@ -3196,6 +3196,64 @@ async function main() {
     return findings;
   }
 
+  /** Bind an already-working IB STP onto a recovered fill so Telegram does not
+   *  page "no stop order id" for brackets placed on a side client. */
+  function listWorkingStops() {
+    return new Promise(resolve => {
+      const stops = [];
+      if (DRY || !ib || !EventName) return resolve(stops);
+      const t = setTimeout(() => { cleanup(); resolve(stops); }, 5000);
+      const onOpen = (orderId, contract, order, orderState) => {
+        if (String(order && order.orderType || '').toUpperCase() !== 'STP') return;
+        const st = String((orderState && orderState.status) || '');
+        if (st === 'Cancelled' || st === 'Filled' || st === 'Inactive') return;
+        stops.push({
+          orderId,
+          conId: Number(contract && contract.conId) || 0,
+          action: String(order.action || '').toUpperCase(),
+          qty: Number(order.totalQuantity) || 0,
+          aux: Number(order.auxPrice) || 0,
+          yahoo: yahooFromContract(contract)
+        });
+      };
+      const onEnd = () => { cleanup(); resolve(stops); };
+      const cleanup = () => {
+        clearTimeout(t);
+        try { ib.off(EventName.openOrder, onOpen); } catch (_) {}
+        try { ib.off(EventName.openOrderEnd, onEnd); } catch (_) {}
+      };
+      ib.on(EventName.openOrder, onOpen);
+      ib.on(EventName.openOrderEnd, onEnd);
+      try { ib.reqAllOpenOrders(); } catch (e) { cleanup(); resolve(stops); }
+    });
+  }
+
+  async function adoptWorkingStops() {
+    const stops = await listWorkingStops();
+    if (!stops.length) return 0;
+    let n = 0;
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (!row || row.closed || !row.entryFilled || row.stopId != null) continue;
+      const wantAction = row.side === 'sell' ? 'BUY' : 'SELL';
+      const y = normalizeYahooTicker(row.ticker);
+      const cid = Number(row.contract && row.contract.conId) || 0;
+      const qty = Math.abs(Number(row.qtyTotal) || 0);
+      const hit = stops.find(s =>
+        s.action === wantAction
+        && (cid > 0 ? s.conId === cid : normalizeYahooTicker(s.yahoo) === y)
+        && (!(qty > 0) || Math.abs(s.qty - qty) < 1e-6)
+      );
+      if (!hit) continue;
+      row.stopId = hit.orderId;
+      if (hit.aux > 0) row.stopPx = hit.aux;
+      row.updated = new Date().toISOString();
+      n++;
+      log('RECONCILE: adopted working stop', key, 'orderId=' + hit.orderId, 'stp=' + hit.aux);
+    }
+    if (n) saveState(state);
+    return n;
+  }
+
   async function maybeSendRiskAlert(findings, { force = false } = {}) {
     if (!telegramConfigured() || DRY) return;
     const list = Array.isArray(findings) ? findings : [];
@@ -4443,6 +4501,7 @@ async function main() {
 
       // 15‑min risk digest → Telegram (untracked / unfilled RTH / recon errors).
       try {
+        await adoptWorkingStops();
         const findings = collectRiskFindings(keyState, lastIbReconResp);
         await maybeSendRiskAlert(findings);
       } catch (e) { log('TELEGRAM: risk check failed', e.message); }
@@ -4529,6 +4588,7 @@ async function main() {
     if (positionsReady && Date.now() - lastIbReconAt > 60 * 1000) {
       await postIbRecon().catch(e => log('recon error', e.message));
       await recoverMissingExitFills().catch(e => log('exec-history error', e.message));
+      await adoptWorkingStops().catch(e => log('adopt-stop error', e.message));
     }
     // HK afternoon reopen: chase rows that are not on a live RTH MKT yet.
     // US pre: replace IB-ignored MKT-EXT / re-seed Hold-cancelled Buys now.

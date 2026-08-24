@@ -11745,7 +11745,8 @@ app.post('/api/dashboard/picks/regen', express.json({ limit: '32kb' }), async (r
       maxMs: 240000,
       allowRepeat: body.allowRepeat === true,
       force: body.force === true || body.unlockBoard === true,
-      unlockBoard: body.unlockBoard === true
+      unlockBoard: body.unlockBoard === true,
+      replaceInvalidBoard: body.replaceInvalidBoard === true || body.force === true
     });
     if (r && r.ok) _lastPicksDateKey = singaporeDateKey();
     const d = dashboardPicksCache;
@@ -16908,6 +16909,23 @@ app.get('/api/ibkr/trades', async (req, res) => {
             host.ibReconciled = host.ibReconciled ? host.ibReconciled + '+pad' : 'qty-pad';
           }
         }
+      }
+    }
+
+    // recover-entry copies quarantined to |cursor-err look like closed Error
+    // "unauthorized" rows when the model lot claimed the IB shares. Drop them
+    // unless they actually flattened.
+    {
+      const modelOpenTickers = new Set(
+        trades.filter(t => t && !t.errorTrade && t.openQty > 0)
+          .map(t => normalizeIbkrYahooTicker(t.ticker))
+      );
+      for (let i = trades.length - 1; i >= 0; i--) {
+        const t = trades[i];
+        if (!t || !t.errorTrade) continue;
+        const starved = t.status === 'closed' && !(t.exitQty > 0) && !t.hasFlatten
+          && modelOpenTickers.has(normalizeIbkrYahooTicker(t.ticker));
+        if (starved) trades.splice(i, 1);
       }
     }
 
