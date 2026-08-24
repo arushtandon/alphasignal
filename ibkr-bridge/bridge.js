@@ -67,6 +67,13 @@ const crypto = require('crypto');
 const Holidays = require('date-holidays');
 const { telegramConfigured, sendTelegramAlert } = require('./telegram');
 const { calculateRiskSize, DEFAULT_LIMITS: RISK_SIZING_LIMITS } = require('../lib/risk/sizing');
+const {
+  tp1SoldQty,
+  synthesizeTp1Px,
+  openIfAboveSpec,
+  maybeTwoLotTotal,
+  isLimitTp1Fill
+} = require('../lib/ibkr/tp1-policy');
 const { evaluatePortfolioAddition } = require('../lib/risk/portfolio');
 const { BridgeSqliteStore } = require('../lib/storage/bridge-sqlite');
 const { atomicWriteJsonSync } = require('../lib/storage/atomic-json');
@@ -717,9 +724,21 @@ async function shareSplit(entry, contract, lotOverride, riskInput = {}) {
       'NLV=' + (Number(riskInput.nlv) || 0), 'entry=' + e, 'stop=' + riskInput.stop);
     return { total: 0, sold: 0, runner: 0, risk: sizing };
   }
-  const total = sizing.quantity;
-  let sold = Math.floor(total / 2 / lot) * lot;
-  if (sold < lot) sold = 0; // too small to split — runner carries everything
+  let total = sizing.quantity;
+  if (contract.secType === 'STK') {
+    const bumped = maybeTwoLotTotal({
+      total, lot, nlv: riskInput.nlv, entry: normalizedEntry,
+      fxToUsd: 1 / localPerUsd,
+      multiplier: contract.secType === 'FUT' ? Number(contract.multiplier) || 1 : 1,
+      maxPositionPct: RISK_SIZING_LIMITS.maxPositionPct,
+      secType: contract.secType
+    });
+    if (bumped > total) {
+      log('size bump to 2 lots for TP1 split', contract.symbol, total, '→', bumped);
+      total = bumped;
+    }
+  }
+  const sold = tp1SoldQty(total, lot);
   return { total, sold, runner: total - sold, risk: sizing };
 }
 
@@ -1135,11 +1154,65 @@ async function main() {
         }
         for (const [key, row] of Object.entries(state.byKey)) {
           let role = null;
+          const fillOrderType = String(exec.orderType || '').toUpperCase();
+          const isFlattenOrder = (row.closeIds || []).includes(orderId)
+            || !!row.tp1CoverSentAt;
           if (row.parentId === orderId) role = 'entry';
-          else if (row.tp1Id === orderId) role = 'tp1';
           else if (row.stopId === orderId) role = 'stop';
           else if ((row.closeIds || []).includes(orderId)) role = 'flatten';
+          else if (row.tp1Id === orderId) {
+            const spec = openIfAboveSpec(row.ticker);
+            const tp1Px = Number(row.tp1Px) > 0
+              ? Number(row.tp1Px)
+              : (spec && spec.minPx) || synthesizeTp1Px(Number(row.ibAvgFill || row.entry), row.hz || 'short', row.side === 'sell');
+            role = isLimitTp1Fill({
+              fillPx: px, tp1Px, isSellPosition: row.side === 'sell',
+              orderType: fillOrderType, isFlattenOrder
+            }) ? 'tp1' : 'flatten';
+            if (role === 'flatten') {
+              log('TP1 fill recast to flatten (not a TP1 limit print)', key,
+                'px=' + px, 'tp1=' + tp1Px, 'type=' + (fillOrderType || 'n/a'));
+            }
+          }
+          // Side-client TP1 LMT still reports execs on client 27. Qty match is
+          // not enough — the print must be at/through TP1 and not a MKT flatten.
+          if (!role && row && !row.closed && row.entryFilled && !row.tp1Done && !isFlattenOrder) {
+            const yExec = normalizeYahooTicker(yahooFromContract(contract));
+            const yRow = normalizeYahooTicker(row.ticker);
+            const cid = Number(row.contract && row.contract.conId) || 0;
+            const cidExec = Number(contract && contract.conId) || 0;
+            const match = (cid > 0 && cidExec === cid) || (!!yExec && yExec === yRow);
+            if (match) {
+              const execSide = String(exec.side || '').toUpperCase();
+              const isClose = row.side === 'sell' ? execSide === 'BOT' : execSide === 'SLD';
+              const shares = Number(exec.shares) || 0;
+              const lot = Number(row.contract && row.contract.lotHint) || 1;
+              const held = row.contract ? posMap.get(posKeyOf(row.contract)) : null;
+              const posInDir = held
+                ? (row.side === 'sell' ? Math.max(0, -held.pos) : Math.max(0, held.pos))
+                : (Number(row.qtyTotal) || 0);
+              const spec = openIfAboveSpec(row.ticker);
+              const half = spec && spec.qty > 0
+                ? Number(spec.qty)
+                : (tp1SoldQty(posInDir, lot) || Number(row.qtySold) || 0);
+              const tp1Px = Number(row.tp1Px) > 0
+                ? Number(row.tp1Px)
+                : (spec && spec.minPx) || synthesizeTp1Px(Number(row.ibAvgFill || row.entry), row.hz || 'short', row.side === 'sell');
+              if (isClose && half > 0 && Math.abs(shares - half) < 1e-6
+                && isLimitTp1Fill({
+                  fillPx: px, tp1Px, isSellPosition: row.side === 'sell',
+                  orderType: fillOrderType, isFlattenOrder: false
+                })) {
+                role = 'tp1';
+                row.tp1Id = orderId;
+                row.qtySold = shares;
+                row.qtyRunner = posInDir >= shares * 1.5 ? posInDir - shares : posInDir;
+                row.qtyTotal = (Number(row.qtyRunner) || 0) + shares;
+              }
+            }
+          }
           if (!role) continue;
+          if (role === 'tp1') onTp1Filled(key, row);
           if (role === 'entry') {
             row.entryFilled = true;
             if (Number.isFinite(oa.avgFillPrice) && oa.avgFillPrice > 0) {
@@ -1161,6 +1234,7 @@ async function main() {
             arrivalPrice: Number(row.arrivalPrice) || null,
             quoteSource: row.quoteSource || null,
             orderType: row.entryStyle || null,
+            fillOrderType: fillOrderType || null,
             orderSubmittedAt: row.orderSubmittedAt || null,
             implementationShortfallBps: role === 'entry' && Number(row.entry) > 0
               ? +(((row.side === 'sell' ? Number(row.entry) - px : px - Number(row.entry))
@@ -2309,7 +2383,9 @@ async function main() {
       const tick = hkTickSize(stopPx);
       stopPx = roundPx(isSell ? stopPx + tick : stopPx - tick, contract);
     }
-    const tp1Px = roundPx(evt.tp1, contract, isSell ? 'down' : 'up');
+    let rawTp1 = Number(evt.tp1);
+    if (!(rawTp1 > 0)) rawTp1 = synthesizeTp1Px(Number(evt.entry), evt.hz || 'short', isSell);
+    const tp1Px = roundPx(rawTp1, contract, isSell ? 'down' : 'up');
     if (!(stopPx > 0)) { log('skip entry — no stop level for', evt.ticker); return null; }
     if (!DRY && contract.secType === 'STK' && !(Number(contract.conId) > 0)) {
       // Never manufacture order IDs for a contract IB could not qualify. This
@@ -2490,6 +2566,7 @@ async function main() {
       cancelOrder(row.stopId, 'stop (no runner) ' + key);
     }
     log('TP1 filled', key, '— stop resized to runner', row.qtyRunner, '@ breakeven-floor', beStop);
+    cancelExtraStopsAfterTp1(key, row).catch(e => log('extra-stop cancel failed', key, e.message));
     if (!DRY && telegramConfigured()) {
       const side = row.side === 'sell' ? 'SHORT' : 'LONG';
       const msg = '🟢 <b>TP1 hit</b>\n'
@@ -2519,8 +2596,20 @@ async function main() {
         row.ibAvgFill = avgFillPrice;
       }
       if (row.tp1Id === orderId && (status === 'Filled' || filled >= row.qtySold) && filled > 0) {
-        onTp1Filled(key, row);
-        saveState(state);
+        const spec = openIfAboveSpec(row.ticker);
+        const tp1Px = Number(row.tp1Px) > 0
+          ? Number(row.tp1Px)
+          : (spec && spec.minPx) || synthesizeTp1Px(Number(row.ibAvgFill || row.entry), row.hz || 'short', row.side === 'sell');
+        if (!isLimitTp1Fill({
+          fillPx: avgFillPrice, tp1Px, isSellPosition: row.side === 'sell',
+          orderType: 'LMT',
+          isFlattenOrder: !!(row.closeIds || []).includes(orderId) || !!row.tp1CoverSentAt
+        })) {
+          log('orderStatus ignored as TP1 (price/flatten)', key, 'px=' + avgFillPrice, 'tp1=' + tp1Px);
+        } else {
+          onTp1Filled(key, row);
+          saveState(state);
+        }
       }
       if (row.stopId === orderId && status === 'Filled') {
         // Stop filled → position flat; cancel a still-open TP1 (no orphan limit).
@@ -3196,27 +3285,28 @@ async function main() {
     return findings;
   }
 
-  /** Bind an already-working IB STP onto a recovered fill so Telegram does not
-   *  page "no stop order id" for brackets placed on a side client. */
-  function listWorkingStops() {
+  function listWorkingOrders() {
     return new Promise(resolve => {
-      const stops = [];
-      if (DRY || !ib || !EventName) return resolve(stops);
-      const t = setTimeout(() => { cleanup(); resolve(stops); }, 5000);
+      const orders = [];
+      if (DRY || !ib || !EventName) return resolve(orders);
+      const t = setTimeout(() => { cleanup(); resolve(orders); }, 5000);
       const onOpen = (orderId, contract, order, orderState) => {
-        if (String(order && order.orderType || '').toUpperCase() !== 'STP') return;
         const st = String((orderState && orderState.status) || '');
         if (st === 'Cancelled' || st === 'Filled' || st === 'Inactive') return;
-        stops.push({
+        orders.push({
           orderId,
           conId: Number(contract && contract.conId) || 0,
           action: String(order.action || '').toUpperCase(),
+          type: String(order.orderType || '').toUpperCase(),
           qty: Number(order.totalQuantity) || 0,
+          lmt: Number(order.lmtPrice) || 0,
           aux: Number(order.auxPrice) || 0,
-          yahoo: yahooFromContract(contract)
+          tif: String(order.tif || '').toUpperCase(),
+          yahoo: yahooFromContract(contract),
+          status: st
         });
       };
-      const onEnd = () => { cleanup(); resolve(stops); };
+      const onEnd = () => { cleanup(); resolve(orders); };
       const cleanup = () => {
         clearTimeout(t);
         try { ib.off(EventName.openOrder, onOpen); } catch (_) {}
@@ -3224,8 +3314,14 @@ async function main() {
       };
       ib.on(EventName.openOrder, onOpen);
       ib.on(EventName.openOrderEnd, onEnd);
-      try { ib.reqAllOpenOrders(); } catch (e) { cleanup(); resolve(stops); }
+      try { ib.reqAllOpenOrders(); } catch (e) { cleanup(); resolve(orders); }
     });
+  }
+
+  /** Bind an already-working IB STP onto a recovered fill so Telegram does not
+   *  page "no stop order id" for brackets placed on a side client. */
+  function listWorkingStops() {
+    return listWorkingOrders().then(os => os.filter(o => o.type === 'STP'));
   }
 
   async function adoptWorkingStops() {
@@ -3249,6 +3345,120 @@ async function main() {
       row.updated = new Date().toISOString();
       n++;
       log('RECONCILE: adopted working stop', key, 'orderId=' + hit.orderId, 'stp=' + hit.aux);
+    }
+    if (n) saveState(state);
+    return n;
+  }
+
+  async function cancelExtraStopsAfterTp1(key, row) {
+    if (!row || !row.tp1Done) return;
+    const working = await listWorkingOrders();
+    const want = row.side === 'sell' ? 'BUY' : 'SELL';
+    const stps = working.filter(o => o.type === 'STP' && o.action === want && rowMatchesWorking(row, o));
+    for (const s of stps) {
+      if (row.stopId != null && s.orderId === row.stopId) continue;
+      cancelOrder(s.orderId, 'extra stop after TP1 ' + key);
+    }
+  }
+
+  function rowMatchesWorking(row, order) {
+    if (!row || !order) return false;
+    const cid = Number(row.contract && row.contract.conId) || 0;
+    const y = normalizeYahooTicker(row.ticker);
+    if (cid > 0 && order.conId === cid) return true;
+    return !!y && normalizeYahooTicker(order.yahoo) === y;
+  }
+
+  /** Park a live 50% TP1 LMT on every splittable equity that is missing one.
+   *  0883.HK uses SELL LMT GTC @ 25, placed at HK session (SEHK rejects LMT+OPG
+   *  and overnight marketable sells as "not available for short sale"). */
+  async function ensureWorkingTp1Children() {
+    if (DRY || !ib) return 0;
+    const working = await listWorkingOrders();
+    let n = 0;
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (!row || row.closed || row.errorTrade || !row.entryFilled || row.tp1Done) continue;
+      if (!row.contract || row.contract.secType && row.contract.secType !== 'STK') continue;
+      if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
+      const held = posMap.get(posKeyOf(row.contract));
+      const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+      if (!(posInDir > 0)) continue;
+      const lot = Math.max(Number(row.contract.lotHint) || 1, 1);
+      const closeAction = row.side === 'sell' ? 'BUY' : 'SELL';
+      const isSell = row.side === 'sell';
+      const spec = openIfAboveSpec(row.ticker);
+      const phase = sessionPhase(row.contract);
+      if (spec && (phase === 'closed' || phase === 'lunch')) {
+        log('TP1 open-if-above deferred until HK session', key, 'phase=' + phase);
+        continue;
+      }
+      const half = spec
+        ? Math.min(Number(spec.qty) || 0, tp1SoldQty(posInDir, lot) || Number(spec.qty) || 0)
+        : tp1SoldQty(posInDir, lot);
+      if (!(half >= lot) || !(posInDir > half)) {
+        if (!spec) {
+          log('TP1 skip (1-lot / cannot split 50%)', key, 'pos', posInDir, 'lot', lot);
+        }
+        continue;
+      }
+      const lmts = working.filter(o =>
+        o.type === 'LMT' && o.action === closeAction && rowMatchesWorking(row, o)
+      );
+      const existing = lmts.find(o => Math.abs(o.qty - half) < 1e-6)
+        || (row.tp1Id != null ? lmts.find(o => o.orderId === row.tp1Id) : null);
+      if (existing) {
+        if (row.tp1Id !== existing.orderId || row.qtySold !== half) {
+          row.tp1Id = existing.orderId;
+          row.qtyTotal = posInDir;
+          row.qtySold = half;
+          row.qtyRunner = posInDir - half;
+          if (existing.lmt > 0) row.tp1Px = existing.lmt;
+          row.updated = new Date().toISOString();
+          n++;
+          log('RECONCILE: adopted working TP1', key, 'orderId=' + existing.orderId,
+            'lmt=' + existing.lmt, 'qty=' + existing.qty, 'tif=' + existing.tif);
+        }
+        continue;
+      }
+      if (row.tp1AttachAttemptAt && (Date.now() - Date.parse(row.tp1AttachAttemptAt)) < 10 * 60 * 1000) {
+        continue;
+      }
+      let tp1Px;
+      let tif = 'GTC';
+      if (spec) {
+        tp1Px = roundPx(spec.minPx, row.contract, isSell ? 'down' : 'up');
+        tif = spec.tif || 'GTC';
+      } else {
+        const raw = Number(row.tp1Px) > 0
+          ? Number(row.tp1Px)
+          : synthesizeTp1Px(Number(row.ibAvgFill || row.entry), row.hz || 'short', isSell);
+        tp1Px = roundPx(raw, row.contract, isSell ? 'down' : 'up');
+        if (row.contract.market === 'HK' && tp1Px >= 49.5 && tp1Px < 50) tp1Px = 50;
+      }
+      if (!(tp1Px > 0)) {
+        log('TP1 skip (no price)', key);
+        continue;
+      }
+      const oid = nid();
+      row.tp1Id = oid;
+      row.tp1Px = tp1Px;
+      row.qtyTotal = posInDir;
+      row.qtySold = half;
+      row.qtyRunner = posInDir - half;
+      row.tp1AttachAttemptAt = new Date().toISOString();
+      row.updated = row.tp1AttachAttemptAt;
+      transmitOrder(oid, row.contract, baseOrder({
+        orderId: oid,
+        action: closeAction,
+        orderType: 'LMT',
+        lmtPrice: tp1Px,
+        totalQuantity: half,
+        tif,
+        outsideRth: false,
+        transmit: true
+      }), (spec ? 'tp1 open-if-above ' : 'tp1 attach ') + key);
+      n++;
+      log('RECONCILE: attached TP1', key, closeAction, 'LMT', tp1Px, 'x' + half, 'tif=' + tif);
     }
     if (n) saveState(state);
     return n;
@@ -3563,39 +3773,13 @@ async function main() {
         saveState(state);
       }
 
-      // 0a2b. Operator one-shot: bank TP1 at market when price is already
-      // through TP1 but no working IB TP1 child. Leaves the runner on TSL.
+      // 0a2b. Never bank TP1 with a market flatten. TP1 is a resting LMT only.
       for (const [key, row] of Object.entries(state.byKey)) {
-        const cover = Math.floor(Number(row && row.pendingTp1MarketCover) || 0);
-        if (!(cover > 0) || !row.contract || row.closed || row.errorTrade) continue;
-        const held = posMap.get(posKeyOf(row.contract));
-        const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
-        if (!(posInDir > cover)) {
-          log('RECONCILE: pending TP1 market cover skipped (need runner leftover)',
-            key, 'cover', cover, 'pos', posInDir);
-          delete row.pendingTp1MarketCover;
-          saveState(state);
-          continue;
-        }
-        row.qtyTotal = posInDir;
-        row.qtySold = cover;
-        row.qtyRunner = posInDir - cover;
-        row.tp1Done = false;
-        row.closed = false;
-        row.entryFilled = true;
-        const oid = nid();
-        row.tp1Id = oid;
+        if (!row || !(Number(row.pendingTp1MarketCover) > 0)) continue;
+        log('RECONCILE: refusing TP1 market cover — TP1 is limit-only', key,
+          'cover', row.pendingTp1MarketCover);
         delete row.pendingTp1MarketCover;
-        row.tp1CoverSentAt = new Date().toISOString();
-        transmitOrder(oid, row.contract, baseOrder({
-          orderId: oid,
-          action: row.side === 'sell' ? 'BUY' : 'SELL',
-          orderType: 'MKT',
-          totalQuantity: cover,
-          tif: 'DAY',
-          transmit: true
-        }), 'tp1 market cover ' + key);
-        log('RECONCILE: TP1 market cover', key, 'qty', cover, 'runner', row.qtyRunner);
+        delete row.tp1CoverSentAt;
         saveState(state);
       }
 
@@ -4502,6 +4686,7 @@ async function main() {
       // 15‑min risk digest → Telegram (untracked / unfilled RTH / recon errors).
       try {
         await adoptWorkingStops();
+        await ensureWorkingTp1Children();
         const findings = collectRiskFindings(keyState, lastIbReconResp);
         await maybeSendRiskAlert(findings);
       } catch (e) { log('TELEGRAM: risk check failed', e.message); }
@@ -4589,6 +4774,7 @@ async function main() {
       await postIbRecon().catch(e => log('recon error', e.message));
       await recoverMissingExitFills().catch(e => log('exec-history error', e.message));
       await adoptWorkingStops().catch(e => log('adopt-stop error', e.message));
+      await ensureWorkingTp1Children().catch(e => log('ensure-tp1 error', e.message));
     }
     // HK afternoon reopen: chase rows that are not on a live RTH MKT yet.
     // US pre: replace IB-ignored MKT-EXT / re-seed Hold-cancelled Buys now.

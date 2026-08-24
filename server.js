@@ -36,6 +36,8 @@ const {
 const {
   isLiveAuthorizedServerExit
 } = require('./lib/ibkr/live-exit-authority');
+const { computeAccountPerformance } = require('./lib/ibkr/account-performance');
+const { isMarketLikeExit } = require('./lib/ibkr/tp1-policy');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14850,6 +14852,11 @@ app.post('/api/ibkr/report', (req, res) => {
       recon: r.recon ? String(r.recon) : undefined,
       markSrc: r.markSrc ? String(r.markSrc) : undefined
     };
+    if (row.role === 'tp1' && (isMarketLikeExit(r.fillOrderType) || row.synthetic
+      || String(row.recon || '').includes('flat') || String(row.execId || '').startsWith('ibhist-flat-'))) {
+      auditLog('ibkr_tp1_recast_flatten', { key: row.key, execId: row.execId, fillOrderType: r.fillOrderType || null });
+      row.role = 'flatten';
+    }
     row = quarantineFillForLedger(row);
     if (r.commission != null && Number.isFinite(Number(r.commission))) {
       row.commission = Number(r.commission);
@@ -16570,6 +16577,11 @@ function ibkrExitQualityType(status, modelReason, hasTp1, hasStop, hasFlat, erro
   if (errorTrade && (status === 'closed' || hasFlat)) return 'error flatten';
   const raw = String(modelReason || '').toLowerCase();
   if (status !== 'closed') return hasTp1 ? 'tp1 banked — runner live' : null;
+  if (hasStop && hasTp1) return 'trailing stop (post-TP1)';
+  if (hasStop && !hasTp1) return 'stop-loss (full)';
+  if (hasFlat && !hasTp1) return 'flatten exit';
+  if (hasTp1 && hasFlat) return 'trailing stop (post-TP1)';
+  if (hasTp1) return 'tp exit';
   if (raw.includes('tp1_then_sl') || raw.includes('trailing stop closed runner')) {
     return 'trailing stop (post-TP1)';
   }
@@ -16580,14 +16592,8 @@ function ibkrExitQualityType(status, modelReason, hasTp1, hasStop, hasFlat, erro
     || raw.includes('time_limit') || raw.includes('time limit') || raw.includes('horizon time')) {
     return 'signal/time exit';
   }
-  if (raw.includes('tp1_hit') || raw.includes('tp2_hit') || raw.includes('tp1 target') || raw.includes('tp2')) {
-    return 'tp exit';
-  }
-  if (hasStop && hasTp1) return 'trailing stop (post-TP1)';
-  if (hasStop) return 'stop-loss (full)';
-  if (hasFlat) return 'flatten exit';
-  if (raw === 'flatten exit') return 'flatten exit';
-  return 'tp exit';
+  if (raw === 'flatten exit' || raw.includes('flatten')) return 'flatten exit';
+  return 'flatten exit';
 }
 
 // Aggregated per-trade view of the paper account, built purely from real fills.
@@ -17038,6 +17044,23 @@ app.get('/api/ibkr/trades', async (req, res) => {
     const accountSnap = finalizeIbkrAccountSnapshot({ ...(accountSnapRaw || {}) });
     applyBookEquityExtremes(accountSnap, totRealUsd + totUnrealUsd - totOpenCommissionUsd);
     try { saveIbkrAccountSnapshot(accountSnap); } catch (_) {}
+    const netPnlUsd = totRealUsd + totUnrealUsd - totOpenCommissionUsd;
+    const performance = computeAccountPerformance({
+      startingCapital: IBKR_STARTING_CAPITAL,
+      bookStart: IBKR_BOOK_START,
+      bookEquity: accountSnap.bookEquity,
+      peakBookEquity: accountSnap.peakBookEquity,
+      peakBookEquityAt: accountSnap.peakBookEquityAt,
+      troughBookEquity: accountSnap.troughBookEquity,
+      troughBookEquityAt: accountSnap.troughBookEquityAt,
+      netPnlUsd,
+      daily: dailyArr,
+      eod: readIbkrEodPerformance(90),
+      riskOff: !!riskState.riskOff,
+      liquidityRiskOff: !!riskState.liquidityRiskOff,
+      blocked: !!(riskState && riskState._ready && isNewEntryRiskBlocked()),
+      pausePct: LIQ_PAUSE_PCT
+    });
     const currentBalance = accountSnap
       ? Number(accountSnap.currentBalance != null ? accountSnap.currentBalance : accountSnap.netLiquidation)
       : null;
@@ -17305,6 +17328,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
         pausePct: LIQ_PAUSE_PCT,
         resumePct: LIQ_RESUME_PCT
       },
+      performance,
       totals: {
         realizedUsd: +totRealUsd.toFixed(2),
         realizedUsdGross: +totRealGrossUsd.toFixed(2),

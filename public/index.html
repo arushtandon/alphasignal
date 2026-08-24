@@ -1786,6 +1786,71 @@ function ibkrNetPnl(tt) {
     + (Number(tt && tt.unrealizedUsd) || 0)
     - ibkrOpenCommission(tt);
 }
+function ibkrPerfColor(level) {
+  const l = String(level || '').toLowerCase();
+  if (l === 'paused' || l === 'elevated') return 'var(--sell)';
+  if (l === 'moderate') return '#F5C842';
+  return 'var(--buy)';
+}
+function ibkrPerfTiles(d) {
+  const p = (d && d.performance) || {};
+  const tile = (id,l,v,sub,c) =>
+    '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-height:80px;flex:1;min-width:130px;display:flex;flex-direction:column;justify-content:center;gap:5px">'
+    +'<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace">'+l+'</div>'
+    +'<div id="'+id+'" style="font-size:21px;font-weight:600;font-family:DM Mono,monospace;color:'+(c||'var(--t1)')+'">'+v+'</div>'
+    +(sub?'<div id="'+id+'Sub" style="font-size:10px;color:var(--m2)">'+sub+'</div>':'')
+    +'</div>';
+  const move = (p.fromStartUsd != null)
+    ? (ibkrFp(p.fromStartUsd) + (p.fromStartPct != null ? ' / ' + (p.fromStartPct>=0?'+':'') + p.fromStartPct + '%' : ''))
+    : '—';
+  const lastFlip = (p.signFlips && p.signFlips.length)
+    ? p.signFlips[p.signFlips.length - 1]
+    : null;
+  const moveSub = lastFlip
+    ? (lastFlip.from + ' → ' + lastFlip.to + ' ' + (lastFlip.date || '')
+      + (lastFlip.pnlUsd != null ? ' · ' + ibkrFp(lastFlip.pnlUsd) : '')
+      + (lastFlip.pnlPct != null ? ' / ' + (lastFlip.pnlPct>=0?'+':'') + lastFlip.pnlPct + '%' : ''))
+    : (p.alwaysProfit ? 'always profit vs $1M start' : (p.alwaysLoss ? 'always loss vs $1M start' : 'no sign flip yet'));
+  const dd = (p.drawdownUsd != null)
+    ? (ibkrFp(-Math.abs(p.drawdownUsd)) + (p.drawdownPct != null ? ' / −' + p.drawdownPct + '%' : ''))
+    : '—';
+  const ddSub = 'from peak ' + (p.peakEquity != null ? ibkrBal(p.peakEquity) : '—')
+    + (p.recoveryFromTroughUsd != null ? ' · recovered ' + ibkrFp(p.recoveryFromTroughUsd) + ' off trough' : '');
+  const sh = p.sharpe != null ? String(p.sharpe) : '—';
+  const shC = p.sharpe == null ? 'var(--m1)' : p.sharpe >= 1 ? 'var(--buy)' : p.sharpe >= 0 ? '#F5C842' : 'var(--sell)';
+  const shSub = (p.sharpeDays != null ? p.sharpeDays + ' daily returns' : 'need 2+ days')
+    + ' · peak→trough ' + (p.peakToTroughPct != null ? p.peakToTroughPct + '%' : '—');
+  const risk = p.riskLevel || '—';
+  const riskSub = p.riskOff
+    ? ('entries paused · guard ' + (p.pausePct || 15) + '% DD')
+    : ('book DD ' + (p.drawdownPct != null ? p.drawdownPct + '%' : '—') + ' · pause at ' + (p.pausePct || 15) + '%');
+  return tile('ibkrCardMove','Account move', move, moveSub, ibkrPc(p.fromStartUsd))
+    + tile('ibkrCardDD','Drawdown', dd, ddSub, p.drawdownUsd > 0 ? 'var(--sell)' : 'var(--m1)')
+    + tile('ibkrCardSharpe','Sharpe', sh, shSub, shC)
+    + tile('ibkrCardRisk','Risk', risk, riskSub, ibkrPerfColor(p.riskLevel));
+}
+function ibkrPatchPerfTiles(d) {
+  const p = (d && d.performance) || {};
+  const set = (id, txt, col) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = txt;
+    if (col) el.style.color = col;
+  };
+  if (p.fromStartUsd != null) {
+    set('ibkrCardMove', ibkrFp(p.fromStartUsd) + (p.fromStartPct != null ? ' / ' + (p.fromStartPct>=0?'+':'') + p.fromStartPct + '%' : ''), ibkrPc(p.fromStartUsd));
+  }
+  if (p.drawdownUsd != null) {
+    set('ibkrCardDD', ibkrFp(-Math.abs(p.drawdownUsd)) + (p.drawdownPct != null ? ' / −' + p.drawdownPct + '%' : ''), p.drawdownUsd > 0 ? 'var(--sell)' : 'var(--m1)');
+  }
+  if (document.getElementById('ibkrCardSharpe')) {
+    set('ibkrCardSharpe', p.sharpe != null ? String(p.sharpe) : '—',
+      p.sharpe == null ? 'var(--m1)' : p.sharpe >= 1 ? 'var(--buy)' : p.sharpe >= 0 ? '#F5C842' : 'var(--sell)');
+  }
+  if (document.getElementById('ibkrCardRisk')) {
+    set('ibkrCardRisk', p.riskLevel || '—', ibkrPerfColor(p.riskLevel));
+  }
+}
 function ibkrBookStats(trades) {
   let realizedUsd = 0, unrealizedUsd = 0, commissionUsd = 0, openCommissionUsd = 0;
   let openCount = 0, closedCount = 0, wins = 0, losses = 0;
@@ -2026,6 +2091,7 @@ async function tickIbkrMtm(){
           + ibkrFp(-Math.abs(openC)) + ' open comm · closed comm already in realised';
       }
     }
+    ibkrPatchPerfTiles(d);
     setTxt('ibkrCardBalance', ibkrBal(a.currentBalance), 'var(--t1)');
     setTxt('ibkrCardLiq', ibkrBal(a.netLiquidityAvailable), 'var(--t1)');
     setTxt('ibkrCardMargin', ibkrBal(a.marginsUsed), a.marginsUsed > 0 ? 'var(--sell)' : 'var(--t1)');
@@ -2197,6 +2263,7 @@ async function renderIbkr(force){
           pc(net))
       + tile('ibkrCardWR','Win rate', tt.winRate!=null?tt.winRate+'%':'—', tt.wins+'W / '+tt.losses+'L', wrColor)
       + tile('ibkrCardRecon','IB ↔ Site', rcLabel, rcOk ? 'all matched' : 'see differences below', rcColor)
+      + ibkrPerfTiles(d)
       + '</div>'
       + riskBanner
       + rcBanner;
@@ -2238,20 +2305,21 @@ async function renderIbkr(force){
       const hasStop = !!(t.hasStop || fills.some(f => f.role === 'stop'));
       const hasFlat = !!(t.hasFlatten || fills.some(f => f.role === 'flatten'));
       if (t.status !== 'closed') {
-        return (t.exitType === 'tp1 banked — runner live' || hasTp1) ? 'tp1 banked — runner live' : null;
+        return hasTp1 ? 'tp1 banked — runner live' : null;
       }
+      if (hasStop && hasTp1) return 'trailing stop (post-TP1)';
+      if (hasStop && !hasTp1) return 'stop-loss (full)';
+      if (hasFlat && !hasTp1) return 'flatten exit';
+      if (hasTp1 && hasFlat) return 'trailing stop (post-TP1)';
+      if (hasTp1) return 'tp exit';
       if (raw.includes('tp1_then_sl') || raw.includes('trailing stop closed runner') || raw === 'trailing stop (post-tp1)')
         return 'trailing stop (post-TP1)';
-      if (raw === 'sl_hit' || raw.includes('stop loss') || raw.includes('stop-loss') || (hasStop && !hasTp1))
+      if (raw === 'sl_hit' || raw.includes('stop loss') || raw.includes('stop-loss'))
         return 'stop-loss (full)';
       if (raw.includes('signal') || raw.includes('time_limit') || raw.includes('time limit') || raw.includes('horizon time'))
         return 'signal/time exit';
-      if (raw.includes('tp1_hit') || raw.includes('tp2_hit') || raw === 'tp exit' || raw.includes('tp1 target'))
-        return 'tp exit';
-      if (hasStop && hasTp1) return 'trailing stop (post-TP1)';
-      if (hasStop) return 'stop-loss (full)';
-      if (hasFlat || raw === 'flatten exit') return 'flatten exit';
-      return t.exitType || 'tp exit';
+      if (raw === 'flatten exit' || raw.includes('flatten')) return 'flatten exit';
+      return t.exitType && t.exitType !== 'tp exit' ? t.exitType : 'flatten exit';
     };
     const exitPnlUnits = (type) => {
       if (type === 'flatten exit') {
