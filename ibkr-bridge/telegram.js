@@ -52,19 +52,22 @@ function postTelegram(path, body) {
  * Send a plain-text alert (MarkdownV2 avoided — tickers have dots/underscores).
  * Long messages are split into ≤3500 char chunks.
  */
-async function sendTelegramAlert(text) {
+async function sendTelegramAlert(text, opts) {
   if (!telegramConfigured()) return { ok: false, skipped: true };
   const chatId = process.env.TELEGRAM_CHAT_ID;
   const chunks = [];
   const s = String(text || '').trim();
   if (!s) return { ok: false, skipped: true };
   for (let i = 0; i < s.length; i += 3500) chunks.push(s.slice(i, i + 3500));
+  const html = !!(opts && opts.html);
   for (const chunk of chunks) {
-    await postTelegram('/sendMessage', {
+    const body = {
       chat_id: chatId,
       text: chunk,
       disable_web_page_preview: true
-    });
+    };
+    if (html) body.parse_mode = 'HTML';
+    await postTelegram('/sendMessage', body);
   }
   return { ok: true, parts: chunks.length };
 }

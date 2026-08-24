@@ -16732,6 +16732,12 @@ app.get('/api/ibkr/trades', async (req, res) => {
       const pct = ({ short: 0.035, medium: 0.07, long: 0.12 })[hz || 'short'] || 0.035;
       return +(isSell ? e * (1 - pct) : e * (1 + pct)).toFixed(4);
     }
+    function synthesizeTp2FromEntry(avgEntry, hz, isSell) {
+      const e = Number(avgEntry);
+      if (!(e > 0)) return null;
+      const pct = ({ short: 0.06, medium: 0.12, long: 0.20 })[hz || 'short'] || 0.06;
+      return +(isSell ? e * (1 - pct) : e * (1 + pct)).toFixed(4);
+    }
     // Overlay last IB paper snapshot so the tab matches account qty/avg even if
     // recon fill rows were delayed or purged. IB is source of truth for opens.
     const reconSnap = loadIbkrReconReport();
@@ -16749,20 +16755,21 @@ app.get('/api/ibkr/trades', async (req, res) => {
 
     for (const t of trades) {
       const rec = Object.assign({}, recByKey.get(t.key) || {});
-      // Older emits sometimes stored tp1:null — fill from history, then synthesize.
-      if (!(Number(rec.tp1) > 0) || !(Number(rec.sl) > 0) || !(Number(rec.entry) > 0)) {
-        const histLv = historyLevelsForIbkrTrade(t.key, t.ticker, t.hz);
-        if (histLv) {
-          if (!(Number(rec.tp1) > 0) && histLv.tp1 > 0) rec.tp1 = histLv.tp1;
-          if (!(Number(rec.tp2) > 0) && histLv.tp2 > 0) rec.tp2 = histLv.tp2;
-          if (!(Number(rec.sl) > 0) && histLv.sl > 0) rec.sl = histLv.sl;
-          if (!(Number(rec.entry) > 0) && histLv.entry > 0) rec.entry = histLv.entry;
-          if (!rec.name && histLv.name) rec.name = histLv.name;
-        }
+      const histLv = historyLevelsForIbkrTrade(t.key, t.ticker, t.hz);
+      if (histLv) {
+        if (!(Number(rec.tp1) > 0) && histLv.tp1 > 0) rec.tp1 = histLv.tp1;
+        if (!(Number(rec.tp2) > 0) && histLv.tp2 > 0) rec.tp2 = histLv.tp2;
+        if (!(Number(rec.sl) > 0) && histLv.sl > 0) rec.sl = histLv.sl;
+        if (!(Number(rec.entry) > 0) && histLv.entry > 0) rec.entry = histLv.entry;
+        if (!rec.name && histLv.name) rec.name = histLv.name;
       }
       if (!(Number(rec.tp1) > 0) && Number(t.avgEntry) > 0) {
         rec.tp1 = synthesizeTp1FromEntry(t.avgEntry, t.hz, t.side === 'sell');
         rec.tp1Synthesized = true;
+      }
+      if (!(Number(rec.tp2) > 0) && Number(t.avgEntry) > 0) {
+        rec.tp2 = synthesizeTp2FromEntry(t.avgEntry, t.hz, t.side === 'sell');
+        rec.tp2Synthesized = true;
       }
       if (!(Number(rec.sl) > 0) && Number(t.avgEntry) > 0) {
         const e = Number(t.avgEntry);

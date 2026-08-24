@@ -1810,6 +1810,7 @@ function ibkrBookStats(trades) {
     unrealizedUsd: +unrealizedUsd.toFixed(2),
     commissionUsd: +commissionUsd.toFixed(2),
     openCommissionUsd: +openCommissionUsd.toFixed(2),
+    closedCommissionUsd: +(commissionUsd - openCommissionUsd).toFixed(2),
     openCount, closedCount, wins, losses,
     net: +net.toFixed(2),
     start,
@@ -2017,6 +2018,13 @@ async function tickIbkrMtm(){
     if (nEl) {
       const net = ibkrNetPnl(d.totals);
       nEl.textContent = ibkrFp(net); nEl.style.color = ibkrPc(net);
+      const nSub = document.getElementById('ibkrCardNetSub');
+      if (nSub) {
+        const openC = Number(d.totals.openCommissionUsd) || 0;
+        nSub.textContent = ibkrFp(d.totals.realizedUsd) + ' realised + '
+          + ibkrFp(d.totals.unrealizedUsd) + ' unrealised − '
+          + ibkrFp(-Math.abs(openC)) + ' open comm · closed comm already in realised';
+      }
     }
     setTxt('ibkrCardBalance', ibkrBal(a.currentBalance), 'var(--t1)');
     setTxt('ibkrCardLiq', ibkrBal(a.netLiquidityAvailable), 'var(--t1)');
@@ -2175,14 +2183,18 @@ async function renderIbkr(force){
           (acct.marginsUsed > 0) ? 'var(--sell)' : 'var(--t1)')
       + tile('ibkrCardToday','Today realised', fp(todayReal), 'fills · '+todayKey, pc(todayReal))
       + tile('ibkrCardReal','Total realised (net)', fp(tt.realizedUsd),
-          'brokerage on close · '+tt.closedCount+' closed', pc(tt.realizedUsd))
+          'already after closed comm · '+tt.closedCount+' closed', pc(tt.realizedUsd))
       + tileClick('ibkrCardComm','Brokerage, dividends & charges',
           expTotal?('-$'+Math.abs(expTotal).toFixed(0)):'—',
-          expSub,
+          expSub + ' · not subtracted again in Net',
           expTotal?'var(--sell)':'var(--m1)',
           'showIbkrExpenses()')
       + tile('ibkrCardUnreal','Unrealised', fp(tt.unrealizedUsd), tt.openCount+' open', pc(tt.unrealizedUsd))
-      + tile('ibkrCardNet','Net PnL', fp(net), 'realised + unrealised − open brokerage', pc(net))
+      + tile('ibkrCardNet','Net PnL', fp(net),
+          fp(tt.realizedUsd)+' realised + '+fp(tt.unrealizedUsd)+' unrealised − '
+            +fp(-Math.abs(tt.openCommissionUsd||0))+' open comm'
+            +(tt.closedCommissionUsd ? ' · closed comm already in realised' : ''),
+          pc(net))
       + tile('ibkrCardWR','Win rate', tt.winRate!=null?tt.winRate+'%':'—', tt.wins+'W / '+tt.losses+'L', wrColor)
       + tile('ibkrCardRecon','IB ↔ Site', rcLabel, rcOk ? 'all matched' : 'see differences below', rcColor)
       + '</div>'
@@ -2295,6 +2307,7 @@ async function renderIbkr(force){
           + (t.exitQty>0?' <span style="font-size:8px;color:var(--m1)">x'+t.exitQty+'</span>':'')+'</td>'
         + td('left','var(--m2)') + '<span style="font-size:9px" title="Entry/exit session (Market = RTH)">'+sess+'</span></td>'
         + td('right','var(--m2)') + (t.rec&&t.rec.tp1?fmtPx(t.rec.tp1):'—')+'</td>'
+        + td('right', t.rec&&t.rec.tp2 ? '#3DDB7B' : 'var(--m2)') + (t.rec&&t.rec.tp2?fmtPx(t.rec.tp2):'—')+'</td>'
         + td('right','var(--m2)') + (t.rec?(fmtPx(t.rec.lastTrailSl!=null?t.rec.lastTrailSl:t.rec.sl)):'—')+'</td>'
         + td('right') + (t.openQty>0?t.openQty:'—')+'</td>'
         + '<td data-ibkr-mark="'+t.key+'" style="text-align:right;padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;color:var(--t1)">'+fmtPx(t.mark)+markTag+'</td>'
@@ -2308,7 +2321,7 @@ async function renderIbkr(force){
     const tradeTableHead = '<table style="width:100%;border-collapse:collapse;min-width:1100px"><thead><tr>'
       + th('left')+'Ticker</th>'+th('left')+'Side</th>'+th('right')+'Fill date</th>'+th('right')+'Qty</th>'
       + th('right')+'Avg entry</th>'+th('right')+'Avg exit</th>'+th('left')+'Session</th>'
-      + th('right')+'TP1</th>'+th('right')+'SL/TSL</th>'
+      + th('right')+'TP1</th>'+th('right')+'TP2</th>'+th('right')+'SL/TSL</th>'
       + th('right')+'Open qty</th>'+th('right')+'Mark</th>'
       + th('right')+'Realised $</th>'+th('right')+'Unrealised $</th>'+th('left')+'Status</th>'+th('left')+'Exit reasoning</th>'
       +'</tr></thead><tbody>';

@@ -2490,6 +2490,16 @@ async function main() {
       cancelOrder(row.stopId, 'stop (no runner) ' + key);
     }
     log('TP1 filled', key, '— stop resized to runner', row.qtyRunner, '@ breakeven-floor', beStop);
+    if (!DRY && telegramConfigured()) {
+      const side = row.side === 'sell' ? 'SHORT' : 'LONG';
+      const msg = '🟢 <b>TP1 hit</b>\n'
+        + String(row.ticker || key) + ' · ' + (row.hz || 'short') + ' ' + side + '\n'
+        + 'Banked ' + (row.qtySold || '') + ' · runner ' + (row.qtyRunner || '')
+        + (beStop ? (' · TSL ' + beStop) : '');
+      sendTelegramAlert(msg, { html: true })
+        .then(() => log('TELEGRAM: TP1 hit sent', key))
+        .catch(e => log('TELEGRAM: TP1 hit failed', e.message));
+    }
   }
 
   function onOrderStatus(orderId, status, filled, avgFillPrice) {
@@ -3492,6 +3502,42 @@ async function main() {
         row.staleCancelled = false;
         row.entryFilled = true;
         log('RECONCILE: re-opened', key, '— IB still holds', posInDir, 'shares');
+        saveState(state);
+      }
+
+      // 0a2b. Operator one-shot: bank TP1 at market when price is already
+      // through TP1 but no working IB TP1 child. Leaves the runner on TSL.
+      for (const [key, row] of Object.entries(state.byKey)) {
+        const cover = Math.floor(Number(row && row.pendingTp1MarketCover) || 0);
+        if (!(cover > 0) || !row.contract || row.closed || row.errorTrade) continue;
+        const held = posMap.get(posKeyOf(row.contract));
+        const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+        if (!(posInDir > cover)) {
+          log('RECONCILE: pending TP1 market cover skipped (need runner leftover)',
+            key, 'cover', cover, 'pos', posInDir);
+          delete row.pendingTp1MarketCover;
+          saveState(state);
+          continue;
+        }
+        row.qtyTotal = posInDir;
+        row.qtySold = cover;
+        row.qtyRunner = posInDir - cover;
+        row.tp1Done = false;
+        row.closed = false;
+        row.entryFilled = true;
+        const oid = nid();
+        row.tp1Id = oid;
+        delete row.pendingTp1MarketCover;
+        row.tp1CoverSentAt = new Date().toISOString();
+        transmitOrder(oid, row.contract, baseOrder({
+          orderId: oid,
+          action: row.side === 'sell' ? 'BUY' : 'SELL',
+          orderType: 'MKT',
+          totalQuantity: cover,
+          tif: 'DAY',
+          transmit: true
+        }), 'tp1 market cover ' + key);
+        log('RECONCILE: TP1 market cover', key, 'qty', cover, 'runner', row.qtyRunner);
         saveState(state);
       }
 
