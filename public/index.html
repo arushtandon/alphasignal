@@ -1755,6 +1755,14 @@ function ibkrFmtPx(p){
   return p>=1000?p.toFixed(0):p>=100?p.toFixed(1):p.toFixed(2);
 }
 function ibkrFp(v){ return v==null ? '—' : (v>=0?'+':'-')+'$'+Math.abs(v).toFixed(0); }
+function ibkrComm(v){
+  if (v == null || !Number.isFinite(Number(v)) || Number(v) === 0) return '';
+  return (Number(v)>=0?'+':'-')+'$'+Math.abs(Number(v)).toFixed(2);
+}
+function ibkrMoney2(v){
+  if (v == null || !Number.isFinite(Number(v))) return '—';
+  return (Number(v)>=0?'+':'-')+'$'+Math.abs(Number(v)).toFixed(2);
+}
 function ibkrPc(v){ return v==null ? 'var(--m1)' : v>=0 ? 'var(--buy)' : 'var(--sell)'; }
 /** Absolute USD balance (no +/-), for starting / available / NLV. */
 function ibkrBal(v){
@@ -2065,7 +2073,7 @@ async function tickIbkrMtm(){
     if (rEl) { rEl.textContent = ibkrFp(d.totals.realizedUsd); rEl.style.color = ibkrPc(d.totals.realizedUsd); }
     if (cEl) {
       const comm = (d.expenses && d.expenses.totalUsd != null) ? d.expenses.totalUsd : d.totals.commissionUsd;
-      cEl.textContent = comm == null ? '—' : '-$'+Math.abs(comm).toFixed(0);
+      cEl.textContent = comm == null ? '—' : '-$'+Math.abs(comm).toFixed(2);
       cEl.style.color = (comm > 0) ? 'var(--sell)' : 'var(--m1)';
     }
     if (nEl) {
@@ -2076,7 +2084,7 @@ async function tickIbkrMtm(){
         const openC = Number(d.totals.openCommissionUsd) || 0;
         nSub.textContent = ibkrFp(d.totals.realizedUsd) + ' realised + '
           + ibkrFp(d.totals.unrealizedUsd) + ' unrealised − '
-          + ibkrFp(-Math.abs(openC)) + ' open comm · closed comm already in realised';
+          + ibkrMoney2(-Math.abs(openC)) + ' open comm · closed comm already in realised';
       }
     }
     ibkrPatchPerfTiles(d);
@@ -2200,9 +2208,9 @@ async function renderIbkr(force){
     const exp = d.expenses || {};
     const expTotal = exp.totalUsd != null ? exp.totalUsd : (tt.commissionUsd || 0);
     const expSub = [
-      exp.commissionUsd != null ? ('comm $' + Math.abs(exp.commissionUsd).toFixed(0)) : null,
-      exp.otherUsd ? ('accrued $' + Math.abs(exp.otherUsd).toFixed(0)) : null,
-      exp.dividendUsd ? ('div +$' + Math.abs(exp.dividendUsd).toFixed(0)) : null
+      exp.commissionUsd != null ? ('comm $' + Math.abs(exp.commissionUsd).toFixed(2)) : null,
+      exp.otherUsd ? ('accrued $' + Math.abs(exp.otherUsd).toFixed(2)) : null,
+      exp.dividendUsd ? ('div +$' + Math.abs(exp.dividendUsd).toFixed(2)) : null
     ].filter(Boolean).join(' · ') || 'click for full detail';
     const liqPct = acct.liquidityPct;
     const liqSub = liqPct != null
@@ -2239,14 +2247,14 @@ async function renderIbkr(force){
       + tile('ibkrCardReal','Total realised (net)', fp(tt.realizedUsd),
           'already after closed comm · '+tt.closedCount+' closed', pc(tt.realizedUsd))
       + tileClick('ibkrCardComm','Brokerage, dividends & charges',
-          expTotal?('-$'+Math.abs(expTotal).toFixed(0)):'—',
+          expTotal?ibkrMoney2(-Math.abs(expTotal)):'—',
           expSub + ' · not subtracted again in Net',
           expTotal?'var(--sell)':'var(--m1)',
           'showIbkrExpenses()')
       + tile('ibkrCardUnreal','Unrealised', fp(tt.unrealizedUsd), tt.openCount+' open', pc(tt.unrealizedUsd))
       + tile('ibkrCardNet','Net PnL', fp(net),
           fp(tt.realizedUsd)+' realised + '+fp(tt.unrealizedUsd)+' unrealised − '
-            +fp(-Math.abs(tt.openCommissionUsd||0))+' open comm'
+            +ibkrMoney2(-Math.abs(tt.openCommissionUsd||0))+' open comm'
             +(tt.closedCommissionUsd ? ' · closed comm already in realised' : ''),
           pc(net))
       + tile('ibkrCardWR','Win rate', tt.winRate!=null?tt.winRate+'%':'—', tt.wins+'W / '+tt.losses+'L', wrColor)
@@ -2365,8 +2373,8 @@ async function renderIbkr(force){
       const realNote = (t.tickerGroupRealizedUsd != null && t.hasFlatten
         && Math.abs(t.tickerGroupRealizedUsd - t.realizedUsd) > 0.005)
         ? ' <span style="font-size:8px;color:var(--m1)" title="All flatten legs on this ticker">Σ '+fp(t.tickerGroupRealizedUsd)+'</span>'
-        : (t.openQty > 0 && t.commissionUsd > 0 && !t.commissionInRealized
-          ? ' <span style="font-size:8px;color:var(--m1)" title="Commission stays in Brokerage until the lot is closed">comm '+fp(-Math.abs(t.commissionUsd))+'</span>'
+        : (t.commissionUsd > 0
+          ? ' <span style="font-size:8px;color:var(--m1)" title="IB commissionReport">comm '+ibkrComm(-Math.abs(t.commissionUsd))+'</span>'
           : '');
       const reason = err ? ('ERROR · '+(t.exitType||'unauthorized'))
         : (t.status==='closed'

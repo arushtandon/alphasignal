@@ -14748,36 +14748,49 @@ function ibkrMarketFromTicker(ticker) {
   return 'US';
 }
 
+const IBKR_SESSION_CLOCKS = {
+  US: { timeZone: 'America/New_York', open: 570, close: 960, preOpen: 240, postClose: 1200 },
+  JP: { timeZone: 'Asia/Tokyo', open: 540, close: 900, lunchStart: 690, lunchEnd: 750 },
+  HK: { timeZone: 'Asia/Hong_Kong', open: 570, close: 960, lunchStart: 720, lunchEnd: 780 },
+  XETRA: { timeZone: 'Europe/Berlin', open: 540, close: 1050 },
+  EURONEXT: { timeZone: 'Europe/Paris', open: 540, close: 1050 },
+  LSE: { timeZone: 'Europe/London', open: 480, close: 990 }
+};
+
+function ibkrLocalClock(ms, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(new Date(ms));
+  const get = type => (parts.find(p => p.type === type) || {}).value;
+  return {
+    minutes: Number(get('hour')) * 60 + Number(get('minute')),
+    weekend: ['Sat', 'Sun'].includes(get('weekday'))
+  };
+}
+
 /**
  * Session at fill time. Returns 'pre' | 'rth' | 'post' | 'lunch' | 'closed'.
- * Same UTC windows as ibkr-bridge/bridge.js (summer EU/US DST).
+ * Exchange-local clocks (DST-aware), same windows as ibkr-bridge.
  */
 function ibkrSessionPhase(ticker, timeIso) {
   const ms = Date.parse(timeIso || '') || Date.now();
-  const d = new Date(ms);
-  const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
-  const dow = d.getUTCDay();
-  if (dow === 0 || dow === 6) return 'closed';
   const m = ibkrMarketFromTicker(ticker);
-  const windows = {
-    US: { open: 13 * 60 + 30, close: 20 * 60, preOpen: 8 * 60, postClose: 24 * 60 },
-    JP: { open: 0, close: 6 * 60 },
-    HK: { open: 1 * 60 + 30, close: 8 * 60, lunchStart: 4 * 60, lunchEnd: 5 * 60 },
-    XETRA: { open: 7 * 60, close: 15 * 60 + 30 },
-    EURONEXT: { open: 7 * 60, close: 15 * 60 + 30 },
-    LSE: { open: 7 * 60, close: 15 * 60 + 30 }
-  };
-  const w = windows[m] || windows.XETRA;
+  const w = IBKR_SESSION_CLOCKS[m] || IBKR_SESSION_CLOCKS.XETRA;
+  const clock = ibkrLocalClock(ms, w.timeZone);
+  if (clock.weekend) return 'closed';
+  const localMin = clock.minutes;
   if (m === 'US') {
-    if (utcMin >= w.open && utcMin < w.close) return 'rth';
-    if (utcMin >= (w.preOpen || 0) && utcMin < w.open) return 'pre';
-    if (utcMin >= w.close && utcMin < (w.postClose || 24 * 60)) return 'post';
+    if (localMin >= w.open && localMin < w.close) return 'rth';
+    if (localMin >= w.preOpen && localMin < w.open) return 'pre';
+    if (localMin >= w.close && localMin < w.postClose) return 'post';
     return 'closed';
   }
   if (m === 'HK' && w.lunchStart != null
-    && utcMin >= w.lunchStart && utcMin < w.lunchEnd) return 'lunch';
-  if (utcMin >= w.open && utcMin < w.close) return 'rth';
-  if (utcMin < w.open) return 'pre';
+    && localMin >= w.lunchStart && localMin < w.lunchEnd) return 'lunch';
+  if (m === 'JP' && w.lunchStart != null
+    && localMin >= w.lunchStart && localMin < w.lunchEnd) return 'lunch';
+  if (localMin >= w.open && localMin < w.close) return 'rth';
+  if (localMin < w.open) return 'pre';
   return 'closed';
 }
 
@@ -14786,6 +14799,16 @@ function ibkrSessionLabel(phase) {
     rth: 'Market', pre: 'Pre-market', post: 'Post-market',
     lunch: 'Lunch', closed: 'After hours'
   })[phase] || phase || '—';
+}
+
+function ibkrFillSession(row, ticker, timeIso) {
+  if (row && (row.recon === 'recover-entry' || String(row.execId || '').startsWith('recover-entry-'))) {
+    return null;
+  }
+  const known = row && row.session;
+  if (['pre', 'rth', 'post', 'lunch', 'closed'].includes(known)) return known;
+  if (known === 'unknown') return null;
+  return ibkrSessionPhase(ticker, timeIso);
 }
 
 app.post('/api/ibkr/report', (req, res) => {
@@ -14818,9 +14841,7 @@ app.post('/api/ibkr/report', (req, res) => {
     }
     const fillTime = r.time || new Date().toISOString();
     const ticker = String(r.ticker || '');
-    const phase = ['pre', 'rth', 'post', 'lunch', 'closed'].includes(r.session)
-      ? r.session
-      : ibkrSessionPhase(ticker, fillTime);
+    const phase = ibkrFillSession(r, ticker, fillTime);
     // C1: quarantineFillForLedger (via mutateFillLedger) re-keys error/recon fills.
     let row = {
       execId: String(r.execId), key: String(r.key),
@@ -14911,7 +14932,10 @@ app.post('/api/ibkr/report', (req, res) => {
       commissionsPatched = 0;
     }
   }
-  if (stored || commissionsPatched) auditLog('ibkr_fills', { stored, skipped, commissionsPatched });
+  if (stored || commissionsPatched) {
+    try { quarantineGhostFlatsAsErrorTrades(); } catch (_) {}
+    auditLog('ibkr_fills', { stored, skipped, commissionsPatched });
+  }
   res.json({ ok: true, stored, skipped, commissionsPatched, totalExecs: _ibkrExecIds.size });
 });
 
@@ -16620,7 +16644,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       const realizedLocal = exits.reduce((s, f) => s + (f.price - avgEntry) * f.qty * dir, 0) / scale;
       const openQty = Math.max(0, entryQty - exitQty);
       const enrichFill = (f) => {
-        const session = f.session || ibkrSessionPhase(f.ticker || f0.ticker, f.time);
+        const session = ibkrFillSession(f, f.ticker || f0.ticker, f.time);
         return {
           role: f.role, qty: f.qty, price: f.price, time: f.time,
           ticker: f.ticker || f0.ticker,

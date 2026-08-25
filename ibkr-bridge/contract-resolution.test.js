@@ -80,6 +80,16 @@ assert.strictEqual(correctiveReentry.orderType, 'LMT');
 assert.strictEqual(correctiveReentry.lmtPrice, 307.1);
 assert.strictEqual(correctiveReentry.outsideRth, true);
 
+const usPost = parentEntrySpec(toContract('NTAP'), 'BUY', 60, {
+  side: 'buy', entryPx: 192.27, quotePx: 193.1, phaseOverride: 'post'
+});
+assert.strictEqual(usPost.entryStyle, 'OPG', 'US post-market must wait for next cash open');
+assert.strictEqual(usPost.outsideRth, false);
+const usPre = parentEntrySpec(toContract('PH'), 'BUY', 11, {
+  side: 'buy', entryPx: 1001.74, quotePx: 990, phaseOverride: 'pre'
+});
+assert.strictEqual(usPre.entryStyle, 'LMT-EXT');
+assert.strictEqual(usPre.outsideRth, true);
 const mondi = toContract('MNDI.L');
 assert.strictEqual(mondi.symbol, 'MNDI');
 assert.strictEqual(mondi.localSymbol, undefined);

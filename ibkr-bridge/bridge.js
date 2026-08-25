@@ -7,12 +7,13 @@
  *   This process runs NEXT TO IB Gateway or TWS (cannot run on Render)
  *   Polls GET /api/ibkr/events and mirrors the AlphaSignal exit spec exactly:
  *
- *     entry        → parent MARKET / US-extended LMT entry (recommended price sizes shares + gates US pre/post):
- *                      • US pre/post: if the live print is at/better than the model entry,
+ *     entry        → parent MARKET / US pre-market LMT / cash-open OPG:
+ *                      • US pre: if the live print is at/better than the model entry,
  *                        LMT @ the recommended cap immediately (buy rec 224 / pre 222 →
  *                        LMT 224, fills at ~222). Never MKT-EXT (IB queues those until 09:30).
  *                        Unfilled into 09:28 ET → OPG; keep OPG through the 09:30 auction
  *                        (do not cancel at the bell). After ~2 min of RTH still unfilled → MKT.
+ *                      • US post / overnight: OPG for the next cash open only. Never fill after 16:00 ET.
  *                      • US RTH first fire: MKT with chase cap; skipped when converting a
  *                        missed pre/OPG so the open print is taken.
  *                      • US fully closed: MOO for next open
@@ -31,6 +32,10 @@
  *     exit         → flatten only on a live Buy↔Sell flip or an operational
  *                    close (unauthorized / abandon / IB-flat). Paper `tp1_then_sl`
  *                    / time-limit / simulated SL are ignored.
+ *
+ *   Venue routing is the bridge's job, not the operator's: HK→SEHK, JP→TSEJ,
+ *   LSE→LSE, otherwise SMART (then listing venue on IB error 200). A reject
+ *   is not "parked" — TP1 / SL / entries retry until IB shows Working.
  *
  *   A reconciliation sweep runs every few minutes as a belt-and-braces pass:
  *   any open order belonging to a closed key is cancelled, and any key flat
@@ -87,6 +92,15 @@ const {
   isLiveAuthorizedServerExit,
   shouldApplyLiveTslUpdate
 } = require('../lib/ibkr/live-exit-authority');
+const {
+  preferredExchange,
+  fallbackExchange,
+  isRoutingError,
+  isSessionBlockedError,
+  asiaCashBlocksRestingOrders,
+  placeableStkContract
+} = require('../lib/ibkr/order-routing');
+const { parseIbExecTime: parseIbExecTimeRaw } = require('../lib/ibkr/ib-exec-time');
 
 const DRY = process.env.IBKR_DRY_RUN !== '0';
 const BASE = String(process.env.ALPHASIGNAL_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
@@ -606,10 +620,11 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
       }
       return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MKT' };
     }
-    if (phase === 'pre' || phase === 'post') {
-      // Premarket / post: only lift if quote is at or better than recommendation.
+    if (phase === 'pre') {
+      // Premarket only: lift if quote is at or better than recommendation.
       // Must be LMT — IB SMART ignores outsideRth on MKT (2109 / 399) and holds
-      // until 09:30, which is NOT a pre-market fill.
+      // until 09:30, which is NOT a pre-market fill. Never chase after the
+      // cash close (post) — that is not pre-market and not the opening print.
       if (opts.forceExt && quotePx > 0) {
         return {
           orderType: 'LMT', action, totalQuantity: qty,
@@ -626,7 +641,7 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
       }
       return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
     }
-    // Fully closed (overnight before US pre) → next cash open
+    // Post-market and overnight → next cash open. Never outsideRth after 16:00 ET.
     return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
   }
   if (phase === 'rth') {
@@ -850,7 +865,7 @@ function orderContractFromPos(c) {
   }
   const out = {
     secType: c.secType || 'STK',
-    exchange: 'SMART',
+    exchange: preferredExchange(c),
     currency: c.currency || 'USD'
   };
   const conId = Number(c.conId);
@@ -876,7 +891,7 @@ function orderContractFromPos(c) {
 }
 
 /** Placeable IB contract object for placeOrder. */
-function placeableContract(contract) {
+function placeableContract(contract, exchangeOverride) {
   if (!contract) return null;
   if (contract.secType === 'FUT') {
     const oc = {
@@ -902,18 +917,7 @@ function placeableContract(contract) {
     if (contract.conId > 0) oc.conId = Number(contract.conId);
     return oc;
   }
-  if (contract.conId > 0) {
-    return {
-      conId: Number(contract.conId),
-      symbol: contract.symbol != null ? String(contract.symbol) : undefined,
-      localSymbol: contract.localSymbol || undefined,
-      secType: contract.secType || 'STK',
-      exchange: contract.market === 'HK' ? 'SEHK' : 'SMART',
-      primaryExch: contract.primaryExch,
-      currency: contract.currency
-    };
-  }
-  return orderContractFromPos(contract) || contract;
+  return placeableStkContract(contract, exchangeOverride);
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -934,6 +938,7 @@ async function main() {
   // Live positions from IB (survives restarts, unlike orderFills). Keyed
   // "SYMBOL|CCY" -> { pos, contract }. Populated by the reqPositions subscription.
   const posMap = new Map();
+  const pendingOrders = new Map(); // orderId → { contract, order, label, exchange, retried }
   let positionsReady = false; // set once IB's initial position snapshot lands
   let forceReconcile = false; // set on positionEnd so Asia re-arms don't wait 5m
   const posKeyOf = c => {
@@ -1068,15 +1073,18 @@ async function main() {
       + '  ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
   }
 
-  function parseIbExecTime(t) {
-    // IB: "yyyyMMdd  HH:mm:ss" or ISO
-    const s = String(t || '').trim();
-    if (!s) return NaN;
-    const iso = Date.parse(s);
-    if (Number.isFinite(iso)) return iso;
-    const m = s.match(/^(\d{4})(\d{2})(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
-    if (!m) return NaN;
-    return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+  function tzForContract(contract) {
+    const m = (contract && (contract.market || (contract.usRth ? 'US' : ''))) || '';
+    return (MARKET_CLOCKS[m] && MARKET_CLOCKS[m].timeZone) || 'UTC';
+  }
+
+  function parseIbExecTime(t, timeZone) {
+    return parseIbExecTimeRaw(t, timeZone);
+  }
+
+  function ibExecIso(exec, contract) {
+    const ms = parseIbExecTime(exec && (exec.time || exec.dateTime), tzForContract(contract));
+    return Number.isFinite(ms) ? new Date(ms).toISOString() : new Date().toISOString();
   }
 
   // Declared before IB error handler — early connect errors must not hit a TDZ.
@@ -1116,15 +1124,22 @@ async function main() {
         return;
       }
       log('IB error', code, 'reqId=' + reqId, err && err.message ? err.message : err);
+      const msg = err && err.message ? err.message : String(err || '');
+      if (isRoutingError(code) || isSessionBlockedError(code, msg)) {
+        retryRejectedOrder(Number(reqId), Number(code), msg);
+      }
       if (Number(code) === 200 || Number(code) === 201) {
         for (const [key, row] of Object.entries(state.byKey || {})) {
-          if (!row || row.closed || row.entryFilled) continue;
-          if (row.parentId !== reqId && row.stopId !== reqId && row.tp1Id !== reqId) continue;
-          row.contractRejected = true;
-          row.updated = new Date().toISOString();
-          saveState(state);
-          forceReconcile = true;
-          log('IB entry rejected — will retry', key, row.ticker, 'code=' + code);
+          if (!row || row.closed) continue;
+          const closeHit = (row.closeIds || []).includes(reqId);
+          if (row.parentId !== reqId && row.stopId !== reqId && row.tp1Id !== reqId && !closeHit) continue;
+          if (!row.entryFilled && row.parentId === reqId) {
+            row.contractRejected = true;
+            row.updated = new Date().toISOString();
+            saveState(state);
+            forceReconcile = true;
+            log('IB entry rejected — will retry', key, row.ticker, 'code=' + code);
+          }
         }
       }
     });
@@ -1138,6 +1153,15 @@ async function main() {
           lastFillPrice: Number.isFinite(last) && last > 0 ? last : null,
           filled: Number(filled) || 0
         });
+      }
+      const st = String(status || '');
+      if (st === 'Submitted' || st === 'PreSubmitted' || st === 'Filled') {
+        pendingOrders.delete(Number(orderId));
+        for (const row of Object.values(state.byKey || {})) {
+          if (!row) continue;
+          if (row.tp1Id === Number(orderId)) row.tp1RoutingFailed = false;
+          if (row.stopId === Number(orderId)) row.stopRoutingFailed = false;
+        }
       }
       onOrderStatus(orderId, status, Number(filled) || 0, avg);
     });
@@ -2100,11 +2124,121 @@ async function main() {
     return { tif: 'GTC', ...(ACCOUNT ? { account: ACCOUNT } : {}), ...extra };
   }
 
-  /** Place / replace an order (IB modifies in place when the orderId is reused). */
+  function remapPendingOrderId(oldId, newId) {
+    for (const row of Object.values(state.byKey || {})) {
+      if (!row) continue;
+      if (row.parentId === oldId) row.parentId = newId;
+      if (row.stopId === oldId) row.stopId = newId;
+      if (row.tp1Id === oldId) row.tp1Id = newId;
+      if (Array.isArray(row.closeIds)) {
+        row.closeIds = row.closeIds.map(id => id === oldId ? newId : id);
+      }
+    }
+  }
+
+  function markChildUnparked(orderId, reason) {
+    const oid = Number(orderId);
+    let changed = false;
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (!row || row.closed) continue;
+      if (row.tp1Id === oid && !row.tp1Done) {
+        row.tp1Id = null;
+        row.tp1AttachAttemptAt = null;
+        row.tp1RoutingFailed = true;
+        changed = true;
+        log('IB reject — TP1 not parked', key, reason || '');
+      }
+      if (row.stopId === oid && row.entryFilled) {
+        row.stopId = null;
+        row.stopAttachAttemptAt = null;
+        row.stopRoutingFailed = true;
+        changed = true;
+        log('IB reject — stop not parked', key, reason || '');
+      }
+      if (row.parentId === oid && !row.entryFilled) {
+        row.contractRejected = true;
+        changed = true;
+        forceReconcile = true;
+      }
+    }
+    if (changed) saveState(state);
+  }
+
+  function retryRejectedOrder(orderId, code, message) {
+    const pending = pendingOrders.get(Number(orderId));
+    if (!pending || !ib) return;
+    const oid = Number(orderId);
+    if (isSessionBlockedError(code, message)) {
+      pendingOrders.delete(oid);
+      for (const [key, row] of Object.entries(state.byKey || {})) {
+        if (!row) continue;
+        if (row.tp1Id === oid) {
+          row.tp1Id = null;
+          row.tp1AttachAttemptAt = null;
+          row.tp1SessionBlocked = true;
+          log('IB session reject — TP1 deferred to cash RTH', key, 'code=' + code);
+        }
+        if (row.stopId === oid) {
+          row.stopId = null;
+          row.stopAttachAttemptAt = null;
+          row.stopSessionBlocked = true;
+          log('IB session reject — stop deferred to cash RTH', key, 'code=' + code);
+        }
+        if (row.parentId === oid && !row.entryFilled) {
+          row.contractRejected = true;
+          forceReconcile = true;
+        }
+      }
+      saveState(state);
+      forceReconcile = true;
+      return;
+    }
+    if (!isRoutingError(code)) return;
+    if (pending.retried) {
+      pendingOrders.delete(oid);
+      markChildUnparked(oid, pending.exchange + ' and fallback both error 200');
+      return;
+    }
+    const nextEx = fallbackExchange(pending.exchange, pending.contract);
+    if (!nextEx || nextEx === pending.exchange) {
+      pendingOrders.delete(oid);
+      markChildUnparked(oid, 'error 200 no fallback from ' + pending.exchange);
+      return;
+    }
+    const newId = nid();
+    pending.retried = true;
+    pendingOrders.delete(oid);
+    remapPendingOrderId(oid, newId);
+    const oc = placeableContract(pending.contract, nextEx);
+    const order = { ...pending.order, orderId: newId };
+    pendingOrders.set(newId, {
+      contract: pending.contract,
+      order,
+      label: pending.label,
+      exchange: nextEx,
+      retried: true
+    });
+    ib.placeOrder(newId, oc, order);
+    log('IB error 200 — retry', pending.label, pending.exchange, '→', nextEx,
+      'oid=' + oid, '→', newId, oc.symbol || '');
+    saveState(state);
+    forceReconcile = true;
+  }
+
+  /** Place / replace an order. Always venue-routes the contract (SEHK vs SMART). */
   function transmitOrder(orderId, contract, order, label) {
-    if (DRY || !ib) { log('DRY order', label, JSON.stringify({ orderId, contract: contract.symbol, ...order })); return; }
-    ib.placeOrder(orderId, contract, order);
-    log('order sent', label, contract.symbol, order.action, order.orderType, 'qty=' + order.totalQuantity,
+    if (DRY || !ib) { log('DRY order', label, JSON.stringify({ orderId, contract: contract && contract.symbol, ...order })); return; }
+    const oc = placeableContract(contract);
+    pendingOrders.set(Number(orderId), {
+      contract,
+      order: { ...order, orderId },
+      label,
+      exchange: oc && oc.exchange,
+      retried: false
+    });
+    ib.placeOrder(orderId, oc, order);
+    log('order sent', label, oc && oc.symbol, 'exch=' + (oc && oc.exchange),
+      order.action, order.orderType, 'qty=' + order.totalQuantity,
       order.lmtPrice != null ? 'lmt=' + order.lmtPrice : '', order.auxPrice != null ? 'stp=' + order.auxPrice : '');
   }
 
@@ -2478,9 +2612,9 @@ async function main() {
       log('DRY bracket', evt.ticker, evt.side, JSON.stringify({ contract, parent, stopOrder, tp1Order, split, entryStyle, phase: sessionPhase(contract), quotePx, quoteSrc }, null, 1));
     } else {
       const oc = placeableContract(contract);
-      ib.placeOrder(parentId, oc, parent);
-      ib.placeOrder(stopId, oc, stopOrder);
-      if (tp1Order) ib.placeOrder(tp1Id, oc, tp1Order);
+      transmitOrder(parentId, contract, parent, 'entry ' + evt.ticker);
+      transmitOrder(stopId, contract, stopOrder, 'stop ' + evt.ticker);
+      if (tp1Order) transmitOrder(tp1Id, contract, tp1Order, 'tp1 ' + evt.ticker);
       const gateNote = contract.usRth && (sessionPhase(contract) === 'pre' || sessionPhase(contract) === 'post')
         ? ` quote=${quotePx != null ? quotePx : 'n/a'}(${quoteSrc || 'none'}) vs entry=${roundPx(evt.entry)} lmt=${parent.lmtPrice != null ? parent.lmtPrice : 'n/a'} → ${entryStyle}`
         : '';
@@ -2490,7 +2624,7 @@ async function main() {
       const bb = contract.bloomberg || bloombergTicker(evt.ticker);
       const listingNote = bb ? ` ${bb}` : '';
       log('Placed bracket', evt.ticker + listingNote, evt.side,
-        `exch=${contract.primaryExch || contract.market || ''} style=${entryStyle} phase=${sessionPhase(contract)} qty=${split.total} sizePx=${roundPx(evt.entry, contract)} stop=${stopPx}(full) tp1=${tp1Px}x${split.sold} runner=${split.runner}${sizeNote}${gateNote}`);
+        `exch=${(oc && oc.exchange) || contract.primaryExch || contract.market || ''} style=${entryStyle} phase=${sessionPhase(contract)} qty=${split.total} sizePx=${roundPx(evt.entry, contract)} stop=${stopPx}(full) tp1=${tp1Px}x${split.sold} runner=${split.runner}${sizeNote}${gateNote}`);
     }
     return {
       parentId, stopId, tp1Id,
@@ -2583,6 +2717,14 @@ async function main() {
     const st = String(status || '');
     if (st === 'Cancelled' || st === 'ApiCancelled' || st === 'Inactive') {
       noteCancelAck(orderId, st);
+    }
+    // Keep pendingOrders on Inactive so a following error 200 can still retry
+    // the other venue. Unpark only when IB has already dropped the pending row.
+    if (st === 'Inactive' && !pendingOrders.has(Number(orderId))) {
+      markChildUnparked(orderId, 'Inactive');
+    }
+    if (st === 'Cancelled' || st === 'ApiCancelled') {
+      pendingOrders.delete(Number(orderId));
     }
     for (const [key, row] of Object.entries(state.byKey)) {
       if (row.closed) continue;
@@ -2884,8 +3026,9 @@ async function main() {
   }
 
   /**
-   * Site open + IB flat (FANG/VTR/AIR): pull IB execution history and post the
-   * real exit VWAP as role=flatten so the IBKR tab shows IB's exit price.
+   * Site open + IB flat: pull IB execution history for real exit VWAP.
+   * Always also backfill commissions + replace recover-entry stamps (PH/NTAP
+   * recovered overnight with no commissionReport and a false After-hours label).
    */
   async function recoverMissingExitFills() {
     if (DRY || !ib || !EventName || !positionsReady) return;
@@ -2898,23 +3041,7 @@ async function main() {
       if (!t || !(t.openQty > 0) || !t.key) return false;
       return ibSignedQtyForYahoo(t.ticker) === 0;
     });
-    if (!need.length) return;
-    log('exec-history: recovering exits for', need.map(t => t.ticker).join(','));
-    const thesisOpen = new Set();
-    try {
-      const ev = await fetchJson('/api/ibkr/events?since=0&limit=4000&tail=1');
-      const last = new Map();
-      for (const e of (ev.events || [])) {
-        if (!e || !e.key || (e.type !== 'entry' && e.type !== 'exit')) continue;
-        last.set(e.key, e.type);
-      }
-      for (const [k, typ] of last) if (typ === 'entry') thesisOpen.add(k);
-    } catch (e) { log('exec-history: events fetch failed', e.message); }
-
-    const earliest = Math.min(
-      ...need.map(t => Date.parse(t.entryTime || 0) || Date.now())
-    );
-    const fromMs = Math.max(earliest - 2 * 86400000, Date.now() - 14 * 86400000);
+    const fromMs = Date.now() - 21 * 86400000;
     _execHistBuf = [];
     const reqId = nextExecHistId++;
     _execHistReqId = reqId;
@@ -2945,9 +3072,24 @@ async function main() {
       }
     });
     _execHistReqId = null;
+    await new Promise(r => setTimeout(r, 1500));
+
+    if (need.length) {
+      log('exec-history: recovering exits for', need.map(t => t.ticker).join(','));
+    }
+    const thesisOpen = new Set();
+    try {
+      const ev = await fetchJson('/api/ibkr/events?since=0&limit=4000&tail=1');
+      const last = new Map();
+      for (const e of (ev.events || [])) {
+        if (!e || !e.key || (e.type !== 'entry' && e.type !== 'exit')) continue;
+        last.set(e.key, e.type);
+      }
+      for (const [k, typ] of last) if (typ === 'entry') thesisOpen.add(k);
+    } catch (e) { log('exec-history: events fetch failed', e.message); }
+
     if (!_execHistBuf.length) {
       log('exec-history: no IB executions returned in window');
-      return;
     }
 
     let queued = 0;
@@ -3013,9 +3155,7 @@ async function main() {
       if (!(qSum > 0) || !(vSum > 0)) continue;
       const vwap = vSum / qSum;
       const closeQty = Math.min(Number(t.openQty), qSum);
-      const fillAt = Number.isFinite(parseIbExecTime(lastTs))
-        ? new Date(parseIbExecTime(lastTs)).toISOString()
-        : new Date().toISOString();
+      const fillAt = ibExecIso({ time: lastTs }, cMeta);
       const cMeta = enrichSessionMeta(
         (state.byKey[t.key] && state.byKey[t.key].contract)
           || toContract(t.ticker)
@@ -3050,10 +3190,111 @@ async function main() {
       log('exec-history: queued flatten', t.key, closeQty + '@' + vwap.toFixed(4),
         '(' + matches.length + ' IB exec(s))');
     }
-    if (queued) {
-      saveState(state);
-      await flushReports();
+    const backfilled = backfillRealEntriesFromHistory(serverTrades, usedExecIds);
+    queueCommissionPatchesFromMap();
+    if (queued || backfilled) saveState(state);
+    await flushReports();
+  }
+
+  function queueCommissionPatchesFromMap() {
+    for (const [execId, comm] of commissionByExec) {
+      if (!comm || postedCommissionExecIds.has(String(execId))) continue;
+      state.pendingReports = state.pendingReports || [];
+      if ((state.pendingReports || []).some(r => r && String(r.execId) === String(execId)
+        && (r.kind === 'commission' || r.commission != null))) continue;
+      state.pendingReports.push({
+        kind: 'commission',
+        execId: String(execId),
+        commission: comm.commission,
+        commissionCcy: comm.currency,
+        ibRealizedPnl: comm.realizedPNL,
+        time: new Date().toISOString()
+      });
     }
+  }
+
+  function fillLooksSynthetic(t) {
+    if (!t) return true;
+    return (t.fills || []).some(f => f && (
+      String(f.execId || '').startsWith('recover-entry-')
+      || String(f.execId || '').startsWith('recon-entry-')
+      || f.synthetic === true
+    ));
+  }
+
+  function backfillRealEntriesFromHistory(serverTrades, alreadyUsed) {
+    if (!_execHistBuf.length) return 0;
+    const used = alreadyUsed || new Set();
+    const byKey = {};
+    for (const t of (serverTrades && serverTrades.trades) || []) {
+      if (t && t.key) byKey[t.key] = t;
+    }
+    let n = 0;
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (!row || !row.entryFilled || !row.ticker) continue;
+      const site = byKey[key];
+      const needs = !!(row.recoveredFromPosition) || fillLooksSynthetic(site);
+      if (!needs) continue;
+      const y = normalizeYahooTicker(row.ticker);
+      const wantOpen = row.side === 'sell' ? 'SLD' : 'BOT';
+      const recDay = Date.parse(String(key.split('|')[2] || '')) || 0;
+      const matches = _execHistBuf.filter((e) => {
+        const eid = String(e.exec.execId || '');
+        if (!eid || used.has(eid)) return false;
+        const ey = normalizeYahooTicker(yahooFromContract(e.contract) || '');
+        const sym = String((e.contract && e.contract.symbol) || '').toUpperCase();
+        const bare = String(row.ticker || '').toUpperCase().split('.')[0];
+        const tickMatch = (ey && ey === y) || !!(sym && bare && sym === bare);
+        if (!tickMatch) return false;
+        const side = String(e.exec.side || '').toUpperCase();
+        const isOpen = side === wantOpen
+          || side === (wantOpen === 'SLD' ? 'SELL' : 'BUY')
+          || side === (wantOpen === 'SLD' ? 'S' : 'B');
+        if (!isOpen || !(Number(e.exec.shares) > 0)) return false;
+        const ets = parseIbExecTime(e.exec.time || e.exec.dateTime, tzForContract(row.contract));
+        if (Number.isFinite(recDay) && recDay > 0 && Number.isFinite(ets) && ets + 18 * 3600000 < recDay) {
+          return false;
+        }
+        return true;
+      });
+      if (!matches.length) continue;
+      const cMeta = enrichSessionMeta(row.contract || toContract(row.ticker));
+      let remaining = Math.abs(Number(row.qtyTotal) || 0) || Infinity;
+      for (const m of matches) {
+        if (!(remaining > 0)) break;
+        const eid = String(m.exec.execId);
+        const qty = Number(m.exec.shares) || 0;
+        const px = Number(m.price) || 0;
+        if (!(qty > 0) || !(px > 0)) continue;
+        used.add(eid);
+        remaining -= qty;
+        const fillAt = ibExecIso(m.exec, cMeta);
+        const phase = sessionPhase(cMeta || {}, Date.parse(fillAt));
+        const comm = commissionByExec.get(eid);
+        const report = {
+          kind: 'exec', execId: eid, key,
+          ticker: row.ticker, hz: row.hz || 'short',
+          side: row.side === 'sell' ? 'sell' : 'buy', role: 'entry',
+          orderId: Number(m.exec.orderId) || null, qty, price: px,
+          currency: (cMeta && cMeta.currency) || 'USD',
+          ccyScale: cMeta && cMeta.penceQuoted ? 100 : 1,
+          errorTrade: false, time: fillAt,
+          session: phase, sessionLabel: sessionLabel(phase)
+        };
+        if (comm) {
+          report.commission = comm.commission;
+          report.commissionCcy = comm.currency;
+          if (comm.realizedPNL != null) report.ibRealizedPnl = comm.realizedPNL;
+        }
+        state.pendingReports = state.pendingReports || [];
+        if (state.pendingReports.some(r => r && String(r.execId) === eid)) continue;
+        state.pendingReports.push(report);
+        n++;
+        log('exec-history: backfill entry', key, qty + '@' + px, 'sess=' + phase,
+          comm ? ('comm=' + comm.commission) : 'no-comm');
+      }
+    }
+    return n;
   }
 
   // ── IB ↔ AlphaSignal ledger sync ───────────────────────────────────────────
@@ -3282,6 +3523,28 @@ async function main() {
         text: `Risk: filled but no stop order id — ${key} IB pos=${pos}`
       });
     }
+
+    // Filled, splittable lot with no live TP1 LMT while cash/US RTH is open.
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (!row || row.closed || row.errorTrade || !row.entryFilled || row.tp1Done) continue;
+      if (keyState && keyState.get(key) !== 'open') continue;
+      if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK')) continue;
+      if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
+      const phase = sessionPhase(row.contract);
+      if (phase !== 'rth') continue;
+      if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
+      const held = row.contract ? posMap.get(posKeyOf(row.contract)) : null;
+      const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+      const lot = Math.max(Number(row.contract.lotHint) || 1, 1);
+      const half = tp1SoldQty(posInDir, lot);
+      if (!(half >= lot) || !(posInDir > half)) continue;
+      if (row.tp1Id != null && !row.tp1RoutingFailed && !row.tp1SessionBlocked) continue;
+      findings.push({
+        sev: 'error',
+        code: 'missing-tp1',
+        text: `Risk: filled but TP1 LMT not parked — ${key} IB pos=${posInDir}`
+      });
+    }
     return findings;
   }
 
@@ -3324,8 +3587,8 @@ async function main() {
     return listWorkingOrders().then(os => os.filter(o => o.type === 'STP'));
   }
 
-  async function adoptWorkingStops() {
-    const stops = await listWorkingStops();
+  async function adoptWorkingStops(workingOrders) {
+    const stops = (workingOrders || await listWorkingStops()).filter(o => o.type === 'STP');
     if (!stops.length) return 0;
     let n = 0;
     for (const [key, row] of Object.entries(state.byKey || {})) {
@@ -3342,6 +3605,8 @@ async function main() {
       if (!hit) continue;
       row.stopId = hit.orderId;
       if (hit.aux > 0) row.stopPx = hit.aux;
+      row.stopRoutingFailed = false;
+      row.stopSessionBlocked = false;
       row.updated = new Date().toISOString();
       n++;
       log('RECONCILE: adopted working stop', key, 'orderId=' + hit.orderId, 'stp=' + hit.aux);
@@ -3369,12 +3634,87 @@ async function main() {
     return !!y && normalizeYahooTicker(order.yahoo) === y;
   }
 
-  /** Park a live 50% TP1 LMT on every splittable equity that is missing one.
-   *  0883.HK uses SELL LMT GTC @ 25, placed at HK session (SEHK rejects LMT+OPG
-   *  and overnight marketable sells as "not available for short sale"). */
-  async function ensureWorkingTp1Children() {
+  function childNotYetWorking(rowId, workingHit, attemptAt, failedFlag) {
+    if (workingHit) return false;
+    if (rowId != null && pendingOrders.has(Number(rowId))) {
+      const age = attemptAt ? Date.now() - Date.parse(attemptAt) : Infinity;
+      return !(Number.isFinite(age) && age < 20000);
+    }
+    if (failedFlag) return true;
+    if (rowId == null) return true;
+    const age = attemptAt ? Date.now() - Date.parse(attemptAt) : Infinity;
+    return !Number.isFinite(age) || age > 20000;
+  }
+
+  function attachRetryWaitMs(failedFlag) {
+    return failedFlag ? 60 * 1000 : 45 * 1000;
+  }
+
+  /** Place a live STP when the filled lot has none. Adopt existing first. */
+  async function ensureWorkingStops(workingOrders) {
     if (DRY || !ib) return 0;
-    const working = await listWorkingOrders();
+    const working = workingOrders || await listWorkingOrders();
+    await adoptWorkingStops(working);
+    let n = 0;
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (!row || row.closed || row.errorTrade || !row.entryFilled) continue;
+      if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK')) continue;
+      if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
+      const phase = sessionPhase(row.contract);
+      if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
+      if (row.stopSessionBlocked) row.stopSessionBlocked = false;
+      const held = posMap.get(posKeyOf(row.contract));
+      const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+      if (!(posInDir > 0)) continue;
+      const closeAction = row.side === 'sell' ? 'BUY' : 'SELL';
+      const stps = working.filter(o =>
+        o.type === 'STP' && o.action === closeAction && rowMatchesWorking(row, o)
+      );
+      const existing = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null) || stps[0];
+      if (existing) {
+        if (row.stopId !== existing.orderId) {
+          row.stopId = existing.orderId;
+          if (existing.aux > 0) row.stopPx = existing.aux;
+          row.stopRoutingFailed = false;
+          row.updated = new Date().toISOString();
+          n++;
+          log('RECONCILE: adopted working stop', key, 'orderId=' + existing.orderId, 'stp=' + existing.aux);
+        }
+        continue;
+      }
+      if (!childNotYetWorking(row.stopId, null, row.stopAttachAttemptAt, row.stopRoutingFailed)) continue;
+      const wait = attachRetryWaitMs(row.stopRoutingFailed);
+      const last = row.stopAttachAttemptAt ? Date.parse(row.stopAttachAttemptAt) : NaN;
+      if (Number.isFinite(last) && Date.now() - last < wait && pendingOrders.has(Number(row.stopId))) continue;
+      const qty = posInDir;
+      const stp = row.tp1Done ? runnerStopPx(row, row.stopPx) : roundPx(row.stopPx, row.contract);
+      if (!(stp > 0) || !(qty > 0)) continue;
+      const oid = nid();
+      row.stopId = oid;
+      row.stopPx = stp;
+      row.stopAttachAttemptAt = new Date().toISOString();
+      row.updated = row.stopAttachAttemptAt;
+      transmitOrder(oid, row.contract, baseOrder({
+        orderId: oid,
+        action: closeAction,
+        orderType: 'STP',
+        auxPrice: stp,
+        totalQuantity: qty,
+        transmit: true
+      }), (row.tp1Done ? 'stop attach runner ' : 'stop attach ') + key);
+      n++;
+      log('RECONCILE: attached stop', key, closeAction, 'STP', stp, 'x' + qty);
+    }
+    if (n) saveState(state);
+    return n;
+  }
+
+  /** Park a live 50% TP1 LMT on every splittable equity that is missing one.
+   *  Not parked until IB shows Submitted/PreSubmitted. HK/JP wait for cash RTH
+   *  (lunch/overnight marketable sells → error 201 short-sale). */
+  async function ensureWorkingTp1Children(workingOrders) {
+    if (DRY || !ib) return 0;
+    const working = workingOrders || await listWorkingOrders();
     let n = 0;
     for (const [key, row] of Object.entries(state.byKey || {})) {
       if (!row || row.closed || row.errorTrade || !row.entryFilled || row.tp1Done) continue;
@@ -3388,10 +3728,8 @@ async function main() {
       const isSell = row.side === 'sell';
       const spec = openIfAboveSpec(row.ticker);
       const phase = sessionPhase(row.contract);
-      if (spec && (phase === 'closed' || phase === 'lunch')) {
-        log('TP1 open-if-above deferred until HK session', key, 'phase=' + phase);
-        continue;
-      }
+      if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
+      if (row.tp1SessionBlocked) row.tp1SessionBlocked = false;
       const half = spec
         ? Math.min(Number(spec.qty) || 0, tp1SoldQty(posInDir, lot) || Number(spec.qty) || 0)
         : tp1SoldQty(posInDir, lot);
@@ -3413,6 +3751,7 @@ async function main() {
           row.qtySold = half;
           row.qtyRunner = posInDir - half;
           if (existing.lmt > 0) row.tp1Px = existing.lmt;
+          row.tp1RoutingFailed = false;
           row.updated = new Date().toISOString();
           n++;
           log('RECONCILE: adopted working TP1', key, 'orderId=' + existing.orderId,
@@ -3420,8 +3759,14 @@ async function main() {
         }
         continue;
       }
-      if (row.tp1AttachAttemptAt && (Date.now() - Date.parse(row.tp1AttachAttemptAt)) < 10 * 60 * 1000) {
-        continue;
+      if (!childNotYetWorking(row.tp1Id, null, row.tp1AttachAttemptAt, row.tp1RoutingFailed)) continue;
+      const wait = attachRetryWaitMs(row.tp1RoutingFailed);
+      const last = row.tp1AttachAttemptAt ? Date.parse(row.tp1AttachAttemptAt) : NaN;
+      if (Number.isFinite(last) && Date.now() - last < wait && pendingOrders.has(Number(row.tp1Id))) continue;
+      if (row.tp1Id != null && !pendingOrders.has(Number(row.tp1Id))) {
+        log('TP1 id not working — treating as missed', key, 'oid=' + row.tp1Id);
+        row.tp1Id = null;
+        row.tp1AttachAttemptAt = null;
       }
       let tp1Px;
       let tif = 'GTC';
@@ -3447,9 +3792,7 @@ async function main() {
       row.qtyRunner = posInDir - half;
       row.tp1AttachAttemptAt = new Date().toISOString();
       row.updated = row.tp1AttachAttemptAt;
-      // HK SMART+symbol hits IB error 200 (no security definition). Venue
-      // exchange + conId is the same shape as orphan flatten / 0005 TP1.
-      transmitOrder(oid, placeableContract(row.contract), baseOrder({
+      transmitOrder(oid, row.contract, baseOrder({
         orderId: oid,
         action: closeAction,
         orderType: 'LMT',
@@ -3460,7 +3803,8 @@ async function main() {
         transmit: true
       }), (spec ? 'tp1 open-if-above ' : 'tp1 attach ') + key);
       n++;
-      log('RECONCILE: attached TP1', key, closeAction, 'LMT', tp1Px, 'x' + half, 'tif=' + tif);
+      log('RECONCILE: attached TP1', key, closeAction, 'LMT', tp1Px, 'x' + half,
+        'tif=' + tif, 'exch=' + preferredExchange(row.contract));
     }
     if (n) saveState(state);
     return n;
@@ -3623,7 +3967,8 @@ async function main() {
       `Sent: ${snapshot.at}`,
       '',
       '— Performance —',
-      `Today realised: ${fmtUsdSigned(dayReal)}`,
+      `Today realised (fills): ${fmtUsdSigned(dayReal)}`,
+      `Commissions (open lots): ${fmtUsdSigned(-(Number(tt.openCommissionUsd) || 0))}`,
       `Total realised (net): ${fmtUsdSigned(tt.realizedUsd)}`,
       `Unrealised: ${fmtUsdSigned(tt.unrealizedUsd)}`,
       `Net PnL: ${fmtUsdSigned(netPnl)}`,
@@ -3638,7 +3983,7 @@ async function main() {
         + (acct.liquidityRiskOff ? ' · NEW ENTRIES PAUSED' : '')
     ];
     if (snapshot.ibDailyPnl != null && Number.isFinite(snapshot.ibDailyPnl)) {
-      lines.push(`IB daily PnL: ${fmtUsdSigned(snapshot.ibDailyPnl)}`);
+      lines.push(`IB account MTM today: ${fmtUsdSigned(snapshot.ibDailyPnl)} (open marks; not fill PnL)`);
     }
     if (closedToday.length) {
       lines.push('');
@@ -3967,7 +4312,8 @@ async function main() {
               currency: c.currency || 'USD',
               ccyScale: c.penceQuoted ? 100 : 1,
               errorTrade: false, synthetic: true, recon: 'recover-entry',
-              time: new Date().toISOString()
+              session: 'unknown', sessionLabel: '—',
+              time: src.t || src.entryDate || new Date().toISOString()
             });
           }
           log('RECONCILE: recovered filled row from IB position', key, 'qty', posInDir);
@@ -4034,7 +4380,8 @@ async function main() {
               orderId: null, qty: posInDir0, price: avg0,
               currency: c0.currency || 'USD', ccyScale: c0.penceQuoted ? 100 : 1,
               errorTrade: false, synthetic: true, recon: 'recover-entry',
-              time: new Date().toISOString()
+              session: 'unknown', sessionLabel: '—',
+              time: src.t || src.entryDate || new Date().toISOString()
             });
             log('RECONCILE: import missing entry fill from IB', key, 'qty', posInDir0, '@', avg0);
           }
@@ -4203,7 +4550,7 @@ async function main() {
         } else if (eu && phase === 'rth' && row.contractRejected) {
           reason = 'contract-retry';
         } else if (us) {
-          if (phase === 'pre' || phase === 'post') {
+          if (phase === 'pre') {
             ensureMktData(row.ticker, contract);
             const sourceEntry = entryByKey.get(key) || {};
             const forceCorrectiveExt = String(sourceEntry.reason || '') === 'rearm-model-entry';
@@ -4252,7 +4599,13 @@ async function main() {
             } else {
               reason = 'us-rth-after-opg';
             }
-          } else if (phase === 'closed' && (isUsExtStyle(row.entryStyle) || row.userReentry)) {
+          } else if (phase === 'post') {
+            // Never lift US names after the cash close. Park OPG for the next open.
+            if (row.entryStyle !== 'OPG') {
+              reason = 'us-post-to-opg';
+              log('RECONCILE: US post-market → OPG next cash open', key, 'was=', row.entryStyle);
+            }
+          } else if (phase === 'closed' && (isUsExtStyle(row.entryStyle) || row.userReentry || row.entryStyle === 'MKT')) {
             // Overnight leftover extended order — convert to next-open OPG
             reason = 'us-overnight-to-opg';
           } else if (phase === 'rth' && row.contractRejected) {
@@ -4270,7 +4623,7 @@ async function main() {
           || reason === 'us-pre-corrective-reentry'
           || reason === 'us-pre-reprice' || reason === 'us-pre-unfavorable-to-opg'
           || reason === 'asia-rth'
-          || reason === 'us-overnight-to-opg';
+          || reason === 'us-overnight-to-opg' || reason === 'us-post-to-opg';
         const contractRetryGap = Math.min(
           15 * 60 * 1000,
           Math.max(60 * 1000, Math.pow(2, Math.min(4, Number(row.rearmCount) || 0)) * 60 * 1000)
@@ -4578,33 +4931,17 @@ async function main() {
           log('RECONCILE: skip orphan flatten — no conId', pk, y);
           continue;
         }
-        const sec = String(rawOc.secType || cMeta.secType || 'STK').toUpperCase();
-        let oc;
-        if (sec === 'FUT' || sec === 'CRYPTO') {
-          oc = placeableContract(Object.assign({}, cMeta, rawOc, { conId }));
-        } else {
-          const isHk = String(rawOc.currency || cMeta.currency || '') === 'HKD'
-            || cMeta.market === 'HK' || /\.HK$/i.test(y);
-          oc = {
-            conId,
-            symbol: rawOc.symbol != null ? String(rawOc.symbol) : undefined,
-            localSymbol: rawOc.localSymbol || undefined,
-            secType: 'STK',
-            exchange: isHk ? 'SEHK' : 'SMART',
-            primaryExch: rawOc.primaryExch || (isHk ? 'SEHK' : undefined),
-            currency: rawOc.currency || cMeta.currency || 'USD'
-          };
-        }
+        const oc = placeableContract(Object.assign({}, cMeta, rawOc, { conId }));
         const action = pos > 0 ? 'SELL' : 'BUY';
         // RTH → market day order. Otherwise → opening auction (next session).
         const useOpg = phase !== 'rth';
         const tif = useOpg ? 'OPG' : 'DAY';
         log('RECONCILE: flattening', isOrphanIbOnly ? 'IB-ONLY ORPHAN' : 'UNAUTHORIZED',
           pk, 'pos=' + pos, 'ticker=' + y, 'streak=' + streak,
-          'exch=' + oc.exchange, 'conId=' + conId,
+          'exch=' + (oc && oc.exchange), 'conId=' + conId,
           useOpg ? ('OPG→next open (' + phase + ')') : 'MKT RTH');
         if (conId > 0) _orphanFlattenedConIds.add(conId);
-        transmitOrder(fid, oc, baseOrder({
+        transmitOrder(fid, Object.assign({}, cMeta, rawOc, { conId }), baseOrder({
           orderId: fid, action,
           orderType: 'MKT', totalQuantity: qty, tif, transmit: true,
           outsideRth: false
@@ -4687,8 +5024,9 @@ async function main() {
 
       // 15‑min risk digest → Telegram (untracked / unfilled RTH / recon errors).
       try {
-        await adoptWorkingStops();
-        await ensureWorkingTp1Children();
+        const working = await listWorkingOrders();
+        await ensureWorkingStops(working);
+        await ensureWorkingTp1Children(working);
         const findings = collectRiskFindings(keyState, lastIbReconResp);
         await maybeSendRiskAlert(findings);
       } catch (e) { log('TELEGRAM: risk check failed', e.message); }
@@ -4775,8 +5113,11 @@ async function main() {
     if (positionsReady && Date.now() - lastIbReconAt > 60 * 1000) {
       await postIbRecon().catch(e => log('recon error', e.message));
       await recoverMissingExitFills().catch(e => log('exec-history error', e.message));
-      await adoptWorkingStops().catch(e => log('adopt-stop error', e.message));
-      await ensureWorkingTp1Children().catch(e => log('ensure-tp1 error', e.message));
+      await (async () => {
+        const working = await listWorkingOrders();
+        await ensureWorkingStops(working);
+        await ensureWorkingTp1Children(working);
+      })().catch(e => log('ensure-exits error', e.message));
     }
     // HK afternoon reopen: chase rows that are not on a live RTH MKT yet.
     // US pre: replace IB-ignored MKT-EXT / re-seed Hold-cancelled Buys now.
