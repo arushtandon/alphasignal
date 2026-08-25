@@ -13,7 +13,9 @@
  *                        LMT 224, fills at ~222). Never MKT-EXT (IB queues those until 09:30).
  *                        Unfilled into 09:28 ET → OPG; keep OPG through the 09:30 auction
  *                        (do not cancel at the bell). After ~2 min of RTH still unfilled → MKT.
- *                      • US post / overnight: OPG for the next cash open only. Never fill after 16:00 ET.
+ *                      • US post / overnight: do not submit. 06:00 SGT recs wait for
+ *                        the next US pre (LMT-EXT if the quote is at/better than entry,
+ *                        else OPG). Never fill after 16:00 ET.
  *                      • US RTH first fire: MKT with chase cap; skipped when converting a
  *                        missed pre/OPG so the open print is taken.
  *                      • US fully closed: MOO for next open
@@ -81,7 +83,7 @@ const {
   isLimitTp1Fill
 } = require('../lib/ibkr/tp1-policy');
 const { tslAfterTp1 } = require('../lib/ibkr/tsl-policy');
-const { evaluatePortfolioAddition } = require('../lib/risk/portfolio');
+const { evaluatePortfolioAddition, DEFAULT_CAPS } = require('../lib/risk/portfolio');
 const { BridgeSqliteStore } = require('../lib/storage/bridge-sqlite');
 const { atomicWriteJsonSync } = require('../lib/storage/atomic-json');
 const {
@@ -613,7 +615,7 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
   // IB SMART often rejects orderType 'MOO' (error 321). The portable form is
   // MKT + tif OPG (submit to the opening auction).
   if (contract.usRth) {
-    if (opts.forceOpg && phase !== 'rth') {
+    if (opts.forceOpg && phase === 'pre') {
       return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
     }
     if (phase === 'rth') {
@@ -655,8 +657,9 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
       }
       return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
     }
-    // Post-market and overnight → next cash open. Never outsideRth after 16:00 ET.
-    return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
+    // 06:00 SGT board is for the next US cash session. Do not send OPG/LMT
+    // overnight — recon places at the next pre (LMT-EXT or OPG).
+    return { defer: true, entryStyle: 'DEFER-US-UNTIL-PRE', action, totalQuantity: qty };
   }
   if (phase === 'rth') {
     // Late board after the cash open — take market now (HK/JP/EU/UK)
@@ -2575,6 +2578,16 @@ async function main() {
       return Number.isFinite(at) && singaporeToDateString(at) === singaporeToDateString()
         ? sum + (Number(row.riskSizing.stopRiskUsd) || 0) : sum;
     }, 0);
+    const boardEntry = scheduledEntryReleaseAllowed(evt) && !evt.userReentry;
+    // 06:00 SGT published names are the day's allocation. The 30% gross /
+    // country / USD cluster caps are for extras (re-entry, unauthorized), not
+    // for blocking the board (DHL-day SNDK/PLTR/ABNB sat behind a 60% book).
+    const portfolioCaps = boardEntry
+      ? Object.assign({}, DEFAULT_CAPS, {
+        grossPct: 1, netAbsPct: 1, sectorPct: 1,
+        countryPct: 1, currencyPct: 1, clusterPct: 1
+      })
+      : DEFAULT_CAPS;
     const portfolioGate = evaluatePortfolioAddition({
       nlv,
       positions: existingPositions,
@@ -2587,7 +2600,7 @@ async function main() {
       country: evt.country || contract.market,
       currency: contract.currency,
       cluster: evt.correlationCluster || evt.sector || contract.market
-    });
+    }, portfolioCaps);
         if (!portfolioGate.allowed) {
       logOnce('risk-' + String(evt.ticker || ''), 'portfolio risk rejected', evt.ticker, portfolioGate.reasons.join(','),
         'gross=' + ((portfolioGate.projected && portfolioGate.projected.grossPct || 0) * 100).toFixed(2) + '%');
@@ -4890,6 +4903,10 @@ async function main() {
               // Was chasing extended; quote no longer good → park at next open
               reason = 'us-pre-unfavorable-to-opg';
               log('RECONCILE: US pre/post gate CLOSED', key, 'quote=', gatePx, 'entry=', row.entry, '→ OPG');
+            } else if (!reason && (row.deferred || row.parentId == null
+              || String(row.entryStyle || '').startsWith('DEFER-US'))) {
+              reason = fav ? 'us-pre-favorable' : 'us-pre-park-opg';
+              log('RECONCILE: US pre first fire', key, 'quote=', gatePx, 'fav=', fav, '→', reason);
             }
             }
           } else if (phase === 'rth' && (row.entryStyle === 'OPG' || isUsExtStyle(row.entryStyle))) {
@@ -4898,19 +4915,26 @@ async function main() {
             } else {
               reason = 'us-rth-after-opg';
             }
-          } else if (phase === 'post') {
-            // Never lift US names after the cash close. Park OPG for the next open.
-            if (row.entryStyle !== 'OPG') {
-              reason = 'us-post-to-opg';
-              log('RECONCILE: US post-market → OPG next cash open', key, 'was=', row.entryStyle);
+          } else if (phase === 'post' || phase === 'closed') {
+            // Do not submit overnight. Cancel leftover extended parents and wait for pre.
+            if (row.parentId != null && (isUsExtStyle(row.entryStyle) || row.entryStyle === 'MKT')) {
+              cancelOrder(row.parentId, 'US overnight wait-for-pre parent ' + key);
+              if (row.stopId != null) cancelOrder(row.stopId, 'US overnight wait-for-pre stop ' + key);
+              if (row.tp1Id != null) cancelOrder(row.tp1Id, 'US overnight wait-for-pre tp1 ' + key);
+              row.parentId = null;
+              row.stopId = null;
+              row.tp1Id = null;
+              row.deferred = true;
+              row.entryStyle = 'DEFER-US-UNTIL-PRE';
+              row.updated = new Date().toISOString();
+              saveState(state);
+              log('RECONCILE: US overnight — cancelled working entry, wait for pre', key);
             }
-          } else if (phase === 'closed' && (isUsExtStyle(row.entryStyle) || row.userReentry || row.entryStyle === 'MKT')) {
-            // Overnight leftover extended order — convert to next-open OPG
-            reason = 'us-overnight-to-opg';
           } else if (phase === 'rth' && row.contractRejected) {
             reason = 'contract-retry';
           } else if (row.userReentry && row.parentId == null) {
-            reason = phase === 'rth' ? 'contract-retry' : 'us-overnight-to-opg';
+            if (phase === 'rth') reason = 'contract-retry';
+            else if (phase === 'pre') reason = 'us-pre-park-opg';
           }
         }
         if (!reason) continue;
@@ -4921,7 +4945,8 @@ async function main() {
           || reason === 'us-pre-favorable' || reason === 'us-pre-mkt-to-lmt'
           || reason === 'us-pre-corrective-reentry'
           || reason === 'us-pre-reprice' || reason === 'us-pre-unfavorable-to-opg'
-          || reason === 'asia-rth'
+              || reason === 'us-pre-park-opg'
+              || reason === 'asia-rth'
           || reason === 'us-overnight-to-opg' || reason === 'us-post-to-opg';
         const contractRetryGap = Math.min(
           15 * 60 * 1000,
@@ -4974,7 +4999,7 @@ async function main() {
             sector: src.sector || row.sector,
             country: src.country || row.country,
             correlationCluster: src.correlationCluster || row.correlationCluster,
-            forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-overnight-to-opg'
+            forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-pre-park-opg'
               || reason === 'us-pre-unfavorable-to-opg',
             skipChase: reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg'
           });

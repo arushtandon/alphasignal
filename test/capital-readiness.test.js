@@ -76,6 +76,25 @@ test('portfolio gate rejects concentration and total risk breaches', () => {
   assert.ok(result.reasons.includes('sector'));
 });
 
+test('06:00 board caps still allow a new name on an already-full book', () => {
+  const { DEFAULT_CAPS } = require('../lib/risk/portfolio');
+  const boardCaps = Object.assign({}, DEFAULT_CAPS, {
+    grossPct: 1, netAbsPct: 1, sectorPct: 1,
+    countryPct: 1, currencyPct: 1, clusterPct: 1
+  });
+  const result = evaluatePortfolioAddition({
+    nlv: 465_000,
+    positions: [{
+      ticker: 'NVDA', side: 'buy', notionalUsd: 280_000, stopRiskUsd: 2_000,
+      country: 'US', currency: 'USD', cluster: 'US'
+    }],
+    ticker: 'PLTR', side: 'buy', notionalUsd: 11_000, stopRiskUsd: 400,
+    country: 'US', currency: 'USD', cluster: 'US',
+    dailyNewRiskUsd: 0
+  }, boardCaps);
+  assert.equal(result.allowed, true);
+});
+
 test('performance promotion requires sample, PF, Sharpe, DD, and win rate', () => {
   const returns = Array.from({ length: 120 }, (_, i) => i % 3 === 0 ? -0.004 : 0.008);
   const metrics = summarizeReturns(returns);
