@@ -76,6 +76,7 @@ const {
   tp1SoldQty,
   synthesizeTp1Px,
   openIfAboveSpec,
+  passiveCloseLimit,
   maybeTwoLotTotal,
   isLimitTp1Fill
 } = require('../lib/ibkr/tp1-policy');
@@ -97,10 +98,14 @@ const {
   fallbackExchange,
   isRoutingError,
   isSessionBlockedError,
+  isShortSaleReject,
   asiaCashBlocksRestingOrders,
   placeableStkContract
 } = require('../lib/ibkr/order-routing');
-const { parseIbExecTime: parseIbExecTimeRaw } = require('../lib/ibkr/ib-exec-time');
+const {
+  parseIbExecTime: parseIbExecTimeRaw,
+  formatIbExecFilterTime
+} = require('../lib/ibkr/ib-exec-time');
 
 const DRY = process.env.IBKR_DRY_RUN !== '0';
 const BASE = String(process.env.ALPHASIGNAL_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
@@ -237,6 +242,14 @@ function log(...a) {
   if (process.stdout.isTTY) {
     try { process.stdout.write(line + '\n'); } catch (_) {}
   }
+}
+
+const _logOnceKeys = new Set();
+function logOnce(key, ...a) {
+  const k = String(key || '');
+  if (!k || _logOnceKeys.has(k)) return;
+  _logOnceKeys.add(k);
+  log(...a);
 }
 
 let bridgeStore;
@@ -771,6 +784,33 @@ function hkTickSize(px) {
   return 2;
 }
 
+/** LSE SETS pence bands — 666.1 was IB error 110 (band tick is 0.5). */
+function lseTickSize(px) {
+  const a = Math.abs(Number(px) || 0);
+  if (a < 10) return 0.01;
+  if (a < 50) return 0.05;
+  if (a < 100) return 0.1;
+  if (a < 500) return 0.1;
+  if (a < 1000) return 0.5;
+  if (a < 5000) return 1;
+  return 5;
+}
+
+/** Xetra / Euronext cash ticks (MiFID-style). 53.41 was IB error 110. */
+function xetraTickSize(px) {
+  const a = Math.abs(Number(px) || 0);
+  if (a < 1) return 0.001;
+  if (a < 2) return 0.002;
+  if (a < 5) return 0.005;
+  if (a < 10) return 0.01;
+  if (a < 20) return 0.01;
+  if (a < 50) return 0.01;
+  if (a < 100) return 0.02;
+  if (a < 200) return 0.05;
+  if (a < 500) return 0.1;
+  return 0.5;
+}
+
 /** Round to exchange tick. HK uses SEHK price bands; others keep legacy steps.
  *  dir: 'up' | 'down' | undefined (nearest) — use up/down for stop/TP validity. */
 function roundPx(x, contract, dir) {
@@ -788,6 +828,24 @@ function roundPx(x, contract, dir) {
   if (contract && contract.market === 'HK') {
     const tick = hkTickSize(n);
     const dp = tick >= 1 ? 0 : (String(tick).split('.')[1] || '').length;
+    let stepped;
+    if (dir === 'down') stepped = Math.floor(n / tick + 1e-9) * tick;
+    else if (dir === 'up') stepped = Math.ceil(n / tick - 1e-9) * tick;
+    else stepped = Math.round(n / tick) * tick;
+    return +stepped.toFixed(dp);
+  }
+  if (contract && (contract.market === 'LSE' || contract.penceQuoted)) {
+    const tick = lseTickSize(n);
+    const dp = tick >= 1 ? 0 : (String(tick).split('.')[1] || '').length;
+    let stepped;
+    if (dir === 'down') stepped = Math.floor(n / tick + 1e-9) * tick;
+    else if (dir === 'up') stepped = Math.ceil(n / tick - 1e-9) * tick;
+    else stepped = Math.round(n / tick) * tick;
+    return +stepped.toFixed(dp);
+  }
+  if (contract && (contract.market === 'XETRA' || contract.market === 'EURONEXT' || contract.currency === 'EUR')) {
+    const tick = xetraTickSize(n);
+    const dp = tick >= 1 ? 0 : Math.min(8, (String(tick).split('.')[1] || '').length);
     let stepped;
     if (dir === 'down') stepped = Math.floor(n / tick + 1e-9) * tick;
     else if (dir === 'up') stepped = Math.ceil(n / tick - 1e-9) * tick;
@@ -941,6 +999,7 @@ async function main() {
   const pendingOrders = new Map(); // orderId → { contract, order, label, exchange, retried }
   let positionsReady = false; // set once IB's initial position snapshot lands
   let forceReconcile = false; // set on positionEnd so Asia re-arms don't wait 5m
+  const _seedBlocked = new Set(); // tickers/keys that failed portfolio risk this session
   const posKeyOf = c => {
     if (!c) return '';
     if (c.secType === 'FUT' && c.lastTradeDateOrContractMonth) {
@@ -1066,13 +1125,6 @@ async function main() {
     return total;
   }
 
-  function formatIbExecFilterTime(ms) {
-    const d = new Date(ms);
-    const p = (n) => String(n).padStart(2, '0');
-    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate())
-      + '  ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
-  }
-
   function tzForContract(contract) {
     const m = (contract && (contract.market || (contract.usRth ? 'US' : ''))) || '';
     return (MARKET_CLOCKS[m] && MARKET_CLOCKS[m].timeZone) || 'UTC';
@@ -1123,9 +1175,28 @@ async function main() {
         }
         return;
       }
+      if (Number(code) === 110) {
+        const oid = Number(reqId);
+        pendingOrders.delete(oid);
+        for (const [key, row] of Object.entries(state.byKey || {})) {
+          if (!row || row.closed) continue;
+          if (row.tp1Id === oid) {
+            row.tp1Id = null;
+            row.tp1RoutingFailed = true;
+            logOnce('tick110-tp1-' + key, 'IB error 110 — TP1 tick rejected, backing off', key);
+          }
+          if (row.stopId === oid) {
+            row.stopId = null;
+            row.stopRoutingFailed = true;
+            logOnce('tick110-stop-' + key, 'IB error 110 — stop tick rejected, backing off', key);
+          }
+        }
+        saveState(state);
+        return;
+      }
       log('IB error', code, 'reqId=' + reqId, err && err.message ? err.message : err);
       const msg = err && err.message ? err.message : String(err || '');
-      if (isRoutingError(code) || isSessionBlockedError(code, msg)) {
+      if (isRoutingError(code) || isSessionBlockedError(code, msg) || isShortSaleReject(code, msg)) {
         retryRejectedOrder(Number(reqId), Number(code), msg);
       }
       if (Number(code) === 200 || Number(code) === 201) {
@@ -1171,10 +1242,13 @@ async function main() {
         const orderId = Number(exec.orderId);
         const oa = orderAvgFill.get(orderId) || {};
         const px = pickFillPrice(exec.price, oa.avgFillPrice, oa.lastFillPrice, contract);
-        // Historical pull buffer (reqExecutions) — matched later in recoverMissingExitFills.
-        if (_execHistReqId != null && Number(reqId) === Number(_execHistReqId)) {
+        // Historical pull buffer (reqExecutions). IB may tag them with the
+        // request id, or with -1/0; only skip live posting for the matching id.
+        if (_execHistReqId != null && (
+          Number(reqId) === Number(_execHistReqId) || Number(reqId) < 0 || Number(reqId) === 0
+        )) {
           _execHistBuf.push({ contract, exec, price: px, orderId });
-          return;
+          if (Number(reqId) === Number(_execHistReqId)) return;
         }
         for (const [key, row] of Object.entries(state.byKey)) {
           let role = null;
@@ -1362,9 +1436,12 @@ async function main() {
       else posMap.set(key, { pos: quantity, contract: enrichSessionMeta(contract) });
     });
     ib.on(EventName.positionEnd, () => {
+      const first = !positionsReady;
       positionsReady = true;
-      forceReconcile = true;
-      log('IB position snapshot ready —', posMap.size, 'symbol(s)');
+      if (first) {
+        forceReconcile = true;
+        log('IB position snapshot ready —', posMap.size, 'symbol(s)');
+      }
     });
     ib.reqPositions();
     // Account values (cash, equity, available) — same numbers TWS Account window shows.
@@ -2121,7 +2198,14 @@ async function main() {
   }
 
   function baseOrder(extra) {
-    return { tif: 'GTC', ...(ACCOUNT ? { account: ACCOUNT } : {}), ...extra };
+    // eTradeOnly/firmQuoteOnly default true on newer IB API and reject cash-venue orders.
+    return {
+      tif: 'GTC',
+      eTradeOnly: false,
+      firmQuoteOnly: false,
+      ...(ACCOUNT ? { account: ACCOUNT } : {}),
+      ...extra
+    };
   }
 
   function remapPendingOrderId(oldId, newId) {
@@ -2168,19 +2252,36 @@ async function main() {
     const pending = pendingOrders.get(Number(orderId));
     if (!pending || !ib) return;
     const oid = Number(orderId);
+    if (isShortSaleReject(code, message)) {
+      pendingOrders.delete(oid);
+      for (const [key, row] of Object.entries(state.byKey || {})) {
+        if (!row) continue;
+        if (row.tp1Id === oid) {
+          row.tp1Id = null;
+          row.tp1RoutingFailed = true;
+          row.tp1ThroughMarket = true;
+          log('IB short-sale reject — will park a resting TP1', key, 'code=' + code);
+        }
+        if (row.stopId === oid) {
+          row.stopId = null;
+          row.stopRoutingFailed = true;
+          log('IB short-sale reject — stop not parked', key, 'code=' + code);
+        }
+      }
+      saveState(state);
+      return;
+    }
     if (isSessionBlockedError(code, message)) {
       pendingOrders.delete(oid);
       for (const [key, row] of Object.entries(state.byKey || {})) {
         if (!row) continue;
         if (row.tp1Id === oid) {
           row.tp1Id = null;
-          row.tp1AttachAttemptAt = null;
           row.tp1SessionBlocked = true;
           log('IB session reject — TP1 deferred to cash RTH', key, 'code=' + code);
         }
         if (row.stopId === oid) {
           row.stopId = null;
-          row.stopAttachAttemptAt = null;
           row.stopSessionBlocked = true;
           log('IB session reject — stop deferred to cash RTH', key, 'code=' + code);
         }
@@ -2486,9 +2587,11 @@ async function main() {
       currency: contract.currency,
       cluster: evt.correlationCluster || evt.sector || contract.market
     });
-    if (!portfolioGate.allowed) {
-      log('portfolio risk rejected', evt.ticker, portfolioGate.reasons.join(','),
+        if (!portfolioGate.allowed) {
+      logOnce('risk-' + String(evt.ticker || ''), 'portfolio risk rejected', evt.ticker, portfolioGate.reasons.join(','),
         'gross=' + ((portfolioGate.projected && portfolioGate.projected.grossPct || 0) * 100).toFixed(2) + '%');
+      if (evt.key) _seedBlocked.add(String(evt.key));
+      if (evt.ticker) _seedBlocked.add(String(evt.ticker).toUpperCase());
       postJson('/api/ibkr/risk-decision', {
         decisionId: evt.decisionId || null,
         ticker: evt.ticker,
@@ -3065,6 +3168,7 @@ async function main() {
         ib.on(EventName.execDetailsEnd, onEnd);
         const filter = { time: formatIbExecFilterTime(fromMs) };
         if (ACCOUNT) filter.acctCode = ACCOUNT;
+        log('exec-history: filter', JSON.stringify(filter));
         ib.reqExecutions(reqId, filter);
       } catch (e) {
         log('exec-history: reqExecutions failed', e.message);
@@ -3073,6 +3177,40 @@ async function main() {
     });
     _execHistReqId = null;
     await new Promise(r => setTimeout(r, 1500));
+
+    if (!_execHistBuf.length) {
+      // Timed window can still 10314; empty filter = current IB day only.
+      const reqId2 = nextExecHistId++;
+      _execHistReqId = reqId2;
+      await new Promise((resolve) => {
+        let done = false;
+        let timer = null;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          if (timer) clearTimeout(timer);
+          _execHistReqId = null;
+          try { ib.off(EventName.execDetailsEnd, onEnd); } catch (_) {}
+          resolve();
+        };
+        const onEnd = (id) => {
+          if (Number(id) !== reqId2) return;
+          finish();
+        };
+        timer = setTimeout(finish, 12000);
+        try {
+          ib.on(EventName.execDetailsEnd, onEnd);
+          const filter = ACCOUNT ? { acctCode: ACCOUNT } : {};
+          log('exec-history: retry empty filter', JSON.stringify(filter));
+          ib.reqExecutions(reqId2, filter);
+        } catch (e) {
+          log('exec-history: empty reqExecutions failed', e.message);
+          finish();
+        }
+      });
+      _execHistReqId = null;
+      await new Promise(r => setTimeout(r, 1500));
+    }
 
     if (need.length) {
       log('exec-history: recovering exits for', need.map(t => t.ticker).join(','));
@@ -3647,7 +3785,7 @@ async function main() {
   }
 
   function attachRetryWaitMs(failedFlag) {
-    return failedFlag ? 60 * 1000 : 45 * 1000;
+    return failedFlag ? 10 * 60 * 1000 : 45 * 1000;
   }
 
   /** Place a live STP when the filled lot has none. Adopt existing first. */
@@ -3685,7 +3823,7 @@ async function main() {
       if (!childNotYetWorking(row.stopId, null, row.stopAttachAttemptAt, row.stopRoutingFailed)) continue;
       const wait = attachRetryWaitMs(row.stopRoutingFailed);
       const last = row.stopAttachAttemptAt ? Date.parse(row.stopAttachAttemptAt) : NaN;
-      if (Number.isFinite(last) && Date.now() - last < wait && pendingOrders.has(Number(row.stopId))) continue;
+      if (Number.isFinite(last) && Date.now() - last < wait) continue;
       const qty = posInDir;
       const stp = row.tp1Done ? runnerStopPx(row, row.stopPx) : roundPx(row.stopPx, row.contract);
       if (!(stp > 0) || !(qty > 0)) continue;
@@ -3735,7 +3873,7 @@ async function main() {
         : tp1SoldQty(posInDir, lot);
       if (!(half >= lot) || !(posInDir > half)) {
         if (!spec) {
-          log('TP1 skip (1-lot / cannot split 50%)', key, 'pos', posInDir, 'lot', lot);
+          logOnce('tp1-1lot-' + key, 'TP1 skip (1-lot / cannot split 50%)', key, 'pos', posInDir, 'lot', lot);
         }
         continue;
       }
@@ -3752,6 +3890,7 @@ async function main() {
           row.qtyRunner = posInDir - half;
           if (existing.lmt > 0) row.tp1Px = existing.lmt;
           row.tp1RoutingFailed = false;
+          row.tp1ThroughMarket = false;
           row.updated = new Date().toISOString();
           n++;
           log('RECONCILE: adopted working TP1', key, 'orderId=' + existing.orderId,
@@ -3759,14 +3898,33 @@ async function main() {
         }
         continue;
       }
+      const stps = working.filter(o =>
+        o.type === 'STP' && o.action === closeAction && rowMatchesWorking(row, o)
+      );
+      const stpQty = stps.reduce((s, o) => s + (Number(o.qty) || 0), 0);
+      if (stpQty + half > posInDir + 1e-6 && stps.length > 1) {
+        const keep = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null) || stps[0];
+        let cancelled = 0;
+        for (const o of stps) {
+          if (!keep || o.orderId === keep.orderId) continue;
+          cancelOrder(o.orderId, 'free locates for TP1 ' + key);
+          cancelled++;
+        }
+        if (cancelled) {
+          log('TP1 — cancelled extra stops to free locates', key, 'n=' + cancelled);
+          for (const o of stps) {
+            if (!keep || o.orderId === keep.orderId) continue;
+            await waitCancel(o.orderId, 4000);
+          }
+        }
+      }
       if (!childNotYetWorking(row.tp1Id, null, row.tp1AttachAttemptAt, row.tp1RoutingFailed)) continue;
       const wait = attachRetryWaitMs(row.tp1RoutingFailed);
-      const last = row.tp1AttachAttemptAt ? Date.parse(row.tp1AttachAttemptAt) : NaN;
-      if (Number.isFinite(last) && Date.now() - last < wait && pendingOrders.has(Number(row.tp1Id))) continue;
+      const lastAttempt = row.tp1AttachAttemptAt ? Date.parse(row.tp1AttachAttemptAt) : NaN;
+      if (Number.isFinite(lastAttempt) && Date.now() - lastAttempt < wait) continue;
       if (row.tp1Id != null && !pendingOrders.has(Number(row.tp1Id))) {
         log('TP1 id not working — treating as missed', key, 'oid=' + row.tp1Id);
         row.tp1Id = null;
-        row.tp1AttachAttemptAt = null;
       }
       let tp1Px;
       let tif = 'GTC';
@@ -3779,6 +3937,20 @@ async function main() {
           : synthesizeTp1Px(Number(row.ibAvgFill || row.entry), row.hz || 'short', isSell);
         tp1Px = roundPx(raw, row.contract, isSell ? 'down' : 'up');
         if (row.contract.market === 'HK' && tp1Px >= 49.5 && tp1Px < 50) tp1Px = 50;
+      }
+      const y = normalizeYahooTicker(row.ticker);
+      const lastPx = Number(portfolioMarks.get(y) && portfolioMarks.get(y).price)
+        || Number(portfolioMarks.get(row.ticker) && portfolioMarks.get(row.ticker).price)
+        || 0;
+      const parked = passiveCloseLimit(tp1Px, lastPx, isSell);
+      if (parked > 0 && parked !== tp1Px) {
+        log('TP1 resting (through market)', key, 'tp1=' + tp1Px, 'last=' + lastPx, 'lmt=' + parked);
+        tp1Px = parked;
+      }
+      tp1Px = roundPx(tp1Px, row.contract, isSell ? 'down' : 'up');
+      if (row.tp1ThroughMarket) {
+        const tick = row.contract.market === 'HK' ? hkTickSize(tp1Px) : 0.01;
+        tp1Px = roundPx(tp1Px + (isSell ? -tick : tick), row.contract, isSell ? 'down' : 'up');
       }
       if (!(tp1Px > 0)) {
         log('TP1 skip (no price)', key);
@@ -4267,7 +4439,7 @@ async function main() {
           Number.isFinite(keyDayTs) ? keyDayTs : Infinity
         );
         if (!Number.isFinite(oldest) || oldest === Infinity || (Date.now() - oldest) > SEED_MAX_AGE_MS) {
-          log('RECONCILE: skip seed (stale key)', key);
+          logOnce('stale-seed-' + key, 'RECONCILE: skip seed (stale key)', key);
           continue;
         }
         if (!scheduledEntryReleaseAllowed(src)) {
@@ -4320,6 +4492,7 @@ async function main() {
           saveState(state);
           continue;
         }
+        if (_seedBlocked.has(key) || _seedBlocked.has(String(src.ticker || '').toUpperCase())) continue;
         log('RECONCILE: seeding missing entry from open event', key);
         try {
           const placed = await placeBracket(src);
@@ -4454,7 +4627,7 @@ async function main() {
         if (keyState.get(key) !== 'open' && !row.userReentry) continue;
         const srcEvt = entryByKey.get(key);
         if (srcEvt && !scheduledEntryReleaseAllowed(srcEvt)) {
-          log('RECONCILE: skip re-arm of pre-release entry', key);
+          logOnce('rearm-prerelease-' + key, 'RECONCILE: skip re-arm of pre-release entry', key);
           continue;
         }
         const contract = row.contract || toContract(row.ticker);
@@ -4895,7 +5068,8 @@ async function main() {
         if (modelOwnsConId || setHasYahooAlias(protectedYahoo, y) || setHasYahooAlias(openYahoo, y)
           || setHasYahooAlias(recentEntryYahoo, y)) {
           const aliases = [...yahooAliases(y)];
-          log('RECONCILE: skip orphan flatten — alias protected', y, 'aliases=', aliases.join(','),
+          logOnce('orphan-protect-' + y, 'RECONCILE: skip orphan flatten — alias protected', y,
+            'aliases=', aliases.join(','),
             modelOwnsConId ? ('conId=' + posConId) : '');
           if (state.unauthStreak[pk]) { delete state.unauthStreak[pk]; saveState(state); }
           continue;

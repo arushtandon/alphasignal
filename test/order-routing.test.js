@@ -7,6 +7,7 @@ const {
   listingVenue,
   isRoutingError,
   isSessionBlockedError,
+  isShortSaleReject,
   asiaCashBlocksRestingOrders,
   placeableStkContract
 } = require('../lib/ibkr/order-routing');
@@ -36,11 +37,13 @@ test('US names stay on SMART and fall back to the listing venue', () => {
   assert.equal(listingVenue(c), 'NASDAQ');
 });
 
-test('error 200 is a routing miss; 201 short-sale is a session block', () => {
+test('error 200 is a routing miss; 201 short-sale is not a session block', () => {
   assert.equal(isRoutingError(200), true);
   assert.equal(isRoutingError(201), false);
-  assert.equal(isSessionBlockedError(201, 'The contract is not available for short sale.'), true);
+  assert.equal(isSessionBlockedError(201, 'The contract is not available for short sale.'), false);
+  assert.equal(isSessionBlockedError(201, 'The exchange is closed.'), true);
   assert.equal(isSessionBlockedError(200, 'No security definition'), false);
+  assert.equal(isShortSaleReject(201, 'The contract is not available for short sale.'), true);
 });
 
 test('stored SMART on an HK row still routes to SEHK', () => {

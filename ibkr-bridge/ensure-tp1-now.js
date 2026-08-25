@@ -32,10 +32,31 @@ function roundUp(px) {
 
 async function main() {
   log('ensure-tp1-now', `IB=${HOST}:${PORT} clientId=${CLIENT_ID} dry=${DRY}`);
+  if (CLIENT_ID === 27) throw new Error('refusing client 27');
   const ib = new IBApi({ host: HOST, port: PORT, clientId: CLIENT_ID });
+  const bump = { oid: null, px: null, bumped: false, contract: null, acct: null };
   ib.on(EventName.error, (err, code, extra) => {
     if ([2104, 2106, 2107, 2158].includes(Number(code))) return;
     log('IB msg', code, err && err.message ? err.message : err, extra != null ? JSON.stringify(extra) : '');
+    if ((Number(code) === 201 || Number(code) === 110) && bump.oid != null && Number(extra) === bump.oid && !bump.bumped && bump.contract) {
+      bump.bumped = true;
+      const px = Number(roundUp(bump.px + 0.10).toFixed(2));
+      const oid = nextOrderId++;
+      bump.oid = oid;
+      bump.px = px;
+      const order = {
+        action: 'SELL', orderType: 'LMT', lmtPrice: px, totalQuantity: 3000,
+        tif: 'GTC', outsideRth: false, transmit: true,
+        eTradeOnly: false, firmQuoteOnly: false, ...(bump.acct || {})
+      };
+      if (!DRY) ib.placeOrder(oid, bump.contract, order);
+      log('0883 201 — retry resting LMT', px, 'orderId=' + oid);
+    }
+  });
+  ib.on(EventName.orderStatus, (orderId, status, filled, remaining) => {
+    if (bump.oid != null && Number(orderId) === bump.oid) {
+      log('0883 status', status, 'filled=' + filled, 'left=' + remaining);
+    }
   });
   await new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('IB connect timeout')), 20000);
@@ -46,7 +67,7 @@ async function main() {
     ib.once(EventName.nextValidId, id => resolve(id));
     ib.reqIds();
   });
-  nextOrderId = Math.max(nextOrderId, Math.floor((Date.now() - Date.UTC(2025, 0, 1)) / 1000));
+  nextOrderId = Math.max(nextOrderId, Math.floor((Date.now() - Date.UTC(2025, 0, 1)) / 1000) + CLIENT_ID * 100000);
   log('connected orderId=', nextOrderId);
 
   const positions = [];
@@ -110,13 +131,32 @@ async function main() {
     if (hasLmt(12150119, 3000)) {
       log('0883 already has SELL LMT 3000 — skip');
     } else {
-      place({
+      // Two SELL STP 3000 already reserve the whole 6000. A third SELL 3000 is a
+      // short in IB paper (error 201). Free 3000 for the TP1 by cancelling extras.
+      const stps = working.filter(o => o.conId === 12150119 && o.action === 'SELL' && o.type === 'STP')
+        .sort((a, b) => Number(b.orderId) - Number(a.orderId));
+      const keep = stps[0];
+      const extras = stps.slice(1);
+      for (const o of extras) {
+        if (DRY) { log('DRY cancel extra 0883 STP', o.orderId); continue; }
+        ib.cancelOrder(o.orderId);
+        log('cancel extra 0883 STP', o.orderId, 'qty=' + o.qty, 'keep=' + (keep && keep.orderId));
+      }
+      if (extras.length) await new Promise(r => setTimeout(r, 2500));
+      const last = Number(process.env.IBKR_0883_LAST || 0) || 25.25;
+      const px = roundUp(Math.max(25, last) + hkTick(Math.max(25, last)));
+      const contract = {
         conId: 12150119, symbol: '883', localSymbol: '883', secType: 'STK',
         exchange: 'SEHK', currency: 'HKD', primaryExch: 'SEHK'
-      }, {
-        action: 'SELL', orderType: 'LMT', lmtPrice: 25, totalQuantity: 3000,
-        tif: 'GTC', outsideRth: false, transmit: true, ...acct
-      }, '0883 TP1 GTC @25');
+      };
+      bump.contract = contract;
+      bump.acct = acct;
+      bump.px = px;
+      bump.oid = place(contract, {
+        action: 'SELL', orderType: 'LMT', lmtPrice: px, totalQuantity: 3000,
+        tif: 'GTC', outsideRth: false, transmit: true,
+        eTradeOnly: false, firmQuoteOnly: false, ...acct
+      }, '0883 TP1 GTC @' + px);
     }
   } else {
     log('0883 skip — pos', p883 && p883.qty);
@@ -159,7 +199,7 @@ async function main() {
     log('0005 skip — pos', p5 && p5.qty);
   }
 
-  await new Promise(r => setTimeout(r, 4000));
+  await new Promise(r => setTimeout(r, 8000));
   ib.disconnect();
   log('done');
   process.exit(0);

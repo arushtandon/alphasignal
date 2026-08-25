@@ -6,6 +6,7 @@ const {
   synthesizeTp1Px,
   maybeTwoLotTotal,
   openIfAboveSpec,
+  passiveCloseLimit,
   fillHonorsTp1Limit,
   isMarketLikeExit,
   isLimitTp1Fill
@@ -43,6 +44,14 @@ test('0883 keeps an open-if-above TP1 spec', () => {
   assert.equal(spec.qty, 3000);
   assert.equal(spec.minPx, 25);
   assert.equal(spec.tif, 'GTC');
+});
+
+test('through-market TP1 parks at last so IB HK does not 201 it as a short', () => {
+  assert.equal(passiveCloseLimit(25, 25.25, false), 25.25);
+  assert.equal(passiveCloseLimit(25, 24.80, false), 25);
+  assert.equal(passiveCloseLimit(50, 48.5, false), 50);
+  assert.equal(passiveCloseLimit(115, 114, true), 114);
+  assert.equal(passiveCloseLimit(115, 116, true), 115);
 });
 
 test('TP1 is only a limit fill at/through the TP1 price, never a flatten', () => {
