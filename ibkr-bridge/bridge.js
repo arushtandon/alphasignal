@@ -80,6 +80,7 @@ const {
   maybeTwoLotTotal,
   isLimitTp1Fill
 } = require('../lib/ibkr/tp1-policy');
+const { tslAfterTp1 } = require('../lib/ibkr/tsl-policy');
 const { evaluatePortfolioAddition } = require('../lib/risk/portfolio');
 const { BridgeSqliteStore } = require('../lib/storage/bridge-sqlite');
 const { atomicWriteJsonSync } = require('../lib/storage/atomic-json');
@@ -2632,7 +2633,7 @@ async function main() {
       return {
         parentId: null, stopId: null, tp1Id: null,
         ticker: evt.ticker, hz: evt.hz, side: evt.side,
-        entry: evt.entry, stopPx, tp1Px, entryStyle: 'CONTRACT-RETRY',
+        entry: evt.entry, stopPx, originalSl: stopPx, tp1Px, entryStyle: 'CONTRACT-RETRY',
         extLmt: null, qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
         contract, tp1Done: false, closed: false, deferred: true,
         contractRejected: true, entryFilled: false,
@@ -2681,7 +2682,7 @@ async function main() {
       return {
         parentId: null, stopId: null, tp1Id: null,
         ticker: evt.ticker, hz: evt.hz, side: evt.side,
-        entry: evt.entry, stopPx, tp1Px, entryStyle: parentSpec.entryStyle,
+        entry: evt.entry, stopPx, originalSl: stopPx, tp1Px, entryStyle: parentSpec.entryStyle,
         extLmt: null, qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
         contract, tp1Done: false, closed: false, deferred: true,
         entryFilled: false, decisionId: evt.decisionId || null,
@@ -2732,7 +2733,7 @@ async function main() {
     return {
       parentId, stopId, tp1Id,
       ticker: evt.ticker, hz: evt.hz, side: evt.side,
-      entry: evt.entry, stopPx, tp1Px, entryStyle,
+      entry: evt.entry, stopPx, originalSl: stopPx, tp1Px, entryStyle,
       extLmt: parent.lmtPrice != null ? Number(parent.lmtPrice) : null,
       qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
       contract, tp1Done: false, closed: false,
@@ -2750,7 +2751,7 @@ async function main() {
     };
   }
 
-  // ── TP1 fill → resize stop to runner + raise to breakeven ─────────────────
+  // ── TP1 fill → resize stop to runner; SL shifts by the entry→TP1 % ───────
   function runnerStopPx(row, trail) {
     const raw = Number(trail != null ? trail : row.stopPx) || 0;
     const entryPx = Number(row.ibAvgFill || row.entry) || 0;
@@ -2788,28 +2789,37 @@ async function main() {
   function onTp1Filled(key, row) {
     if (row.tp1Done || row.closed) return;
     row.tp1Done = true;
-      const beStop = row.side === 'sell'
+    if (!(Number(row.originalSl) > 0)) row.originalSl = Number(row.stopPx) || 0;
+    const isSell = row.side === 'sell';
+    const tsl = tslAfterTp1({
+      entry: Number(row.entry) || Number(row.ibAvgFill),
+      tp1: Number(row.tp1Px),
+      sl: Number(row.originalSl) || Number(row.stopPx),
+      isSell
+    });
+    const beStop = isSell
       ? Math.min(row.stopPx, roundPx(row.entry, row.contract))
       : Math.max(row.stopPx, roundPx(row.entry, row.contract));
-    row.stopPx = beStop;
+    const runnerStop = roundPx(tsl > 0 ? tsl : beStop, row.contract);
+    row.stopPx = runnerStop;
     if (row.qtyRunner > 0) {
       transmitOrder(row.stopId, row.contract, baseOrder({
         orderId: row.stopId,
-        action: row.side === 'sell' ? 'BUY' : 'SELL',
-        orderType: 'STP', auxPrice: beStop,
+        action: isSell ? 'BUY' : 'SELL',
+        orderType: 'STP', auxPrice: runnerStop,
         totalQuantity: row.qtyRunner, parentId: row.parentId, transmit: true
-      }), 'stop→runner/BE ' + key);
+      }), 'stop→runner/TSL ' + key);
     } else {
       cancelOrder(row.stopId, 'stop (no runner) ' + key);
     }
-    log('TP1 filled', key, '— stop resized to runner', row.qtyRunner, '@ breakeven-floor', beStop);
+    log('TP1 filled', key, '— stop resized to runner', row.qtyRunner, '@ TSL', runnerStop);
     cancelExtraStopsAfterTp1(key, row).catch(e => log('extra-stop cancel failed', key, e.message));
     if (!DRY && telegramConfigured()) {
-      const side = row.side === 'sell' ? 'SHORT' : 'LONG';
+      const side = isSell ? 'SHORT' : 'LONG';
       const msg = '🟢 <b>TP1 hit</b>\n'
         + String(row.ticker || key) + ' · ' + (row.hz || 'short') + ' ' + side + '\n'
         + 'Banked ' + (row.qtySold || '') + ' · runner ' + (row.qtyRunner || '')
-        + (beStop ? (' · TSL ' + beStop) : '');
+        + (runnerStop ? (' · TSL ' + runnerStop) : '');
       sendTelegramAlert(msg, { html: true })
         .then(() => log('TELEGRAM: TP1 hit sent', key))
         .catch(e => log('TELEGRAM: TP1 hit failed', e.message));

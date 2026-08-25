@@ -38,6 +38,7 @@ const {
 } = require('./lib/ibkr/live-exit-authority');
 const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/account-performance');
 const { isMarketLikeExit } = require('./lib/ibkr/tp1-policy');
+const { tslAfterTp1, ratchetTslFromDailyBar } = require('./lib/ibkr/tsl-policy');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1425,7 +1426,8 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
         realized += PARTIAL * ret(target);
         remaining -= PARTIAL;
         tp1Hit = true;
-        trailingSl = trailingSl == null ? entry : (isSell ? Math.min(trailingSl, entry) : Math.max(trailingSl, entry));
+        trailingSl = tslAfterTp1({ entry, tp1: target, sl: trailingSl, isSell })
+          || (trailingSl == null ? entry : (isSell ? Math.min(trailingSl, entry) : Math.max(trailingSl, entry)));
       } else {
         // Oscillator-normalised bank (reversion complete, in profit) — PRE-TP1 full exit only
         const bt = techAtBoundedIndex(data, weeklyAll, j);
@@ -1439,19 +1441,15 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
         if (!isSell && bar.h >= tp2) tp2AltRet = realized + remaining * longRet(tp2);
         else if (isSell && bar.l <= tp2) tp2AltRet = realized + remaining * shortRet(tp2);
       }
-      // POST-TP1 DAILY-%-MOVE RATCHET — identical to medium/long: favorable-day %
-      // moves the stop the same %, adverse days leave it unchanged, breakeven floor.
-      const prevClose = data[j - 1] ? data[j - 1].c : entry;
-      const dayMovePct = prevClose > 0 ? (bar.c - prevClose) / prevClose : 0;
+      // POST-TP1: at each cash open, favorable open vs prior close moves TSL
+      // the same %. Adverse opens leave it unchanged. Never loosen.
+      trailingSl = ratchetTslFromDailyBar(trailingSl, data[j - 1], bar, isSell, entry);
+      if (trailingSl == null) trailingSl = entry;
       if (!isSell) {
-        if (dayMovePct > 0 && trailingSl != null) trailingSl = Math.max(trailingSl, trailingSl * (1 + dayMovePct));
-        if (trailingSl == null) trailingSl = entry;
-        trailingSl = Math.max(trailingSl, entry); // never below breakeven post-TP1
+        trailingSl = Math.max(trailingSl, entry);
         if (bar.l <= trailingSl) return finish('tp1_then_sl', j, trailingSl);
       } else {
-        if (dayMovePct < 0 && trailingSl != null) trailingSl = Math.min(trailingSl, trailingSl * (1 + dayMovePct));
-        if (trailingSl == null) trailingSl = entry;
-        trailingSl = Math.min(trailingSl, entry); // never above breakeven post-TP1
+        trailingSl = Math.min(trailingSl, entry);
         if (bar.h >= trailingSl) return finish('tp1_then_sl', j, trailingSl);
       }
     }
@@ -1510,11 +1508,11 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
     if (!tp1Hit && hitTp1()) {
       if (!isSell) {
         realized += PARTIAL * longRet(tp1); remaining -= PARTIAL; tp1Hit = true;
-        trailingSl = trailingSl == null ? entry : Math.max(trailingSl, entry);
       } else {
         realized += PARTIAL * shortRet(tp1); remaining -= PARTIAL; tp1Hit = true;
-        trailingSl = trailingSl == null ? entry : Math.min(trailingSl, entry);
       }
+      trailingSl = tslAfterTp1({ entry, tp1, sl: trailingSl, isSell })
+        || (trailingSl == null ? entry : (isSell ? Math.min(trailingSl, entry) : Math.max(trailingSl, entry)));
     }
 
     if (!tp1Hit) {
@@ -1541,31 +1539,15 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
         if (!isSell && bar.h >= tp2) tp2AltRet = realized + remaining * longRet(tp2);
         else if (isSell && bar.l <= tp2) tp2AltRet = realized + remaining * shortRet(tp2);
       }
-      // ── POST-TP1: DAILY-%-MOVE RATCHET (ratchet up only, never down). ──
-      //    Each day the stock moves favorably by X%, the trailing stop moves the
-      //    SAME X% in the favorable direction. On an adverse day the stop is left
-      //    UNCHANGED (it never loosens). Floored at breakeven so the runner can
-      //    never turn into a loss after TP1.
-      const prevClose = data[j - 1] ? data[j - 1].c : entry;
-      const todayClose = bar.c;
-      const dayMovePct = prevClose > 0 ? (todayClose - prevClose) / prevClose : 0;
+      // ── POST-TP1: at each cash open, favorable open vs prior close moves
+      //    TSL the same %. Adverse opens leave it unchanged. Never loosen.
+      trailingSl = ratchetTslFromDailyBar(trailingSl, data[j - 1], bar, isSell, entry);
+      if (trailingSl == null) trailingSl = entry;
       if (!isSell) {
-        // Long: favorable = up day. Ratchet stop up by today's % gain.
-        if (dayMovePct > 0 && trailingSl != null) {
-          const ratcheted = trailingSl * (1 + dayMovePct);
-          trailingSl = Math.max(trailingSl, ratcheted);
-        }
-        if (trailingSl == null) trailingSl = entry;
-        trailingSl = Math.max(trailingSl, entry); // never below breakeven post-TP1
+        trailingSl = Math.max(trailingSl, entry);
         if (bar.l <= trailingSl) return finish('tp1_then_sl', j, trailingSl);
       } else {
-        // Short: favorable = down day. Ratchet stop down by today's % drop.
-        if (dayMovePct < 0 && trailingSl != null) {
-          const ratcheted = trailingSl * (1 + dayMovePct); // dayMovePct negative → lowers stop
-          trailingSl = Math.min(trailingSl, ratcheted);
-        }
-        if (trailingSl == null) trailingSl = entry;
-        trailingSl = Math.min(trailingSl, entry); // never above breakeven post-TP1
+        trailingSl = Math.min(trailingSl, entry);
         if (bar.h >= trailingSl) return finish('tp1_then_sl', j, trailingSl);
       }
     }
