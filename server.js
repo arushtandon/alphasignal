@@ -36,7 +36,7 @@ const {
 const {
   isLiveAuthorizedServerExit
 } = require('./lib/ibkr/live-exit-authority');
-const { computeAccountPerformance } = require('./lib/ibkr/account-performance');
+const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/account-performance');
 const { isMarketLikeExit } = require('./lib/ibkr/tp1-policy');
 
 const app = express();
@@ -15434,17 +15434,7 @@ function finalizeIbkrAccountSnapshot(merged) {
     merged.marginsUsed = +(bal - avail).toFixed(2);
   }
   merged.startingCapital = IBKR_STARTING_CAPITAL;
-  const startAt = IBKR_BOOK_START + 'T00:00:00.000Z';
-  // Performance high/low is $1M ± fill PnL — never IB NetLiquidation (BASE/ccy
-  // prints like ~$464k were poisoning trough and "account return").
-  if (Number.isFinite(Number(merged.troughNlv)) && Number(merged.troughNlv) < IBKR_STARTING_CAPITAL * 0.85) {
-    merged.troughNlv = IBKR_STARTING_CAPITAL;
-    merged.troughNlvAt = startAt;
-  }
-  if (Number.isFinite(Number(merged.peakNlv)) && Number(merged.peakNlv) > IBKR_STARTING_CAPITAL * 1.5) {
-    merged.peakNlv = IBKR_STARTING_CAPITAL;
-    merged.peakNlvAt = startAt;
-  }
+  applyIbkrNlvExtremes(merged);
   return merged;
 }
 /** $1M book equity = starting capital + model fill PnL (not IB NetLiquidation). */
@@ -17044,10 +17034,18 @@ app.get('/api/ibkr/trades', async (req, res) => {
     const accountSnap = finalizeIbkrAccountSnapshot({ ...(accountSnapRaw || {}) });
     applyBookEquityExtremes(accountSnap, totRealUsd + totUnrealUsd - totOpenCommissionUsd);
     try { saveIbkrAccountSnapshot(accountSnap); } catch (_) {}
+    const currentBalance = accountSnap
+      ? Number(accountSnap.currentBalance != null ? accountSnap.currentBalance : accountSnap.netLiquidation)
+      : null;
     const netPnlUsd = totRealUsd + totUnrealUsd - totOpenCommissionUsd;
     const performance = computeAccountPerformance({
       bookStart: IBKR_BOOK_START,
       netPnlUsd,
+      ibkrEquity: Number.isFinite(currentBalance) && currentBalance > 0 ? currentBalance : null,
+      peakIbkrEquity: accountSnap && accountSnap.peakNlv != null ? Number(accountSnap.peakNlv) : null,
+      troughIbkrEquity: accountSnap && accountSnap.troughNlv != null ? Number(accountSnap.troughNlv) : null,
+      peakIbkrEquityAt: accountSnap && accountSnap.peakNlvAt,
+      troughIbkrEquityAt: accountSnap && accountSnap.troughNlvAt,
       daily: dailyArr,
       eod: readIbkrEodPerformance(90),
       riskOff: !!riskState.riskOff,
@@ -17055,9 +17053,6 @@ app.get('/api/ibkr/trades', async (req, res) => {
       blocked: !!(riskState && riskState._ready && isNewEntryRiskBlocked()),
       pausePct: LIQ_PAUSE_PCT
     });
-    const currentBalance = accountSnap
-      ? Number(accountSnap.currentBalance != null ? accountSnap.currentBalance : accountSnap.netLiquidation)
-      : null;
     const netLiqAvail = accountSnap
       ? Number(accountSnap.netLiquidityAvailable != null
         ? accountSnap.netLiquidityAvailable : accountSnap.availableFunds)
@@ -17292,6 +17287,10 @@ app.get('/api/ibkr/trades', async (req, res) => {
         : (accountSnap.previousDayEquity != null ? Number(accountSnap.previousDayEquity) : null),
       availableFunds: netLiqAvail,
       netLiquidation: currentBalance,
+      peakNlv: accountSnap.peakNlv != null ? Number(accountSnap.peakNlv) : null,
+      peakNlvAt: accountSnap.peakNlvAt || null,
+      troughNlv: accountSnap.troughNlv != null ? Number(accountSnap.troughNlv) : null,
+      troughNlvAt: accountSnap.troughNlvAt || null,
       totalCashValue: accountSnap.totalCashValue != null ? Number(accountSnap.totalCashValue) : null,
       buyingPower: accountSnap.buyingPower != null ? Number(accountSnap.buyingPower) : null,
       ibDailyPnl: accountSnap.dailyPnl != null ? Number(accountSnap.dailyPnl) : null,

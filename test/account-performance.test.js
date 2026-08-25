@@ -1,54 +1,72 @@
 'use strict';
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { computeAccountPerformance } = require('../lib/ibkr/account-performance');
+const {
+  computeAccountPerformance,
+  applyIbkrNlvExtremes
+} = require('../lib/ibkr/account-performance');
 
-test('drawdown and Sharpe use IBKR PnL, not the $1M book', () => {
+test('move % is vs IBKR equity, not $1M and not peak PnL', () => {
   const p = computeAccountPerformance({
     startingCapital: 1_000_000,
     bookStart: '2026-08-06',
-    bookEquity: 1_004_000,
-    peakBookEquity: 1_012_000,
-    troughBookEquity: 996_000,
-    netPnlUsd: 4000,
+    ibkrEquity: 463_891,
+    netPnlUsd: -109,
     daily: [
-      { date: '2026-08-06', cumUsd: 8000 },
-      { date: '2026-08-07', cumUsd: -2000 },
-      { date: '2026-08-10', cumUsd: 4000 }
+      { date: '2026-08-06', cumUsd: 1200 },
+      { date: '2026-08-10', cumUsd: -109 }
     ]
   });
-  assert.equal(p.source, 'ibkr-trades');
-  assert.equal(p.fromStartUsd, 4000);
-  assert.equal(p.peakEquity, 8000);
-  assert.equal(p.troughEquity, -2000);
-  assert.equal(p.stake, 8000);
-  assert.equal(p.fromStartPct, 50);
-  assert.equal(p.drawdownUsd, 4000);
-  assert.equal(p.drawdownPct, 50);
-  assert.notEqual(p.fromStartPct, 0.4);
-  assert.equal(p.signFlips.length, 2);
-  assert.equal(p.signFlips[0].from, 'profit');
-  assert.equal(p.signFlips[0].to, 'loss');
-  assert.equal(p.signFlips[1].to, 'profit');
-  assert.ok(p.sharpe == null || Number.isFinite(p.sharpe));
+  assert.equal(p.source, 'ibkr-equity');
+  assert.equal(p.fromStartUsd, -109);
+  assert.equal(p.fromStartPct, -0.023);
+  assert.notEqual(p.fromStartPct, -0.011);
+  assert.notEqual(p.fromStartPct, -9.08);
+  assert.equal(p.peakEquity, 465_200);
+  assert.equal(p.troughEquity, 463_891);
+  assert.equal(p.drawdownUsd, 1309);
+  assert.equal(p.drawdownPct, 0.28);
 });
 
-test('eod netPnlUsd is preferred over $1M bookEquity', () => {
+test('max drawdown is peak IBKR equity to lowest well (1001 → 999 = 2 / 0.2%)', () => {
   const p = computeAccountPerformance({
-    netPnlUsd: 3000,
-    eod: [
-      { date: '2026-08-06', netPnlUsd: 1000, bookEquity: 1_001_000 },
-      { date: '2026-08-07', netPnlUsd: 5000, bookEquity: 1_005_000 },
-      { date: '2026-08-10', netPnlUsd: 3000, bookEquity: 1_003_000 }
+    startingCapital: 1_000_000,
+    bookStart: '2026-08-06',
+    ibkrEquity: 999,
+    netPnlUsd: -1,
+    daily: [
+      { date: '2026-08-06', cumUsd: 1 },
+      { date: '2026-08-07', cumUsd: -1 }
     ]
   });
-  assert.equal(p.peakEquity, 5000);
+  assert.equal(p.peakEquity, 1001);
+  assert.equal(p.troughEquity, 999);
+  assert.equal(p.drawdownUsd, 2);
+  assert.equal(p.drawdownPct, 0.2);
+  assert.equal(p.fromStartUsd, -1);
+  assert.equal(p.fromStartPct, -0.1);
+});
+
+test('eod IBKR NLV is used; $1M bookEquity is ignored', () => {
+  const p = computeAccountPerformance({
+    startingCapital: 1_000_000,
+    ibkrEquity: 1_003_000,
+    netPnlUsd: 3000,
+    eod: [
+      { date: '2026-08-06', netPnlUsd: 1000, currentBalance: 1_001_000, bookEquity: 1_001_000 },
+      { date: '2026-08-07', netPnlUsd: 5000, currentBalance: 1_005_000, bookEquity: 1_005_000 },
+      { date: '2026-08-10', netPnlUsd: 3000, currentBalance: 1_003_000, bookEquity: 1_003_000 }
+    ]
+  });
+  assert.equal(p.peakEquity, 1_005_000);
   assert.equal(p.drawdownUsd, 2000);
-  assert.equal(p.drawdownPct, 40);
+  assert.equal(p.drawdownPct, 0.2);
+  assert.equal(p.fromStartPct, 0.3);
 });
 
 test('smooth IBKR gain is Low risk with no giveback', () => {
   const p = computeAccountPerformance({
+    ibkrEquity: 1_006_000,
     netPnlUsd: 6000,
     daily: [
       { date: '2026-08-06', cumUsd: 2000 },
@@ -59,21 +77,33 @@ test('smooth IBKR gain is Low risk with no giveback', () => {
   assert.equal(p.riskLevel, 'Low');
   assert.equal(p.drawdownUsd, 0);
   assert.equal(p.drawdownPct, 0);
+  assert.equal(p.peakEquity, 1_006_000);
 });
 
-test('risk-off and deep IBKR PnL drawdown raise the risk label', () => {
+test('risk-off and deep IBKR equity drawdown raise the risk label', () => {
   const paused = computeAccountPerformance({
-    netPnlUsd: -100000, riskOff: true
+    ibkrEquity: 900_000, netPnlUsd: -100000, riskOff: true
   });
   assert.equal(paused.riskLevel, 'Paused');
   const elev = computeAccountPerformance({
-    netPnlUsd: -500,
+    ibkrEquity: 880_000,
+    netPnlUsd: -120000,
     daily: [
-      { date: '2026-08-06', cumUsd: 4000 },
-      { date: '2026-08-10', cumUsd: -500 }
+      { date: '2026-08-06', cumUsd: 0 },
+      { date: '2026-08-10', cumUsd: -120000 }
     ]
   });
-  assert.equal(elev.drawdownUsd, 4500);
-  assert.ok(elev.drawdownPct >= 10);
+  assert.equal(elev.drawdownUsd, 120000);
+  assert.equal(elev.drawdownPct, 12);
   assert.equal(elev.riskLevel, 'Elevated');
+});
+
+test('stale $1M book peak is replaced by live IBKR NLV', () => {
+  const snap = applyIbkrNlvExtremes({
+    netLiquidation: 464_000,
+    peakNlv: 1_000_000,
+    troughNlv: 1_000_000
+  });
+  assert.equal(snap.peakNlv, 464_000);
+  assert.equal(snap.troughNlv, 464_000);
 });

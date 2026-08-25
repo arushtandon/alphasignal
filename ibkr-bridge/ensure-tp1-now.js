@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Place missing live TP1s that cannot wait for the client-27 restart:
- *   0883.HK  SELL 3000 LMT OPG @ 25 (bank half at Tuesday HK open if print ≥ 25)
+ *   0883.HK  SELL 3000 LMT GTC @ 25 on SEHK (fills if print ≥ 25; SMART hits error 200)
  *   2688.HK  SELL 800  LMT GTC @ synthesized medium TP1
  *
  *   IBKR_CLIENT_ID=29 IBKR_PORT=4002 IBKR_ACCOUNT=DU1764495 IBKR_DRY_RUN=0 node ensure-tp1-now.js
@@ -110,7 +110,13 @@ async function main() {
     if (hasLmt(12150119, 3000)) {
       log('0883 already has SELL LMT 3000 — skip');
     } else {
-      log('0883 defer — SEHK rejects overnight marketable SELL as short sale; place GTC 25 at HK open');
+      place({
+        conId: 12150119, symbol: '883', localSymbol: '883', secType: 'STK',
+        exchange: 'SEHK', currency: 'HKD', primaryExch: 'SEHK'
+      }, {
+        action: 'SELL', orderType: 'LMT', lmtPrice: 25, totalQuantity: 3000,
+        tif: 'GTC', outsideRth: false, transmit: true, ...acct
+      }, '0883 TP1 GTC @25');
     }
   } else {
     log('0883 skip — pos', p883 && p883.qty);

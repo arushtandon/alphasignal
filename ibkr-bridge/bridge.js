@@ -3447,7 +3447,9 @@ async function main() {
       row.qtyRunner = posInDir - half;
       row.tp1AttachAttemptAt = new Date().toISOString();
       row.updated = row.tp1AttachAttemptAt;
-      transmitOrder(oid, row.contract, baseOrder({
+      // HK SMART+symbol hits IB error 200 (no security definition). Venue
+      // exchange + conId is the same shape as orphan flatten / 0005 TP1.
+      transmitOrder(oid, placeableContract(row.contract), baseOrder({
         orderId: oid,
         action: closeAction,
         orderType: 'LMT',

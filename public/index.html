@@ -619,7 +619,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
       <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div>
           <div class="pt">Performance</div>
-          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Exit quality · brackets · TP/TSL/donation · IBKR fill PnL high/low (not $1M book)</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Exit quality · brackets · TP/TSL/donation · IBKR equity peak/well (not $1M book)</div>
         </div>
         <button class="btn" style="font-size:10px;padding:4px 10px" onclick="exportClosedExitQuality()">⬇ Exit quality CSV</button>
       </div>
@@ -1809,22 +1809,22 @@ function ibkrPerfTiles(d) {
     ? ('IBKR trades · ' + lastFlip.from + ' → ' + lastFlip.to + ' ' + (lastFlip.date || '')
       + (lastFlip.pnlUsd != null ? ' · ' + ibkrFp(lastFlip.pnlUsd) : '')
       + (lastFlip.pnlPct != null ? ' / ' + (lastFlip.pnlPct>=0?'+':'') + lastFlip.pnlPct + '%' : ''))
-    : (p.alwaysProfit ? 'IBKR trades · always profit from $0' : (p.alwaysLoss ? 'IBKR trades · always loss from $0' : 'IBKR trades from $0 PnL'));
+    : (p.alwaysProfit ? 'IBKR trades · always profit' : (p.alwaysLoss ? 'IBKR trades · always loss' : 'fill PnL · % of IBKR equity'));
   const dd = (p.drawdownUsd != null)
     ? (ibkrFp(-Math.abs(p.drawdownUsd)) + (p.drawdownPct != null ? ' / −' + p.drawdownPct + '%' : ''))
     : '—';
-  const ddSub = 'from IBKR PnL peak ' + (p.peakEquity != null ? ibkrFp(p.peakEquity) : '—')
-    + (p.recoveryFromTroughUsd != null ? ' · recovered ' + ibkrFp(p.recoveryFromTroughUsd) + ' off trough' : '');
+  const ddSub = 'peak ' + (p.peakEquity != null ? ibkrBal(p.peakEquity) : '—')
+    + ' → well ' + (p.troughEquity != null ? ibkrBal(p.troughEquity) : '—');
   const sh = p.sharpe != null ? String(p.sharpe) : '—';
   const shC = p.sharpe == null ? 'var(--m1)' : p.sharpe >= 1 ? 'var(--buy)' : p.sharpe >= 0 ? '#F5C842' : 'var(--sell)';
-  const shSub = 'IBKR trades · ' + (p.sharpeDays != null ? p.sharpeDays + ' daily returns' : 'need 2+ days')
-    + ' · peak→trough ' + (p.peakToTroughPct != null ? p.peakToTroughPct + '%' : '—');
+  const shSub = 'IBKR equity · ' + (p.sharpeDays != null ? p.sharpeDays + ' daily returns' : 'need 2+ days')
+    + ' · peak→well ' + (p.peakToTroughPct != null ? p.peakToTroughPct + '%' : '—');
   const risk = p.riskLevel || '—';
   const riskSub = p.riskOff
     ? ('entries paused · guard ' + (p.pausePct || 15) + '% DD')
-    : ('IBKR DD ' + (p.drawdownPct != null ? p.drawdownPct + '%' : '—') + ' of peak trade PnL');
+    : ('max DD ' + (p.drawdownPct != null ? p.drawdownPct + '%' : '—') + ' of peak IBKR equity');
   return tile('ibkrCardMove','IBKR move', move, moveSub, ibkrPc(p.fromStartUsd))
-    + tile('ibkrCardDD','Drawdown', dd, ddSub, p.drawdownUsd > 0 ? 'var(--sell)' : 'var(--m1)')
+    + tile('ibkrCardDD','Max drawdown', dd, ddSub, p.drawdownUsd > 0 ? 'var(--sell)' : 'var(--m1)')
     + tile('ibkrCardSharpe','Sharpe', sh, shSub, shC)
     + tile('ibkrCardRisk','Risk', risk, riskSub, ibkrPerfColor(p.riskLevel));
 }
@@ -1952,16 +1952,16 @@ function ibkrPeriodFromDaily(daily, stake) {
 function renderIbkrPerformanceExtras() {
   const el = document.getElementById('ibkrPerfCapital');
   if (!el) return;
-  el.innerHTML = '<div style="font-size:10px;color:var(--m2);font-family:DM Mono,monospace;margin-bottom:8px">Loading IBKR trade high/low…</div>';
+  el.innerHTML = '<div style="font-size:10px;color:var(--m2);font-family:DM Mono,monospace;margin-bottom:8px">Loading IBKR equity high/low…</div>';
   fetchIbkrBook().then(function(d){
     const model = ibkrBookTrades(d, false);
     const st = ibkrBookStats(model);
     const p = d.performance || {};
     const current = p.fromStartUsd != null ? Number(p.fromStartUsd) : st.net;
-    const peak = p.peakEquity != null ? Number(p.peakEquity) : Math.max(0, current);
-    const trough = p.troughEquity != null ? Number(p.troughEquity) : Math.min(0, current);
-    const stake = Math.max(Number(p.stake) || 0, Math.abs(peak), Math.abs(trough), 1);
-    const retPct = p.fromStartPct != null ? Number(p.fromStartPct) : +((current / stake) * 100).toFixed(2);
+    const peak = p.peakEquity != null ? Number(p.peakEquity) : null;
+    const trough = p.troughEquity != null ? Number(p.troughEquity) : null;
+    const stake = Number(p.stake) > 0 ? Number(p.stake) : 1;
+    const retPct = p.fromStartPct != null ? Number(p.fromStartPct) : +((current / stake) * 100).toFixed(3);
     const tile = function(l,v,sub,c){
       return '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-height:88px;flex:1;min-width:150px;display:flex;flex-direction:column;justify-content:center;gap:5px">'
         +'<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace">'+l+'</div>'
@@ -2005,17 +2005,17 @@ function renderIbkrPerformanceExtras() {
         +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;text-align:right;color:'+ibkrPc(ret)+'">'+(ret>=0?'+':'')+ret+'%</td>'
         +'</tr>';
     }).join('');
-    el.innerHTML = '<div style="font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;margin:0 0 8px">IBKR trades — fill PnL from $0, not the $1M book or IB net liquidation</div>'
+    el.innerHTML = '<div style="font-size:9px;letter-spacing:0.1em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;margin:0 0 8px">IBKR equity — fill PnL dollars, % of IBKR NetLiquidation (not the $1M book)</div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
-      + tile('IBKR move', ibkrFp(current)+(retPct!=null?' / '+(retPct>=0?'+':'')+retPct+'%':''), 'fill PnL since '+IBKR_BOOK_START, ibkrPc(current))
-      + tile('Highest IBKR PnL', ibkrFp(peak), 'on '+(p.peakAt ? ibkrFmtWhen(p.peakAt) : '—')+' · IBKR trades', ibkrPc(peak))
-      + tile('Lowest IBKR PnL', ibkrFp(trough), 'on '+(p.troughAt ? ibkrFmtWhen(p.troughAt) : '—')+' · IBKR trades', ibkrPc(trough))
+      + tile('IBKR move', ibkrFp(current)+(retPct!=null?' / '+(retPct>=0?'+':'')+retPct+'%':''), '% of IBKR equity '+ibkrBal(stake), ibkrPc(current))
+      + tile('Highest IBKR equity', ibkrBal(peak), 'on '+(p.peakAt ? ibkrFmtWhen(p.peakAt) : '—')+' · IBKR NLV', 'var(--buy)')
+      + tile('Lowest IBKR equity', ibkrBal(trough), 'on '+(p.troughAt ? ibkrFmtWhen(p.troughAt) : '—')+' · IBKR NLV well', 'var(--sell)')
       + '</div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
       + tile('Realised PnL', ibkrFp(st.realizedUsd), st.closedCount+' closed · brokerage on exit', ibkrPc(st.realizedUsd))
       + tile('Unrealised PnL', ibkrFp(st.unrealizedUsd), st.openCount+' open', ibkrPc(st.unrealizedUsd))
       + tile('Net PnL', ibkrFp(st.net), 'realised + unrealised − open brokerage', ibkrPc(st.net))
-      + tile('Return %', (retPct>=0?'+':'')+retPct+'%', 'IBKR PnL / trade high-water '+ibkrFp(stake), ibkrPc(retPct))
+      + tile('Return %', (retPct>=0?'+':'')+retPct+'%', 'fill PnL / IBKR equity '+ibkrBal(stake), ibkrPc(retPct))
       + tile('Win rate', st.winRate!=null?st.winRate+'%':'—', st.wins+'W / '+st.losses+'L', wrC)
       + '</div>'
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
