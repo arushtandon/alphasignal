@@ -14815,6 +14815,10 @@ app.post('/api/ibkr/report', (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   const reports = Array.isArray(req.body && req.body.reports) ? req.body.reports : [];
   let stored = 0, skipped = 0, commissionsPatched = 0;
+  let skippedPhantom = 0, skippedDup = 0;
+  const acceptedExecIds = [];
+  const dupExecIds = [];
+  const phantomExecIds = [];
   const toAdd = [];
   const commissionPatches = [];
   for (const r of reports) {
@@ -14831,11 +14835,18 @@ app.post('/api/ibkr/report', (req, res) => {
       continue;
     }
     if (!r.key || !(Number(r.qty) > 0) || !(Number(r.price) > 0)) { skipped++; continue; }
-    if (_ibkrExecIds.has(r.execId) || toAdd.some(x => x.execId === r.execId)) { skipped++; continue; }
+    if (_ibkrExecIds.has(r.execId) || toAdd.some(x => x.execId === r.execId)) {
+      skipped++;
+      skippedDup++;
+      dupExecIds.push(String(r.execId));
+      continue;
+    }
     // Reject fills for recommendations whose entry day is ancient vs the fill
     // time (stale history re-emit → phantom paper trade).
     if (isPhantomIbkrKey(r.key, r.time || new Date().toISOString(), r)) {
       skipped++;
+      skippedPhantom++;
+      phantomExecIds.push(String(r.execId));
       auditLog('ibkr_fill_rejected_stale_key', { key: r.key, execId: r.execId });
       continue;
     }
@@ -14893,10 +14904,16 @@ app.post('/api/ibkr/report', (req, res) => {
       mutateFillLedger('bridge_report', (rows) => {
         const have = new Set(rows.map(r => r.execId).filter(Boolean));
         for (const row of toAdd) {
-          if (have.has(row.execId)) { skipped++; continue; }
+          if (have.has(row.execId)) {
+            skipped++;
+            skippedDup++;
+            dupExecIds.push(String(row.execId));
+            continue;
+          }
           rows.push(row);
           have.add(row.execId);
           stored++;
+          acceptedExecIds.push(String(row.execId));
         }
         for (const p of commissionPatches) {
           const want = String(p.execId || '').toLowerCase();
@@ -14936,7 +14953,11 @@ app.post('/api/ibkr/report', (req, res) => {
     try { quarantineGhostFlatsAsErrorTrades(); } catch (_) {}
     auditLog('ibkr_fills', { stored, skipped, commissionsPatched });
   }
-  res.json({ ok: true, stored, skipped, commissionsPatched, totalExecs: _ibkrExecIds.size });
+  res.json({
+    ok: true, stored, skipped, commissionsPatched,
+    skippedDup, skippedPhantom, acceptedExecIds, dupExecIds, phantomExecIds,
+    totalExecs: _ibkrExecIds.size
+  });
 });
 
 app.post('/api/ibkr/risk-decision', (req, res) => {
@@ -15074,6 +15095,9 @@ app.post('/api/risk/promotion/advance', (req, res) => {
  * True when the recommendation day in `key` is >3d before the fill — not a real
  * AlphaSignal→IBKR trade. Synthetic / recon sync fills are exempt (they close or
  * pad older keys to match the live paper account).
+ *
+ * GTC TP1 / runner stops on a still-open thesis can print weeks after the
+ * recommendation day. Those are live IB executions, not stale re-emits.
  */
 function isPhantomIbkrKey(key, fillTime, row) {
   const eid = String((row && row.execId) || '');
@@ -15081,6 +15105,9 @@ function isPhantomIbkrKey(key, fillTime, row) {
     || eid.startsWith('recon-') || eid.startsWith('ibhist-'))) {
     return false;
   }
+  if (hasOpenEmittedEntryForKey(key)) return false;
+  const role = String((row && row.role) || '');
+  if (['tp1', 'stop', 'flatten'].includes(role) && isGenuineIbExecFill(row)) return false;
   const dayPart = String(key || '').split('|')[2];
   const keyTs = Date.parse(dayPart || 0);
   const fillTs = Date.parse(fillTime || 0) || Date.now();

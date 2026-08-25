@@ -64,6 +64,30 @@ function ok(name, cond, detail) {
     'rows=' + after.length);
 })();
 
+// ── T2b GTC TP1 on a live Aug-6 thesis is not a stale phantom ───────────────
+(function t2b() {
+  const key = '0883.HK|medium|Thu Aug 06 2026';
+  fs.appendFileSync(S.TRADE_EVENTS_FILE, JSON.stringify({
+    seq: 900010, t: '2026-08-06T01:00:00.000Z', type: 'entry',
+    key, ticker: '0883.HK', hz: 'medium', side: 'buy'
+  }) + '\n');
+  const tp1 = {
+    execId: '0000f0e6.6a8cc5b3.01.01',
+    key, ticker: '0883.HK', hz: 'medium', side: 'buy', role: 'tp1',
+    qty: 3000, price: 25.2, currency: 'HKD', ccyScale: 1,
+    time: '2026-08-25T06:17:47.773Z'
+  };
+  ok('T2b live GTC TP1 not phantom', !S.isPhantomIbkrKey(tp1.key, tp1.time, tp1));
+  const stale = {
+    execId: '0000dead.beef.01.01',
+    key: 'DEAD.HK|short|Mon Jan 01 2024',
+    ticker: 'DEAD.HK', hz: 'short', side: 'buy', role: 'entry',
+    qty: 100, price: 10, currency: 'HKD',
+    time: new Date().toISOString()
+  };
+  ok('T2b stale closed-key entry still phantom', S.isPhantomIbkrKey(stale.key, stale.time, stale));
+})();
+
 // ── T3 Hold→Buy: Hold snapshot has side null; emit entry returns null ────────
 (function t3() {
   const hold = {

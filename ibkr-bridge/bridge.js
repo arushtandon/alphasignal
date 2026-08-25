@@ -3328,6 +3328,89 @@ async function main() {
       log('exec-history: queued flatten', t.key, closeQty + '@' + vwap.toFixed(4),
         '(' + matches.length + ' IB exec(s))');
     }
+
+    // Site still shows a full open lot while IB already sold TP1 (the 3-day
+    // phantom-key filter used to drop GTC prints on older recommendation days).
+    const pendingIds = new Set((state.pendingReports || [])
+      .map(r => String(r && r.execId || '')).filter(Boolean));
+    const tp1Need = (serverTrades.trades || []).filter(t => {
+      if (!t || t.errorTrade || !(t.openQty > 0) || Number(t.exitQty) > 0) return false;
+      const row = state.byKey[t.key];
+      if (!row || !row.tp1Done || row.closed) return false;
+      const ibAbs = Math.abs(ibSignedQtyForYahoo(t.ticker) || 0);
+      const runner = Number(row.qtyRunner) || 0;
+      return runner > 0 && Math.abs(ibAbs - runner) < 1;
+    });
+    for (const t of tp1Need) {
+      const row = state.byKey[t.key];
+      const aliases = yahooAliases(t.ticker);
+      const wantClose = t.side === 'sell' ? 'BOT' : 'SLD';
+      const spec = openIfAboveSpec(row.ticker);
+      const tp1Px = Number(row.tp1Px) > 0
+        ? Number(row.tp1Px)
+        : (spec && spec.minPx) || 0;
+      const sold = Number(row.qtySold) || 0;
+      const matches = _execHistBuf.filter((e) => {
+        const eid = String(e.exec.execId || '');
+        if (!eid || usedExecIds.has(eid) || pendingIds.has(eid)) return false;
+        const ey = normalizeYahooTicker(yahooFromContract(e.contract) || '');
+        if (!ey || !aliases.has(ey)) {
+          const sym = String((e.contract && e.contract.symbol) || '').toUpperCase();
+          const bare = String(t.ticker || '').toUpperCase().split('.')[0];
+          if (!(sym && bare && sym === bare)) return false;
+        }
+        const side = String(e.exec.side || '').toUpperCase();
+        const okSide = side === wantClose
+          || side === (wantClose === 'SLD' ? 'SELL' : 'BUY')
+          || side === (wantClose === 'SLD' ? 'S' : 'B');
+        if (!okSide) return false;
+        const px = Number(e.price) || 0;
+        const qty = Number(e.exec.shares) || 0;
+        if (!(qty > 0) || !(px > 0)) return false;
+        if (sold > 0 && Math.abs(qty - sold) > 1e-6) return false;
+        return isLimitTp1Fill({
+          fillPx: px, tp1Px, isSellPosition: row.side === 'sell',
+          orderType: String(e.exec.orderType || 'LMT').toUpperCase(),
+          isFlattenOrder: false
+        });
+      });
+      if (!matches.length) {
+        log('exec-history: no TP1 fills to restore', t.ticker, t.key);
+        continue;
+      }
+      for (const m of matches) {
+        const eid = String(m.exec.execId);
+        const px = Number(m.price);
+        const qty = Number(m.exec.shares);
+        const cMeta = enrichSessionMeta(row.contract || toContract(t.ticker));
+        const fillAt = ibExecIso({ time: m.exec.time || m.exec.dateTime }, cMeta);
+        const phase = sessionPhase(cMeta || {}, Date.parse(fillAt));
+        const comm = commissionByExec.get(eid);
+        const report = {
+          kind: 'exec', execId: eid, key: t.key,
+          ticker: t.ticker, hz: t.hz || row.hz || 'short',
+          side: t.side === 'sell' ? 'sell' : 'buy',
+          role: 'tp1', orderId: m.orderId || row.tp1Id || null,
+          qty, price: px, fillOrderType: 'LMT',
+          currency: (cMeta && cMeta.currency) || t.currency || 'USD',
+          ccyScale: cMeta && cMeta.penceQuoted ? 100 : 1,
+          session: phase, sessionLabel: sessionLabel(phase),
+          time: fillAt
+        };
+        if (comm) {
+          report.commission = comm.commission;
+          report.commissionCcy = comm.currency;
+          if (comm.realizedPNL != null) report.ibRealizedPnl = comm.realizedPNL;
+        }
+        state.pendingReports = state.pendingReports || [];
+        state.pendingReports.push(report);
+        usedExecIds.add(eid);
+        pendingIds.add(eid);
+        queued++;
+        log('exec-history: queued missing TP1', t.key, qty + '@' + px);
+      }
+    }
+
     const backfilled = backfillRealEntriesFromHistory(serverTrades, usedExecIds);
     queueCommissionPatchesFromMap();
     if (queued || backfilled) saveState(state);
@@ -5258,10 +5341,23 @@ async function main() {
     try {
       const resp = await postJson('/api/ibkr/report', { reports });
       if (resp && resp.ok) {
-        state.pendingReports = [];
-        for (const r of extra) postedCommissionExecIds.add(String(r.execId));
+        const accepted = new Set(resp.acceptedExecIds || []);
+        const dups = new Set(resp.dupExecIds || []);
+        const phantoms = new Set(resp.phantomExecIds || []);
+        state.pendingReports = pending.filter((r) => {
+          const id = String(r && r.execId || '');
+          if (!id) return false;
+          if (accepted.has(id) || dups.has(id)) return false;
+          return true;
+        });
+        for (const r of extra) {
+          const id = String(r && r.execId || '');
+          if (accepted.has(id) || dups.has(id) || (Number(resp.commissionsPatched) > 0 && !phantoms.has(id))) {
+            postedCommissionExecIds.add(id);
+          }
+        }
         saveState(state);
-        log(`Reported ${reports.length} execution(s) to AlphaSignal (stored=${resp.stored}, dup=${resp.skipped}, commPatch=${resp.commissionsPatched || 0})`);
+        log(`Reported ${reports.length} execution(s) to AlphaSignal (stored=${resp.stored}, dup=${resp.skippedDup != null ? resp.skippedDup : resp.skipped}, phantom=${resp.skippedPhantom || 0}, commPatch=${resp.commissionsPatched || 0})`);
       }
     } catch (e) { log('report flush failed (will retry):', e.message); }
   }
