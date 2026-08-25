@@ -53,6 +53,7 @@ async function main() {
     console.error('Usage: node flatten-tickers.js TICKER [TICKER...]');
     process.exit(1);
   }
+  if (CLIENT_ID === 27) throw new Error('refusing client 27 — live bridge');
   log('flatten-tickers', wanted.join(', '), `| IB=${HOST}:${PORT} clientId=${CLIENT_ID} dry=${DRY}`);
   const ib = new IBApi({ host: HOST, port: PORT, clientId: CLIENT_ID });
   ib.on(EventName.error, (err, code) => {
@@ -68,7 +69,7 @@ async function main() {
     ib.once(EventName.nextValidId, id => resolve(id));
     ib.reqIds();
   });
-  nextOrderId = Math.max(nextOrderId, Math.floor((Date.now() - Date.UTC(2025, 0, 1)) / 1000));
+  nextOrderId = Math.max(nextOrderId, Math.floor((Date.now() - Date.UTC(2025, 0, 1)) / 1000) + CLIENT_ID * 100000);
   log('Connected. starting orderId=', nextOrderId);
 
   const positions = [];

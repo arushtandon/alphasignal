@@ -14548,9 +14548,20 @@ function restoreOpenModelFillsFromCursorErr(positionsOverride) {
       const side = meta.sign < 0 ? 'sell' : 'buy';
       const errKey = toCursorErrIbkrKey(liveKey);
 
-      const liveQtyOf = () => out
-        .filter(r => r && String(r.key) === liveKey && r.role === 'entry')
-        .reduce((s, r) => s + (Number(r.qty) || 0), 0);
+      // Net open on the live key, not gross entries. After TP1 the site can
+      // hold entry 3000 + exit 3000 while IB still has the 3000 runner
+      // (0883.HK 25 Aug). Comparing entry-sum to IB leftover skips the pad.
+      const liveQtyOf = () => {
+        let entry = 0;
+        let exit = 0;
+        for (const r of out) {
+          if (!r || String(r.key) !== liveKey) continue;
+          const q = Number(r.qty) || 0;
+          if (r.role === 'entry') entry += q;
+          else exit += q;
+        }
+        return Math.max(0, entry - exit);
+      };
 
       const genuineErr = out
         .filter(r => r && String(r.key) === errKey && r.role === 'entry' && isGenuineIbExecFill(r))
@@ -15993,9 +16004,14 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       const ibSideOk = !ibQty || (asSigned === 0) || (Math.sign(ibQty) === Math.sign(asSigned));
 
       if (!ibSideOk) {
+        const sideMsg = `Side mismatch: AlphaSignal net ${asSigned}, IB ${ibQty}`;
+        pending[y + '|side-mismatch'] = Date.now();
+        touchedPending.add(y + '|side-mismatch');
         issues.push({
           ticker: y, severity: 'error',
-          detail: `Side mismatch: AlphaSignal net ${asSigned}, IB ${ibQty}`
+          code: 'side-mismatch',
+          message: sideMsg,
+          detail: sideMsg
         });
         continue;
       }
@@ -16009,6 +16025,19 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       if (ibAbs !== asAbs) {
         delete pending[wantKey];
         if (ibAbs === 0 && asAbs > 0) {
+          // DHL 25 Aug: oversell flipped IB short, cover went flat, recon then
+          // Error-flattened the long at the mark and quarantined the model lot.
+          // A side-mismatch that resolves to flat is a cover, not an orphan.
+          const mismatchAt = Number(pending[y + '|side-mismatch'] || 0);
+          if (mismatchAt > 0 && (Date.now() - mismatchAt) < 24 * 3600 * 1000) {
+            issues.push({
+              ticker: y, severity: 'error',
+              code: 'side-mismatch-then-flat',
+              message: 'IB flat after side mismatch — not Error-flattening the model lot',
+              detail: `Site open ${asAbs} after IB flipped against thesis then went flat. Book the real TP1/TSL; do not ghost-flatten.`
+            });
+            continue;
+          }
           // Ghost open on site while IB is flat. Never invent an exit at avg
           // entry ($0 "flatten") — that produced fake AIR.PA/AIR.DE closes.
           // Dual-list: merge alias lots once (one IB book, not two $0 closes).
@@ -16209,6 +16238,10 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     // Drop stale pending keys
     for (const k of Object.keys(pending)) {
       if (!touchedPending.has(k) && k.endsWith('|qty')) delete pending[k];
+      if (k.endsWith('|side-mismatch')
+        && (Date.now() - Number(pending[k] || 0)) > 24 * 3600 * 1000) {
+        delete pending[k];
+      }
     }
     saveIbkrReconPending(pending);
 
@@ -17080,7 +17113,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       peakIbkrEquityAt: accountSnap && accountSnap.peakNlvAt,
       troughIbkrEquityAt: accountSnap && accountSnap.troughNlvAt,
       daily: dailyArr,
-      eod: readIbkrEodPerformance(90),
+      eod: readIbkrEodPerformance(500),
       riskOff: !!riskState.riskOff,
       liquidityRiskOff: !!riskState.liquidityRiskOff,
       blocked: !!(riskState && riskState._ready && isNewEntryRiskBlocked()),

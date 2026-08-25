@@ -3678,7 +3678,7 @@ async function main() {
       }
       if ((resp.errors || 0) > 0) {
         const errs = (resp.issues || []).filter(i => i && i.severity === 'error').slice(0, 6)
-          .map(i => `${i.ticker || '?'}: ${i.message || i.code || 'error'}`).join('; ');
+          .map(i => `${i.ticker || '?'}: ${i.detail || i.message || i.code || 'error'}`).join('; ');
         findings.push({
           sev: 'error',
           code: 'recon-errors',
@@ -3901,6 +3901,14 @@ async function main() {
       const stps = working.filter(o =>
         o.type === 'STP' && o.action === closeAction && rowMatchesWorking(row, o)
       );
+      const tp1WorkingQty = (!row.tp1Done)
+        ? working.filter(o =>
+          o.type === 'LMT' && o.action === closeAction && rowMatchesWorking(row, o)
+        ).reduce((s, o) => s + (Number(o.qty) || 0), 0)
+        : 0;
+      // Never size the stop as the original lot while a TP1 LMT is still live.
+      // DHL 25 Aug: STP 157 + TP1 78 both working on a 157 long → short 78.
+      const stopQty = Math.max(0, posInDir - tp1WorkingQty);
       const existing = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null) || stps[0];
       if (existing) {
         if (row.stopId !== existing.orderId) {
@@ -3911,13 +3919,34 @@ async function main() {
           n++;
           log('RECONCILE: adopted working stop', key, 'orderId=' + existing.orderId, 'stp=' + existing.aux);
         }
+        if (stopQty > 0 && existing.qty > stopQty + 1e-6) {
+          transmitOrder(existing.orderId, row.contract, baseOrder({
+            orderId: existing.orderId,
+            action: closeAction,
+            orderType: 'STP',
+            auxPrice: existing.aux > 0 ? existing.aux : roundPx(row.stopPx, row.contract),
+            totalQuantity: stopQty,
+            transmit: true
+          }), 'shrink stop for TP1 ' + key);
+          log('RECONCILE: stop qty capped', key, existing.qty, '→', stopQty, '(TP1 working', tp1WorkingQty + ')');
+        }
+        for (const extra of stps) {
+          if (extra.orderId === existing.orderId) continue;
+          cancelOrder(extra.orderId, 'duplicate stop ' + key);
+        }
         continue;
+      }
+      // Do not mint a second STP just because the working-order snapshot missed
+      // the last one — that left dozens of 157-share DHL sell-stops at IB.
+      if (row.stopId != null && !row.stopRoutingFailed) {
+        const lastSent = row.stopAttachAttemptAt ? Date.parse(row.stopAttachAttemptAt) : NaN;
+        if (Number.isFinite(lastSent) && Date.now() - lastSent < 15 * 60 * 1000) continue;
       }
       if (!childNotYetWorking(row.stopId, null, row.stopAttachAttemptAt, row.stopRoutingFailed)) continue;
       const wait = attachRetryWaitMs(row.stopRoutingFailed);
       const last = row.stopAttachAttemptAt ? Date.parse(row.stopAttachAttemptAt) : NaN;
       if (Number.isFinite(last) && Date.now() - last < wait) continue;
-      const qty = posInDir;
+      const qty = row.tp1Done ? posInDir : stopQty;
       const stp = row.tp1Done ? runnerStopPx(row, row.stopPx) : roundPx(row.stopPx, row.contract);
       if (!(stp > 0) || !(qty > 0)) continue;
       const oid = nid();
@@ -4360,7 +4389,11 @@ async function main() {
         if (!Number.isFinite(keyTs) || (Date.now() - keyTs) <= STALE_ORDER_MS) continue;
         const held = posMap.get(posKeyOf(row.contract));
         const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
-        if (posInDir > 0) continue; // still live at IB — leave alone
+        if (posInDir > 0) continue; // still live long/short in thesis direction — leave alone
+        if (held && held.pos && posInDir < 0) {
+          log('RECONCILE: skip stale-cancel — IB flipped against thesis', key, 'ibPos=' + held.pos);
+          continue;
+        }
         log('RECONCILE: cancelling ANCIENT trade orders', key, '(key age h:', ((Date.now() - keyTs) / 3600000).toFixed(1) + ')');
         cancelOrder(row.parentId, 'stale parent ' + key);
         cancelOrder(row.stopId, 'stale stop ' + key);

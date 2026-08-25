@@ -98,6 +98,27 @@ test('risk-off and deep IBKR equity drawdown raise the risk label', () => {
   assert.equal(elev.riskLevel, 'Elevated');
 });
 
+test('Sharpe uses every weekday since inception, not sparse snapshot days', () => {
+  const { listWeekdays } = require('../lib/ibkr/account-performance');
+  const days = listWeekdays('2026-08-06', '2026-08-25');
+  assert.equal(days[0], '2026-08-06');
+  assert.equal(days[days.length - 1], '2026-08-25');
+  assert.equal(days.length, 14);
+  const p = computeAccountPerformance({
+    bookStart: '2026-08-06',
+    asOf: '2026-08-25',
+    ibkrEquity: 464_000,
+    netPnlUsd: 2000,
+    daily: [
+      { date: '2026-08-06', cumUsd: 1000 },
+      { date: '2026-08-18', cumUsd: 2000 }
+    ]
+  });
+  assert.equal(p.sharpeSince, '2026-08-06');
+  assert.equal(p.sharpeDays, 13);
+  assert.ok(p.sharpe != null);
+});
+
 test('stale $1M book peak is replaced by live IBKR NLV', () => {
   const snap = applyIbkrNlvExtremes({
     netLiquidation: 464_000,
