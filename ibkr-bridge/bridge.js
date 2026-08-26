@@ -4264,6 +4264,18 @@ async function main() {
           log('RECONCILE: adopted working TP1', key, 'orderId=' + existing.orderId,
             'lmt=' + existing.lmt, 'qty=' + existing.qty, 'tif=' + existing.tif);
         }
+        if (existing.qty > half + 1e-6) {
+          transmitOrder(existing.orderId, row.contract, baseOrder({
+            orderId: existing.orderId,
+            action: closeAction,
+            orderType: 'LMT',
+            lmtPrice: existing.lmt > 0 ? existing.lmt : roundPx(row.tp1Px, row.contract),
+            totalQuantity: half,
+            tif: existing.tif || 'GTC',
+            transmit: true
+          }), 'shrink TP1 to half ' + key);
+          log('RECONCILE: TP1 qty capped', key, existing.qty, '→', half);
+        }
         for (const extra of lmts) {
           if (extra.orderId === existing.orderId) continue;
           cancelOrder(extra.orderId, 'duplicate TP1 ' + key);
