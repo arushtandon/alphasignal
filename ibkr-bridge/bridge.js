@@ -1019,6 +1019,7 @@ async function main() {
   // "SYMBOL|CCY" -> { pos, contract }. Populated by the reqPositions subscription.
   const posMap = new Map();
   const pendingOrders = new Map(); // orderId → { contract, order, label, exchange, retried }
+  const unknownOrderIds = new Set(); // IB 10147 — gone, do not keep cancelling
   let positionsReady = false; // set once IB's initial position snapshot lands
   let forceReconcile = false; // set on positionEnd so Asia re-arms don't wait 5m
   const _seedBlocked = new Set(); // tickers/keys that failed portfolio risk this session
@@ -1177,8 +1178,14 @@ async function main() {
     EventName = stoqey.EventName;
     ib = new stoqey.IBApi({ host: HOST, port: PORT, clientId: activeClientId });
     ib.on(EventName.error, (err, code, reqId) => {
-      // 2104/2106/2158 are benign "market data farm OK" notices
-      if ([2104, 2106, 2107, 2158].includes(Number(code))) return;
+      // 2104/2106/2158 are benign "market data farm OK" notices.
+      // 10311 is a direct-route fee warning — the order is still live.
+      if ([2104, 2106, 2107, 2158, 10311].includes(Number(code))) return;
+      if (Number(code) === 10147) {
+        unknownOrderIds.add(Number(reqId));
+        logOnce('gone-' + reqId, 'IB 10147 — order already gone, will not re-cancel', reqId);
+        return;
+      }
       // 10197: IB allows only one live market-data consumer per user. TWS/Gateway
       // UI often holds it — tick streams fail. Portfolio marks (updatePortfolio)
       // still work and are the primary MTM source.
@@ -2373,6 +2380,7 @@ async function main() {
 
   function cancelOrder(orderId, label) {
     if (orderId == null) return;
+    if (unknownOrderIds.has(Number(orderId))) return;
     if (DRY || !ib) { log('DRY cancel', label, orderId); return; }
     try { ib.cancelOrder(orderId); log('cancel sent', label, orderId); } catch (e) { log('cancel failed', label, orderId, e.message); }
   }
@@ -4173,7 +4181,10 @@ async function main() {
       }
       const qty = row.tp1Done ? posInDir : stopQty;
       const stp = row.tp1Done ? runnerStopPx(row, row.stopPx) : roundPx(row.stopPx, row.contract);
-      if (!(stp > 0) || !(qty > 0)) continue;
+      if (!(stp > 0) || !(qty > 0)) {
+        logOnce('stop-skip-qty-' + key, 'stop attach skip', key, 'qty', qty, 'stp', stp, 'pos', posInDir, 'tp1Working', tp1WorkingQty);
+        continue;
+      }
       const oid = nid();
       row.stopId = oid;
       row.stopPx = stp;
@@ -4230,7 +4241,8 @@ async function main() {
         o.type === 'LMT' && o.action === closeAction && rowMatchesWorking(row, o)
       );
       const existing = lmts.find(o => Math.abs(o.qty - half) < 1e-6)
-        || (row.tp1Id != null ? lmts.find(o => o.orderId === row.tp1Id) : null);
+        || (row.tp1Id != null ? lmts.find(o => o.orderId === row.tp1Id) : null)
+        || lmts[0];
       if (existing) {
         const wantTp1 = Number(row.tp1Px);
         const slack = Math.max(Math.abs(wantTp1) * 0.001, 0.01);
@@ -4251,6 +4263,10 @@ async function main() {
           n++;
           log('RECONCILE: adopted working TP1', key, 'orderId=' + existing.orderId,
             'lmt=' + existing.lmt, 'qty=' + existing.qty, 'tif=' + existing.tif);
+        }
+        for (const extra of lmts) {
+          if (extra.orderId === existing.orderId) continue;
+          cancelOrder(extra.orderId, 'duplicate TP1 ' + key);
         }
         continue;
       }
@@ -4273,6 +4289,11 @@ async function main() {
             await waitCancel(o.orderId, 4000);
           }
         }
+      }
+      // Do not mint a second TP1 just because reqOpenOrders missed the last LSE GTC.
+      if (row.tp1Id != null && !row.tp1RoutingFailed) {
+        const lastSent = row.tp1AttachAttemptAt ? Date.parse(row.tp1AttachAttemptAt) : NaN;
+        if (Number.isFinite(lastSent) && Date.now() - lastSent < 15 * 60 * 1000) continue;
       }
       if (!childNotYetWorking(row.tp1Id, null, row.tp1AttachAttemptAt, row.tp1RoutingFailed)) continue;
       const wait = attachRetryWaitMs(row.tp1RoutingFailed);
