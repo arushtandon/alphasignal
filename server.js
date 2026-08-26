@@ -37,6 +37,10 @@ const {
   isLiveAuthorizedServerExit
 } = require('./lib/ibkr/live-exit-authority');
 const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/account-performance');
+const {
+  applyEstimatedCommission,
+  fillNeedsEstimatedCommission
+} = require('./lib/ibkr/ib-commission');
 const { isMarketLikeExit } = require('./lib/ibkr/tp1-policy');
 const { tslAfterTp1, ratchetTslFromDailyBar } = require('./lib/ibkr/tsl-policy');
 
@@ -14683,10 +14687,12 @@ function restoreOpenModelFillsFromCursorErr(positionsOverride) {
               errorTrade: false, synthetic: true, recon: 'qty-pad',
               note: '[restore-open-model qty-pad]'
             };
-            if (sample && Number.isFinite(Number(sample.commission))) {
+            if (sample && Number.isFinite(Number(sample.commission)) && Number(sample.commission) > 0) {
               pad.commission = Number(sample.commission);
               pad.commissionCcy = String(sample.commissionCcy || sample.currency || 'USD');
               if (sample.ibRealizedPnl != null) pad.ibRealizedPnl = sample.ibRealizedPnl;
+            } else {
+              Object.assign(pad, applyEstimatedCommission(pad));
             }
             out.push(pad);
             moved++;
@@ -14814,6 +14820,7 @@ app.post('/api/ibkr/report', (req, res) => {
   const phantomExecIds = [];
   const toAdd = [];
   const commissionPatches = [];
+  const patchedExecIds = [];
   for (const r of reports) {
     if (!r || !r.execId) { skipped++; continue; }
     // Late commissionReport (arrives after execDetails) — patch existing fill.
@@ -14821,9 +14828,14 @@ app.post('/api/ibkr/report', (req, res) => {
       if (!(Number(r.commission) >= 0) && !(Number(r.commission) < 0)) { skipped++; continue; }
       commissionPatches.push({
         execId: String(r.execId),
+        ticker: r.ticker ? String(r.ticker) : null,
+        key: r.key ? String(r.key) : null,
+        qty: Number(r.qty) > 0 ? Number(r.qty) : null,
+        role: r.role ? String(r.role) : 'entry',
         commission: Number(r.commission),
         commissionCcy: String(r.commissionCcy || r.currency || 'USD'),
-        ibRealizedPnl: r.ibRealizedPnl != null ? Number(r.ibRealizedPnl) : null
+        ibRealizedPnl: r.ibRealizedPnl != null ? Number(r.ibRealizedPnl) : null,
+        estimated: r.commissionSrc === 'ibkr-pro-schedule' || r.estimated === true
       });
       continue;
     }
@@ -14910,20 +14922,40 @@ app.post('/api/ibkr/report', (req, res) => {
         }
         for (const p of commissionPatches) {
           const want = String(p.execId || '').toLowerCase();
-          let hit = false;
+          const hits = [];
+          const seen = new Set();
+          const addHit = (row) => {
+            const id = String(row.execId || '') + '@' + String(row.key || '');
+            if (seen.has(id)) return;
+            seen.add(id);
+            hits.push(row);
+          };
           for (const row of rows) {
-            if (String(row.execId || '').toLowerCase() !== want) continue;
+            if (String(row.execId || '').toLowerCase() === want) { addHit(row); continue; }
+            if (Number(row.commission) > 0 || !fillNeedsEstimatedCommission(row)) continue;
+            if (p.key && String(row.key) === p.key && row.role === (p.role || 'entry')) {
+              addHit(row);
+              continue;
+            }
+            const sameTick = p.ticker
+              && String(row.ticker || '').toUpperCase() === String(p.ticker).toUpperCase();
+            const sameQty = !(p.qty > 0) || Number(row.qty) === p.qty;
+            if (sameTick && sameQty && row.role === (p.role || 'entry')) addHit(row);
+          }
+          if (!hits.length) {
+            _pendingIbkrCommissions.set(want, p);
+            skipped++;
+            continue;
+          }
+          for (const row of hits) {
             row.commission = p.commission;
             row.commissionCcy = p.commissionCcy;
             if (p.ibRealizedPnl != null) row.ibRealizedPnl = p.ibRealizedPnl;
-            hit = true;
+            if (p.estimated) row.commissionSrc = 'ibkr-pro-schedule';
             commissionsPatched++;
+            patchedExecIds.push(String(row.execId));
           }
-          if (hit) _pendingIbkrCommissions.delete(want);
-          else {
-            _pendingIbkrCommissions.set(want, p);
-            skipped++;
-          }
+          _pendingIbkrCommissions.delete(want);
         }
         for (const row of rows) {
           const pending = _pendingIbkrCommissions.get(String(row.execId || '').toLowerCase());
@@ -14933,6 +14965,7 @@ app.post('/api/ibkr/report', (req, res) => {
           if (pending.ibRealizedPnl != null) row.ibRealizedPnl = pending.ibRealizedPnl;
           _pendingIbkrCommissions.delete(String(row.execId || '').toLowerCase());
           commissionsPatched++;
+          patchedExecIds.push(String(row.execId));
         }
         return rows;
       });
@@ -14949,6 +14982,7 @@ app.post('/api/ibkr/report', (req, res) => {
   res.json({
     ok: true, stored, skipped, commissionsPatched,
     skippedDup, skippedPhantom, acceptedExecIds, dupExecIds, phantomExecIds,
+    patchedExecIds,
     totalExecs: _ibkrExecIds.size
   });
 });
@@ -15675,8 +15709,28 @@ function saveIbkrReconReport(r) {
 try { quarantineExcessModelEntriesVsIb(); } catch (e) {
   console.warn('boot quarantine excess-vs-ib failed:', e.message);
 }
+function backfillMissingIbkrCommissions() {
+  let n = 0;
+  mutateFillLedger('backfill_missing_commissions', (rows) => {
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!fillNeedsEstimatedCommission(r)) continue;
+      const next = applyEstimatedCommission(r);
+      if (next && Number(next.commission) > 0) {
+        rows[i] = next;
+        n++;
+      }
+    }
+    return rows;
+  });
+  if (n) console.log('Backfilled IBKR commissions on', n, 'pad/recover fill(s)');
+  return n;
+}
 try { restoreOpenModelFillsFromCursorErr(); } catch (e) {
   console.warn('boot restore open-model fills failed:', e.message);
+}
+try { backfillMissingIbkrCommissions(); } catch (e) {
+  console.warn('boot backfill missing commissions failed:', e.message);
 }
 function ibkrAvgToFillUnit(avgCost, ccyScale, sampleEntryPx) {
   let avg = Number(avgCost);
@@ -16161,13 +16215,13 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           const phase = ibkrSessionPhase(primary.rawTicker || y, fillAt);
           const execId = `recon-entry-${primary.key}-pad${delta}`;
           if (!_ibkrExecIds.has(execId)) {
-            newFills.push({
+            newFills.push(applyEstimatedCommission({
               execId, key: primary.key, ticker: primary.rawTicker || y, hz: primary.hz || 'short',
               side: primary.side, role: 'entry', qty: delta, price: avg,
               currency: primary.currency, ccyScale: primary.ccyScale, orderId: null,
               time: fillAt, session: phase, sessionLabel: ibkrSessionLabel(phase),
               errorTrade: !!primary.errorTrade, synthetic: true, recon: 'qty-pad'
-            });
+            }));
             adjusted.push({ ticker: y, key: primary.key, action: 'qty-pad', qty: delta, price: avg });
           }
           avgCorrections.set(primary.key, avg);
@@ -16275,6 +16329,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       });
       console.log('IBKR recon sync:', stored, 'fill(s),', avgFixed, 'avg fix(es)');
     }
+    try { backfillMissingIbkrCommissions(); } catch (_) {}
 
     // Fully matched = no errors, no pending drifts, no synthetic fixes, no IB-only lots.
     const inSync = issues.filter(i => i.severity === 'error').length === 0

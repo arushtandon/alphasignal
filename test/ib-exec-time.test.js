@@ -24,3 +24,21 @@ test('reqExecutions filter uses UTC dash, not the double-space exec stamp', () =
   assert.match(local, /^\d{8} \d{2}:\d{2}:\d{2}$/);
   assert.equal(local.includes('  '), false);
 });
+
+test('exec history pulls this client by default, all clients when asked', () => {
+  const { execHistoryFilter } = require('../lib/ibkr/ib-exec-time');
+  const ms = Date.UTC(2026, 7, 4, 11, 18, 34);
+  assert.deepEqual(execHistoryFilter({ fromMs: ms, account: 'DU1764495' }), {
+    time: '20260804-11:18:34',
+    acctCode: 'DU1764495'
+  });
+  assert.deepEqual(execHistoryFilter({ fromMs: ms, account: 'DU1764495', allClients: true }), {
+    clientId: 0,
+    time: '20260804-11:18:34',
+    acctCode: 'DU1764495'
+  });
+  assert.deepEqual(execHistoryFilter({ account: 'DU1764495', allClients: true }), {
+    clientId: 0,
+    acctCode: 'DU1764495'
+  });
+});

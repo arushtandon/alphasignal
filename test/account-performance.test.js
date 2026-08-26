@@ -119,6 +119,47 @@ test('Sharpe uses every weekday since inception, not sparse snapshot days', () =
   assert.ok(p.sharpe != null);
 });
 
+test('intraday NLV wiggle does not reprice Sharpe', () => {
+  const today = '2026-08-26';
+  const startEq = 462_000;
+  const mk = (eq) => computeAccountPerformance({
+    bookStart: '2026-08-06',
+    today,
+    asOf: today,
+    ibkrEquity: eq,
+    netPnlUsd: eq - startEq,
+    eod: [
+      { date: '2026-08-06', currentBalance: startEq, netPnlUsd: 0 },
+      { date: '2026-08-18', currentBalance: 464_000, netPnlUsd: 2000 }
+    ]
+  });
+  const a = mk(464_000);
+  const b = mk(455_000);
+  assert.equal(a.sharpe, b.sharpe);
+  assert.equal(a.sharpeDays, b.sharpeDays);
+  assert.ok(a.currentEquity !== b.currentEquity);
+});
+
+test('US EOD for today is included in Sharpe', () => {
+  const today = '2026-08-26';
+  const startEq = 462_000;
+  const mk = (eq) => computeAccountPerformance({
+    bookStart: '2026-08-06',
+    today,
+    asOf: today,
+    ibkrEquity: eq,
+    netPnlUsd: eq - startEq,
+    eod: [
+      { date: '2026-08-06', currentBalance: startEq, netPnlUsd: 0 },
+      { date: '2026-08-18', currentBalance: 464_000, netPnlUsd: 2000 },
+      { date: today, currentBalance: eq, netPnlUsd: eq - startEq }
+    ]
+  });
+  const a = mk(464_000);
+  const b = mk(455_000);
+  assert.notEqual(a.sharpe, b.sharpe);
+});
+
 test('stale $1M book peak is replaced by live IBKR NLV', () => {
   const snap = applyIbkrNlvExtremes({
     netLiquidation: 464_000,

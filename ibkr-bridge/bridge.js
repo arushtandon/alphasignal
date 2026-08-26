@@ -26,6 +26,9 @@
  *                    + STP stop  @ SL   for the FULL quantity  (pre-TP1 an SL hit
  *                      exits the WHOLE position — same as the simulator)
  *                    + LMT TP1   @ TP1  for the partial (half) quantity
+ *                    After the entry fill prints, TP1 and SL are rescaled off
+ *                    the actual fill (same % as rec entry→TP1 / entry→SL).
+ *                    TP2 on the live book is the runner TSL, not a second limit.
  *     TP1 fill     → IB orderStatus on the TP1 child only. Stop resized to the
  *                    runner and raised to breakeven. Server `tp1_partial` is ignored.
  *     tsl_update   → after TP1 is done (IB fill or remaining runner), ratchet
@@ -83,6 +86,7 @@ const {
   isLimitTp1Fill
 } = require('../lib/ibkr/tp1-policy');
 const { tslAfterTp1 } = require('../lib/ibkr/tsl-policy');
+const { rebaseExitsFromFill } = require('../lib/ibkr/fill-rebase');
 const { evaluatePortfolioAddition, DEFAULT_CAPS } = require('../lib/risk/portfolio');
 const { BridgeSqliteStore } = require('../lib/storage/bridge-sqlite');
 const { atomicWriteJsonSync } = require('../lib/storage/atomic-json');
@@ -107,8 +111,9 @@ const {
 } = require('../lib/ibkr/order-routing');
 const {
   parseIbExecTime: parseIbExecTimeRaw,
-  formatIbExecFilterTime
+  execHistoryFilter
 } = require('../lib/ibkr/ib-exec-time');
+const { estimateIbkrCommission, fillNeedsEstimatedCommission, applyEstimatedCommission } = require('../lib/ibkr/ib-commission');
 
 const DRY = process.env.IBKR_DRY_RUN !== '0';
 const BASE = String(process.env.ALPHASIGNAL_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
@@ -1199,6 +1204,9 @@ async function main() {
         return;
       }
       log('IB error', code, 'reqId=' + reqId, err && err.message ? err.message : err);
+      if (Number(code) === 103 || Number(code) === 105) {
+        markChildUnparked(Number(reqId), 'error ' + code);
+      }
       const msg = err && err.message ? err.message : String(err || '');
       if (isRoutingError(code) || isSessionBlockedError(code, msg) || isShortSaleReject(code, msg)) {
         retryRejectedOrder(Number(reqId), Number(code), msg);
@@ -1319,7 +1327,10 @@ async function main() {
             row.entryFilled = true;
             if (Number.isFinite(oa.avgFillPrice) && oa.avgFillPrice > 0) {
               row.ibAvgFill = oa.avgFillPrice;
+            } else if (Number(px) > 0) {
+              row.ibAvgFill = px;
             }
+            applyFillRebase(key, row, row.ibAvgFill);
           }
           const fillAt = new Date().toISOString();
           const cMeta = enrichSessionMeta(row.contract || contract || toContract(row.ticker));
@@ -2799,20 +2810,110 @@ async function main() {
     return true;
   }
 
+  /**
+   * After the entry prints, move working TP1 / SL so they keep the model's
+   * percentages off the actual fill (not the recommended entry).
+   */
+  function applyFillRebase(key, row, fillPx) {
+    if (!row || row.closed || row.tp1Done) return false;
+    if (!(Number(fillPx) > 0) || !row.contract) return false;
+    if (!(Number(row.modelEntry) > 0)) row.modelEntry = Number(row.entry);
+    if (!(Number(row.modelTp1) > 0) && Number(row.tp1Px) > 0) row.modelTp1 = Number(row.tp1Px);
+    if (!(Number(row.modelSl) > 0)) row.modelSl = Number(row.originalSl || row.stopPx);
+    const planned = rebaseExitsFromFill({
+      modelEntry: row.modelEntry,
+      modelTp1: row.modelTp1,
+      modelSl: row.modelSl,
+      fillPx
+    });
+    if (!planned) return false;
+    const isSell = row.side === 'sell';
+    const tp1 = planned.tp1 > 0
+      ? roundPx(planned.tp1, row.contract, isSell ? 'down' : 'up')
+      : 0;
+    const sl = planned.sl > 0
+      ? roundPx(planned.sl, row.contract, isSell ? 'up' : 'down')
+      : 0;
+    if (!(sl > 0) && !(tp1 > 0)) return false;
+    const tp1Same = !(tp1 > 0) || Math.abs(tp1 - Number(row.tp1Px || 0)) < 1e-9;
+    const slSame = !(sl > 0) || Math.abs(sl - Number(row.stopPx || 0)) < 1e-9;
+    if (tp1Same && slSame) return false;
+    if (tp1 > 0) row.tp1Px = tp1;
+    if (sl > 0) {
+      row.stopPx = sl;
+      row.originalSl = sl;
+    }
+    row.ibAvgFill = Number(fillPx);
+    const closeAction = isSell ? 'BUY' : 'SELL';
+    if (!tp1Same && Number(row.qtySold) > 0) {
+      if (row.tp1Id != null) cancelOrder(row.tp1Id, 'TP1 rebase replace ' + key);
+      const tp1Id = nid();
+      row.tp1Id = tp1Id;
+      transmitOrder(tp1Id, row.contract, baseOrder({
+        orderId: tp1Id, action: closeAction, orderType: 'LMT',
+        lmtPrice: tp1, totalQuantity: row.qtySold, transmit: true
+      }), 'TP1 rebase ' + key);
+    }
+    const stopQty = Number(row.qtyTotal) || 0;
+    if (!slSame && stopQty > 0) {
+      if (row.stopId != null) cancelOrder(row.stopId, 'SL rebase replace ' + key);
+      const sid = nid();
+      row.stopId = sid;
+      transmitOrder(sid, row.contract, baseOrder({
+        orderId: sid, action: closeAction, orderType: 'STP',
+        auxPrice: sl, totalQuantity: stopQty, transmit: true
+      }), 'SL rebase ' + key);
+    }
+    log('REBASE exits from fill', key, 'fill=' + fillPx,
+      'model=' + row.modelEntry, 'tp1=' + (tp1 || row.tp1Px), 'sl=' + (sl || row.stopPx));
+    saveState(state);
+    return true;
+  }
+
+  function rebaseOpenLotsFromFill() {
+    const cutoff = Date.now() - 48 * 3600 * 1000;
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (!row || row.closed || !row.entryFilled || row.tp1Done) continue;
+      const y = normalizeYahooTicker(row.ticker);
+      if (y === 'FAST' || y === 'DASH') continue;
+      const submitted = Date.parse(row.orderSubmittedAt || 0);
+      const recovered = !!row.recoveredFromPosition;
+      const recent = submitted > cutoff;
+      if (Number(row.modelTp1) > 0 && !recovered && !recent) {
+        row.tp1Px = row.modelTp1;
+        if (Number(row.modelSl) > 0) {
+          row.stopPx = row.modelSl;
+          row.originalSl = row.modelSl;
+        }
+        delete row.modelTp1;
+        delete row.modelSl;
+        delete row.modelEntry;
+        log('REBASE revert older lot to model exits', key);
+        saveState(state);
+        continue;
+      }
+      if (!recovered && !recent) continue;
+      const fill = Number(row.ibAvgFill) || Number(portfolioAvgCost.get(y)) || 0;
+      if (!(fill > 0)) continue;
+      applyFillRebase(key, row, fill);
+    }
+  }
+
   function onTp1Filled(key, row) {
     if (row.tp1Done || row.closed) return;
     row.tp1Done = true;
     if (!(Number(row.originalSl) > 0)) row.originalSl = Number(row.stopPx) || 0;
     const isSell = row.side === 'sell';
+    const fillEntry = Number(row.ibAvgFill) || Number(row.entry);
     const tsl = tslAfterTp1({
-      entry: Number(row.entry) || Number(row.ibAvgFill),
+      entry: fillEntry,
       tp1: Number(row.tp1Px),
       sl: Number(row.originalSl) || Number(row.stopPx),
       isSell
     });
     const beStop = isSell
-      ? Math.min(row.stopPx, roundPx(row.entry, row.contract))
-      : Math.max(row.stopPx, roundPx(row.entry, row.contract));
+      ? Math.min(row.stopPx, roundPx(fillEntry, row.contract))
+      : Math.max(row.stopPx, roundPx(fillEntry, row.contract));
     const runnerStop = roundPx(tsl > 0 ? tsl : beStop, row.contract);
     row.stopPx = runnerStop;
     if (row.qtyRunner > 0) {
@@ -2859,9 +2960,11 @@ async function main() {
       if (row.parentId === orderId && filled > 0 && !row.entryFilled) {
         row.entryFilled = true;
         if (Number.isFinite(avgFillPrice) && avgFillPrice > 0) row.ibAvgFill = avgFillPrice;
+        applyFillRebase(key, row, row.ibAvgFill);
         saveState(state);
       } else if (row.parentId === orderId && Number.isFinite(avgFillPrice) && avgFillPrice > 0) {
         row.ibAvgFill = avgFillPrice;
+        applyFillRebase(key, row, avgFillPrice);
       }
       if (row.tp1Id === orderId && (status === 'Filled' || filled >= row.qtySold) && filled > 0) {
         const spec = openIfAboveSpec(row.ticker);
@@ -3189,8 +3292,7 @@ async function main() {
       timer = setTimeout(finish, 20000);
       try {
         ib.on(EventName.execDetailsEnd, onEnd);
-        const filter = { time: formatIbExecFilterTime(fromMs) };
-        if (ACCOUNT) filter.acctCode = ACCOUNT;
+        const filter = execHistoryFilter({ fromMs, account: ACCOUNT });
         log('exec-history: filter', JSON.stringify(filter));
         ib.reqExecutions(reqId, filter);
       } catch (e) {
@@ -3223,11 +3325,46 @@ async function main() {
         timer = setTimeout(finish, 12000);
         try {
           ib.on(EventName.execDetailsEnd, onEnd);
-          const filter = ACCOUNT ? { acctCode: ACCOUNT } : {};
+          const filter = execHistoryFilter({ account: ACCOUNT });
           log('exec-history: retry empty filter', JSON.stringify(filter));
           ib.reqExecutions(reqId2, filter);
         } catch (e) {
           log('exec-history: empty reqExecutions failed', e.message);
+          finish();
+        }
+      });
+      _execHistReqId = null;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+
+    // Side-client fills (PH/NTAP) are invisible unless clientId=0. Pull that
+    // separately so a failed all-clients request cannot wipe this-client execs.
+    {
+      const reqId3 = nextExecHistId++;
+      _execHistReqId = reqId3;
+      await new Promise((resolve) => {
+        let done = false;
+        let timer = null;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          if (timer) clearTimeout(timer);
+          _execHistReqId = null;
+          try { ib.off(EventName.execDetailsEnd, onEnd); } catch (_) {}
+          resolve();
+        };
+        const onEnd = (id) => {
+          if (Number(id) !== reqId3) return;
+          finish();
+        };
+        timer = setTimeout(finish, 12000);
+        try {
+          ib.on(EventName.execDetailsEnd, onEnd);
+          const filter = execHistoryFilter({ fromMs, account: ACCOUNT, allClients: true });
+          log('exec-history: all-clients filter', JSON.stringify(filter));
+          ib.reqExecutions(reqId3, filter);
+        } catch (e) {
+          log('exec-history: all-clients reqExecutions failed', e.message);
           finish();
         }
       });
@@ -3436,6 +3573,7 @@ async function main() {
 
     const backfilled = backfillRealEntriesFromHistory(serverTrades, usedExecIds);
     queueCommissionPatchesFromMap();
+    queueMissingCommissionPatches(serverTrades);
     if (queued || backfilled) saveState(state);
     await flushReports();
   }
@@ -3454,6 +3592,43 @@ async function main() {
         ibRealizedPnl: comm.realizedPNL,
         time: new Date().toISOString()
       });
+    }
+  }
+
+  /** IB executed the lot — Brokerage cannot stay $0 because we recovered via a pad. */
+  function queueMissingCommissionPatches(serverTrades) {
+    state.pendingReports = state.pendingReports || [];
+    for (const t of (serverTrades && serverTrades.trades) || []) {
+      for (const f of t.fills || []) {
+        if (!fillNeedsEstimatedCommission(f)) continue;
+        const est = estimateIbkrCommission({
+          ticker: t.ticker || f.ticker,
+          qty: f.qty,
+          price: f.price,
+          currency: t.currency || f.currency,
+          ccyScale: t.ccyScale || f.ccyScale,
+          side: t.side
+        });
+        if (!est) continue;
+        const execId = String(f.execId || '');
+        if (!execId || postedCommissionExecIds.has(execId)) continue;
+        if (state.pendingReports.some(r => r && String(r.execId) === execId
+          && (r.kind === 'commission' || Number(r.commission) > 0))) continue;
+        state.pendingReports.push({
+          kind: 'commission',
+          execId,
+          ticker: t.ticker,
+          key: t.key,
+          qty: f.qty,
+          role: f.role || 'entry',
+          commission: est.commission,
+          commissionCcy: est.commissionCcy,
+          commissionSrc: est.commissionSrc,
+          estimated: true,
+          time: new Date().toISOString()
+        });
+        log('commission backfill', t.ticker, execId, est.commission, est.commissionCcy);
+      }
     }
   }
 
@@ -3501,7 +3676,10 @@ async function main() {
         }
         return true;
       });
-      if (!matches.length) continue;
+      if (!matches.length) {
+        log('exec-history: no IB entry exec for recovered', key);
+        continue;
+      }
       const cMeta = enrichSessionMeta(row.contract || toContract(row.ticker));
       let remaining = Math.abs(Number(row.qtyTotal) || 0) || Infinity;
       for (const m of matches) {
@@ -3536,6 +3714,10 @@ async function main() {
         n++;
         log('exec-history: backfill entry', key, qty + '@' + px, 'sess=' + phase,
           comm ? ('comm=' + comm.commission) : 'no-comm');
+        if (Number(px) > 0) {
+          row.ibAvgFill = (Number(row.ibAvgFill) > 0 ? row.ibAvgFill : px);
+          applyFillRebase(key, row, row.ibAvgFill || px);
+        }
       }
     }
     return n;
@@ -3924,9 +4106,17 @@ async function main() {
       const stopQty = Math.max(0, posInDir - tp1WorkingQty);
       const existing = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null) || stps[0];
       if (existing) {
+        const wantSl = Number(row.stopPx);
+        const slack = Math.max(Math.abs(wantSl) * 0.001, 0.01);
+        if (wantSl > 0 && existing.aux > 0 && Math.abs(existing.aux - wantSl) > slack) {
+          // Never mint a second STP while the old one is still working.
+          cancelOrder(existing.orderId, 'SL fill-rebase replace ' + key);
+          log('RECONCILE: waiting to replace stop', key, 'have', existing.aux, 'want', wantSl);
+          continue;
+        }
         if (row.stopId !== existing.orderId) {
           row.stopId = existing.orderId;
-          if (existing.aux > 0) row.stopPx = existing.aux;
+          if (existing.aux > 0 && !(Number(row.modelSl) > 0)) row.stopPx = existing.aux;
           row.stopRoutingFailed = false;
           row.updated = new Date().toISOString();
           n++;
@@ -4018,12 +4208,19 @@ async function main() {
       const existing = lmts.find(o => Math.abs(o.qty - half) < 1e-6)
         || (row.tp1Id != null ? lmts.find(o => o.orderId === row.tp1Id) : null);
       if (existing) {
+        const wantTp1 = Number(row.tp1Px);
+        const slack = Math.max(Math.abs(wantTp1) * 0.001, 0.01);
+        if (wantTp1 > 0 && existing.lmt > 0 && Math.abs(existing.lmt - wantTp1) > slack) {
+          cancelOrder(existing.orderId, 'TP1 fill-rebase replace ' + key);
+          log('RECONCILE: waiting to replace TP1', key, 'have', existing.lmt, 'want', wantTp1);
+          continue;
+        }
         if (row.tp1Id !== existing.orderId || row.qtySold !== half) {
           row.tp1Id = existing.orderId;
           row.qtyTotal = posInDir;
           row.qtySold = half;
           row.qtyRunner = posInDir - half;
-          if (existing.lmt > 0) row.tp1Px = existing.lmt;
+          if (existing.lmt > 0 && !(Number(row.modelTp1) > 0)) row.tp1Px = existing.lmt;
           row.tp1RoutingFailed = false;
           row.tp1ThroughMarket = false;
           row.updated = new Date().toISOString();
@@ -4614,7 +4811,7 @@ async function main() {
             || Number(src.entry) || 0;
           if (avg > 0) {
             state.pendingReports = state.pendingReports || [];
-            state.pendingReports.push({
+            state.pendingReports.push(applyEstimatedCommission({
               kind: 'exec',
               execId: `recover-entry-${key}-q${posInDir}`,
               key, ticker: src.ticker, hz: src.hz || 'short',
@@ -4625,7 +4822,7 @@ async function main() {
               errorTrade: false, synthetic: true, recon: 'recover-entry',
               session: 'unknown', sessionLabel: '—',
               time: src.t || src.entryDate || new Date().toISOString()
-            });
+            }));
           }
           log('RECONCILE: recovered filled row from IB position', key, 'qty', posInDir);
           saveState(state);
@@ -4686,7 +4883,7 @@ async function main() {
           const execId0 = `recover-entry-${key}-q${posInDir0}`;
           state.pendingReports = state.pendingReports || [];
           if (!state.pendingReports.some(r => r.execId === execId0)) {
-            state.pendingReports.push({
+            state.pendingReports.push(applyEstimatedCommission({
               kind: 'exec', execId: execId0, key, ticker: src.ticker, hz: src.hz || 'short',
               side: src.side === 'sell' ? 'sell' : 'buy', role: 'entry',
               orderId: null, qty: posInDir0, price: avg0,
@@ -4694,7 +4891,7 @@ async function main() {
               errorTrade: false, synthetic: true, recon: 'recover-entry',
               session: 'unknown', sessionLabel: '—',
               time: src.t || src.entryDate || new Date().toISOString()
-            });
+            }));
             log('RECONCILE: import missing entry fill from IB', key, 'qty', posInDir0, '@', avg0);
           }
           saveState(state);
@@ -5281,6 +5478,7 @@ async function main() {
       await postIbRecon();
       // Prefer real IB exit prices from execution history when site is open / IB flat.
       await recoverMissingExitFills().catch(e => log('exec-history error', e.message));
+      rebaseOpenLotsFromFill();
 
       // 2. Rows flat at IB but never closed in state (exit filled while down).
       for (const [key, row] of Object.entries(state.byKey)) {
@@ -5411,16 +5609,19 @@ async function main() {
       if (resp && resp.ok) {
         const accepted = new Set(resp.acceptedExecIds || []);
         const dups = new Set(resp.dupExecIds || []);
-        const phantoms = new Set(resp.phantomExecIds || []);
+        const patched = new Set(resp.patchedExecIds || []);
+        const commOk = Number(resp.commissionsPatched) > 0;
         state.pendingReports = pending.filter((r) => {
           const id = String(r && r.execId || '');
           if (!id) return false;
-          if (accepted.has(id) || dups.has(id)) return false;
+          if (accepted.has(id) || dups.has(id) || patched.has(id)) return false;
+          if (r.kind === 'commission' && r.estimated && commOk) return false;
           return true;
         });
-        for (const r of extra) {
+        for (const r of extra.concat(pending.filter(x => x && x.kind === 'commission'))) {
           const id = String(r && r.execId || '');
-          if (accepted.has(id) || dups.has(id) || (Number(resp.commissionsPatched) > 0 && !phantoms.has(id))) {
+          if (!id) continue;
+          if (accepted.has(id) || dups.has(id) || patched.has(id) || (r.estimated && commOk)) {
             postedCommissionExecIds.add(id);
           }
         }
@@ -5451,6 +5652,7 @@ async function main() {
     if (positionsReady && Date.now() - lastIbReconAt > 60 * 1000) {
       await postIbRecon().catch(e => log('recon error', e.message));
       await recoverMissingExitFills().catch(e => log('exec-history error', e.message));
+      rebaseOpenLotsFromFill();
       await (async () => {
         const working = await listWorkingOrders();
         await ensureWorkingStops(working);

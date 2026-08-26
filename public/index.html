@@ -1826,7 +1826,7 @@ function ibkrPerfTiles(d) {
   const sh = p.sharpe != null ? String(p.sharpe) : '—';
   const shC = p.sharpe == null ? 'var(--m1)' : p.sharpe >= 1 ? 'var(--buy)' : p.sharpe >= 0 ? '#F5C842' : 'var(--sell)';
   const shSub = 'since inception' + (p.sharpeSince || p.bookStart ? ' · ' + (p.sharpeSince || p.bookStart) : '')
-    + (p.sharpeDays != null ? ' · ' + p.sharpeDays + ' weekdays' : ' · need 2+ days');
+    + (p.sharpeDays != null ? ' · ' + p.sharpeDays + ' closed weekdays' : ' · need 2+ days');
   const risk = p.riskLevel || '—';
   const riskSub = p.riskOff
     ? ('entries paused · guard ' + (p.pausePct || 15) + '% DD')
@@ -1857,7 +1857,7 @@ function ibkrPatchPerfTiles(d) {
     if (sub) {
       sub.textContent = 'since inception'
         + (p.sharpeSince || p.bookStart ? ' · ' + (p.sharpeSince || p.bookStart) : '')
-        + (p.sharpeDays != null ? ' · ' + p.sharpeDays + ' weekdays' : ' · need 2+ days');
+        + (p.sharpeDays != null ? ' · ' + p.sharpeDays + ' closed weekdays' : ' · need 2+ days');
     }
   }
   if (document.getElementById('ibkrCardRisk')) {
