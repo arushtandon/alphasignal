@@ -9,7 +9,8 @@ const {
   DEFAULT_POLICY: DECISION_POLICY,
   deriveActionRating: deriveCanonicalActionRating,
   evaluateSignalDecision,
-  createDecisionSnapshot
+  createDecisionSnapshot,
+  sellRecommendationAllowed
 } = require('./lib/strategy/decision-engine');
 const {
   EXIT_POLICY_VERSION,
@@ -6863,7 +6864,7 @@ function mergeLiveOpenHistoryIntoDashData(dashData, opts = {}) {
     const st = String(h[hz + 'Status'] || h.status || 'open').toLowerCase();
     if (!LIVE.has(st)) continue;
     if (onlyToday && historyTradeEntryDay(h) !== today) continue;
-    if (act === 'sell' && !SELL_PICKS_ENABLED) continue;
+    if (act === 'sell' && !sellRecommendationAllowed(h[hz + 'Rating'] || h.rating, h[hz + 'SellScore'], SELL_PICKS_ENABLED)) continue;
     if (!bracketEnabled(act === 'sell' ? 'sell' : 'buy', hz)) continue;
     const pane = paneOf(hz, act === 'sell');
     if (!pane) continue;
@@ -7431,7 +7432,7 @@ app.get('/api/dashboard/picks', (req, res) => {
     sgtDay: singaporeDateKey(),
     lastPicksDateKey: typeof _lastPicksDateKey !== 'undefined' ? _lastPicksDateKey : null,
     summary: dashboardPicksSummary(dashData),
-    sellPicksDisabled: !SELL_PICKS_ENABLED, // backtest: sells have no edge — reference-only
+    sellPicksDisabled: !SELL_PICKS_ENABLED, // plain sells stay off; Strong Sell still trades
     disabledBrackets: [...DISABLED_BRACKETS],
     restoredFromHistory: 0,
     dashData
@@ -7863,7 +7864,9 @@ async function generateServerPicksFromShortlist(opts = {}) {
             + (isStrongRecommendableRating(r[hz + 'Rating']) ? 1000 : 0);
           if (buyRank > bBuyScore) { bBuyScore = buyRank; bBuyHz = hz; }
         }
-        const sellBase = bracketEnabled('sell', hz) && SELL_PICKS_ENABLED && r[hz + 'Action'] === 'Sell'
+        const sellBase = bracketEnabled('sell', hz)
+          && sellRecommendationAllowed(r[hz + 'Rating'], r[hz + 'SellScore'], SELL_PICKS_ENABLED)
+          && r[hz + 'Action'] === 'Sell'
           && (r[hz + 'SellScore'] || 0) >= 62
           && (Number(r[hz + 'Conf']) || 0) >= PICKS_MIN_CONF
           && hasPx(r, hz);
@@ -11013,9 +11016,8 @@ const HORIZON_PCT = {
 //     by design fire rarely outside bear regimes (that rarity is correct).
 // Re-run /api/backtest/medium-sell?hz=short&side=sell after deploy to verify
 // the fade path; acceptance = WR ≥55% or avg ≥+0.30%/trade with PF ≥1.5.
-// Default OFF — bracket acceptance (all windows) shows sell:short/medium/long with
-// negative or sub-1.5-PF expectancy across every horizon. Running them was the main
-// drag on live PnL. Reference-only unless explicitly re-enabled with SELL_PICKS_ENABLED=1.
+// Default OFF for plain Sell — bracket acceptance showed negative / sub-1.5-PF
+// expectancy. Strong Sell (score ≥74) is still accepted and sent to IBKR.
 const SELL_PICKS_ENABLED = process.env.SELL_PICKS_ENABLED === '1';
 
 // Bracket acceptance gates (v143). Opt-in via env — default OFF so the dashboard

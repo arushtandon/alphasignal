@@ -35,6 +35,14 @@ test('canonical decision engine applies one score/confidence/RR policy', () => {
   assert.deepEqual(rejected.rejectionReasons.sort(), ['confidence', 'rewardRisk']);
 });
 
+test('Strong Sell is tradable even when plain sells are disabled', () => {
+  const { sellRecommendationAllowed } = require('../lib/strategy/decision-engine');
+  assert.equal(sellRecommendationAllowed('Sell', 62, false), false);
+  assert.equal(sellRecommendationAllowed('Strong Sell', 74, false), true);
+  assert.equal(sellRecommendationAllowed('Sell', 80, false), true);
+  assert.equal(sellRecommendationAllowed('Sell', 62, true), true);
+});
+
 test('decision snapshots are deterministic and versioned', () => {
   const input = {
     ticker: 'AAPL', horizon: 'short', asOf: '2026-08-20T00:00:00.000Z',
