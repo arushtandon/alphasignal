@@ -4129,7 +4129,10 @@ async function main() {
         : 0;
       // Never size the stop as the original lot while a TP1 LMT is still live.
       // DHL 25 Aug: STP 157 + TP1 78 both working on a 157 long → short 78.
-      const stopQty = Math.max(0, posInDir - tp1WorkingQty);
+      const bookedTp1 = (!row.tp1Done && row.tp1Id != null && !row.tp1RoutingFailed)
+        ? Math.max(Number(row.qtySold) || 0, 0) : 0;
+      const tp1Qty = Math.max(tp1WorkingQty, bookedTp1);
+      const stopQty = Math.max(0, posInDir - tp1Qty);
       const existing = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null) || stps[0];
       if (existing) {
         const wantSl = Number(row.stopPx);
@@ -4165,6 +4168,19 @@ async function main() {
         }
         continue;
       }
+      // LSE often omits GTC children from reqOpenOrders. Cap our own STP from state.
+      if (row.stopId != null && stopQty > 0 && stopQty < posInDir - 1e-6) {
+        transmitOrder(row.stopId, row.contract, baseOrder({
+          orderId: row.stopId,
+          action: closeAction,
+          orderType: 'STP',
+          auxPrice: roundPx(row.stopPx, row.contract),
+          totalQuantity: stopQty,
+          transmit: true
+        }), 'shrink stop for TP1 ' + key);
+        log('RECONCILE: stop qty capped (by id)', key, posInDir, '→', stopQty, '(booked TP1', bookedTp1 + ')');
+        continue;
+      }
       // Do not mint a second STP just because the working-order snapshot missed
       // the last one — that left dozens of 157-share DHL sell-stops at IB.
       if (row.stopId != null && !row.stopRoutingFailed) {
@@ -4188,6 +4204,7 @@ async function main() {
       const oid = nid();
       row.stopId = oid;
       row.stopPx = stp;
+      row.stopRoutingFailed = false;
       row.stopAttachAttemptAt = new Date().toISOString();
       row.updated = row.stopAttachAttemptAt;
       transmitOrder(oid, row.contract, baseOrder({
