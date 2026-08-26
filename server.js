@@ -41,6 +41,7 @@ const {
   applyEstimatedCommission,
   fillNeedsEstimatedCommission
 } = require('./lib/ibkr/ib-commission');
+const { dedupeIbkrFillsByExecId } = require('./lib/ibkr/fill-dedupe');
 const { isMarketLikeExit } = require('./lib/ibkr/tp1-policy');
 const { tslAfterTp1, ratchetTslFromDailyBar } = require('./lib/ibkr/tsl-policy');
 
@@ -14947,7 +14948,9 @@ app.post('/api/ibkr/report', (req, res) => {
             skipped++;
             continue;
           }
-          for (const row of hits) {
+          const exact = hits.filter(row => String(row.execId || '').toLowerCase() === want);
+          const applyTo = exact.length ? exact.slice(0, 1) : hits.slice(0, 1);
+          for (const row of applyTo) {
             row.commission = p.commission;
             row.commissionCcy = p.commissionCcy;
             if (p.ibRealizedPnl != null) row.ibRealizedPnl = p.ibRealizedPnl;
@@ -15151,6 +15154,7 @@ function readIbkrFillRows() {
 }
 
 function writeIbkrFillRows(rows) {
+  rows = dedupeIbkrFillsByExecId(rows || []);
   atomicWriteFileSync(IBKR_FILLS_FILE, rows.map(r => JSON.stringify(r)).join('\n') + (rows.length ? '\n' : ''));
   _ibkrExecIds = new Set(rows.map(r => r.execId).filter(Boolean));
   for (const row of rows) {
@@ -15270,6 +15274,12 @@ try { quarantineErrorFillsOffModelKeys(); } catch (e) {
 }
 try { restoreFilledEntriesFalselyAbandoned(); } catch (e) {
   console.warn('boot restore false stale-abandon failed:', e.message);
+}
+try {
+  const { after, before } = mutateFillLedger('dedupe_execids', (rows) => dedupeIbkrFillsByExecId(rows));
+  if (after < before) console.log('Collapsed', before - after, 'duplicate IBKR fill row(s) by execId');
+} catch (e) {
+  console.warn('boot fill execId dedupe failed:', e.message);
 }
 // Re-arm is on-demand only: POST /api/ibkr/rearm { key } — never auto at boot.
 // excess-vs-ib runs after loadIbkrReconReport is defined (below).
@@ -16711,7 +16721,7 @@ function ibkrExitQualityType(status, modelReason, hasTp1, hasStop, hasFlat, erro
 // READ-ONLY: never mutate ibkr_fills.jsonl here (phantom drop / quarantine run in recon/boot).
 app.get('/api/ibkr/trades', async (req, res) => {
   try {
-    const allRows = readIbkrFillRows();
+    const allRows = dedupeIbkrFillsByExecId(readIbkrFillRows());
     const rows = allRows.filter(r => !isPhantomIbkrKey(r.key, r.time, r));
     const errExtra = loadIbkrErrorTradeExtra();
     const byKey = new Map();
@@ -17190,6 +17200,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
     // Expense ledger: commissions + accrued/interest + dividends (IB charge events).
     const expenses = [];
     let commissionExpenseUsd = 0;
+    let errorCommissionExpenseUsd = 0;
     const chargeLedger = readIbkrChargeRows();
     const roleFeeLabel = (role) => {
       const r = String(role || '').toLowerCase();
@@ -17206,25 +17217,33 @@ app.get('/api/ibkr/trades', async (req, res) => {
       if (Math.abs(p) >= 100) return p.toFixed(2);
       return String(+p.toFixed(4));
     };
+    const seenCommExec = new Set();
     for (const r of rows) {
       const c = Number(r.commission);
       if (!(c > 0) && !(c < 0)) continue;
+      const eid = String(r.execId || '');
+      if (eid) {
+        if (seenCommExec.has(eid)) continue;
+        seenCommExec.add(eid);
+      }
       const ccy = String(r.commissionCcy || r.currency || 'USD');
       const cFx = await ibkrUsdPerCcy(ccy);
       const usd = +(Math.abs(c) * cFx).toFixed(4);
-      commissionExpenseUsd += usd;
       const ticker = r.ticker || '?';
       const side = String(r.side || '').toUpperCase() || '?';
       const qty = Number(r.qty);
       const qtyTxt = Number.isFinite(qty) ? String(qty) : '?';
       const role = r.role || 'fill';
+      const isErr = !!r.errorTrade || isCursorErrIbkrKey(r.key);
+      if (isErr) errorCommissionExpenseUsd += usd;
+      else commissionExpenseUsd += usd;
       expenses.push({
         type: 'commission',
-        section: 'commission',
+        section: isErr ? 'error-commission' : 'commission',
         feeType: roleFeeLabel(role),
         label: ticker + ' · ' + side + ' ' + qtyTxt + ' @ ' + pxLabel(r.price, r.ccyScale)
           + ' · ' + roleFeeLabel(role)
-          + (r.errorTrade ? ' · ERROR' : ''),
+          + (isErr ? ' · ERROR (excluded)' : ''),
         ticker,
         side: String(r.side || '') || null,
         qty: Number.isFinite(qty) ? qty : null,
@@ -17236,7 +17255,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
         amountUsd: +usd.toFixed(2),
         income: false,
         time: r.time || null,
-        errorTrade: !!r.errorTrade
+        errorTrade: isErr,
+        excluded: isErr
       });
     }
     // Durable IB dividend (and other) events posted by the bridge.
@@ -17428,10 +17448,11 @@ app.get('/api/ibkr/trades', async (req, res) => {
       expenses: {
         totalUsd: +expenseTotalUsd.toFixed(2),
         commissionUsd: +commissionExpenseUsd.toFixed(2),
+        errorCommissionUsd: +errorCommissionExpenseUsd.toFixed(2),
         otherUsd: +accruedUsd.toFixed(2),
         dividendUsd: +dividendUsd.toFixed(2),
         netUsd: +(expenseTotalUsd - dividendUsd).toFixed(2),
-        rows: expenses.slice(0, 300)
+        rows: expenses.slice(0, 400)
       },
       risk: {
         riskOff: !!riskState.riskOff,
@@ -18701,6 +18722,7 @@ module.exports = {
   ibkrAbandonFillKeySet,
   shouldAbandonUnfilledEntry,
   ibkrYahooAliases,
+  dedupeIbkrFillsByExecId,
   IBKR_FILLS_FILE,
   TRADE_EVENTS_FILE,
   sectorEtfForSymbol,

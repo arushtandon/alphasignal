@@ -2216,7 +2216,8 @@ async function renderIbkr(force){
     const expSub = [
       exp.commissionUsd != null ? ('comm $' + Math.abs(exp.commissionUsd).toFixed(2)) : null,
       exp.otherUsd ? ('accrued $' + Math.abs(exp.otherUsd).toFixed(2)) : null,
-      exp.dividendUsd ? ('div +$' + Math.abs(exp.dividendUsd).toFixed(2)) : null
+      exp.dividendUsd ? ('div +$' + Math.abs(exp.dividendUsd).toFixed(2)) : null,
+      exp.errorCommissionUsd ? ('error $' + Math.abs(exp.errorCommissionUsd).toFixed(2) + ' excluded') : null
     ].filter(Boolean).join(' · ') || 'click for full detail';
     const liqPct = acct.liquidityPct;
     const liqSub = liqPct != null
@@ -2367,7 +2368,8 @@ async function renderIbkr(force){
       + box('Exit quality — real fills', mkTbl(['Exit type','N','Realised $','Win %'], exitRows), 300)
       + box('By horizon (closed)', mkTbl(['Horizon','N','Realised $','Win %'], hzRows))
       + box('By side (closed)', mkTbl(['Side','N','Realised $','Win %'], sideRows)
-          +'<div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;padding:6px 8px 0">'+slipTxt+'</div>')
+          +'<div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;padding:6px 8px 0">Win % is lot count, not dollars. One large stop can dominate realised $.</div>'
+          +'<div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 0">'+slipTxt+'</div>')
       + '</div>';
 
     const hzTag = h => h==='medium'?'MED':h==='long'?'LONG':'SHORT';
@@ -2481,18 +2483,20 @@ function showIbkrExpenses(){
     if (income || signed) return (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
     return '-$' + Math.abs(v).toFixed(2);
   };
-  const sectionOrder = ['commission', 'accrued', 'dividend', 'other'];
+  const sectionOrder = ['commission', 'accrued', 'dividend', 'other', 'error-commission'];
   const sectionTitle = {
     commission: 'Brokerage commissions — per equity fill',
     accrued: 'Interest & stock-borrow (allocated to equities)',
     dividend: 'Dividends',
-    other: 'Other charges'
+    other: 'Other charges',
+    'error-commission': 'Error-trade commissions — excluded from the total'
   };
   const sectionNote = {
-    commission: 'Each row is IB commissionReport on a specific fill: ticker, side, quantity, price, and whether it was an entry, TP1, stop, or flatten.',
+    commission: 'Each row is IB commissionReport on a specific fill: ticker, side, quantity, price, and whether it was an entry, TP1, stop, or flatten. Forced error trades (AIR dual-list, unauthorised lots) are listed separately and are not in the tile total.',
     accrued: 'IB sends one AccruedCash total. Negative amounts (stock-borrow) are allocated to open shorts by USD notional. When a short is closed, that share is locked onto the equity. Positive AccruedCash is credit interest on cash (account-level). Allocations are a breakdown of the live total, not extra charges.',
     dividend: 'Accrued / receivable dividends from IB account tags.',
-    other: ''
+    other: '',
+    'error-commission': 'Commissions on |cursor-err| / error-trade lots. Shown for audit only — they do not add to Brokerage or Net PnL.'
   };
   const bySec = {};
   for (const r of rows) {
@@ -2544,7 +2548,8 @@ function showIbkrExpenses(){
   const sumLine = 'Charges -$'+Math.abs(total).toFixed(2)
     + (exp.commissionUsd != null ? ' · comm $'+Math.abs(exp.commissionUsd).toFixed(2) : '')
     + (exp.otherUsd ? ' · accrued $'+Math.abs(exp.otherUsd).toFixed(2) : '')
-    + (exp.dividendUsd ? ' · dividends +$'+Math.abs(exp.dividendUsd).toFixed(2) : '');
+    + (exp.dividendUsd ? ' · dividends +$'+Math.abs(exp.dividendUsd).toFixed(2) : '')
+    + (exp.errorCommissionUsd ? ' · error $'+Math.abs(exp.errorCommissionUsd).toFixed(2)+' excluded' : '');
   modal.innerHTML = '<div style="background:var(--s0,#111);border:1px solid var(--b1);border-radius:12px;max-width:980px;width:100%;max-height:80vh;overflow:auto;padding:18px 16px">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
     + '<div><div style="font-size:13px;font-weight:600;color:var(--t1)">Brokerage, dividends & account charges</div>'
