@@ -411,6 +411,19 @@ const YAHOO_CRYPTO = {
 };
 
 /** Yahoo-style ticker → IB contract stub. Live orders are qualified by resolveInstrument(). */
+/** SEHK/TSE names whose board lot is not the 100-share default. */
+const BOARD_LOT_OVERRIDES = {
+  '0669.HK': 500, '669.HK': 500,
+  '0992.HK': 2000, '992.HK': 2000,
+  '4062.T': 100
+};
+function boardLotHint(ticker, fallback) {
+  const y = String(ticker || '').toUpperCase();
+  if (BOARD_LOT_OVERRIDES[y] != null) return BOARD_LOT_OVERRIDES[y];
+  const n = Number(fallback);
+  return n > 0 ? n : 1;
+}
+
 function toContract(ticker) {
   const t = String(ticker || '').toUpperCase();
   if (YAHOO_FUTURES[t]) {
@@ -462,8 +475,8 @@ function toContract(ticker) {
   if (t.endsWith('.PA')) return { symbol: t.replace(/\.PA$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'SBF',  currency: 'EUR', market: 'EURONEXT', yahooTicker: t, bloomberg: bloombergTicker(t), listingCountry: 'France' };
   if (t.endsWith('.AS')) return { symbol: t.replace(/\.AS$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'AEB',  currency: 'EUR', market: 'EURONEXT', yahooTicker: t, bloomberg: bloombergTicker(t) };
   if (t.endsWith('.MI')) return { symbol: t.replace(/\.MI$/, ''), secType: 'STK', exchange: 'SMART', primaryExch: 'BVME', currency: 'EUR', market: 'EURONEXT', yahooTicker: t, bloomberg: bloombergTicker(t) };
-  if (t.endsWith('.HK')) return { symbol: String(parseInt(t.replace(/\.HK$/, ''), 10)), secType: 'STK', exchange: 'SMART', primaryExch: 'SEHK', currency: 'HKD', lotHint: 100, market: 'HK', yahooTicker: t, bloomberg: bloombergTicker(t) };
-  if (t.endsWith('.T'))  return { symbol: t.replace(/\.T$/, ''),  secType: 'STK', exchange: 'SMART', primaryExch: 'TSEJ', currency: 'JPY', lotHint: 100, market: 'JP', yahooTicker: t, bloomberg: bloombergTicker(t) };
+  if (t.endsWith('.HK')) return { symbol: String(parseInt(t.replace(/\.HK$/, ''), 10)), secType: 'STK', exchange: 'SMART', primaryExch: 'SEHK', currency: 'HKD', lotHint: boardLotHint(t, 100), market: 'HK', yahooTicker: t, bloomberg: bloombergTicker(t) };
+  if (t.endsWith('.T'))  return { symbol: t.replace(/\.T$/, ''),  secType: 'STK', exchange: 'SMART', primaryExch: 'TSEJ', currency: 'JPY', lotHint: boardLotHint(t, 100), market: 'JP', yahooTicker: t, bloomberg: bloombergTicker(t) };
   if (t.includes('.'))   return null;                                 // unknown suffix
   // Yahoo uses BRK-B; IB's local symbol is "BRK B". Sending "BRK-B" is error 200.
   const US_SHARE_CLASS = {
@@ -3937,10 +3950,14 @@ async function main() {
     }
 
     // Filled model lot with no protective stop id (bracket missing).
+    // Don't page while the venue is shut — LSE STP before 08:00 BST is IB 200.
     for (const [key, row] of Object.entries(state.byKey || {})) {
       if (!row || row.closed || !row.entryFilled) continue;
       if (keyState && keyState.get(key) !== 'open') continue;
       if (row.stopId != null) continue;
+      const phase = row.contract ? sessionPhase(row.contract) : 'closed';
+      if (!row.contract || phase === 'closed') continue;
+      if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
       const pos = row.contract ? (posMap.get(posKeyOf(row.contract)) || {}).pos : 0;
       if (!pos) continue;
       findings.push({
@@ -3961,7 +3978,7 @@ async function main() {
       if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
       const held = row.contract ? posMap.get(posKeyOf(row.contract)) : null;
       const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
-      const lot = Math.max(Number(row.contract.lotHint) || 1, 1);
+      const lot = Math.max(boardLotHint(row.ticker, row.contract.lotHint), 1);
       const half = tp1SoldQty(posInDir, lot);
       if (!(half >= lot) || !(posInDir > half)) continue;
       if (row.tp1Id != null && !row.tp1RoutingFailed && !row.tp1SessionBlocked) continue;
@@ -4087,6 +4104,7 @@ async function main() {
       if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK')) continue;
       if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
       const phase = sessionPhase(row.contract);
+      if (phase === 'closed') continue;
       if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
       if (row.stopSessionBlocked) row.stopSessionBlocked = false;
       const held = posMap.get(posKeyOf(row.contract));
@@ -4149,6 +4167,10 @@ async function main() {
       const wait = attachRetryWaitMs(row.stopRoutingFailed);
       const last = row.stopAttachAttemptAt ? Date.parse(row.stopAttachAttemptAt) : NaN;
       if (Number.isFinite(last) && Date.now() - last < wait) continue;
+      if (!(Number(row.contract.conId) > 0)) {
+        try { row.contract = await resolveInstrument(row.contract) || row.contract; }
+        catch (e) { log('stop attach resolve failed', key, e.message); continue; }
+      }
       const qty = row.tp1Done ? posInDir : stopQty;
       const stp = row.tp1Done ? runnerStopPx(row, row.stopPx) : roundPx(row.stopPx, row.contract);
       if (!(stp > 0) || !(qty > 0)) continue;
@@ -4186,11 +4208,13 @@ async function main() {
       const held = posMap.get(posKeyOf(row.contract));
       const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
       if (!(posInDir > 0)) continue;
-      const lot = Math.max(Number(row.contract.lotHint) || 1, 1);
+      const lot = Math.max(boardLotHint(row.ticker, row.contract.lotHint), 1);
+      row.contract.lotHint = lot;
       const closeAction = row.side === 'sell' ? 'BUY' : 'SELL';
       const isSell = row.side === 'sell';
       const spec = openIfAboveSpec(row.ticker);
       const phase = sessionPhase(row.contract);
+      if (phase === 'closed') continue;
       if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
       if (row.tp1SessionBlocked) row.tp1SessionBlocked = false;
       const half = spec
@@ -5716,6 +5740,7 @@ if (require.main === module) {
 
 module.exports = {
   toContract,
+  boardLotHint,
   parentEntrySpec,
   correctiveExtExitSpec,
   sessionPhase,
