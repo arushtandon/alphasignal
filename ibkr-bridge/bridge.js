@@ -4265,16 +4265,11 @@ async function main() {
             'lmt=' + existing.lmt, 'qty=' + existing.qty, 'tif=' + existing.tif);
         }
         if (existing.qty > half + 1e-6) {
-          transmitOrder(existing.orderId, row.contract, baseOrder({
-            orderId: existing.orderId,
-            action: closeAction,
-            orderType: 'LMT',
-            lmtPrice: existing.lmt > 0 ? existing.lmt : roundPx(row.tp1Px, row.contract),
-            totalQuantity: half,
-            tif: existing.tif || 'GTC',
-            transmit: true
-          }), 'shrink TP1 to half ' + key);
-          log('RECONCILE: TP1 qty capped', key, existing.qty, '→', half);
+          // Bracket children cannot be qty-modified (IB 105). Cancel, then park a half-size TP1.
+          cancelOrder(existing.orderId, 'TP1 shrink replace ' + key);
+          log('RECONCILE: waiting to replace oversized TP1', key, existing.qty, '→', half);
+          await waitCancel(existing.orderId, 4000);
+          continue;
         }
         for (const extra of lmts) {
           if (extra.orderId === existing.orderId) continue;
