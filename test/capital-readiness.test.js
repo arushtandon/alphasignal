@@ -96,6 +96,13 @@ test('published 1-lot still trades while leftover liquidity stays above 20% NLV'
   });
   assert.equal(tight.eligible, false);
   assert.equal(tight.reason, 'minimum-lot-exceeds-risk-budget');
+
+  const noSnap = calculateRiskSize({
+    nlv: 467_000, entry: 17155, stop: 14215, fxToUsd: 1 / 150, lot: 100,
+    allowMinLot: true, netLiquidityAvailable: 0, liquidityFloorPct: 0.20
+  });
+  assert.equal(noSnap.eligible, true);
+  assert.equal(noSnap.quantity, 100);
 });
 
 test('portfolio gate rejects concentration and total risk breaches', () => {
