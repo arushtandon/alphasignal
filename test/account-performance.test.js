@@ -225,3 +225,22 @@ test('stale $1M book peak is replaced by live IBKR NLV', () => {
   assert.equal(snap.peakNlv, 464_000);
   assert.equal(snap.troughNlv, 464_000);
 });
+
+test('a profitable IBKR book does not get a negative Sharpe from peak NLV stamped on day one', () => {
+  const p = computeAccountPerformance({
+    bookStart: '2026-08-06',
+    today: '2026-08-27',
+    asOf: '2026-08-27',
+    ibkrEquity: 467_999,
+    netPnlUsd: 4202,
+    peakIbkrEquity: 468_141,
+    peakIbkrEquityAt: '2026-08-06',
+    eod: [
+      { date: '2026-08-07', currentBalance: 462_013 },
+      { date: '2026-08-20', currentBalance: 461_266 },
+      { date: '2026-08-25', currentBalance: 467_329 }
+    ]
+  });
+  assert.ok(p.fromStartUsd > 0);
+  assert.ok(p.sharpe > 0, 'Sharpe must follow the start→close path, not the high-water mark');
+});

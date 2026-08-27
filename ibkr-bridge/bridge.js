@@ -3202,6 +3202,26 @@ async function main() {
     const key = evt.key || `${evt.ticker}|${evt.hz}|${evt.entryDate}`;
     if (evt.type === 'entry') {
       const prior = state.byKey[key];
+      // Friday 06:00 board must not stack on Thursday's dead unfilled bag
+      // (6098.T would have been bought twice at the TSE open).
+      const yNew = normalizeYahooTicker(evt.ticker);
+      const hzNew = String(evt.hz || 'short');
+      const sideNew = String(evt.side || '').toLowerCase();
+      for (const [oldKey, oldRow] of Object.entries(state.byKey || {})) {
+        if (!oldRow || oldRow.closed || oldRow.entryFilled) continue;
+        if (oldKey === key) continue;
+        if (normalizeYahooTicker(oldRow.ticker) !== yNew) continue;
+        if (String(oldRow.hz || 'short') !== hzNew) continue;
+        if (String(oldRow.side || '').toLowerCase() !== sideNew) continue;
+        log('cancel unfilled prior rec — new board', oldKey, '→', key);
+        if (oldRow.parentId != null) cancelOrder(oldRow.parentId, 'superseded parent ' + oldKey);
+        if (oldRow.stopId != null) cancelOrder(oldRow.stopId, 'superseded stop ' + oldKey);
+        if (oldRow.tp1Id != null) cancelOrder(oldRow.tp1Id, 'superseded tp1 ' + oldKey);
+        oldRow.closed = true;
+        oldRow.supersededByNewBoard = true;
+        oldRow.updated = new Date().toISOString();
+        saveState(state);
+      }
       // Allow re-entry after a closed row (orphan flatten / error close). Same-day
       // key must not be blocked forever by a leftover parentId.
       if (prior && prior.contractRejected && !prior.entryFilled && !prior.closed) {
@@ -5006,6 +5026,7 @@ async function main() {
         const existing = state.byKey[key];
         // Re-seed rows that were Hold-cancelled while a live Buy/Sell event
         // was still open (NVDA 13 Aug: history fallback matched an old Hold).
+        if (existing && existing.supersededByNewBoard) continue;
         if (existing && !(existing.closed && existing.holdCancelledUnfilled)) continue;
         if (existing && existing.holdCancelledUnfilled) {
           const lastSeed = existing.holdReseedAt ? Date.parse(existing.holdReseedAt) : 0;
