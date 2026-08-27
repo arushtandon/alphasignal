@@ -4124,14 +4124,18 @@ async function main() {
     let n = 0;
     for (const [key, row] of Object.entries(state.byKey || {})) {
       if (!row || row.closed || row.errorTrade || !row.entryFilled) continue;
-      if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK')) continue;
+      if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK' && row.contract.secType !== 'FUT')) continue;
       if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
       const phase = sessionPhase(row.contract);
       if (phase === 'closed') continue;
       if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
       if (row.stopSessionBlocked) row.stopSessionBlocked = false;
       const held = posMap.get(posKeyOf(row.contract));
-      const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+      let posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+      if (!(posInDir > 0)) {
+        const yq = ibSignedQtyForYahoo(row.ticker);
+        posInDir = row.side === 'sell' ? -yq : yq;
+      }
       if (!(posInDir > 0)) continue;
       const closeAction = row.side === 'sell' ? 'BUY' : 'SELL';
       const stps = working.filter(o =>
@@ -5570,13 +5574,25 @@ async function main() {
       for (const [key, row] of Object.entries(state.byKey)) {
         if (!row || !row.contract) continue;
         const yahooQty = ibSignedQtyForYahoo(row.ticker);
+        const inDir = row.side === 'sell' ? -yahooQty : yahooQty;
         // Futures posKey includes expiry text that often differs from IB's
-        // portfolio key. If Yahoo still shows a live lot, do not synth-flat.
-        if (row.closed && row.entryFilled && yahooQty !== 0) {
+        // portfolio key. Reopen only when IB still holds THIS side.
+        if (row.closed && row.entryFilled && inDir > 0) {
           row.closed = false;
           row.updated = new Date().toISOString();
           saveState(state);
           log('RECONCILE: reopening', key, '(IB still holds qty=' + yahooQty + ')');
+        }
+        if (!row.closed && row.entryFilled && yahooQty !== 0 && !(inDir > 0)) {
+          const siblingNeedsStop = Object.values(state.byKey || {}).some(other =>
+            other && other !== row && !other.closed
+            && normalizeYahooTicker(other.ticker) === normalizeYahooTicker(row.ticker)
+            && other.stopId != null && other.stopId === row.stopId);
+          if (siblingNeedsStop) row.stopId = null;
+          row.closed = true;
+          row.updated = new Date().toISOString();
+          saveState(state);
+          log('RECONCILE: re-closing', key, '(IB qty is the other side, yahooQty=' + yahooQty + ')');
         }
         if (row.closed || !row.contract) continue;
         // A pending or rejected parent with no fill is not a closed trade merely
@@ -5584,7 +5600,7 @@ async function main() {
         if (!row.entryFilled) continue;
         const held = posMap.get(posKeyOf(row.contract));
         const flatAtIb = held ? held.pos === 0 : !posMap.has(posKeyOf(row.contract));
-        if (!flatAtIb || yahooQty !== 0) continue;
+        if (!flatAtIb || inDir > 0) continue;
         // Still model-open + IB flat: re-arm may re-enter unless this is an
         // error trade / already recovered via exec-history. Skip re-arm block
         // only for genuine live model names still held in thesis.
