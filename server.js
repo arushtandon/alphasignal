@@ -14883,6 +14883,8 @@ app.post('/api/ibkr/report', (req, res) => {
       orderSubmittedAt: r.orderSubmittedAt || null,
       implementationShortfallBps: Number.isFinite(Number(r.implementationShortfallBps))
         ? Number(r.implementationShortfallBps) : null,
+      multiplier: r.multiplier != null ? Number(r.multiplier) : undefined,
+      ibSymbol: r.ibSymbol ? String(r.ibSymbol) : undefined,
       time: fillTime,
       session: phase,
       sessionLabel: r.sessionLabel || ibkrSessionLabel(phase),
@@ -16752,8 +16754,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
       if (!entryQty) continue;
       const scale = f0.ccyScale || 1;
       const ticker = f0.ticker;
-      const futMult = futuresMultiplierFor(ticker);
-      const unitPx = (px) => ibkrAvgToFillUnit(px, scale, px, { ticker }) || Number(px) || 0;
+      const futMult = futuresMultiplierFor(ticker, f0.multiplier);
+      const unitPx = (px) => ibkrAvgToFillUnit(px, scale, px, { ticker, multiplier: f0.multiplier }) || Number(px) || 0;
       const avgEntryRaw = entries.reduce((s, f) => s + f.price * f.qty, 0) / entryQty;
       const avgEntry = unitPx(avgEntryRaw);
       const avgExit = exitQty > 0
@@ -17105,10 +17107,10 @@ app.get('/api/ibkr/trades', async (req, res) => {
       t.mark = mark;
       t.markSrc = mark != null ? (markMap[t.ticker] && markMap[t.ticker].src) || null : null;
       t.unrealizedUsd = (t.openQty > 0 && mark != null)
-        ? +(((mark - t.avgEntry) * t.openQty * dir * futuresMultiplierFor(t.ticker) / (t.ccyScale || 1)) * fx).toFixed(2)
+        ? +(((mark - t.avgEntry) * t.openQty * dir * futuresMultiplierFor(t.ticker, f0.multiplier) / (t.ccyScale || 1)) * fx).toFixed(2)
         : (t.openQty > 0 ? null : 0);
       const nQty = t.openQty > 0 ? t.openQty : t.entryQty;
-      t.notionalUsd = +((Math.abs(t.avgEntry * nQty * futuresMultiplierFor(t.ticker) / (t.ccyScale || 1)) * fx)).toFixed(2);
+      t.notionalUsd = +((Math.abs(t.avgEntry * nQty * futuresMultiplierFor(t.ticker, f0.multiplier) / (t.ccyScale || 1)) * fx)).toFixed(2);
 
       if (t.errorTrade) {
         errRealUsd += t.realizedUsd;
@@ -17132,7 +17134,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       for (const f of t.fills) {
         if (f.role === 'entry') continue;
         const day = String(f.time).slice(0, 10);
-        const pnlUsd = ((f.price - t.avgEntry) * f.qty * dir * futuresMultiplierFor(t.ticker) / (t.ccyScale || 1)) * fx;
+        const pnlUsd = ((f.price - t.avgEntry) * f.qty * dir * futuresMultiplierFor(t.ticker, f.multiplier || f0.multiplier) / (t.ccyScale || 1)) * fx;
         if (t.errorTrade) dailyError.set(day, (dailyError.get(day) || 0) + pnlUsd);
         else daily.set(day, (daily.get(day) || 0) + pnlUsd);
       }

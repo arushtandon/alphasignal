@@ -90,6 +90,14 @@ test('published 1-lot still trades while leftover liquidity stays above 20% NLV'
   assert.equal(brent.quantity, 1);
   assert.equal(brent.bindingLimit, 'min-lot-liquidity');
 
+  const brentMini = calculateRiskSize({
+    nlv: 467_000, entry: 86.56, stop: 81.86, multiplier: 100, lot: 1, secType: 'FUT',
+    maxNotionalUsd: 10_000
+  });
+  assert.equal(brentMini.eligible, true);
+  assert.equal(brentMini.quantity, 1);
+  assert.ok(brentMini.notionalUsd <= 10_000);
+
   const tight = calculateRiskSize({
     nlv: 467_000, entry: 17155, stop: 14215, fxToUsd: 1 / 150, lot: 100,
     allowMinLot: true, netLiquidityAvailable: 90_000, liquidityFloorPct: 0.20

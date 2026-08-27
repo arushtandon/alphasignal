@@ -117,6 +117,14 @@ const {
   execHistoryFilter
 } = require('../lib/ibkr/ib-exec-time');
 const { estimateIbkrCommission, fillNeedsEstimatedCommission, applyEstimatedCommission } = require('../lib/ibkr/ib-commission');
+const {
+  YAHOO_FUTURES,
+  INSTRUMENT_NOTIONAL_USD,
+  orderedCommoditySpecs,
+  specFields,
+  ibFutSymbolToYahoo,
+  isCommodityYahoo
+} = require('../lib/ibkr/commodity-futures');
 
 const DRY = process.env.IBKR_DRY_RUN !== '0';
 const BASE = String(process.env.ALPHASIGNAL_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
@@ -388,24 +396,10 @@ function postJson(urlPath, body) {
 
 // ── Contract mapping ─────────────────────────────────────────────────────────
 /**
- * Yahoo continuous futures (=F) → IB root + exchange + default multiplier.
- * Front month is resolved live via reqContractDetails.
+ * Yahoo continuous futures (=F) → IB root. Commodity names prefer the most
+ * liquid mini/micro that can sit near a $10k notional; see commodity-futures.js.
+ * Front month is resolved live via reqContractDetails (with mini fallbacks).
  */
-const YAHOO_FUTURES = {
-  'GC=F': { symbol: 'GC', exchange: 'COMEX', currency: 'USD', multiplier: 100,   tick: 0.1,    market: 'GLOBE' },
-  'SI=F': { symbol: 'SI', exchange: 'COMEX', currency: 'USD', multiplier: 5000,  tick: 0.005,  market: 'GLOBE' },
-  'HG=F': { symbol: 'HG', exchange: 'COMEX', currency: 'USD', multiplier: 25000, tick: 0.0005, market: 'GLOBE' },
-  'PL=F': { symbol: 'PL', exchange: 'NYMEX', currency: 'USD', multiplier: 50,    tick: 0.1,    market: 'GLOBE' },
-  'PA=F': { symbol: 'PA', exchange: 'NYMEX', currency: 'USD', multiplier: 100,   tick: 0.05,   market: 'GLOBE' },
-  'CL=F': { symbol: 'CL', exchange: 'NYMEX', currency: 'USD', multiplier: 1000,  tick: 0.01,   market: 'GLOBE' },
-  'BZ=F': { symbol: 'BZ', exchange: 'NYMEX', currency: 'USD', multiplier: 1000,  tick: 0.01,   market: 'GLOBE' },
-  'NG=F': { symbol: 'NG', exchange: 'NYMEX', currency: 'USD', multiplier: 10000, tick: 0.001,  market: 'GLOBE' },
-  'ES=F': { symbol: 'ES', exchange: 'CME',   currency: 'USD', multiplier: 50,    tick: 0.25,   market: 'GLOBE' },
-  'NQ=F': { symbol: 'NQ', exchange: 'CME',   currency: 'USD', multiplier: 20,    tick: 0.25,   market: 'GLOBE' },
-  'YM=F': { symbol: 'YM', exchange: 'CBOT',  currency: 'USD', multiplier: 5,     tick: 1,      market: 'GLOBE' },
-  'RTY=F':{ symbol: 'RTY',exchange: 'CME',   currency: 'USD', multiplier: 50,    tick: 0.1,    market: 'GLOBE' },
-  'ZN=F': { symbol: 'ZN', exchange: 'CBOT',  currency: 'USD', multiplier: 1000,  tick: 0.015625, market: 'GLOBE' }
-};
 
 /** Yahoo crypto → IB CRYPTO (PAXOS). */
 const YAHOO_CRYPTO = {
@@ -439,6 +433,7 @@ function toContract(ticker) {
       currency: f.currency,
       multiplier: f.multiplier,
       tick: f.tick,
+      tradingClass: f.tradingClass,
       market: f.market,
       lotHint: 1,
       needsFrontMonth: true
@@ -841,7 +836,8 @@ async function shareSplit(entry, contract, lotOverride, riskInput = {}) {
     capitalScale: riskInput.capitalScale,
     allowMinLot: riskInput.allowMinLot === true,
     netLiquidityAvailable: riskInput.netLiquidityAvailable,
-    liquidityFloorPct: riskInput.liquidityFloorPct
+    liquidityFloorPct: riskInput.liquidityFloorPct,
+    maxNotionalUsd: contract.secType === 'FUT' ? INSTRUMENT_NOTIONAL_USD : undefined
   });
   if (!sizing.eligible) {
     log('risk sizing rejected', contract.symbol, sizing.reason,
@@ -1146,14 +1142,15 @@ async function main() {
       }
     }
     if (contract.secType === 'FUT') {
-      const sym = String(contract.symbol || '').toUpperCase();
+      const wantY = ibFutSymbolToYahoo(contract.symbol) || String(contract.yahooTicker || '').toUpperCase();
       const ccy = contract.currency || 'USD';
       for (const v of posMap.values()) {
         const c = v && v.contract;
         if (!c || c.secType !== 'FUT') continue;
-        if (String(c.symbol || '').toUpperCase() !== sym) continue;
         if ((c.currency || 'USD') !== ccy) continue;
-        return v;
+        if (String(c.symbol || '').toUpperCase() === String(contract.symbol || '').toUpperCase()) return v;
+        const haveY = ibFutSymbolToYahoo(c.symbol) || String(c.yahooTicker || '').toUpperCase();
+        if (wantY && haveY && wantY === haveY) return v;
       }
     }
     return null;
@@ -1501,6 +1498,9 @@ async function main() {
               : null,
             currency: row.contract && row.contract.currency || 'USD',
             ccyScale: row.contract && row.contract.penceQuoted ? 100 : 1,
+            multiplier: row.contract && row.contract.secType === 'FUT'
+              ? (Number(row.contract.multiplier) || null) : null,
+            ibSymbol: row.contract && row.contract.symbol || null,
             errorTrade: !!(row.errorTrade || ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())),
             userReentry: row.userReentry === true,
             session: phase,
@@ -1874,10 +1874,7 @@ async function main() {
     if (c.yahooTicker) return String(c.yahooTicker).toUpperCase();
     if (c.secType === 'FUT') {
       const sym = String(c.symbol || '').toUpperCase();
-      for (const [y, meta] of Object.entries(YAHOO_FUTURES)) {
-        if (meta.symbol === sym) return y;
-      }
-      return sym ? sym + '=F' : null;
+      return ibFutSymbolToYahoo(sym);
     }
     if (c.secType === 'CRYPTO') {
       const sym = String(c.symbol || '').toUpperCase();
@@ -2127,8 +2124,11 @@ async function main() {
       contract.needsFrontMonth = false;
       return contract;
     }
+    const specs = orderedCommoditySpecs(yKey, contract.entryPx);
+    if (specs.length && specFields(specs[0])) {
+      Object.assign(contract, specFields(specs[0]), { yahooTicker: contract.yahooTicker, secType: 'FUT' });
+    }
     if (DRY || !ib || !EventName) {
-      // Offline / dry: next calendar month YYYYMM as a best-effort stub.
       const d = new Date();
       d.setUTCMonth(d.getUTCMonth() + 1);
       const yyyymm = String(d.getUTCFullYear()) + String(d.getUTCMonth() + 1).padStart(2, '0');
@@ -2136,10 +2136,12 @@ async function main() {
       contract.needsFrontMonth = false;
       return contract;
     }
-    return new Promise(resolve => {
+    const reqOneFutFront = (spec) => new Promise(resolvePick => {
       const reqId = nextDetailsId++;
       const cands = [];
       let done = false;
+      const wantMult = Number(spec.multiplier);
+      const wantClass = spec.tradingClass ? String(spec.tradingClass).toUpperCase() : '';
       const finish = () => {
         if (done) return;
         done = true;
@@ -2149,45 +2151,22 @@ async function main() {
         const todayKey = String(today.getUTCFullYear())
           + String(today.getUTCMonth() + 1).padStart(2, '0')
           + String(today.getUTCDate()).padStart(2, '0');
-        const live = cands
+        const matched = cands.filter(x => {
+          if (wantClass && String(x.tradingClass || '').toUpperCase() !== wantClass
+            && String(x.symbol || '').toUpperCase() !== String(spec.symbol).toUpperCase()) {
+            return false;
+          }
+          if (wantMult > 0 && Number(x.multiplier) > 0
+            && Math.abs(Number(x.multiplier) - wantMult) > 1e-6) return false;
+          return true;
+        });
+        const pool = matched.length ? matched : cands;
+        const live = pool
           .filter(x => String(x.month || '') >= todayKey.slice(0, 6))
           .sort((a, b) => String(a.month).localeCompare(String(b.month)));
-        const pick = live[0] || cands.sort((a, b) => String(a.month).localeCompare(String(b.month)))[0];
-        if (pick) {
-          contract.lastTradeDateOrContractMonth = pick.month;
-          if (pick.conId > 0) contract.conId = pick.conId;
-          if (pick.localSymbol) contract.localSymbol = pick.localSymbol;
-          if (pick.tradingClass) contract.tradingClass = pick.tradingClass;
-          if (pick.multiplier > 0) contract.multiplier = pick.multiplier;
-          if (pick.exchange) contract.exchange = pick.exchange;
-          contract.needsFrontMonth = false;
-          _futFrontCache.set(yKey, {
-            at: Date.now(),
-            contract: {
-              lastTradeDateOrContractMonth: contract.lastTradeDateOrContractMonth,
-              conId: contract.conId,
-              localSymbol: contract.localSymbol,
-              tradingClass: contract.tradingClass,
-              multiplier: contract.multiplier,
-              exchange: contract.exchange,
-              tick: contract.tick,
-              symbol: contract.symbol,
-              secType: 'FUT',
-              currency: contract.currency,
-              market: 'GLOBE',
-              yahooTicker: contract.yahooTicker
-            }
-          });
-          log('futures front month', contract.yahooTicker || contract.symbol,
-            '→', contract.lastTradeDateOrContractMonth,
-            'mult=' + contract.multiplier, 'conId=' + (contract.conId || 'n/a'));
-        } else {
-          log('futures front month NOT FOUND for', contract.yahooTicker || contract.symbol,
-            '(', cands.length, 'candidates)');
-        }
-        resolve(contract);
+        resolvePick(live[0] || pool.sort((a, b) => String(a.month).localeCompare(String(b.month)))[0] || null);
       };
-      const t = setTimeout(finish, 8000);
+      const t = setTimeout(finish, 5000);
       const onDet = (id, details) => {
         if (Number(id) !== reqId) return;
         const d = details || {};
@@ -2197,10 +2176,12 @@ async function main() {
         cands.push({
           month,
           conId: Number(c.conId) || 0,
+          symbol: c.symbol ? String(c.symbol) : spec.symbol,
           localSymbol: c.localSymbol ? String(c.localSymbol) : null,
           tradingClass: c.tradingClass ? String(c.tradingClass) : null,
-          multiplier: Number(c.multiplier || d.multiplier || contract.multiplier) || contract.multiplier,
-          exchange: c.exchange || contract.exchange
+          multiplier: Number(c.multiplier || d.multiplier || spec.multiplier) || spec.multiplier,
+          exchange: c.exchange || spec.exchange,
+          tick: spec.tick
         });
       };
       const onEnd = (id) => {
@@ -2211,18 +2192,68 @@ async function main() {
       ib.on(EventName.contractDetails, onDet);
       ib.on(EventName.contractDetailsEnd, onEnd);
       try {
-        ib.reqContractDetails(reqId, {
-          symbol: String(contract.symbol),
+        const req = {
+          symbol: String(spec.symbol),
           secType: 'FUT',
-          exchange: contract.exchange,
-          currency: contract.currency || 'USD'
-        });
+          exchange: spec.exchange,
+          currency: spec.currency || 'USD'
+        };
+        if (spec.tradingClass) req.tradingClass = spec.tradingClass;
+        ib.reqContractDetails(reqId, req);
       } catch (e) {
         clearTimeout(t);
-        log('reqContractDetails FUT failed', e.message);
+        log('reqContractDetails FUT failed', spec.symbol, spec.exchange, e.message);
         finish();
       }
     });
+    const trySpecs = specs.length ? specs : [{
+      symbol: contract.symbol, exchange: contract.exchange, currency: contract.currency,
+      multiplier: contract.multiplier, tick: contract.tick, tradingClass: contract.tradingClass
+    }];
+    for (const spec of trySpecs) {
+      const pick = await reqOneFutFront(spec);
+      if (!pick || !(pick.conId > 0 || pick.month)) {
+        log('futures route miss', yKey, spec.symbol, spec.exchange, 'mult=' + spec.multiplier);
+        continue;
+      }
+      contract.symbol = spec.symbol;
+      contract.exchange = pick.exchange || spec.exchange;
+      contract.currency = spec.currency || 'USD';
+      contract.tick = spec.tick != null ? spec.tick : contract.tick;
+      if (spec.tradingClass) contract.tradingClass = spec.tradingClass;
+      contract.lastTradeDateOrContractMonth = pick.month;
+      if (pick.conId > 0) contract.conId = pick.conId;
+      if (pick.localSymbol) contract.localSymbol = pick.localSymbol;
+      if (pick.tradingClass) contract.tradingClass = pick.tradingClass;
+      if (pick.multiplier > 0) contract.multiplier = pick.multiplier;
+      else if (spec.multiplier > 0) contract.multiplier = spec.multiplier;
+      contract.needsFrontMonth = false;
+      _futFrontCache.set(yKey, {
+        at: Date.now(),
+        contract: {
+          lastTradeDateOrContractMonth: contract.lastTradeDateOrContractMonth,
+          conId: contract.conId,
+          localSymbol: contract.localSymbol,
+          tradingClass: contract.tradingClass,
+          multiplier: contract.multiplier,
+          exchange: contract.exchange,
+          tick: contract.tick,
+          symbol: contract.symbol,
+          secType: 'FUT',
+          currency: contract.currency,
+          market: 'GLOBE',
+          yahooTicker: contract.yahooTicker
+        }
+      });
+      log('futures front month', contract.yahooTicker || contract.symbol,
+        '→', spec.symbol, contract.lastTradeDateOrContractMonth,
+        'mult=' + contract.multiplier, 'conId=' + (contract.conId || 'n/a'),
+        'exch=' + contract.exchange);
+      return contract;
+    }
+    log('futures front month NOT FOUND for', contract.yahooTicker || contract.symbol,
+      '(tried', trySpecs.map(s => s.symbol + '@' + s.exchange).join(', ') + ')');
+    return contract;
   }
 
   /** Subscribe to IB market data for an AlphaSignal ticker (idempotent). */
@@ -2670,6 +2701,21 @@ async function main() {
     if (!contract) {
       log('skip entry (unsupported instrument for IB paper):', evt.ticker);
       return null;
+    }
+    if (contract.secType === 'FUT') contract.entryPx = Number(evt.entry) || undefined;
+    if (isCommodityYahoo(evt.ticker) && !evt.userReentry) {
+      const wantY = normalizeYahooTicker(evt.ticker);
+      for (const held of posMap.values()) {
+        if (!held || !held.pos || !held.contract || held.contract.secType !== 'FUT') continue;
+        const haveY = normalizeYahooTicker(yahooFromContract(held.contract));
+        if (haveY !== wantY) continue;
+        const sameDir = evt.side === 'sell' ? held.pos < 0 : held.pos > 0;
+        if (sameDir) {
+          log('skip entry — already holding', evt.ticker, 'via',
+            held.contract.symbol, 'qty=' + held.pos, '(will not stack a mini on the live lot)');
+          return null;
+        }
+      }
     }
     contract = await resolveInstrument(contract);
     if (contract.secType === 'FUT' && !contract.lastTradeDateOrContractMonth && !contract.conId) {
