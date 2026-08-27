@@ -767,15 +767,23 @@ async function shareSplit(entry, contract, lotOverride, riskInput = {}) {
     advShares: riskInput.advShares,
     spreadBps: riskInput.spreadBps,
     drawdownPct: riskInput.drawdownPct,
-    capitalScale: riskInput.capitalScale
+    capitalScale: riskInput.capitalScale,
+    allowMinLot: riskInput.allowMinLot === true,
+    netLiquidityAvailable: riskInput.netLiquidityAvailable,
+    liquidityFloorPct: riskInput.liquidityFloorPct
   });
   if (!sizing.eligible) {
     log('risk sizing rejected', contract.symbol, sizing.reason,
       'NLV=' + (Number(riskInput.nlv) || 0), 'entry=' + e, 'stop=' + riskInput.stop);
     return { total: 0, sold: 0, runner: 0, risk: sizing };
   }
+  if (sizing.bindingLimit === 'min-lot-liquidity') {
+    log('risk sizing 1-lot override (liquidity still above 20% NLV)', contract.symbol,
+      sizing.reason, 'qty=' + sizing.quantity, 'notionalUsd=' + sizing.notionalUsd,
+      'stopRiskUsd=' + sizing.stopRiskUsd);
+  }
   let total = sizing.quantity;
-  if (contract.secType === 'STK') {
+  if (contract.secType === 'STK' && sizing.bindingLimit !== 'min-lot-liquidity') {
     const bumped = maybeTwoLotTotal({
       total, lot, nlv: riskInput.nlv, entry: normalizedEntry,
       fxToUsd: 1 / localPerUsd,
@@ -2558,13 +2566,19 @@ async function main() {
       ? (sizingQuote.bid + sizingQuote.ask) / 2 : 0;
     const liveSpreadBps = sizingMid > 0
       ? ((sizingQuote.ask - sizingQuote.bid) / sizingMid) * 10000 : null;
+    const boardEntry = scheduledEntryReleaseAllowed(evt) && !evt.userReentry;
+    const availLiq = Number(accountSnap.netLiquidityAvailable != null
+      ? accountSnap.netLiquidityAvailable : accountSnap.availableFunds);
     const split = await shareSplit(evt.entry, contract, lot, {
       nlv,
       stop: rawStop,
       advShares: evt.advShares,
       spreadBps: Number.isFinite(liveSpreadBps) ? liveSpreadBps : evt.spreadBps,
       drawdownPct: Number(evt.drawdownPct) || 0,
-      capitalScale: evt.capitalScale
+      capitalScale: evt.capitalScale,
+      allowMinLot: boardEntry,
+      netLiquidityAvailable: availLiq,
+      liquidityFloorPct: 0.20
     });
     if (!(split.total > 0)) {
       log('skip entry — zero size for', evt.ticker, 'entry', evt.entry, 'lot', lot);
@@ -2610,14 +2624,15 @@ async function main() {
       return Number.isFinite(at) && singaporeToDateString(at) === singaporeToDateString()
         ? sum + (Number(row.riskSizing.stopRiskUsd) || 0) : sum;
     }, 0);
-    const boardEntry = scheduledEntryReleaseAllowed(evt) && !evt.userReentry;
     // 06:00 SGT published names are the day's allocation. The 30% gross /
     // country / USD cluster caps are for extras (re-entry, unauthorized), not
     // for blocking the board (DHL-day SNDK/PLTR/ABNB sat behind a 60% book).
     const portfolioCaps = boardEntry
       ? Object.assign({}, DEFAULT_CAPS, {
         grossPct: 1, netAbsPct: 1, sectorPct: 1,
-        countryPct: 1, currencyPct: 1, clusterPct: 1
+        countryPct: 1, currencyPct: 1, clusterPct: 1,
+        ...(split.risk && split.risk.bindingLimit === 'min-lot-liquidity'
+          ? { singleNamePct: 1, dailyNewRiskPct: 1 } : {})
       })
       : DEFAULT_CAPS;
     const portfolioGate = evaluatePortfolioAddition({

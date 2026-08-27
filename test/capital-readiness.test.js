@@ -73,6 +73,31 @@ test('risk sizing respects NLV, stop, notional, lot, and drawdown', () => {
   assert.equal(future.reason, 'minimum-contract-exceeds-risk-budget');
 });
 
+test('published 1-lot still trades while leftover liquidity stays above 20% NLV', () => {
+  const recruit = calculateRiskSize({
+    nlv: 467_000, entry: 17155, stop: 14215, fxToUsd: 1 / 150, lot: 100,
+    allowMinLot: true, netLiquidityAvailable: 374_000, liquidityFloorPct: 0.20
+  });
+  assert.equal(recruit.eligible, true);
+  assert.equal(recruit.quantity, 100);
+  assert.equal(recruit.bindingLimit, 'min-lot-liquidity');
+
+  const brent = calculateRiskSize({
+    nlv: 467_000, entry: 86.56, stop: 81.86, multiplier: 1000, lot: 1, secType: 'FUT',
+    allowMinLot: true, netLiquidityAvailable: 374_000, liquidityFloorPct: 0.20
+  });
+  assert.equal(brent.eligible, true);
+  assert.equal(brent.quantity, 1);
+  assert.equal(brent.bindingLimit, 'min-lot-liquidity');
+
+  const tight = calculateRiskSize({
+    nlv: 467_000, entry: 17155, stop: 14215, fxToUsd: 1 / 150, lot: 100,
+    allowMinLot: true, netLiquidityAvailable: 90_000, liquidityFloorPct: 0.20
+  });
+  assert.equal(tight.eligible, false);
+  assert.equal(tight.reason, 'minimum-lot-exceeds-risk-budget');
+});
+
 test('portfolio gate rejects concentration and total risk breaches', () => {
   const result = evaluatePortfolioAddition({
     nlv: 1_000_000,
