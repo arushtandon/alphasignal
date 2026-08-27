@@ -1192,6 +1192,7 @@ async function main() {
       if (Number(code) === 10147) {
         unknownOrderIds.add(Number(reqId));
         logOnce('gone-' + reqId, 'IB 10147 — order already gone, will not re-cancel', reqId);
+        noteCancelAck(Number(reqId), 'Cancelled');
         return;
       }
       // 10197: IB allows only one live market-data consumer per user. TWS/Gateway
@@ -5575,15 +5576,20 @@ async function main() {
         if (!row || !row.contract) continue;
         const yahooQty = ibSignedQtyForYahoo(row.ticker);
         const inDir = row.side === 'sell' ? -yahooQty : yahooQty;
+        const siblingOwns = Object.values(state.byKey || {}).some(other =>
+          other && other !== row && !other.closed && other.entryFilled
+          && normalizeYahooTicker(other.ticker) === normalizeYahooTicker(row.ticker)
+          && String(other.side || 'buy') === String(row.side || 'buy'));
         // Futures posKey includes expiry text that often differs from IB's
-        // portfolio key. Reopen only when IB still holds THIS side.
-        if (row.closed && row.entryFilled && inDir > 0) {
+        // portfolio key. Reopen only when IB still holds THIS side and no
+        // other open row already owns the lot (2914 long vs 2914 short-horizon).
+        if (row.closed && row.entryFilled && inDir > 0 && !siblingOwns) {
           row.closed = false;
           row.updated = new Date().toISOString();
           saveState(state);
           log('RECONCILE: reopening', key, '(IB still holds qty=' + yahooQty + ')');
         }
-        if (!row.closed && row.entryFilled && yahooQty !== 0 && !(inDir > 0)) {
+        if (!row.closed && row.entryFilled && (siblingOwns || (yahooQty !== 0 && !(inDir > 0)))) {
           const siblingNeedsStop = Object.values(state.byKey || {}).some(other =>
             other && other !== row && !other.closed
             && normalizeYahooTicker(other.ticker) === normalizeYahooTicker(row.ticker)
@@ -5592,7 +5598,7 @@ async function main() {
           row.closed = true;
           row.updated = new Date().toISOString();
           saveState(state);
-          log('RECONCILE: re-closing', key, '(IB qty is the other side, yahooQty=' + yahooQty + ')');
+          log('RECONCILE: re-closing', key, siblingOwns ? '(sibling already owns the lot)' : ('(IB qty is the other side, yahooQty=' + yahooQty + ')'));
         }
         if (row.closed || !row.contract) continue;
         // A pending or rejected parent with no fill is not a closed trade merely
