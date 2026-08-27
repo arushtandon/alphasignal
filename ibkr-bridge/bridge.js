@@ -5125,10 +5125,12 @@ async function main() {
           } else if (phase === 'rth' && (row.entryStyle !== 'MKT' || row.contractRejected || row.deferred)) {
             reason = 'asia-rth';
           }
-          else if (phase === 'rth' && row.entryStyle === 'MKT' && row.lastRearmAt
-            && (Date.now() - Date.parse(row.lastRearmAt)) > 2 * 60 * 1000) {
-            // Prior MKT place rejected (lot/tick/contract/lunch) — retry
-            reason = 'asia-rth-retry';
+          else if (phase === 'rth' && row.entryStyle === 'MKT') {
+            const t0 = Date.parse(row.lastRearmAt || row.orderSubmittedAt || 0);
+            if (!Number.isFinite(t0) || Date.now() - t0 > 2 * 60 * 1000) {
+              // Unfilled TSE/SEHK MKT (or a rejected first fire) — retry
+              reason = 'asia-rth-retry';
+            }
           } else if (phase !== 'rth' && phase !== 'lunch' && row.entryStyle === 'MKT') reason = 'asia-to-opg';
           else if (!row.entryStyle) reason = 'asia-missing-style';
         } else if (eu && phase === 'rth' && (isAuctionEntryStyle(row.entryStyle) || row.restoreAfterFalseOrphan)) {
@@ -5566,13 +5568,23 @@ async function main() {
 
       // 2. Rows flat at IB but never closed in state (exit filled while down).
       for (const [key, row] of Object.entries(state.byKey)) {
+        if (!row || !row.contract) continue;
+        const yahooQty = ibSignedQtyForYahoo(row.ticker);
+        // Futures posKey includes expiry text that often differs from IB's
+        // portfolio key. If Yahoo still shows a live lot, do not synth-flat.
+        if (row.closed && row.entryFilled && yahooQty !== 0) {
+          row.closed = false;
+          row.updated = new Date().toISOString();
+          saveState(state);
+          log('RECONCILE: reopening', key, '(IB still holds qty=' + yahooQty + ')');
+        }
         if (row.closed || !row.contract) continue;
         // A pending or rejected parent with no fill is not a closed trade merely
         // because IB has no position yet. Re-arm logic owns these rows.
         if (!row.entryFilled) continue;
         const held = posMap.get(posKeyOf(row.contract));
         const flatAtIb = held ? held.pos === 0 : !posMap.has(posKeyOf(row.contract));
-        if (!flatAtIb) continue;
+        if (!flatAtIb || yahooQty !== 0) continue;
         // Still model-open + IB flat: re-arm may re-enter unless this is an
         // error trade / already recovered via exec-history. Skip re-arm block
         // only for genuine live model names still held in thesis.
