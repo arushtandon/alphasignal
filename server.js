@@ -38,6 +38,7 @@ const {
   isLiveAuthorizedServerExit
 } = require('./lib/ibkr/live-exit-authority');
 const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/account-performance');
+const { ibkrAvgToFillUnit, futuresMultiplierFor } = require('./lib/ibkr/avg-cost');
 const {
   applyEstimatedCommission,
   fillNeedsEstimatedCommission
@@ -15744,13 +15745,6 @@ try { restoreOpenModelFillsFromCursorErr(); } catch (e) {
 try { backfillMissingIbkrCommissions(); } catch (e) {
   console.warn('boot backfill missing commissions failed:', e.message);
 }
-function ibkrAvgToFillUnit(avgCost, ccyScale, sampleEntryPx) {
-  let avg = Number(avgCost);
-  if (!(avg > 0)) return null;
-  // LSE: IB often reports pounds while fills are pence (ccyScale=100).
-  if ((Number(ccyScale) || 1) === 100 && sampleEntryPx > 50 && avg * 10 < sampleEntryPx) avg *= 100;
-  return avg;
-}
 /** Aggregate open lots from fill rows (same math as /api/ibkr/trades). */
 function aggregateIbkrOpenFromFills(rows, opts) {
   opts = opts || {};
@@ -15829,7 +15823,7 @@ async function resolveGhostFlatMark(ticker) {
 
 /**
  * POST /api/ibkr/recon
- * Body: { positions: [{ ticker, qty, avgCost, currency?, conId? }], marks?: {TICKER: price},
+ * Body: { positions: [{ ticker, qty, avgCost, currency?, conId?, multiplier?, secType? }], marks?: {TICKER: price},
  *         accountSnapshot?: { startingBalance, availableFunds, netLiquidation, ... } }
  * Aligns AlphaSignal fill ledger to IB paper open qty + averageCost for tracked names.
  */
@@ -15884,6 +15878,8 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       if (Number(p.avgCost) > 0) prev.avgCost = Number(p.avgCost);
       if (p.currency) prev.currency = p.currency;
       if (p.conId) prev.conId = p.conId;
+      if (Number(p.multiplier) > 1) prev.multiplier = Number(p.multiplier);
+      if (p.secType) prev.secType = p.secType;
       ibByY.set(y, prev);
       const cid = Number(p.conId);
       if (cid > 0) {
@@ -16220,8 +16216,9 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           }
         } else if (ibAbs > asAbs && primary) {
           const delta = ibAbs - asAbs;
-          const avg = ibkrAvgToFillUnit(ib && ib.avgCost, primary.ccyScale, primary.avgEntry)
-            || primary.avgEntry;
+          const avg = ibkrAvgToFillUnit(ib && ib.avgCost, primary.ccyScale, primary.avgEntry, {
+            ticker: primary.rawTicker || y, multiplier: ib && ib.multiplier
+          }) || primary.avgEntry;
           if (!(avg > 0) || !(delta > 0)) continue;
           const fillAt = ibkrRecDayIsoFromKey(primary.key) || new Date().toISOString();
           const phase = ibkrSessionPhase(primary.rawTicker || y, fillAt);
@@ -16274,7 +16271,9 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         delete pending[wantKey];
         // Qty matches — check avg
         if (ib && Number(ib.avgCost) > 0 && primary) {
-          const avg = ibkrAvgToFillUnit(ib.avgCost, primary.ccyScale, primary.avgEntry);
+          const avg = ibkrAvgToFillUnit(ib.avgCost, primary.ccyScale, primary.avgEntry, {
+            ticker: primary.rawTicker || y, multiplier: ib.multiplier
+          });
           if (avg > 0) {
             const tick = primary.ccyScale === 100 ? 0.1
               : (avg >= 1000 ? 1 : avg >= 100 ? 0.05 : 0.01);
@@ -16367,7 +16366,8 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       avgFixed,
       // Snapshot used by /api/ibkr/trades to overlay live IB qty/avg on the tab
       positions: [...ibByY.entries()].map(([ticker, v]) => ({
-        ticker, qty: v.qty, avgCost: v.avgCost, currency: v.currency || null, conId: v.conId || null
+        ticker, qty: v.qty, avgCost: v.avgCost, currency: v.currency || null, conId: v.conId || null,
+        multiplier: v.multiplier || null, secType: v.secType || null
       }))
     };
     saveIbkrReconReport(report);
@@ -16745,17 +16745,21 @@ app.get('/api/ibkr/trades', async (req, res) => {
       const exitQty = exits.reduce((s, f) => s + f.qty, 0);
       if (!entryQty) continue;
       const scale = f0.ccyScale || 1;
-      const avgEntry = entries.reduce((s, f) => s + f.price * f.qty, 0) / entryQty;
+      const ticker = f0.ticker;
+      const futMult = futuresMultiplierFor(ticker);
+      const unitPx = (px) => ibkrAvgToFillUnit(px, scale, px, { ticker }) || Number(px) || 0;
+      const avgEntryRaw = entries.reduce((s, f) => s + f.price * f.qty, 0) / entryQty;
+      const avgEntry = unitPx(avgEntryRaw);
       const avgExit = exitQty > 0
-        ? exits.reduce((s, f) => s + f.price * f.qty, 0) / exitQty
+        ? unitPx(exits.reduce((s, f) => s + f.price * f.qty, 0) / exitQty)
         : null;
       const lastExit = exitQty > 0 ? exits[exits.length - 1] : null;
-      const realizedLocal = exits.reduce((s, f) => s + (f.price - avgEntry) * f.qty * dir, 0) / scale;
+      const realizedLocal = exits.reduce((s, f) => s + (unitPx(f.price) - avgEntry) * f.qty * dir, 0) / scale * futMult;
       const openQty = Math.max(0, entryQty - exitQty);
       const enrichFill = (f) => {
         const session = ibkrFillSession(f, f.ticker || f0.ticker, f.time);
         return {
-          role: f.role, qty: f.qty, price: f.price, time: f.time,
+          role: f.role, qty: f.qty, price: unitPx(f.price), time: f.time,
           ticker: f.ticker || f0.ticker,
           side: f.side || f0.side,
           execId: f.execId || null,
@@ -16784,7 +16788,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
         currency: f0.currency, ccyScale: scale,
         entryQty, exitQty, openQty, avgEntry,
         avgExit,
-        lastExitPrice: lastExit ? lastExit.price : null,
+        lastExitPrice: lastExit ? unitPx(lastExit.price) : null,
         lastExitTime: lastExit ? lastExit.time : null,
         entrySession: entrySessions[0] || null,
         exitSession: exitSessions.length ? exitSessions[exitSessions.length - 1] : null,
@@ -17010,7 +17014,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
           }
           if (take > 0) {
             t.status = t.exitQty > 0 ? 'partial' : 'open';
-            const avg = ibkrAvgToFillUnit(ibp.avgCost, t.ccyScale, t.avgEntry);
+            const avg = ibkrAvgToFillUnit(ibp.avgCost, t.ccyScale, t.avgEntry, {
+              ticker: t.ticker || y, multiplier: ibp.multiplier
+            });
             if (avg > 0) {
               const tick = t.ccyScale === 100 ? 0.1 : (avg >= 1000 ? 1 : avg >= 100 ? 0.05 : 0.01);
               if (Math.abs(t.avgEntry - avg) > tick) {
@@ -17092,10 +17098,10 @@ app.get('/api/ibkr/trades', async (req, res) => {
       t.mark = mark;
       t.markSrc = mark != null ? (markMap[t.ticker] && markMap[t.ticker].src) || null : null;
       t.unrealizedUsd = (t.openQty > 0 && mark != null)
-        ? +(((mark - t.avgEntry) * t.openQty * dir / (t.ccyScale || 1)) * fx).toFixed(2)
+        ? +(((mark - t.avgEntry) * t.openQty * dir * futuresMultiplierFor(t.ticker) / (t.ccyScale || 1)) * fx).toFixed(2)
         : (t.openQty > 0 ? null : 0);
       const nQty = t.openQty > 0 ? t.openQty : t.entryQty;
-      t.notionalUsd = +((Math.abs(t.avgEntry * nQty / (t.ccyScale || 1)) * fx)).toFixed(2);
+      t.notionalUsd = +((Math.abs(t.avgEntry * nQty * futuresMultiplierFor(t.ticker) / (t.ccyScale || 1)) * fx)).toFixed(2);
 
       if (t.errorTrade) {
         errRealUsd += t.realizedUsd;
@@ -17119,7 +17125,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       for (const f of t.fills) {
         if (f.role === 'entry') continue;
         const day = String(f.time).slice(0, 10);
-        const pnlUsd = ((f.price - t.avgEntry) * f.qty * dir / (t.ccyScale || 1)) * fx;
+        const pnlUsd = ((f.price - t.avgEntry) * f.qty * dir * futuresMultiplierFor(t.ticker) / (t.ccyScale || 1)) * fx;
         if (t.errorTrade) dailyError.set(day, (dailyError.get(day) || 0) + pnlUsd);
         else daily.set(day, (daily.get(day) || 0) + pnlUsd);
       }

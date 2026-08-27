@@ -160,6 +160,38 @@ test('US EOD for today is included in Sharpe', () => {
   assert.notEqual(a.sharpe, b.sharpe);
 });
 
+test('negative Sharpe does not raise Moderate while drawdown is under 5%', () => {
+  const p = computeAccountPerformance({
+    bookStart: '2026-08-06',
+    asOf: '2026-08-25',
+    today: '2026-08-26',
+    ibkrEquity: 462_000,
+    netPnlUsd: -2000,
+    eod: [
+      { date: '2026-08-06', currentBalance: 464_000, netPnlUsd: 0 },
+      { date: '2026-08-07', currentBalance: 463_200, netPnlUsd: -800 },
+      { date: '2026-08-10', currentBalance: 462_000, netPnlUsd: -2000 }
+    ]
+  });
+  assert.ok(p.sharpe != null && p.sharpe < 0);
+  assert.ok(p.drawdownPct < 5);
+  assert.equal(p.riskLevel, 'Low');
+});
+
+test('Moderate only when IBKR NLV drawdown reaches 5%', () => {
+  const p = computeAccountPerformance({
+    bookStart: '2026-08-06',
+    ibkrEquity: 950_000,
+    netPnlUsd: -50_000,
+    daily: [
+      { date: '2026-08-06', cumUsd: 0 },
+      { date: '2026-08-10', cumUsd: -50_000 }
+    ]
+  });
+  assert.equal(p.drawdownPct, 5);
+  assert.equal(p.riskLevel, 'Moderate');
+});
+
 test('stale $1M book peak is replaced by live IBKR NLV', () => {
   const snap = applyIbkrNlvExtremes({
     netLiquidation: 464_000,

@@ -1033,14 +1033,39 @@ async function main() {
   const _seedBlocked = new Set(); // tickers/keys that failed portfolio risk this session
   const posKeyOf = c => {
     if (!c) return '';
-    if (c.secType === 'FUT' && c.lastTradeDateOrContractMonth) {
-      return `${String(c.symbol).toUpperCase()}|${c.lastTradeDateOrContractMonth}|${c.currency || 'USD'}`;
+    if (c.secType === 'FUT') {
+      const digits = String(c.lastTradeDateOrContractMonth || '').replace(/\D/g, '');
+      const month = digits.length >= 6 ? digits.slice(0, 6) : (digits || 'FUT');
+      return `${String(c.symbol).toUpperCase()}|${month}|${c.currency || 'USD'}`;
     }
     if (c.secType === 'CRYPTO') {
       return `${String(c.symbol).toUpperCase()}|CRYPTO|${c.currency || 'USD'}`;
     }
     return `${String(c.symbol).toUpperCase()}|${c.currency}`;
   };
+  function heldForContract(contract) {
+    if (!contract) return null;
+    const direct = posMap.get(posKeyOf(contract));
+    if (direct) return direct;
+    const cid = Number(contract.conId);
+    if (cid > 0) {
+      for (const v of posMap.values()) {
+        if (v && v.contract && Number(v.contract.conId) === cid) return v;
+      }
+    }
+    if (contract.secType === 'FUT') {
+      const sym = String(contract.symbol || '').toUpperCase();
+      const ccy = contract.currency || 'USD';
+      for (const v of posMap.values()) {
+        const c = v && v.contract;
+        if (!c || c.secType !== 'FUT') continue;
+        if (String(c.symbol || '').toUpperCase() !== sym) continue;
+        if ((c.currency || 'USD') !== ccy) continue;
+        return v;
+      }
+    }
+    return null;
+  }
   const _flattenTried = new Map(); // pk -> last reconcile-flatten attempt ts
   const _orphanFlattenedConIds = new Set(); // conIds we sold as "IB-only orphan"
   // Persist debounce across restarts (in-memory Map was resetting to 1/2 every boot).
@@ -1326,7 +1351,7 @@ async function main() {
               const isClose = row.side === 'sell' ? execSide === 'BOT' : execSide === 'SLD';
               const shares = Number(exec.shares) || 0;
               const lot = Number(row.contract && row.contract.lotHint) || 1;
-              const held = row.contract ? posMap.get(posKeyOf(row.contract)) : null;
+              const held = row.contract ? heldForContract(row.contract) : null;
               const posInDir = held
                 ? (row.side === 'sell' ? Math.max(0, -held.pos) : Math.max(0, held.pos))
                 : (Number(row.qtyTotal) || 0);
@@ -3038,7 +3063,7 @@ async function main() {
     // bridge restarts); orderFills is only a fallback for the first seconds
     // before the position snapshot arrives. The old fills-only math flattened
     // ZERO shares after a restart and left positions running forever.
-    const held = row.contract ? posMap.get(posKeyOf(row.contract)) : null;
+    const held = row.contract ? heldForContract(row.contract) : null;
     let remaining;
     if (!DRY && held) {
       remaining = row.side === 'sell' ? Math.max(0, -held.pos) : Math.max(0, held.pos);
@@ -3190,7 +3215,7 @@ async function main() {
       const improves = row.side === 'sell' ? floored < row.stopPx : floored > row.stopPx;
       if (!improves) return;
       row.stopPx = floored;
-      const held = row.contract ? posMap.get(posKeyOf(row.contract)) : null;
+      const held = row.contract ? heldForContract(row.contract) : null;
       const liveQty = held
         ? (row.side === 'sell' ? Math.max(0, -held.pos) : Math.max(0, held.pos))
         : 0;
@@ -3275,15 +3300,27 @@ async function main() {
       const onEnd = () => {
         ib.off(EventName.openOrder, onOpen);
         ib.off(EventName.openOrderEnd, onEnd);
+        let dirty = false;
         for (const [key, row] of Object.entries(state.byKey)) {
           if (!row.closed) continue;
+          const liveClaim = (oid) => Object.values(state.byKey || {}).some(other =>
+            other && other !== row && !other.closed
+            && (other.stopId === oid || other.tp1Id === oid || other.parentId === oid));
           for (const [label, oid] of [['stop', row.stopId], ['tp1', row.tp1Id], ['parent', row.parentId]]) {
-            if (oid != null && openIds.has(oid)) {
-              log('ORPHAN sweep: cancelling', label, 'order', oid, 'for closed', key);
-              cancelOrder(oid, 'orphan ' + key);
+            if (oid == null || !openIds.has(oid)) continue;
+            if (liveClaim(oid)) {
+              if (label === 'stop') row.stopId = null;
+              else if (label === 'tp1') row.tp1Id = null;
+              else row.parentId = null;
+              dirty = true;
+              log('ORPHAN sweep: dropped closed-row', label, oid, '— live sibling still owns it', key);
+              continue;
             }
+            log('ORPHAN sweep: cancelling', label, 'order', oid, 'for closed', key);
+            cancelOrder(oid, 'orphan ' + key);
           }
         }
+        if (dirty) saveState(state);
       };
       ib.on(EventName.openOrder, onOpen);
       ib.on(EventName.openOrderEnd, onEnd);
@@ -3781,13 +3818,18 @@ async function main() {
       const avgCost = Number(portfolioAvgCost.get(y))
         || Number(portfolioMarks.get(y) && portfolioMarks.get(y).avgCost)
         || null;
+      const futMult = contract.secType === 'FUT'
+        ? (Number(contract.multiplier) || (YAHOO_FUTURES[y] && YAHOO_FUTURES[y].multiplier) || null)
+        : null;
       positions.push({
         ticker: y,
         qty: pos,
         avgCost: avgCost > 0 ? avgCost : null,
         currency: contract.currency || null,
         conId: conId || null,
-        symbol: contract.symbol || null
+        symbol: contract.symbol || null,
+        secType: contract.secType || null,
+        multiplier: futMult
       });
       const mk = portfolioMarks.get(y);
       if (mk && Number(mk.price) > 0) marks[y] = Number(mk.price);
@@ -3982,7 +4024,7 @@ async function main() {
       const phase = row.contract ? sessionPhase(row.contract) : 'closed';
       if (!row.contract || phase === 'closed') continue;
       if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
-      const pos = row.contract ? (posMap.get(posKeyOf(row.contract)) || {}).pos : 0;
+      const pos = row.contract ? (heldForContract(row.contract) || {}).pos : 0;
       if (!pos) continue;
       findings.push({
         sev: 'error',
@@ -4000,7 +4042,7 @@ async function main() {
       const phase = sessionPhase(row.contract);
       if (phase !== 'rth') continue;
       if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
-      const held = row.contract ? posMap.get(posKeyOf(row.contract)) : null;
+      const held = row.contract ? heldForContract(row.contract) : null;
       const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
       const lot = Math.max(boardLotHint(row.ticker, row.contract.lotHint), 1);
       const half = tp1SoldQty(posInDir, lot);
@@ -4131,7 +4173,7 @@ async function main() {
       if (phase === 'closed') continue;
       if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
       if (row.stopSessionBlocked) row.stopSessionBlocked = false;
-      const held = posMap.get(posKeyOf(row.contract));
+      const held = heldForContract(row.contract);
       let posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
       if (!(posInDir > 0)) {
         const yq = ibSignedQtyForYahoo(row.ticker);
@@ -4253,7 +4295,7 @@ async function main() {
       if (!row || row.closed || row.errorTrade || !row.entryFilled || row.tp1Done) continue;
       if (!row.contract || row.contract.secType && row.contract.secType !== 'STK') continue;
       if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
-      const held = posMap.get(posKeyOf(row.contract));
+      const held = heldForContract(row.contract);
       const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
       if (!(posInDir > 0)) continue;
       const lot = Math.max(boardLotHint(row.ticker, row.contract.lotHint), 1);
@@ -4686,7 +4728,7 @@ async function main() {
         const dayPart = key.split('|')[2];
         const keyTs = Date.parse(dayPart || 0);
         if (!Number.isFinite(keyTs) || (Date.now() - keyTs) <= STALE_ORDER_MS) continue;
-        const held = posMap.get(posKeyOf(row.contract));
+        const held = heldForContract(row.contract);
         const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
         if (posInDir > 0) continue; // still live long/short in thesis direction — leave alone
         if (held && held.pos && posInDir < 0) {
@@ -4707,7 +4749,7 @@ async function main() {
       // (recovery from the old 24h stale-cancel bug).
       for (const [key, row] of Object.entries(state.byKey)) {
         if (!row.closed || !row.staleCancelled || !row.contract) continue;
-        const held = posMap.get(posKeyOf(row.contract));
+        const held = heldForContract(row.contract);
         const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
         if (posInDir <= 0) continue;
         row.closed = false;
@@ -4734,7 +4776,7 @@ async function main() {
         if (!row || !row.closed || !row.contract) continue;
         if (row.errorTrade || row.preReleaseCancelled || row.holdCancelledUnfilled
           || row.staleUnfilledAbandoned) continue;
-        const held = posMap.get(posKeyOf(row.contract));
+        const held = heldForContract(row.contract);
         const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
         if (!(posInDir > 0)) continue;
         const total = Number(row.qtyTotal) || 0;
@@ -5590,11 +5632,19 @@ async function main() {
           log('RECONCILE: reopening', key, '(IB still holds qty=' + yahooQty + ')');
         }
         if (!row.closed && row.entryFilled && (siblingOwns || (yahooQty !== 0 && !(inDir > 0)))) {
-          const siblingNeedsStop = Object.values(state.byKey || {}).some(other =>
-            other && other !== row && !other.closed
-            && normalizeYahooTicker(other.ticker) === normalizeYahooTicker(row.ticker)
-            && other.stopId != null && other.stopId === row.stopId);
-          if (siblingNeedsStop) row.stopId = null;
+          if (siblingOwns) {
+            // Closed row must not keep working-order IDs — orphan sweep would
+            // cancel the live sibling's stop/TP1 (2914 long vs short-horizon).
+            row.stopId = null;
+            row.tp1Id = null;
+            row.parentId = null;
+          } else {
+            const siblingNeedsStop = Object.values(state.byKey || {}).some(other =>
+              other && other !== row && !other.closed
+              && normalizeYahooTicker(other.ticker) === normalizeYahooTicker(row.ticker)
+              && other.stopId != null && other.stopId === row.stopId);
+            if (siblingNeedsStop) row.stopId = null;
+          }
           row.closed = true;
           row.updated = new Date().toISOString();
           saveState(state);
@@ -5604,8 +5654,8 @@ async function main() {
         // A pending or rejected parent with no fill is not a closed trade merely
         // because IB has no position yet. Re-arm logic owns these rows.
         if (!row.entryFilled) continue;
-        const held = posMap.get(posKeyOf(row.contract));
-        const flatAtIb = held ? held.pos === 0 : !posMap.has(posKeyOf(row.contract));
+        const held = heldForContract(row.contract);
+        const flatAtIb = held ? held.pos === 0 : !held;
         if (!flatAtIb || inDir > 0) continue;
         // Still model-open + IB flat: re-arm may re-enter unless this is an
         // error trade / already recovered via exec-history. Skip re-arm block
