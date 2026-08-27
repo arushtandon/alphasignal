@@ -11516,6 +11516,9 @@ function pruneStaleOpenHistoryRows() {
 
       const y = String(h.ticker || '').toUpperCase();
       if ([...ibkrYahooAliases(y)].some(a => keep.has(String(a).toUpperCase()))) continue;
+      if ((y.endsWith('.T') || y.endsWith('.HK')) && ibkrModelOpenQtyForHistory(h, hz) <= 0) {
+        continue;
+      }
 
       h[hz + 'Status'] = 'signal_exit';
       h[hz + 'ExitReason'] = 'Stale open — not in IB paper and not on today\'s board';
@@ -18221,9 +18224,15 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
       // Never flip on the SAME DAY as entry (enteredToday): a pick and its instant
       // same-price "Signal exit" ($0) is pure churn. Give every trade at least one
       // full session before the flip rule can close it.
+      const ibLiveQty = ibkrModelOpenQtyForHistory(h, hz);
+      const yFlip = String(h.ticker || '').toUpperCase();
+      const asiaUnfilled = (yFlip.endsWith('.T') || yFlip.endsWith('.HK')) && !(ibLiveQty > 0);
       const flip = (!enteredToday && (st === 'open' || st === 'tp1_open' || !st || st === 'n/a'))
         ? liveSignalFlipExit(h.ticker, hz, isSell, techLiveMap) : null;
-      if (flip) {
+      if (flip && asiaUnfilled) {
+        // Unfilled TSE/SEHK (6098.T) must still print at the next cash open
+        // even if Friday's 06:00 board drops the name.
+      } else if (flip) {
         const pct = ((curr - entry) / entry) * dir;
         h[hz + 'PnlDollar'] = +(pct * 10000).toFixed(2);
         h[hz + 'PnlPct'] = +(pct * 100).toFixed(2);
@@ -18264,7 +18273,6 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         rowChanged = true;
       }
       const pathExit = (bars && entry) ? await simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, curr, true, shareSplit.frac) : null;
-      const ibLiveQty = ibkrModelOpenQtyForHistory(h, hz);
       // Live IB still holds the runner: paper TSL/time must not settle History
       // or flatten the remainder. Keep TP1-banked + TSL/TP2 active.
       if (pathExit && ibLiveQty > 0 && !pathExit.open) {

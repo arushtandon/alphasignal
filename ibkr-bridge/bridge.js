@@ -98,7 +98,9 @@ const {
 } = require('../lib/schedule/entry-release');
 const {
   isLiveAuthorizedServerExit,
-  shouldApplyLiveTslUpdate
+  shouldApplyLiveTslUpdate,
+  isForceCashOpenTicker,
+  ignoreServerExitForUnfilledForcePrint
 } = require('../lib/ibkr/live-exit-authority');
 const {
   preferredExchange,
@@ -596,6 +598,19 @@ function asiaUnfilledCarryActive(row, key, nowMs = Date.now()) {
   const w = MARKET_CLOCKS[m];
   const localMin = localClock(nowMs, w.timeZone).minutes;
   return localMin < w.open;
+}
+
+/** Pinned 6098.T stays live until the parent fills (or 5 days), board drop or not. */
+function forceCashOpenActive(row, nowMs = Date.now()) {
+  if (!row || row.closed || row.entryFilled) return false;
+  if (!isForceCashOpenTicker(row.ticker)) return false;
+  const t = Date.parse(row.admittedAt || '');
+  if (!Number.isFinite(t)) return true;
+  return (Number(nowMs) - t) < 5 * 24 * 3600 * 1000;
+}
+
+function keepUnfilledWorking(row, key, nowMs = Date.now()) {
+  return asiaUnfilledCarryActive(row, key, nowMs) || forceCashOpenActive(row, nowMs);
 }
 
 /** Keep OPG live through the opening auction; do not cancel at the bell. */
@@ -3282,8 +3297,12 @@ async function main() {
         if (h) {
           const act = String((h[hz + 'Action'] || h.action) || '').toLowerCase();
           if (act !== 'buy' && act !== 'sell') {
-            log('skip entry (history not Buy/Sell):', key, 'action=', act || 'missing');
-            return;
+            if (isForceCashOpenTicker(evt.ticker)) {
+              log('entry history Hold ignored — force cash open', key);
+            } else {
+              log('skip entry (history not Buy/Sell):', key, 'action=', act || 'missing');
+              return;
+            }
           }
         } else {
           log('entry history row missing — trusting event side', key, 'side=', side);
@@ -3363,6 +3382,14 @@ async function main() {
     if (evt.type === 'exit') {
       if (!isLiveAuthorizedServerExit(evt)) {
         log('exit ignored (not live-authorized)', key,
+          evt.status || evt.reason || evt.exitReason || '');
+        return;
+      }
+      if (row && ignoreServerExitForUnfilledForcePrint(row, evt, {
+        asiaCarry: asiaUnfilledCarryActive(row, key),
+        forcePrint: forceCashOpenActive(row)
+      })) {
+        log('exit ignored — unfilled must print next cash', key,
           evt.status || evt.reason || evt.exitReason || '');
         return;
       }
@@ -4976,8 +5003,8 @@ async function main() {
             log('RECONCILE: skip hold-cancel — live entry still', liveSide, key, '(history=', act || 'Hold', ')');
             continue;
           }
-          if (asiaUnfilledCarryActive(row, key)) {
-            log('RECONCILE: skip hold-cancel — Asia unfilled carry to next cash', key);
+          if (keepUnfilledWorking(row, key)) {
+            log('RECONCILE: skip hold-cancel — unfilled must print next cash', key);
             continue;
           }
           const contract = row.contract || toContract(row.ticker);
@@ -5003,7 +5030,7 @@ async function main() {
       for (const [key, row] of Object.entries(state.byKey || {})) {
         if (!row || row.closed || row.entryFilled) continue;
         if (row.userReentry || row.correctiveReentry) continue;
-        if (asiaUnfilledCarryActive(row, key)) continue;
+        if (keepUnfilledWorking(row, key)) continue;
         const src = entryByKey.get(key);
         if (!src) continue;
         if (scheduledEntryReleaseAllowed(src)) continue;
@@ -5234,7 +5261,7 @@ async function main() {
       //     stay OPG through 09:30. Never MKT-EXT (IB queues those until RTH).
       for (const [key, row] of Object.entries(state.byKey)) {
         if (row.closed || !row.ticker) continue;
-        if (keyState.get(key) !== 'open' && !row.userReentry && !asiaUnfilledCarryActive(row, key)) continue;
+        if (keyState.get(key) !== 'open' && !row.userReentry && !keepUnfilledWorking(row, key)) continue;
         const srcEvt = entryByKey.get(key);
         if (srcEvt && !scheduledEntryReleaseAllowed(srcEvt)) {
           logOnce('rearm-prerelease-' + key, 'RECONCILE: skip re-arm of pre-release entry', key);
@@ -5285,7 +5312,7 @@ async function main() {
         // Never chase keys older than the event-age gate (prevents Aug 05
         // shorts / BP.L weekend re-keys being MKT-bought days later).
         // Explicit user re-entry (e.g. Friday BRK-B missed on error 200) is exempt.
-        if (!row.userReentry && !asiaUnfilledCarryActive(row, key)) {
+        if (!row.userReentry && !keepUnfilledWorking(row, key)) {
           const srcAge = entryByKey.get(key);
           const tradeTs = Date.parse((srcAge && (srcAge.entryDate || srcAge.t)) || 0);
           const keyDayTs = Date.parse(String(key.split('|')[2] || ''));
@@ -5496,7 +5523,7 @@ async function main() {
               || reason === 'us-pre-unfavorable-to-opg'
               || reason === 'asia-opg-refresh' || reason === 'asia-to-opg',
             skipChase: reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg',
-            carryUnfilled: asia && !row.entryFilled
+            carryUnfilled: (asia && !row.entryFilled) || forceCashOpenActive(row)
           });
           if (placed) {
             placed.lastRearmAt = new Date().toISOString();
@@ -6063,5 +6090,7 @@ module.exports = {
   riskFindingsFingerprint,
   isAuctionEntryStyle,
   asiaUnfilledCarryActive,
+  forceCashOpenActive,
+  keepUnfilledWorking,
   isLiveAuthorizedServerExit: require('../lib/ibkr/live-exit-authority').isLiveAuthorizedServerExit
 };

@@ -49,4 +49,37 @@ assert.strictEqual(shouldApplyLiveTslUpdate({
   closed: false, tp1Done: false, qtyTotal: 413, qtySold: 207, qtyRunner: 206
 }), true, 'remaining runner after partial');
 
+const {
+  isForceCashOpenTicker,
+  ignoreServerExitForUnfilledForcePrint
+} = require('../lib/ibkr/live-exit-authority');
+
+assert.strictEqual(isForceCashOpenTicker('6098.T'), true);
+assert.strictEqual(isForceCashOpenTicker('2914.T'), false);
+assert.strictEqual(ignoreServerExitForUnfilledForcePrint(
+  { ticker: '6098.T', entryFilled: false },
+  { reason: 'stale-open-not-ib', status: 'signal_exit' },
+  { forcePrint: true }
+), true, '6098 must not cancel on Friday board drop');
+assert.strictEqual(ignoreServerExitForUnfilledForcePrint(
+  { ticker: '6098.T', entryFilled: false },
+  { liveSignalFlip: true, reason: 'live-signal-flip', status: 'signal_exit' },
+  { forcePrint: true }
+), true, '6098 must not cancel on live-signal flip before fill');
+assert.strictEqual(ignoreServerExitForUnfilledForcePrint(
+  { ticker: '6098.T', entryFilled: false },
+  { reason: 'user-flatten' },
+  { forcePrint: true }
+), false, 'user flatten still wins');
+assert.strictEqual(ignoreServerExitForUnfilledForcePrint(
+  { ticker: '6098.T', entryFilled: true },
+  { reason: 'stale-open-not-ib' },
+  { forcePrint: true }
+), false, 'filled 6098 follows normal exits');
+assert.strictEqual(ignoreServerExitForUnfilledForcePrint(
+  { ticker: '0669.HK', entryFilled: false },
+  { reason: 'stale-open-not-ib' },
+  { asiaCarry: true }
+), true, 'unfilled Asia carry ignores stale-open');
+
 console.log('PASS live-exit-authority');

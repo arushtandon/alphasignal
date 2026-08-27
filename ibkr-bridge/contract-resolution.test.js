@@ -11,7 +11,9 @@ const {
   shouldAlertReconFailure,
   riskFindingsFingerprint,
   isAuctionEntryStyle,
-  asiaUnfilledCarryActive
+  asiaUnfilledCarryActive,
+  forceCashOpenActive,
+  keepUnfilledWorking
 } = require('./bridge');
 
 const bae = toContract('BA.L');
@@ -133,6 +135,15 @@ assert.strictEqual(asiaUnfilledCarryActive(recCarry, recKey, Date.parse('2026-08
   'Friday 08:00 SGT Tokyo open is still carry');
 assert.strictEqual(asiaUnfilledCarryActive(recCarry, recKey, Date.parse('2026-08-28T07:00:00Z')), false,
   'after Friday TSE cash close the carry ends');
+const recForce = {
+  closed: false, entryFilled: false, ticker: '6098.T', contract: rec,
+  admittedAt: '2026-08-26T22:01:09.812Z'
+};
+assert.strictEqual(forceCashOpenActive(recForce, Date.parse('2026-08-28T00:00:00Z')), true,
+  '6098 stays pinned through Friday Tokyo open');
+assert.strictEqual(keepUnfilledWorking(recForce, recKey, Date.parse('2026-08-28T07:00:00Z')), true,
+  '6098 still works after Friday cash even if carry expired');
+assert.strictEqual(forceCashOpenActive({ ...recForce, entryFilled: true }, Date.parse('2026-08-28T00:00:00Z')), false);
 
 const first = [{
   code: 'unfilled-rth',
