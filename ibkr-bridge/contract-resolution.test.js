@@ -10,7 +10,8 @@ const {
   publishedBoardHasPick,
   shouldAlertReconFailure,
   riskFindingsFingerprint,
-  isAuctionEntryStyle
+  isAuctionEntryStyle,
+  asiaUnfilledCarryActive
 } = require('./bridge');
 
 const bae = toContract('BA.L');
@@ -121,6 +122,17 @@ const recPre = parentEntrySpec(rec, 'BUY', 100, {
 });
 assert.strictEqual(recPre.entryStyle, 'OPG');
 assert.strictEqual(recPre.transmit, true, 'JP OPG parent transmits without STP child');
+
+const recCarry = {
+  closed: false, entryFilled: false, ticker: '6098.T', contract: rec
+};
+const recKey = '6098.T|medium|Thu Aug 27 2026';
+assert.strictEqual(asiaUnfilledCarryActive(recCarry, recKey, Date.parse('2026-08-27T19:00:00Z')), true,
+  'Friday 03:00 SGT is still the next TSE session');
+assert.strictEqual(asiaUnfilledCarryActive(recCarry, recKey, Date.parse('2026-08-28T00:00:00Z')), true,
+  'Friday 08:00 SGT Tokyo open is still carry');
+assert.strictEqual(asiaUnfilledCarryActive(recCarry, recKey, Date.parse('2026-08-28T07:00:00Z')), false,
+  'after Friday TSE cash close the carry ends');
 
 const first = [{
   code: 'unfilled-rth',

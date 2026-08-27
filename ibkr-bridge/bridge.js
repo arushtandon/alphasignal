@@ -563,6 +563,41 @@ function sessionPhase(contract, nowMs = Date.now()) {
   return 'closed';
 }
 
+function nextSgtWeekdayMs(fromMs) {
+  const recDay = singaporeToDateString(fromMs);
+  let t = Number(fromMs) + 12 * 3600 * 1000;
+  while (singaporeToDateString(t) === recDay) t += 3600 * 1000;
+  for (let i = 0; i < 3; i++) {
+    const label = singaporeToDateString(t);
+    if (!label.startsWith('Sat') && !label.startsWith('Sun')) return t;
+    t += 24 * 3600 * 1000;
+  }
+  return t;
+}
+
+/**
+ * Unfilled HK/JP board names keep one extra cash session. A 24h gate from
+ * Thursday 06:00 SGT abandons 6098.T at Friday 06:00 — two hours before TSE open.
+ */
+function asiaUnfilledCarryActive(row, key, nowMs = Date.now()) {
+  if (!row || row.closed || row.entryFilled) return false;
+  const contract = row.contract || toContract(row.ticker);
+  const m = contract && contract.market;
+  if (m !== 'JP' && m !== 'HK') return false;
+  const recMs = Date.parse(String(key || '').split('|')[2] || '');
+  if (!Number.isFinite(recMs)) return false;
+  const recDay = singaporeToDateString(recMs);
+  const nowDay = singaporeToDateString(nowMs);
+  if (nowDay === recDay) return true;
+  const nextDay = singaporeToDateString(nextSgtWeekdayMs(recMs));
+  if (nowDay !== nextDay) return false;
+  const phase = sessionPhase(contract, nowMs);
+  if (phase === 'pre' || phase === 'rth' || phase === 'lunch') return true;
+  const w = MARKET_CLOCKS[m];
+  const localMin = localClock(nowMs, w.timeZone).minutes;
+  return localMin < w.open;
+}
+
 /** Keep OPG live through the opening auction; do not cancel at the bell. */
 const AUCTION_HOLD_MIN = 2;
 
@@ -2592,13 +2627,13 @@ async function main() {
   async function placeBracket(evt) {
     // Hard choke: poll, seed, and re-arm all go through here. A 02:10 SGT emit
     // must not place even if reconcile thinks state is missing.
-    if (!scheduledEntryReleaseAllowed(evt)) {
+    if (!scheduledEntryReleaseAllowed(evt) && !evt.carryUnfilled) {
       log('placeBracket blocked (SGT release gate):', evt && (evt.key || evt.ticker),
         'entryDate=', evt && (evt.entryDate || evt.t) || 'missing',
         'releaseHour=', ENTRY_RELEASE_HOUR_SGT);
       return null;
     }
-    if (!isManualEntryBypass(evt)) {
+    if (!isManualEntryBypass(evt) && !evt.carryUnfilled) {
       try {
         const picks = await fetchJson('/api/dashboard/picks');
         if (!boardPublishedAtRelease(picks && picks.dashTs)) {
@@ -2637,7 +2672,7 @@ async function main() {
       ? (sizingQuote.bid + sizingQuote.ask) / 2 : 0;
     const liveSpreadBps = sizingMid > 0
       ? ((sizingQuote.ask - sizingQuote.bid) / sizingMid) * 10000 : null;
-    const boardEntry = scheduledEntryReleaseAllowed(evt) && !evt.userReentry;
+    const boardEntry = (scheduledEntryReleaseAllowed(evt) || !!evt.carryUnfilled) && !evt.userReentry;
     const availLiq = Number(accountSnap.netLiquidityAvailable != null
       ? accountSnap.netLiquidityAvailable : accountSnap.availableFunds);
     const split = await shareSplit(evt.entry, contract, lot, {
@@ -4921,6 +4956,10 @@ async function main() {
             log('RECONCILE: skip hold-cancel — live entry still', liveSide, key, '(history=', act || 'Hold', ')');
             continue;
           }
+          if (asiaUnfilledCarryActive(row, key)) {
+            log('RECONCILE: skip hold-cancel — Asia unfilled carry to next cash', key);
+            continue;
+          }
           const contract = row.contract || toContract(row.ticker);
           const held = contract ? posMap.get(posKeyOf(contract)) : null;
           const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
@@ -4944,6 +4983,7 @@ async function main() {
       for (const [key, row] of Object.entries(state.byKey || {})) {
         if (!row || row.closed || row.entryFilled) continue;
         if (row.userReentry || row.correctiveReentry) continue;
+        if (asiaUnfilledCarryActive(row, key)) continue;
         const src = entryByKey.get(key);
         if (!src) continue;
         if (scheduledEntryReleaseAllowed(src)) continue;
@@ -5173,7 +5213,7 @@ async function main() {
       //     stay OPG through 09:30. Never MKT-EXT (IB queues those until RTH).
       for (const [key, row] of Object.entries(state.byKey)) {
         if (row.closed || !row.ticker) continue;
-        if (keyState.get(key) !== 'open' && !row.userReentry) continue;
+        if (keyState.get(key) !== 'open' && !row.userReentry && !asiaUnfilledCarryActive(row, key)) continue;
         const srcEvt = entryByKey.get(key);
         if (srcEvt && !scheduledEntryReleaseAllowed(srcEvt)) {
           logOnce('rearm-prerelease-' + key, 'RECONCILE: skip re-arm of pre-release entry', key);
@@ -5224,7 +5264,7 @@ async function main() {
         // Never chase keys older than the event-age gate (prevents Aug 05
         // shorts / BP.L weekend re-keys being MKT-bought days later).
         // Explicit user re-entry (e.g. Friday BRK-B missed on error 200) is exempt.
-        if (!row.userReentry) {
+        if (!row.userReentry && !asiaUnfilledCarryActive(row, key)) {
           const srcAge = entryByKey.get(key);
           const tradeTs = Date.parse((srcAge && (srcAge.entryDate || srcAge.t)) || 0);
           const keyDayTs = Date.parse(String(key.split('|')[2] || ''));
@@ -5249,9 +5289,13 @@ async function main() {
 
         let reason = null;
         const asiaLive = row.entryStyle === 'MKT' || row.entryStyle === 'LMT-THROUGH';
+        const needsStandaloneRefresh = asia && !row.entryFilled
+          && (row.stopId != null || row.tp1Id != null || row.rearmBlocked);
         if (asia) {
           if (phase === 'lunch') {
             // Wait for 13:00 HKT reopen — do not cancel/replace during the break
+          } else if ((phase === 'pre' || phase === 'closed') && (needsStandaloneRefresh || asiaLive || !row.entryStyle)) {
+            reason = (row.entryStyle === 'OPG' || needsStandaloneRefresh) ? 'asia-opg-refresh' : 'asia-to-opg';
           } else if (phase === 'rth' && (!asiaLive || row.contractRejected || row.deferred)) {
             reason = 'asia-rth';
           }
@@ -5360,6 +5404,7 @@ async function main() {
           || reason === 'us-pre-reprice' || reason === 'us-pre-unfavorable-to-opg'
               || reason === 'us-pre-park-opg'
               || reason === 'asia-rth'
+              || reason === 'asia-opg-refresh'
           || reason === 'us-overnight-to-opg' || reason === 'us-post-to-opg';
         const contractRetryGap = Math.min(
           15 * 60 * 1000,
@@ -5393,7 +5438,8 @@ async function main() {
           const cancelStatuses = cancelWaits.length ? await Promise.all(cancelWaits) : [];
           if (cancelStatuses.some(status => status === 'timeout')) {
             const replaceDeadAsiaBag = reason === 'asia-rth' || reason === 'asia-rth-retry'
-              || reason === 'asia-to-opg' || reason === 'asia-missing-style';
+              || reason === 'asia-to-opg' || reason === 'asia-missing-style'
+              || reason === 'asia-opg-refresh';
             if (!replaceDeadAsiaBag) {
               row.lastRearmAt = new Date().toISOString();
               row.rearmBlocked = 'cancel-timeout';
@@ -5417,8 +5463,8 @@ async function main() {
             tp1: src.tp1 != null ? src.tp1 : row.tp1Px,
             sl: src.sl != null ? src.sl : row.stopPx,
             trailSl: src.trailSl != null ? src.trailSl : (src.sl != null ? src.sl : row.stopPx),
-            entryDate: src.entryDate || src.t,
-            t: src.entryDate || src.t || new Date().toISOString(),
+            entryDate: src.entryDate || src.t || row.admittedAt,
+            t: src.entryDate || src.t || row.admittedAt || new Date().toISOString(),
             reason: src.reason,
             decisionId: src.decisionId || row.decisionId,
             admittedAt: row.admittedAt,
@@ -5426,8 +5472,10 @@ async function main() {
             country: src.country || row.country,
             correlationCluster: src.correlationCluster || row.correlationCluster,
             forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-pre-park-opg'
-              || reason === 'us-pre-unfavorable-to-opg',
-            skipChase: reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg'
+              || reason === 'us-pre-unfavorable-to-opg'
+              || reason === 'asia-opg-refresh' || reason === 'asia-to-opg',
+            skipChase: reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg',
+            carryUnfilled: asia && !row.entryFilled
           });
           if (placed) {
             placed.lastRearmAt = new Date().toISOString();
@@ -5993,5 +6041,6 @@ module.exports = {
   shouldAlertReconFailure,
   riskFindingsFingerprint,
   isAuctionEntryStyle,
+  asiaUnfilledCarryActive,
   isLiveAuthorizedServerExit: require('../lib/ibkr/live-exit-authority').isLiveAuthorizedServerExit
 };
