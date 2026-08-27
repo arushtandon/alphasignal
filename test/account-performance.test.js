@@ -178,6 +178,30 @@ test('negative Sharpe does not raise Moderate while drawdown is under 5%', () =>
   assert.equal(p.riskLevel, 'Low');
 });
 
+test('intra-day NLV is not a closed Sharpe day', () => {
+  const eod = [
+    { date: '2026-08-06', currentBalance: 464_000, netPnlUsd: 0 },
+    { date: '2026-08-25', currentBalance: 467_000, netPnlUsd: 3000 }
+  ];
+  const closed = computeAccountPerformance({
+    bookStart: '2026-08-06',
+    today: '2026-08-27',
+    asOf: '2026-08-27',
+    ibkrEquity: 466_000,
+    netPnlUsd: 2000,
+    eod
+  });
+  const withTodayEod = computeAccountPerformance({
+    bookStart: '2026-08-06',
+    today: '2026-08-27',
+    asOf: '2026-08-27',
+    ibkrEquity: 466_000,
+    netPnlUsd: 2000,
+    eod: eod.concat([{ date: '2026-08-27', currentBalance: 466_000, netPnlUsd: 2000 }])
+  });
+  assert.ok(closed.sharpeDays < withTodayEod.sharpeDays);
+});
+
 test('Moderate only when IBKR NLV drawdown reaches 5%', () => {
   const p = computeAccountPerformance({
     bookStart: '2026-08-06',

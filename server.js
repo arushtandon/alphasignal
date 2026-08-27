@@ -16342,10 +16342,13 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     }
     try { backfillMissingIbkrCommissions(); } catch (_) {}
 
-    // Fully matched = no errors, no pending drifts, no synthetic fixes, no IB-only lots.
+    // Fully matched = no outstanding errors, pending drifts, or IB-only lots.
+    // A successful avg-correct in this sweep already rewrote the ledger to IB —
+    // do not flash "Differences" for a fix that just landed (BZ 87442→87.44).
+    const outstandingAdj = adjusted.filter(a => a && a.action !== 'avg-correct');
     const inSync = issues.filter(i => i.severity === 'error').length === 0
       && issues.filter(i => i.severity === 'pending').length === 0
-      && adjusted.length === 0
+      && outstandingAdj.length === 0
       && untrackedIb.length === 0;
     const report = {
       inSync,
@@ -16813,21 +16816,22 @@ app.get('/api/ibkr/trades', async (req, res) => {
     let markMap = {};
     if (needMarks.length) {
       const uniq = [...new Set(needMarks)];
-      // Live MTM: FMP quote first (updates during the session), then IB only if
-      // the bridge print actually moved recently, then Yahoo. This stops the
-      // FMP↔IB tag flip caused by sticky IB portfolio marks re-posted every 15s.
-      const IB_MOVED_MS = 30 * 1000;
+      // Live MTM: IB portfolio mark first (same print as TWS), then FMP/Yahoo.
       await Promise.all(uniq.map(async (sym) => {
         let picked = null;
-        try {
-          const fmp = await fetchFmpQuotePrice(sym);
-          if (fmp && fmp.price > 0) picked = { price: fmp.price, src: 'fmp' };
-        } catch (_) {}
+        // IBKR tab must match TWS paper MTM. FMP/Yahoo first made the tile
+        // disagree with the account (oil/Asia last prints) and looked like a recon miss.
+        const ibm = _ibkrLiveMarks[sym];
+        const ibRaw = ibm && Number(ibm.price);
+        if (ibRaw > 0) {
+          const unit = ibkrAvgToFillUnit(ibRaw, 1, ibRaw, { ticker: sym }) || ibRaw;
+          if (unit > 0) picked = { price: unit, src: 'ibkr' };
+        }
         if (!picked) {
-          const ibm = _ibkrLiveMarks[sym];
-          const tickAt = Number(ibm && ibm.lastTickAt || 0);
-          const ibMoved = ibm && Number(ibm.price) > 0 && tickAt > 0 && (Date.now() - tickAt) < IB_MOVED_MS;
-          if (ibMoved) picked = { price: Number(ibm.price), src: 'ibkr' };
+          try {
+            const fmp = await fetchFmpQuotePrice(sym);
+            if (fmp && fmp.price > 0) picked = { price: fmp.price, src: 'fmp' };
+          } catch (_) {}
         }
         if (!picked) {
           try {
@@ -17179,6 +17183,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
     const netPnlUsd = totRealUsd + totUnrealUsd - totOpenCommissionUsd;
     const performance = computeAccountPerformance({
       bookStart: IBKR_BOOK_START,
+      today: singaporeDateKey(),
+      asOf: singaporeDateKey(),
       netPnlUsd,
       ibkrEquity: Number.isFinite(currentBalance) && currentBalance > 0 ? currentBalance : null,
       peakIbkrEquity: accountSnap && accountSnap.peakNlv != null ? Number(accountSnap.peakNlv) : null,

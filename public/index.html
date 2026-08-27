@@ -1825,7 +1825,8 @@ function ibkrPerfTiles(d) {
     + ' → well ' + (p.troughEquity != null ? ibkrBal(p.troughEquity) : '—');
   const sh = p.sharpe != null ? String(p.sharpe) : '—';
   const shC = p.sharpe == null ? 'var(--m1)' : p.sharpe >= 1 ? 'var(--buy)' : p.sharpe >= 0 ? '#F5C842' : 'var(--sell)';
-  const shSub = 'since inception' + (p.sharpeSince || p.bookStart ? ' · ' + (p.sharpeSince || p.bookStart) : '')
+  const shSub = 'IBKR NLV path · annualized · 2-week sample is noisy'
+    + (p.sharpeSince || p.bookStart ? ' · ' + (p.sharpeSince || p.bookStart) : '')
     + (p.sharpeDays != null ? ' · ' + p.sharpeDays + ' closed weekdays' : ' · need 2+ days');
   const risk = p.riskLevel || '—';
   const riskSub = p.riskOff
@@ -1855,7 +1856,7 @@ function ibkrPatchPerfTiles(d) {
       p.sharpe == null ? 'var(--m1)' : p.sharpe >= 1 ? 'var(--buy)' : p.sharpe >= 0 ? '#F5C842' : 'var(--sell)');
     const sub = document.getElementById('ibkrCardSharpeSub');
     if (sub) {
-      sub.textContent = 'since inception'
+      sub.textContent = 'IBKR NLV path · annualized · 2-week sample is noisy'
         + (p.sharpeSince || p.bookStart ? ' · ' + (p.sharpeSince || p.bookStart) : '')
         + (p.sharpeDays != null ? ' · ' + p.sharpeDays + ' closed weekdays' : ' · need 2+ days');
     }
