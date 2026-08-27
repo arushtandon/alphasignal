@@ -9,6 +9,7 @@ const {
   isSessionBlockedError,
   isShortSaleReject,
   asiaCashBlocksRestingOrders,
+  ibLocalSymbol,
   placeableStkContract
 } = require('../lib/ibkr/order-routing');
 
@@ -28,6 +29,19 @@ test('JPY names route to TSEJ', () => {
   const c = { symbol: '6501', market: 'JP', currency: 'JPY', primaryExch: 'TSEJ', conId: 1 };
   assert.equal(preferredExchange(c), 'TSEJ');
   assert.equal(fallbackExchange('TSEJ', c), 'SMART');
+});
+
+test('Yahoo suffixes are never sent as IB localSymbol', () => {
+  assert.equal(ibLocalSymbol('6098.T'), undefined);
+  assert.equal(ibLocalSymbol('0005.HK'), undefined);
+  assert.equal(ibLocalSymbol('BA.'), 'BA.');
+  const c = {
+    symbol: '6098', market: 'JP', currency: 'JPY', primaryExch: 'TSEJ',
+    conId: 166623148, localSymbol: '6098.T'
+  };
+  assert.equal(placeableStkContract(c).localSymbol, undefined);
+  assert.equal(placeableStkContract(c).symbol, '6098');
+  assert.equal(placeableStkContract(c).exchange, 'TSEJ');
 });
 
 test('US names stay on SMART and fall back to the listing venue', () => {

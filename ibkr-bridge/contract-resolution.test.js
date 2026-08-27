@@ -97,6 +97,31 @@ assert.strictEqual(mondi.primaryExch, 'LSE');
 assert.strictEqual(toContract('0992.HK').lotHint, 2000, '0992 is a 2000-share board lot');
 assert.strictEqual(toContract('0669.HK').lotHint, 500);
 
+const rec = toContract('6098.T');
+assert.strictEqual(rec.symbol, '6098');
+assert.strictEqual(rec.market, 'JP');
+assert.strictEqual(rec.localSymbol, undefined, 'Yahoo .T is not an IB localSymbol');
+const recRth = parentEntrySpec(rec, 'BUY', 100, {
+  side: 'buy', entryPx: 17155, quotePx: 17155, phaseOverride: 'rth'
+});
+assert.strictEqual(recRth.entryStyle, 'LMT-THROUGH');
+assert.strictEqual(recRth.orderType, 'LMT');
+assert.strictEqual(recRth.transmit, true);
+assert.strictEqual(recRth.tif, 'DAY');
+assert.ok(recRth.lmtPrice > 17155, 'buy through-limit is above last');
+assert.strictEqual(recRth.lmtPrice, 17330, '17155*1.01 rounds up to the 10-yen band');
+const recRthSell = parentEntrySpec(rec, 'SELL', 100, {
+  side: 'sell', entryPx: 17155, quotePx: 17155, phaseOverride: 'rth'
+});
+assert.strictEqual(recRthSell.entryStyle, 'LMT-THROUGH');
+assert.ok(recRthSell.lmtPrice < 17155);
+assert.strictEqual(recRthSell.lmtPrice, 16980);
+const recPre = parentEntrySpec(rec, 'BUY', 100, {
+  side: 'buy', entryPx: 17155, phaseOverride: 'pre'
+});
+assert.strictEqual(recPre.entryStyle, 'OPG');
+assert.strictEqual(recPre.transmit, true, 'JP OPG parent transmits without STP child');
+
 const first = [{
   code: 'unfilled-rth',
   fingerprint: 'unfilled-rth:BA.L|long|Tue Aug 18 2026:MKT:buy',

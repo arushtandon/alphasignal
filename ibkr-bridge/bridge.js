@@ -107,6 +107,7 @@ const {
   isSessionBlockedError,
   isShortSaleReject,
   asiaCashBlocksRestingOrders,
+  ibLocalSymbol,
   placeableStkContract
 } = require('../lib/ibkr/order-routing');
 const {
@@ -680,7 +681,22 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
     return { defer: true, entryStyle: 'DEFER-US-UNTIL-PRE', action, totalQuantity: qty };
   }
   if (phase === 'rth') {
-    // Late board after the cash open — take market now (HK/JP/EU/UK)
+    // TSE does not accept native MKT during continuous trading. IB converts it
+    // to a limit at last — delayed last + a transmit:false STP child left 6098
+    // sitting unfilled all afternoon. Send a through-limit that transmits now.
+    if (contract.market === 'JP') {
+      const ref = quotePx > 0 ? quotePx : entryPx;
+      if (ref > 0) {
+        const sell = side === 'sell';
+        const raw = sell ? ref * 0.99 : ref * 1.01;
+        return {
+          orderType: 'LMT', action, totalQuantity: qty,
+          lmtPrice: roundPx(raw, contract, sell ? 'down' : 'up'),
+          tif: 'DAY', outsideRth: false, transmit: true, entryStyle: 'LMT-THROUGH'
+        };
+      }
+    }
+    // Late board after the cash open — take market now (HK/EU/UK)
     return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MKT' };
   }
   if (phase === 'lunch') {
@@ -700,7 +716,12 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
     }
     return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MKT-OPEN' };
   }
-  // Pre-open or after previous close → opening auction (EU/UK/Asia)
+  // Pre-open or after previous close → opening auction (EU/UK/Asia).
+  // JP parent transmits alone: TSE bag children (STP) never ack, leaving the
+  // parent at transmit:false for the whole cash session (6098.T 27 Aug).
+  if (contract.market === 'JP') {
+    return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: true, entryStyle: 'OPG' };
+  }
   return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
 }
 
@@ -826,6 +847,17 @@ function lseTickSize(px) {
   return 5;
 }
 
+/** TSE yen ticks (post-2023 table). 6098 @17155 lives on the 10-yen band. */
+function jpTickSize(px) {
+  const a = Math.abs(Number(px) || 0);
+  if (a < 1000) return 1;
+  if (a < 5000) return 5;
+  if (a < 10000) return 5;
+  if (a < 30000) return 10;
+  if (a < 50000) return 50;
+  return 100;
+}
+
 /** Xetra / Euronext cash ticks (MiFID-style). 53.41 was IB error 110. */
 function xetraTickSize(px) {
   const a = Math.abs(Number(px) || 0);
@@ -866,6 +898,15 @@ function roundPx(x, contract, dir) {
   }
   if (contract && (contract.market === 'LSE' || contract.penceQuoted)) {
     const tick = lseTickSize(n);
+    const dp = tick >= 1 ? 0 : (String(tick).split('.')[1] || '').length;
+    let stepped;
+    if (dir === 'down') stepped = Math.floor(n / tick + 1e-9) * tick;
+    else if (dir === 'up') stepped = Math.ceil(n / tick - 1e-9) * tick;
+    else stepped = Math.round(n / tick) * tick;
+    return +stepped.toFixed(dp);
+  }
+  if (contract && (contract.market === 'JP' || contract.currency === 'JPY')) {
+    const tick = jpTickSize(n);
     const dp = tick >= 1 ? 0 : (String(tick).split('.')[1] || '').length;
     let stepped;
     if (dir === 'down') stepped = Math.floor(n / tick + 1e-9) * tick;
@@ -959,7 +1000,8 @@ function orderContractFromPos(c) {
   const conId = Number(c.conId);
   if (conId > 0) out.conId = conId;
   if (c.symbol != null && c.symbol !== '') out.symbol = String(c.symbol);
-  if (c.localSymbol) out.localSymbol = String(c.localSymbol);
+  const ls = ibLocalSymbol(c.localSymbol);
+  if (ls) out.localSymbol = ls;
   if (c.primaryExch) {
     out.primaryExch = c.primaryExch;
   } else if (out.currency === 'HKD') {
@@ -1907,7 +1949,10 @@ async function main() {
         delete contract.contractResolutionFailed;
         return contract;
       }
-      const symbols = [String(contract.localSymbol || contract.symbol || '')];
+      const symbols = [];
+      const cleanLocal = ibLocalSymbol(contract.localSymbol);
+      if (cleanLocal) symbols.push(cleanLocal);
+      if (contract.symbol) symbols.push(String(contract.symbol));
       // Controlled LSE punctuation fallback. Keep the normal symbol first so
       // MNDI.L/HSBA.L continue to resolve exactly as before.
       if (contract.market === 'LSE' && yKey === 'BA.L' && !symbols.includes('BA.')) symbols.push('BA.');
@@ -1967,7 +2012,7 @@ async function main() {
         const qualified = {
           conId: Number(pick.conId),
           symbol: String(pick.symbol || contract.symbol),
-          localSymbol: pick.localSymbol ? String(pick.localSymbol) : contract.localSymbol,
+          localSymbol: ibLocalSymbol(pick.localSymbol) || ibLocalSymbol(contract.localSymbol),
           primaryExch: pick.primaryExch || contract.primaryExch,
           tradingClass: pick.tradingClass || contract.tradingClass
         };
@@ -2733,12 +2778,20 @@ async function main() {
       };
     }
     const rthOk = !!(contract.usRth || contract.secType === 'FUT' || contract.secType === 'CRYPTO');
-    const parentId = nid(), stopId = nid(), tp1Id = tp1Px > 0 && split.sold > 0 ? nid() : null;
+    // TSE (and SEHK) STP children often never ack. Parent stays transmit:false
+    // and IB 10147 on cancel — 6098.T sat unfilled all Tokyo cash. Transmit the
+    // parent alone; park SL/TP1 after fill via ensureWorkingStops.
+    const asiaStandalone = contract.market === 'JP' || contract.market === 'HK';
+    const parentId = nid();
+    const stopId = asiaStandalone ? null : nid();
+    const tp1Id = (!asiaStandalone && tp1Px > 0 && split.sold > 0) ? nid() : null;
 
     // US pre/extended + RTH chase: gate on live quote vs recommended entry.
+    // JP RTH: 1% through-limit needs last/quote (native MKT is not a TSE order).
     let quotePx = null;
     let quoteSrc = null;
     const usPhase = contract.usRth ? sessionPhase(contract) : null;
+    const jpPhase = contract.market === 'JP' ? sessionPhase(contract) : null;
     if (contract.usRth && (usPhase === 'pre' || usPhase === 'post' || usPhase === 'rth')) {
       ensureMktData(evt.ticker, contract);
       const q = await fetchEntryQuote(evt.ticker, usPhase, evt.side);
@@ -2753,6 +2806,16 @@ async function main() {
             : Math.min(entryCap, mark * 1.02))
           : entryCap;
         if (quotePx > 0) quoteSrc = mark > 0 ? 'portfolio-cap' : 'recommendation-cap';
+      }
+    } else if (jpPhase === 'rth') {
+      ensureMktData(evt.ticker, contract);
+      const q = await fetchEntryQuote(evt.ticker, 'rth', evt.side);
+      quotePx = q.px;
+      quoteSrc = q.src;
+      if (!(quotePx > 0)) {
+        const mark = ibQuoteForTicker(evt.ticker);
+        quotePx = mark > 0 ? mark : (Number(evt.entry) || 0);
+        quoteSrc = mark > 0 ? 'ib-last' : 'recommendation';
       }
     }
     const parentSpec = parentEntrySpec(contract, openAction, split.total, {
@@ -2782,39 +2845,42 @@ async function main() {
     }
     const { entryStyle, defer, ...parentFields } = parentSpec;
     const parent = baseOrder({ orderId: parentId, ...parentFields });
+    if (asiaStandalone) parent.transmit = true;
     // Stop child: FULL quantity — pre-TP1 an SL hit closes the whole position
     // (identical to the simulator's sl_hit). GTC so it survives sessions.
-    const stopOrder = baseOrder({
+    const stopOrder = (!asiaStandalone && stopId != null) ? baseOrder({
       orderId: stopId, action: closeAction, orderType: 'STP',
       auxPrice: stopPx, totalQuantity: split.total,
       parentId, transmit: tp1Id == null,
       outsideRth: rthOk
-    });
+    }) : null;
     // TP1 child: partial quantity. NOT OCA with the stop — a TP1 fill must not
     // cancel the stop; instead onOrderStatus resizes the stop to the runner.
-    const tp1Order = tp1Id != null ? baseOrder({
+    const tp1Order = (!asiaStandalone && tp1Id != null) ? baseOrder({
       orderId: tp1Id, action: closeAction, orderType: 'LMT',
       lmtPrice: tp1Px, totalQuantity: split.sold,
       parentId, outsideRth: rthOk, transmit: true
     }) : null;
 
     if (DRY || !ib) {
-      log('DRY bracket', evt.ticker, evt.side, JSON.stringify({ contract, parent, stopOrder, tp1Order, split, entryStyle, phase: sessionPhase(contract), quotePx, quoteSrc }, null, 1));
+      log('DRY bracket', evt.ticker, evt.side, JSON.stringify({ contract, parent, stopOrder, tp1Order, split, entryStyle, phase: sessionPhase(contract), quotePx, quoteSrc, asiaStandalone }, null, 1));
     } else {
       const oc = placeableContract(contract);
       transmitOrder(parentId, contract, parent, 'entry ' + evt.ticker);
-      transmitOrder(stopId, contract, stopOrder, 'stop ' + evt.ticker);
+      if (stopOrder) transmitOrder(stopId, contract, stopOrder, 'stop ' + evt.ticker);
       if (tp1Order) transmitOrder(tp1Id, contract, tp1Order, 'tp1 ' + evt.ticker);
-      const gateNote = contract.usRth && (sessionPhase(contract) === 'pre' || sessionPhase(contract) === 'post')
-        ? ` quote=${quotePx != null ? quotePx : 'n/a'}(${quoteSrc || 'none'}) vs entry=${roundPx(evt.entry)} lmt=${parent.lmtPrice != null ? parent.lmtPrice : 'n/a'} → ${entryStyle}`
+      const gateNote = (contract.usRth && (sessionPhase(contract) === 'pre' || sessionPhase(contract) === 'post'))
+        || (contract.market === 'JP' && sessionPhase(contract) === 'rth')
+        ? ` quote=${quotePx != null ? quotePx : 'n/a'}(${quoteSrc || 'none'}) vs entry=${roundPx(evt.entry, contract)} lmt=${parent.lmtPrice != null ? parent.lmtPrice : 'n/a'} → ${entryStyle}`
         : '';
       const sizeNote = contract.secType === 'FUT'
         ? ` futMonth=${contract.lastTradeDateOrContractMonth} mult=${contract.multiplier}`
         : (contract.secType === 'CRYPTO' ? ' crypto' : '');
       const bb = contract.bloomberg || bloombergTicker(evt.ticker);
       const listingNote = bb ? ` ${bb}` : '';
+      const jpNote = asiaStandalone ? ' asiaStandalone=1' : '';
       log('Placed bracket', evt.ticker + listingNote, evt.side,
-        `exch=${(oc && oc.exchange) || contract.primaryExch || contract.market || ''} style=${entryStyle} phase=${sessionPhase(contract)} qty=${split.total} sizePx=${roundPx(evt.entry, contract)} stop=${stopPx}(full) tp1=${tp1Px}x${split.sold} runner=${split.runner}${sizeNote}${gateNote}`);
+        `exch=${(oc && oc.exchange) || contract.primaryExch || contract.market || ''} style=${entryStyle} phase=${sessionPhase(contract)} qty=${split.total} sizePx=${roundPx(evt.entry, contract)} stop=${stopPx}(full) tp1=${tp1Px}x${split.sold} runner=${split.runner}${sizeNote}${gateNote}${jpNote}`);
     }
     return {
       parentId, stopId, tp1Id,
@@ -3307,17 +3373,33 @@ async function main() {
             other && other !== row && !other.closed
             && (other.stopId === oid || other.tp1Id === oid || other.parentId === oid));
           for (const [label, oid] of [['stop', row.stopId], ['tp1', row.tp1Id], ['parent', row.parentId]]) {
-            if (oid == null || !openIds.has(oid)) continue;
-            if (liveClaim(oid)) {
+            if (oid == null) continue;
+            const dropPtr = () => {
               if (label === 'stop') row.stopId = null;
               else if (label === 'tp1') row.tp1Id = null;
               else row.parentId = null;
               dirty = true;
+            };
+            if (liveClaim(oid)) {
+              dropPtr();
               log('ORPHAN sweep: dropped closed-row', label, oid, '— live sibling still owns it', key);
+              continue;
+            }
+            if (!openIds.has(oid)) {
+              dropPtr();
+              continue;
+            }
+            const liveSameTicker = Object.values(state.byKey || {}).some(other =>
+              other && other !== row && !other.closed
+              && String(other.ticker || '').toUpperCase() === String(row.ticker || '').toUpperCase());
+            if (liveSameTicker) {
+              dropPtr();
+              log('ORPHAN sweep: skip cancel — live row still exists for', row.ticker, label, oid);
               continue;
             }
             log('ORPHAN sweep: cancelling', label, 'order', oid, 'for closed', key);
             cancelOrder(oid, 'orphan ' + key);
+            dropPtr();
           }
         }
         if (dirty) saveState(state);
@@ -5166,19 +5248,20 @@ async function main() {
         const us = !!contract.usRth;
 
         let reason = null;
+        const asiaLive = row.entryStyle === 'MKT' || row.entryStyle === 'LMT-THROUGH';
         if (asia) {
           if (phase === 'lunch') {
             // Wait for 13:00 HKT reopen — do not cancel/replace during the break
-          } else if (phase === 'rth' && (row.entryStyle !== 'MKT' || row.contractRejected || row.deferred)) {
+          } else if (phase === 'rth' && (!asiaLive || row.contractRejected || row.deferred)) {
             reason = 'asia-rth';
           }
-          else if (phase === 'rth' && row.entryStyle === 'MKT') {
+          else if (phase === 'rth' && asiaLive) {
             const t0 = Date.parse(row.lastRearmAt || row.orderSubmittedAt || 0);
             if (!Number.isFinite(t0) || Date.now() - t0 > 2 * 60 * 1000) {
-              // Unfilled TSE/SEHK MKT (or a rejected first fire) — retry
+              // Unfilled TSE LMT-THROUGH / SEHK MKT (or a rejected first fire) — retry
               reason = 'asia-rth-retry';
             }
-          } else if (phase !== 'rth' && phase !== 'lunch' && row.entryStyle === 'MKT') reason = 'asia-to-opg';
+          } else if (phase !== 'rth' && phase !== 'lunch' && asiaLive) reason = 'asia-to-opg';
           else if (!row.entryStyle) reason = 'asia-missing-style';
         } else if (eu && phase === 'rth' && (isAuctionEntryStyle(row.entryStyle) || row.restoreAfterFalseOrphan)) {
           if (row.restoreAfterFalseOrphan) {
@@ -5309,11 +5392,24 @@ async function main() {
           }
           const cancelStatuses = cancelWaits.length ? await Promise.all(cancelWaits) : [];
           if (cancelStatuses.some(status => status === 'timeout')) {
-            row.lastRearmAt = new Date().toISOString();
-            row.rearmBlocked = 'cancel-timeout';
+            const replaceDeadAsiaBag = reason === 'asia-rth' || reason === 'asia-rth-retry'
+              || reason === 'asia-to-opg' || reason === 'asia-missing-style';
+            if (!replaceDeadAsiaBag) {
+              row.lastRearmAt = new Date().toISOString();
+              row.rearmBlocked = 'cancel-timeout';
+              saveState(state);
+              log('RECONCILE: rearm aborted — cancellation not confirmed', key, reason);
+              continue;
+            }
+            // 6098.T 27 Aug: bag never went live (IB 10147). Aborting on timeout
+            // parked the name for the rest of Tokyo cash. Drop the dead ids and replace.
+            log('RECONCILE: cancel timeout — replacing dead Asia bag', key, reason,
+              'oids=', oldParent, oldStop, oldTp1);
+            row.parentId = null;
+            row.stopId = null;
+            row.tp1Id = null;
+            row.rearmBlocked = null;
             saveState(state);
-            log('RECONCILE: rearm aborted — cancellation not confirmed', key, reason);
-            continue;
           }
           const placed = await placeBracket({
             key, ticker: row.ticker, hz: row.hz, side: row.side || src.side,
