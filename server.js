@@ -13926,6 +13926,11 @@ function entryFillsAreQtyPadOnly(rows, key) {
   return entries.every(isIbkrQtyPadFill);
 }
 
+function qtyPadEntryQty(rows, key) {
+  return (rows || []).filter(r => r && r.key === key && r.role === 'entry' && isIbkrQtyPadFill(r))
+    .reduce((s, r) => s + (Number(r.qty) || 0), 0);
+}
+
 function dropQtyPadFillsForKeys(keys) {
   const want = new Set((keys || []).filter(Boolean));
   if (!want.size) return 0;
@@ -16134,17 +16139,20 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           }
           const fillRowsNow = readIbkrFillRows();
           const liveOpens = mergedOpens.filter(o => o && o.openQty > 0);
-          const padOnly = liveOpens.length > 0 && liveOpens.every(o => entryFillsAreQtyPadOnly(fillRowsNow, o.key));
-          if (padOnly) {
-            const dropped = dropQtyPadFillsForKeys(liveOpens.map(o => o.key));
+          // AFL: IB went flat while a qty-pad still held the site lot. Drop pads
+          // whenever they exist — do not require every historical entry to be a pad
+          // (that skipped AFL and left side-mismatch-then-flat as a sticky banner).
+          const padKeys = liveOpens.map(o => o.key).filter(k => qtyPadEntryQty(fillRowsNow, k) > 0);
+          if (padKeys.length) {
+            const dropped = dropQtyPadFillsForKeys(padKeys);
             if (dropped > 0) {
               adjusted.push({
                 ticker: y, action: 'drop-qty-pad-ib-flat', qty: asAbs,
                 note: 'IB flat — dropped synthetic qty-pad (no genuine execs)'
               });
               console.log('IBKR recon: dropped', dropped, 'qty-pad fill(s) for IB-flat', y);
+              continue;
             }
-            continue;
           }
           const mismatchAt = Number(pending[y + '|side-mismatch'] || 0);
           if (mismatchAt > 0 && (Date.now() - mismatchAt) < 24 * 3600 * 1000) {
@@ -18793,6 +18801,7 @@ module.exports = {
   isModelIbSyncFill,
   isIbkrQtyPadFill,
   entryFillsAreQtyPadOnly,
+  qtyPadEntryQty,
   dropQtyPadFillsForKeys,
   quarantineKeyFillsToCursorErr,
   reArmModelEntry,

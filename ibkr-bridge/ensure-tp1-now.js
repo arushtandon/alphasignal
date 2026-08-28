@@ -46,7 +46,7 @@ async function main() {
       bump.px = px;
       const order = {
         action: 'SELL', orderType: 'LMT', lmtPrice: px, totalQuantity: 3000,
-        tif: 'GTC', outsideRth: false, transmit: true,
+        tif: 'GTC', outsideRth: true, transmit: true,
         eTradeOnly: false, firmQuoteOnly: false, ...(bump.acct || {})
       };
       if (!DRY) ib.placeOrder(oid, bump.contract, order);
@@ -154,7 +154,7 @@ async function main() {
       bump.px = px;
       bump.oid = place(contract, {
         action: 'SELL', orderType: 'LMT', lmtPrice: px, totalQuantity: 3000,
-        tif: 'GTC', outsideRth: false, transmit: true,
+        tif: 'GTC', outsideRth: true, transmit: true,
         eTradeOnly: false, firmQuoteOnly: false, ...acct
       }, '0883 TP1 GTC @' + px);
     }

@@ -51,7 +51,9 @@
  *   IBKR_EVENTS_TOKEN    same as AlphaSignal IBKR_EVENTS_TOKEN (optional)
  *   IBKR_HOST            default 127.0.0.1
  *   IBKR_PORT            7497 (TWS paper) or 4002 (Gateway paper)
- *   IBKR_CLIENT_ID       default 17
+ *   IBKR_CLIENT_ID       manager socket (run-forever pins 27)
+ *   IBKR_EXEC_POOL_SIZE  execution sockets including manager (default 20, max 25)
+ *   IBKR_EXEC_POOL_START first worker id (default 30; skips 18/19/25-26/28-29)
  *   IBKR_ACCOUNT         paper account id (optional; IB default if unset)
  *   IBKR_DRY_RUN         1 = log only, no orders (default 1)
  *   IBKR_POLL_MS         default 15000
@@ -60,6 +62,8 @@
  *                        (prevents replaying stale history on a fresh cursor)
  *   IBKR_ALLOW_NSE       1 = attempt NSE orders (default skip — IB restricts
  *                        NSE for most non-India accounts)
+ *   IBKR_OUTSIDE_RTH     0 = restore per-venue outsideRth (US pre/Globex true,
+ *                        cash RTH/OPG/Asia false). Default: true on every order.
  *   STATE_FILE           cursor + order map path (default ./bridge-state.json)
  *   IBKR_RECON_MS        full reconcile sweep interval (default 900000 = 15 min)
  *   TELEGRAM_BOT_TOKEN   BotFather token — risk alerts + US EOD performance summary
@@ -125,6 +129,15 @@ const {
   ibFutSymbolToYahoo,
   isCommodityYahoo
 } = require('../lib/ibkr/commodity-futures');
+const {
+  buildExecPoolIds,
+  orderIdFloor,
+  pickLeastBusy,
+  rememberOrderClient,
+  clientForOrder,
+  rowOwningOrder,
+  runWithConcurrency
+} = require('../lib/ibkr/exec-client-pool');
 
 const DRY = process.env.IBKR_DRY_RUN !== '0';
 const BASE = String(process.env.ALPHASIGNAL_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
@@ -141,6 +154,10 @@ const ACCOUNT = process.env.IBKR_ACCOUNT || '';
 const POLL_MS = Math.max(5000, parseInt(process.env.IBKR_POLL_MS || '15000', 10));
 const MAX_EVENT_AGE_MS = Math.max(1, parseFloat(process.env.IBKR_MAX_EVENT_AGE_H || '24')) * 3600 * 1000;
 const ALLOW_NSE = process.env.IBKR_ALLOW_NSE === '1';
+/** Trial: send outsideRth on every order. IB accepts, ignores (2109), or rejects per venue. */
+const ORDER_OUTSIDE_RTH = process.env.IBKR_OUTSIDE_RTH !== '0';
+const EXEC_POOL_SIZE = Math.max(1, Math.min(25, parseInt(process.env.IBKR_EXEC_POOL_SIZE || '20', 10) || 20));
+const EXEC_POOL_START = Math.max(1, parseInt(process.env.IBKR_EXEC_POOL_START || '30', 10) || 30);
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, 'bridge-state.json');
 const STATE_DB_FILE = process.env.STATE_DB_FILE || path.join(__dirname, 'bridge-state.sqlite');
 /** Full reconcile + risk-alert cadence (default 15 min). */
@@ -681,14 +698,14 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
     }
     return {
       orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY',
-      outsideRth: true, transmit: false, entryStyle: 'MKT-GLOBE'
+      outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'MKT-GLOBE'
     };
   }
   // IB SMART often rejects orderType 'MOO' (error 321). The portable form is
   // MKT + tif OPG (submit to the opening auction).
   if (contract.usRth) {
     if (opts.forceOpg && phase === 'pre') {
-      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
+      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'OPG' };
     }
     if (phase === 'rth') {
       // Missed pre-market / OPG still working → take the open/RTH print even if
@@ -706,7 +723,7 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
           };
         }
       }
-      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MKT' };
+      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'MKT' };
     }
     if (phase === 'pre') {
       // Premarket only: lift if quote is at or better than recommendation.
@@ -717,17 +734,17 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
         return {
           orderType: 'LMT', action, totalQuantity: qty,
           lmtPrice: roundPx(quotePx, contract, side === 'sell' ? 'down' : 'up'),
-          tif: 'DAY', outsideRth: true, transmit: false, entryStyle: 'LMT-EXT'
+          tif: 'DAY', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'LMT-EXT'
         };
       }
       if (premarketFavorable(side, entryPx, quotePx)) {
         const lmt = extendedFillLimit(side, entryPx, quotePx, contract);
         return {
           orderType: 'LMT', action, totalQuantity: qty, lmtPrice: lmt,
-          tif: 'DAY', outsideRth: true, transmit: false, entryStyle: 'LMT-EXT'
+          tif: 'DAY', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'LMT-EXT'
         };
       }
-      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
+      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'OPG' };
     }
     // 06:00 SGT board is for the next US cash session. Do not send OPG/LMT
     // overnight — recon places at the next pre (LMT-EXT or OPG).
@@ -745,12 +762,12 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
         return {
           orderType: 'LMT', action, totalQuantity: qty,
           lmtPrice: roundPx(raw, contract, sell ? 'down' : 'up'),
-          tif: 'DAY', outsideRth: false, transmit: true, entryStyle: 'LMT-THROUGH'
+          tif: 'DAY', outsideRth: ORDER_OUTSIDE_RTH, transmit: true, entryStyle: 'LMT-THROUGH'
         };
       }
     }
     // Late board after the cash open — take market now (HK/EU/UK)
-    return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MKT' };
+    return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'MKT' };
   }
   if (phase === 'lunch') {
     // SEHK midday break — do not submit (IB often returns error 200).
@@ -764,18 +781,18 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
       return {
         orderType: 'LMT', action, totalQuantity: qty,
         lmtPrice: roundPx(entryPx, contract, side === 'sell' ? 'down' : 'up'),
-        tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'LMT-OPEN'
+        tif: 'DAY', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'LMT-OPEN'
       };
     }
-    return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: false, transmit: false, entryStyle: 'MKT-OPEN' };
+    return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'MKT-OPEN' };
   }
   // Pre-open or after previous close → opening auction (EU/UK/Asia).
   // JP parent transmits alone: TSE bag children (STP) never ack, leaving the
   // parent at transmit:false for the whole cash session (6098.T 27 Aug).
   if (contract.market === 'JP') {
-    return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: true, entryStyle: 'OPG' };
+    return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: ORDER_OUTSIDE_RTH, transmit: true, entryStyle: 'OPG' };
   }
-  return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: false, transmit: false, entryStyle: 'OPG' };
+  return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'OPG' };
 }
 
 function correctiveExtExitSpec(contract, originalSide, qty, quotePx) {
@@ -788,7 +805,7 @@ function correctiveExtExitSpec(contract, originalSide, qty, quotePx) {
     totalQuantity: qty,
     lmtPrice: px,
     tif: 'DAY',
-    outsideRth: true,
+    outsideRth: ORDER_OUTSIDE_RTH,
     transmit: true
   };
 }
@@ -1107,7 +1124,7 @@ function placeableContract(contract, exchangeOverride) {
 // ── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
   const state = loadState();
-  log(`Bridge start | AlphaSignal=${BASE} | IB=${HOST}:${PORT} clientId=${CLIENT_ID} | dryRun=${DRY} | risk/trade=${(RISK_SIZING_LIMITS.riskPct * 100).toFixed(2)}% NLV`);
+  log(`Bridge start | AlphaSignal=${BASE} | IB=${HOST}:${PORT} clientId=${CLIENT_ID} | execPool=${EXEC_POOL_SIZE} from ${EXEC_POOL_START} | dryRun=${DRY} | outsideRth=${ORDER_OUTSIDE_RTH} | risk/trade=${(RISK_SIZING_LIMITS.riskPct * 100).toFixed(2)}% NLV`);
   log(`Reconcile every ${(SWEEP_MS / 60000).toFixed(0)}m | Telegram alerts=${telegramConfigured() ? 'ON' : 'OFF (set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)'}`
     + (telegramConfigured() && EOD_ALERTS ? ' | EOD summary after US post-close' : ''));
   if (!state.alertMeta || typeof state.alertMeta !== 'object') {
@@ -1117,6 +1134,10 @@ async function main() {
   let ib = null;
   let EventName = null;
   let nextOrderId = 1;
+  const execSlots = [];
+  let execRr = 0;
+  let activeClientId = CLIENT_ID;
+  if (!state.orderClients || typeof state.orderClients !== 'object') state.orderClients = {};
   const orderFills = {}; // orderId -> filled qty (from orderStatus) — LOST on restart
   const orderAvgFill = new Map(); // orderId -> { avgFillPrice, lastFillPrice, filled }
   // Live positions from IB (survives restarts, unlike orderFills). Keyed
@@ -1265,7 +1286,44 @@ async function main() {
   let _execHistBuf = [];
   let lastExecRecoverAt = 0;
 
-  function nid() { return nextOrderId++; }
+  function slotByClientId(clientId) {
+    const cid = Number(clientId);
+    return execSlots.find(s => s && s.clientId === cid) || null;
+  }
+  function pickExecSlot() {
+    return pickLeastBusy(execSlots, execRr++) || slotByClientId(activeClientId) || execSlots[0] || null;
+  }
+  function nid(clientId) {
+    const slot = (clientId != null ? slotByClientId(clientId) : null) || pickExecSlot();
+    if (slot) {
+      const id = slot.nextOrderId++;
+      rememberOrderClient(state.orderClients, id, slot.clientId);
+      return id;
+    }
+    const id = nextOrderId++;
+    rememberOrderClient(state.orderClients, id, activeClientId);
+    return id;
+  }
+  function nidForRow(row) {
+    return nid(row && (row.placeClientId || row.parentClientId));
+  }
+  function apiForOrderId(orderId) {
+    const row = rowOwningOrder(state.byKey, orderId);
+    const cid = clientForOrder(orderId, {
+      orderClients: state.orderClients, row, managerId: activeClientId
+    });
+    const slot = slotByClientId(cid);
+    return (slot && slot.api) || ib;
+  }
+  function bumpInflight(clientId, delta) {
+    const slot = slotByClientId(clientId);
+    if (slot) slot.inflight = Math.max(0, (Number(slot.inflight) || 0) + delta);
+  }
+  function releasePending(orderId) {
+    const pending = pendingOrders.get(Number(orderId));
+    if (pending && pending.clientId) bumpInflight(pending.clientId, -1);
+    pendingOrders.delete(Number(orderId));
+  }
 
   function ibSignedQtyForYahoo(ticker) {
     const aliases = yahooAliases(ticker);
@@ -1297,8 +1355,7 @@ async function main() {
   let mdFellBack = false;
   let mdCompeteLogged = false;
 
-  // Single-connection guard: reuse last successful clientId unless env pinned.
-  let activeClientId = CLIENT_ID;
+  // Manager socket: env pin (run-forever = 27). Workers 30+.
   if (!process.env.IBKR_CLIENT_ID && Number(state.clientId) > 0) {
     activeClientId = Number(state.clientId);
   }
@@ -1315,6 +1372,7 @@ async function main() {
         unknownOrderIds.add(Number(reqId));
         logOnce('gone-' + reqId, 'IB 10147 — order already gone, will not re-cancel', reqId);
         noteCancelAck(Number(reqId), 'Cancelled');
+        releasePending(Number(reqId));
         return;
       }
       // 10197: IB allows only one live market-data consumer per user. TWS/Gateway
@@ -1337,7 +1395,7 @@ async function main() {
       }
       if (Number(code) === 110) {
         const oid = Number(reqId);
-        pendingOrders.delete(oid);
+        releasePending(oid);
         for (const [key, row] of Object.entries(state.byKey || {})) {
           if (!row || row.closed) continue;
           if (row.tp1Id === oid) {
@@ -1390,7 +1448,7 @@ async function main() {
       }
       const st = String(status || '');
       if (st === 'Submitted' || st === 'PreSubmitted' || st === 'Filled') {
-        pendingOrders.delete(Number(orderId));
+        releasePending(Number(orderId));
         for (const row of Object.values(state.byKey || {})) {
           if (!row) continue;
           if (row.tp1Id === Number(orderId)) row.tp1RoutingFailed = false;
@@ -1593,7 +1651,52 @@ async function main() {
     // previous session's range.
     const timeFloor = Math.floor((Date.now() - Date.UTC(2025, 0, 1)) / 1000);
     nextOrderId = Math.max(nextOrderId, timeFloor);
-    log('Connected to IB paper. starting orderId=', nextOrderId);
+    execSlots.push({
+      clientId: activeClientId,
+      api: ib,
+      nextOrderId,
+      ready: true,
+      inflight: 0,
+      manager: true
+    });
+    log('Connected to IB paper. manager clientId=', activeClientId, 'starting orderId=', nextOrderId);
+
+    const poolIds = buildExecPoolIds(activeClientId, EXEC_POOL_SIZE, EXEC_POOL_START);
+    for (const cid of poolIds) {
+      if (cid === activeClientId) continue;
+      try {
+        const api = new stoqey.IBApi({ host: HOST, port: PORT, clientId: cid });
+        for (const ev of [EventName.error, EventName.orderStatus, EventName.execDetails]) {
+          for (const fn of ib.listeners(ev)) api.on(ev, fn);
+        }
+        let workerReady = false;
+        api.on(EventName.disconnected, () => {
+          const slot = slotByClientId(cid);
+          if (slot) slot.ready = false;
+          if (workerReady) log('exec worker disconnected', cid);
+        });
+        await new Promise((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error('connect timeout')), 12000);
+          api.once(EventName.connected, () => { clearTimeout(t); resolve(); });
+          api.connect();
+        });
+        const ibNext = await new Promise((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error('nextValidId timeout')), 12000);
+          api.once(EventName.nextValidId, id => { clearTimeout(t); resolve(Number(id) || 1); });
+          api.reqIds();
+        });
+        workerReady = true;
+        const startId = orderIdFloor(cid, ibNext);
+        execSlots.push({
+          clientId: cid, api, nextOrderId: startId, ready: true, inflight: 0, manager: false
+        });
+        log('exec worker connected', cid, 'orderId=', startId);
+      } catch (e) {
+        log('exec worker skipped', cid, e.message);
+      }
+    }
+    log('exec pool ready', execSlots.filter(s => s.ready).map(s => s.clientId).join(',')
+      || String(activeClientId));
     try { ib.reqMarketDataType(mdType); log('marketDataType=' + mdType + (mdType === 1 ? ' (live)' : mdType === 3 ? ' (delayed)' : '')); } catch (_) {}
     // Subscribe to positions — the source of truth for how many shares are
     // actually held (orderFills is in-memory only and dies with each restart).
@@ -2406,12 +2509,17 @@ async function main() {
       tif: 'GTC',
       eTradeOnly: false,
       firmQuoteOnly: false,
+      outsideRth: ORDER_OUTSIDE_RTH,
       ...(ACCOUNT ? { account: ACCOUNT } : {}),
       ...extra
     };
   }
 
   function remapPendingOrderId(oldId, newId) {
+    const cid = state.orderClients[oldId] != null
+      ? state.orderClients[oldId]
+      : state.orderClients[String(oldId)];
+    if (Number(cid) > 0) rememberOrderClient(state.orderClients, newId, cid);
     for (const row of Object.values(state.byKey || {})) {
       if (!row) continue;
       if (row.parentId === oldId) row.parentId = newId;
@@ -2456,7 +2564,7 @@ async function main() {
     if (!pending || !ib) return;
     const oid = Number(orderId);
     if (isShortSaleReject(code, message)) {
-      pendingOrders.delete(oid);
+      releasePending(oid);
       for (const [key, row] of Object.entries(state.byKey || {})) {
         if (!row) continue;
         if (row.tp1Id === oid) {
@@ -2475,7 +2583,7 @@ async function main() {
       return;
     }
     if (isSessionBlockedError(code, message)) {
-      pendingOrders.delete(oid);
+      releasePending(oid);
       for (const [key, row] of Object.entries(state.byKey || {})) {
         if (!row) continue;
         if (row.tp1Id === oid) {
@@ -2499,19 +2607,24 @@ async function main() {
     }
     if (!isRoutingError(code)) return;
     if (pending.retried) {
-      pendingOrders.delete(oid);
+      releasePending(oid);
       markChildUnparked(oid, pending.exchange + ' and fallback both error 200');
       return;
     }
     const nextEx = fallbackExchange(pending.exchange, pending.contract);
     if (!nextEx || nextEx === pending.exchange) {
-      pendingOrders.delete(oid);
+      releasePending(oid);
       markChildUnparked(oid, 'error 200 no fallback from ' + pending.exchange);
       return;
     }
-    const newId = nid();
+    const clientId = pending.clientId || clientForOrder(oid, {
+      orderClients: state.orderClients,
+      row: rowOwningOrder(state.byKey, oid),
+      managerId: activeClientId
+    });
+    const newId = nid(clientId);
     pending.retried = true;
-    pendingOrders.delete(oid);
+    releasePending(oid);
     remapPendingOrderId(oid, newId);
     const oc = placeableContract(pending.contract, nextEx);
     const order = { ...pending.order, orderId: newId };
@@ -2520,11 +2633,14 @@ async function main() {
       order,
       label: pending.label,
       exchange: nextEx,
-      retried: true
+      retried: true,
+      clientId
     });
-    ib.placeOrder(newId, oc, order);
+    bumpInflight(clientId, 1);
+    const retryApi = (slotByClientId(clientId) && slotByClientId(clientId).api) || ib;
+    retryApi.placeOrder(newId, oc, order);
     log('IB error 200 — retry', pending.label, pending.exchange, '→', nextEx,
-      'oid=' + oid, '→', newId, oc.symbol || '');
+      'oid=' + oid, '→', newId, 'client=' + clientId, oc.symbol || '');
     saveState(state);
     forceReconcile = true;
   }
@@ -2533,24 +2649,35 @@ async function main() {
   function transmitOrder(orderId, contract, order, label) {
     if (DRY || !ib) { log('DRY order', label, JSON.stringify({ orderId, contract: contract && contract.symbol, ...order })); return; }
     const oc = placeableContract(contract);
+    const clientId = clientForOrder(orderId, {
+      orderClients: state.orderClients,
+      row: rowOwningOrder(state.byKey, orderId),
+      managerId: activeClientId
+    });
+    rememberOrderClient(state.orderClients, orderId, clientId);
     pendingOrders.set(Number(orderId), {
       contract,
       order: { ...order, orderId },
       label,
       exchange: oc && oc.exchange,
-      retried: false
+      retried: false,
+      clientId
     });
-    ib.placeOrder(orderId, oc, order);
+    bumpInflight(clientId, 1);
+    const api = apiForOrderId(orderId);
+    api.placeOrder(orderId, oc, order);
     log('order sent', label, oc && oc.symbol, 'exch=' + (oc && oc.exchange),
       order.action, order.orderType, 'qty=' + order.totalQuantity,
-      order.lmtPrice != null ? 'lmt=' + order.lmtPrice : '', order.auxPrice != null ? 'stp=' + order.auxPrice : '');
+      order.lmtPrice != null ? 'lmt=' + order.lmtPrice : '', order.auxPrice != null ? 'stp=' + order.auxPrice : '',
+      'outsideRth=' + !!order.outsideRth, 'client=' + clientId);
   }
 
   function cancelOrder(orderId, label) {
     if (orderId == null) return;
     if (unknownOrderIds.has(Number(orderId))) return;
     if (DRY || !ib) { log('DRY cancel', label, orderId); return; }
-    try { ib.cancelOrder(orderId); log('cancel sent', label, orderId); } catch (e) { log('cancel failed', label, orderId, e.message); }
+    const api = apiForOrderId(orderId);
+    try { api.cancelOrder(orderId); log('cancel sent', label, orderId, 'client=' + clientForOrder(orderId, { orderClients: state.orderClients, row: rowOwningOrder(state.byKey, orderId), managerId: activeClientId })); } catch (e) { log('cancel failed', label, orderId, e.message); }
   }
 
   /** Wait until IB acks cancel (or timeout). Used to close the place-then-cancel double-fill window. */
@@ -2881,14 +3008,10 @@ async function main() {
         updated: evt.t || new Date().toISOString(), dry: DRY
       };
     }
-    const rthOk = !!(contract.usRth || contract.secType === 'FUT' || contract.secType === 'CRYPTO');
     // TSE (and SEHK) STP children often never ack. Parent stays transmit:false
     // and IB 10147 on cancel — 6098.T sat unfilled all Tokyo cash. Transmit the
     // parent alone; park SL/TP1 after fill via ensureWorkingStops.
     const asiaStandalone = contract.market === 'JP' || contract.market === 'HK';
-    const parentId = nid();
-    const stopId = asiaStandalone ? null : nid();
-    const tp1Id = (!asiaStandalone && tp1Px > 0 && split.sold > 0) ? nid() : null;
 
     // US pre/extended + RTH chase: gate on live quote vs recommended entry.
     // JP RTH: 1% through-limit needs last/quote (native MKT is not a TSE order).
@@ -2947,6 +3070,11 @@ async function main() {
         updated: evt.t || new Date().toISOString(), dry: DRY
       };
     }
+    const execSlot = pickExecSlot();
+    const execClientId = execSlot ? execSlot.clientId : activeClientId;
+    const parentId = nid(execClientId);
+    const stopId = asiaStandalone ? null : nid(execClientId);
+    const tp1Id = (!asiaStandalone && tp1Px > 0 && split.sold > 0) ? nid(execClientId) : null;
     const { entryStyle, defer, ...parentFields } = parentSpec;
     const parent = baseOrder({ orderId: parentId, ...parentFields });
     if (asiaStandalone) parent.transmit = true;
@@ -2956,14 +3084,14 @@ async function main() {
       orderId: stopId, action: closeAction, orderType: 'STP',
       auxPrice: stopPx, totalQuantity: split.total,
       parentId, transmit: tp1Id == null,
-      outsideRth: rthOk
+      outsideRth: ORDER_OUTSIDE_RTH
     }) : null;
     // TP1 child: partial quantity. NOT OCA with the stop — a TP1 fill must not
     // cancel the stop; instead onOrderStatus resizes the stop to the runner.
     const tp1Order = (!asiaStandalone && tp1Id != null) ? baseOrder({
       orderId: tp1Id, action: closeAction, orderType: 'LMT',
       lmtPrice: tp1Px, totalQuantity: split.sold,
-      parentId, outsideRth: rthOk, transmit: true
+      parentId, outsideRth: ORDER_OUTSIDE_RTH, transmit: true
     }) : null;
 
     if (DRY || !ib) {
@@ -3001,6 +3129,10 @@ async function main() {
       arrivalPrice: quotePx || Number(evt.entry) || null,
       quoteSource: quoteSrc || null,
       orderSubmittedAt: new Date().toISOString(),
+      placeClientId: execClientId,
+      parentClientId: execClientId,
+      stopClientId: stopId != null ? execClientId : null,
+      tp1ClientId: tp1Id != null ? execClientId : null,
       riskSizing: split.risk,
       portfolioAdmission: portfolioGate,
       updated: evt.t || new Date().toISOString(), dry: DRY
@@ -3028,8 +3160,9 @@ async function main() {
       cancelOrder(row.tp1Id, 'runner resume — no TP1 ' + key);
       row.tp1Id = null;
     }
-    const sid = nid();
+    const sid = nidForRow(row);
     row.stopId = sid;
+    row.stopClientId = state.orderClients[sid] || row.placeClientId;
     row.stopPx = stp;
     row.qtyRunner = qty;
     row.qtySold = Math.max(0, (Number(row.qtyTotal) || qty) - qty);
@@ -3079,8 +3212,9 @@ async function main() {
     const closeAction = isSell ? 'BUY' : 'SELL';
     if (!tp1Same && Number(row.qtySold) > 0) {
       if (row.tp1Id != null) cancelOrder(row.tp1Id, 'TP1 rebase replace ' + key);
-      const tp1Id = nid();
+      const tp1Id = nidForRow(row);
       row.tp1Id = tp1Id;
+      row.tp1ClientId = state.orderClients[tp1Id] || row.placeClientId;
       transmitOrder(tp1Id, row.contract, baseOrder({
         orderId: tp1Id, action: closeAction, orderType: 'LMT',
         lmtPrice: tp1, totalQuantity: row.qtySold, transmit: true
@@ -3089,8 +3223,9 @@ async function main() {
     const stopQty = Number(row.qtyTotal) || 0;
     if (!slSame && stopQty > 0) {
       if (row.stopId != null) cancelOrder(row.stopId, 'SL rebase replace ' + key);
-      const sid = nid();
+      const sid = nidForRow(row);
       row.stopId = sid;
+      row.stopClientId = state.orderClients[sid] || row.placeClientId;
       transmitOrder(sid, row.contract, baseOrder({
         orderId: sid, action: closeAction, orderType: 'STP',
         auxPrice: sl, totalQuantity: stopQty, transmit: true
@@ -3248,7 +3383,7 @@ async function main() {
       remaining = Math.max(0, parentFilled - soldAtTp1);
     }
     if (remaining > 0) {
-      const fid = nid();
+      const fid = nidForRow(row);
       row.closeIds = [...(row.closeIds || []), fid];
       const phase = sessionPhase(row.contract);
       const openingCorrection = !!(row.correctiveReentry && row.contract.usRth && phase !== 'rth');
@@ -3258,7 +3393,7 @@ async function main() {
         action: row.side === 'sell' ? 'BUY' : 'SELL',
         orderType: 'MKT', totalQuantity: remaining,
         tif: openingCorrection ? 'OPG' : 'DAY',
-        outsideRth: false, transmit: true
+        outsideRth: ORDER_OUTSIDE_RTH, transmit: true
       }), 'flatten @exit ' + key);
     }
     row.closed = true;
@@ -4487,8 +4622,9 @@ async function main() {
         logOnce('stop-skip-qty-' + key, 'stop attach skip', key, 'qty', qty, 'stp', stp, 'pos', posInDir, 'tp1Working', tp1WorkingQty);
         continue;
       }
-      const oid = nid();
+      const oid = nidForRow(row);
       row.stopId = oid;
+      row.stopClientId = state.orderClients[oid] || row.placeClientId;
       row.stopPx = stp;
       row.stopRoutingFailed = false;
       row.stopAttachAttemptAt = new Date().toISOString();
@@ -4643,8 +4779,9 @@ async function main() {
         log('TP1 skip (no price)', key);
         continue;
       }
-      const oid = nid();
+      const oid = nidForRow(row);
       row.tp1Id = oid;
+      row.tp1ClientId = state.orderClients[oid] || row.placeClientId;
       row.tp1Px = tp1Px;
       row.qtyTotal = posInDir;
       row.qtySold = half;
@@ -4658,7 +4795,7 @@ async function main() {
         lmtPrice: tp1Px,
         totalQuantity: half,
         tif,
-        outsideRth: false,
+        outsideRth: ORDER_OUTSIDE_RTH,
         transmit: true
       }), (spec ? 'tp1 open-if-above ' : 'tp1 attach ') + key);
       n++;
@@ -5300,7 +5437,7 @@ async function main() {
               continue;
             }
           }
-          exitId = nid();
+          exitId = nidForRow(row);
           row.closeIds = [...(row.closeIds || []), exitId];
           row.correctiveExtOrderId = exitId;
         }
@@ -5324,6 +5461,86 @@ async function main() {
       const workingParentIds = new Set(
         (listedParents.orders || []).map(o => Number(o.orderId)).filter(n => n > 0)
       );
+      const rearmJobs = [];
+      async function executeUnfilledRearm(key, reason) {
+        const row = state.byKey[key];
+        if (!row || row.closed) return;
+        const c0 = row.contract || toContract(row.ticker);
+        const market = (c0 && (c0.market || (c0.usRth ? 'US' : ''))) || '';
+        const asia = market === 'HK' || market === 'JP';
+        try {
+          const src = entryByKey.get(key) || {};
+          const oldParent = row.parentId, oldStop = row.stopId, oldTp1 = row.tp1Id;
+          const cancelWaits = [];
+          if (oldParent != null) {
+            cancelWaits.push(waitCancel(oldParent, 3500));
+            cancelOrder(oldParent, 'rearm parent ' + key);
+          }
+          if (oldStop != null) {
+            cancelWaits.push(waitCancel(oldStop, 3500));
+            cancelOrder(oldStop, 'rearm stop ' + key);
+          }
+          if (oldTp1 != null) {
+            cancelWaits.push(waitCancel(oldTp1, 3500));
+            cancelOrder(oldTp1, 'rearm tp1 ' + key);
+          }
+          const cancelStatuses = cancelWaits.length ? await Promise.all(cancelWaits) : [];
+          if (cancelStatuses.some(status => status === 'timeout')) {
+            const replaceDeadAsiaBag = reason === 'asia-rth' || reason === 'asia-rth-retry'
+              || reason === 'asia-to-opg' || reason === 'asia-missing-style'
+              || reason === 'asia-opg-refresh';
+            if (!replaceDeadAsiaBag) {
+              row.lastRearmAt = new Date().toISOString();
+              row.rearmBlocked = 'cancel-timeout';
+              saveState(state);
+              log('RECONCILE: rearm aborted — cancellation not confirmed', key, reason);
+              return;
+            }
+            log('RECONCILE: cancel timeout — replacing dead Asia bag', key, reason,
+              'oids=', oldParent, oldStop, oldTp1);
+            row.parentId = null;
+            row.stopId = null;
+            row.tp1Id = null;
+            row.rearmBlocked = null;
+            saveState(state);
+          }
+          const placed = await placeBracket({
+            key, ticker: row.ticker, hz: row.hz, side: row.side || src.side,
+            entry: src.entry != null ? src.entry : row.entry,
+            tp1: src.tp1 != null ? src.tp1 : row.tp1Px,
+            sl: src.sl != null ? src.sl : row.stopPx,
+            trailSl: src.trailSl != null ? src.trailSl : (src.sl != null ? src.sl : row.stopPx),
+            entryDate: src.entryDate || src.t || row.admittedAt,
+            t: src.entryDate || src.t || row.admittedAt || new Date().toISOString(),
+            reason: src.reason,
+            decisionId: src.decisionId || row.decisionId,
+            admittedAt: row.admittedAt,
+            sector: src.sector || row.sector,
+            country: src.country || row.country,
+            correlationCluster: src.correlationCluster || row.correlationCluster,
+            forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-pre-park-opg'
+              || reason === 'us-pre-unfavorable-to-opg'
+              || reason === 'asia-opg-refresh' || reason === 'asia-to-opg',
+            skipChase: reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg',
+            carryUnfilled: (asia && !row.entryFilled) || forceCashOpenActive(row)
+          });
+          if (placed) {
+            placed.lastRearmAt = new Date().toISOString();
+            placed.rearmReason = reason;
+            placed.rearmCount = (Number(row.rearmCount) || 0) + 1;
+            placed.entryFilled = false;
+            if (row.userReentry) placed.userReentry = true;
+            state.byKey[key] = placed;
+            log('RECONCILE: re-armed', key, 'reason=' + reason, '→', placed.entryStyle,
+              'lot=' + (placed.contract && placed.contract.lotHint),
+              'client=' + (placed.placeClientId || ''));
+          } else {
+            row.lastRearmAt = new Date().toISOString();
+            log('RECONCILE: rearm place skipped (after cancel)', key, reason);
+          }
+          saveState(state);
+        } catch (e) { log('RECONCILE: rearm failed', key, e.message); }
+      }
       for (const [key, row] of Object.entries(state.byKey)) {
         if (row.closed || !row.ticker) continue;
         if (keyState.get(key) !== 'open' && !row.userReentry && !keepUnfilledWorking(row, key)) continue;
@@ -5535,82 +5752,12 @@ async function main() {
             ? (auctionNow ? 0 : 2 * 60 * 1000)
             : 15 * 60 * 1000);
         if (last && Date.now() - last < minGap) continue;
-
-        try {
-          const src = entryByKey.get(key) || {};
-          // Cancel-confirm-place: never leave two parents live (place-then-cancel
-          // double-filled 2914.T long). Lunch path never reaches here (no reason).
-          const oldParent = row.parentId, oldStop = row.stopId, oldTp1 = row.tp1Id;
-          const cancelWaits = [];
-          if (oldParent != null) {
-            cancelWaits.push(waitCancel(oldParent, 3500));
-            cancelOrder(oldParent, 'rearm parent ' + key);
-          }
-          if (oldStop != null) {
-            cancelWaits.push(waitCancel(oldStop, 3500));
-            cancelOrder(oldStop, 'rearm stop ' + key);
-          }
-          if (oldTp1 != null) {
-            cancelWaits.push(waitCancel(oldTp1, 3500));
-            cancelOrder(oldTp1, 'rearm tp1 ' + key);
-          }
-          const cancelStatuses = cancelWaits.length ? await Promise.all(cancelWaits) : [];
-          if (cancelStatuses.some(status => status === 'timeout')) {
-            const replaceDeadAsiaBag = reason === 'asia-rth' || reason === 'asia-rth-retry'
-              || reason === 'asia-to-opg' || reason === 'asia-missing-style'
-              || reason === 'asia-opg-refresh';
-            if (!replaceDeadAsiaBag) {
-              row.lastRearmAt = new Date().toISOString();
-              row.rearmBlocked = 'cancel-timeout';
-              saveState(state);
-              log('RECONCILE: rearm aborted — cancellation not confirmed', key, reason);
-              continue;
-            }
-            // 6098.T 27 Aug: bag never went live (IB 10147). Aborting on timeout
-            // parked the name for the rest of Tokyo cash. Drop the dead ids and replace.
-            log('RECONCILE: cancel timeout — replacing dead Asia bag', key, reason,
-              'oids=', oldParent, oldStop, oldTp1);
-            row.parentId = null;
-            row.stopId = null;
-            row.tp1Id = null;
-            row.rearmBlocked = null;
-            saveState(state);
-          }
-          const placed = await placeBracket({
-            key, ticker: row.ticker, hz: row.hz, side: row.side || src.side,
-            entry: src.entry != null ? src.entry : row.entry,
-            tp1: src.tp1 != null ? src.tp1 : row.tp1Px,
-            sl: src.sl != null ? src.sl : row.stopPx,
-            trailSl: src.trailSl != null ? src.trailSl : (src.sl != null ? src.sl : row.stopPx),
-            entryDate: src.entryDate || src.t || row.admittedAt,
-            t: src.entryDate || src.t || row.admittedAt || new Date().toISOString(),
-            reason: src.reason,
-            decisionId: src.decisionId || row.decisionId,
-            admittedAt: row.admittedAt,
-            sector: src.sector || row.sector,
-            country: src.country || row.country,
-            correlationCluster: src.correlationCluster || row.correlationCluster,
-            forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-pre-park-opg'
-              || reason === 'us-pre-unfavorable-to-opg'
-              || reason === 'asia-opg-refresh' || reason === 'asia-to-opg',
-            skipChase: reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg',
-            carryUnfilled: (asia && !row.entryFilled) || forceCashOpenActive(row)
-          });
-          if (placed) {
-            placed.lastRearmAt = new Date().toISOString();
-            placed.rearmReason = reason;
-            placed.rearmCount = (Number(row.rearmCount) || 0) + 1;
-            placed.entryFilled = false;
-            if (row.userReentry) placed.userReentry = true;
-            state.byKey[key] = placed;
-            log('RECONCILE: re-armed', key, 'reason=' + reason, '→', placed.entryStyle,
-              'lot=' + (placed.contract && placed.contract.lotHint));
-          } else {
-            row.lastRearmAt = new Date().toISOString();
-            log('RECONCILE: rearm place skipped (after cancel)', key, reason);
-          }
-          saveState(state);
-        } catch (e) { log('RECONCILE: rearm failed', key, e.message); }
+        rearmJobs.push({ key, reason });
+      }
+      if (rearmJobs.length) {
+        const poolN = Math.max(1, execSlots.filter(s => s.ready).length || 1);
+        log('RECONCILE: rearming', rearmJobs.length, 'name(s) on', poolN, 'client(s)');
+        await runWithConcurrency(rearmJobs, poolN, job => executeUnfilledRearm(job.key, job.reason));
       }
 
       // 0e. Clear error-flatten tags when provenance says authorized — except
@@ -5682,7 +5829,7 @@ async function main() {
         const lastTry = _flattenTried.get('err|' + key) || 0;
         if (Date.now() - lastTry < 15 * 60 * 1000) continue;
         _flattenTried.set('err|' + key, Date.now());
-        const fid = nid();
+        const fid = nidForRow(row);
         const oc = orderContractFromPos(held.contract || contract);
         if (!oc || (!oc.conId && !oc.symbol)) continue;
         row.errorTrade = true;
@@ -5862,7 +6009,7 @@ async function main() {
         transmitOrder(fid, Object.assign({}, cMeta, rawOc, { conId }), baseOrder({
           orderId: fid, action,
           orderType: 'MKT', totalQuantity: qty, tif, transmit: true,
-          outsideRth: false
+          outsideRth: ORDER_OUTSIDE_RTH
         }), (isOrphanIbOnly ? 'orphan-ib-only-flatten ' : 'unauthorized-flatten ') + pk
           + (useOpg ? ' OPG' : ' MKT'));
       }

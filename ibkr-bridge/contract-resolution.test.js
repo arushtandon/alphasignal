@@ -29,11 +29,13 @@ assert.strictEqual(baePre.orderType, 'LMT');
 assert.strictEqual(baePre.tif, 'DAY');
 assert.strictEqual(baePre.lmtPrice, 2230);
 assert.strictEqual(baePre.entryStyle, 'LMT-OPEN');
+assert.strictEqual(baePre.outsideRth, true);
 assert.strictEqual(isAuctionEntryStyle('LMT-OPEN'), true);
 const baeRth = parentEntrySpec(bae, 'BUY', 330, {
   side: 'buy', entryPx: 2230, quotePx: 2231, phaseOverride: 'rth'
 });
 assert.strictEqual(baeRth.entryStyle, 'MKT', 'LSE unfilled open orders convert to RTH MKT');
+assert.strictEqual(baeRth.outsideRth, true);
 
 assert.strictEqual(scheduledEntryReleaseAllowed({
   t: '2026-08-18T16:52:14.688Z'
@@ -93,6 +95,11 @@ const usPre = parentEntrySpec(toContract('PH'), 'BUY', 11, {
 });
 assert.strictEqual(usPre.entryStyle, 'LMT-EXT');
 assert.strictEqual(usPre.outsideRth, true);
+const usRthMkt = parentEntrySpec(toContract('PH'), 'BUY', 11, {
+  side: 'buy', entryPx: 1001.74, quotePx: 1001.74, phaseOverride: 'rth'
+});
+assert.strictEqual(usRthMkt.entryStyle, 'MKT');
+assert.strictEqual(usRthMkt.outsideRth, true);
 const mondi = toContract('MNDI.L');
 assert.strictEqual(mondi.symbol, 'MNDI');
 assert.strictEqual(mondi.localSymbol, undefined);
@@ -111,18 +118,20 @@ assert.strictEqual(recRth.entryStyle, 'LMT-THROUGH');
 assert.strictEqual(recRth.orderType, 'LMT');
 assert.strictEqual(recRth.transmit, true);
 assert.strictEqual(recRth.tif, 'DAY');
+assert.strictEqual(recRth.outsideRth, true, 'trial: JP LMT-THROUGH also sends outsideRth');
 assert.ok(recRth.lmtPrice > 17155, 'buy through-limit is above last');
-assert.strictEqual(recRth.lmtPrice, 17330, '17155*1.01 rounds up to the 10-yen band');
+assert.strictEqual(recRth.lmtPrice, 17500, '17155*1.02 rounds up to the 10-yen band');
 const recRthSell = parentEntrySpec(rec, 'SELL', 100, {
   side: 'sell', entryPx: 17155, quotePx: 17155, phaseOverride: 'rth'
 });
 assert.strictEqual(recRthSell.entryStyle, 'LMT-THROUGH');
 assert.ok(recRthSell.lmtPrice < 17155);
-assert.strictEqual(recRthSell.lmtPrice, 16980);
+assert.strictEqual(recRthSell.lmtPrice, 16810);
 const recPre = parentEntrySpec(rec, 'BUY', 100, {
   side: 'buy', entryPx: 17155, phaseOverride: 'pre'
 });
 assert.strictEqual(recPre.entryStyle, 'OPG');
+assert.strictEqual(recPre.outsideRth, true);
 assert.strictEqual(recPre.transmit, true, 'JP OPG parent transmits without STP child');
 
 const recCarry = {

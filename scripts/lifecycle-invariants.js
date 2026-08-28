@@ -528,7 +528,25 @@ function ok(name, cond, detail) {
       ok('T21b AFL site qty 0', qty === 0, 'qty=' + qty);
     })();
 
-    // ── T22 Corrective flatten must finish before board re-entry ─────────────
+    // ── T21c IB flat drops pads even when the key also has older entries ────
+    (function t21c() {
+      const liveKey = 'AFL|short|Wed Aug 12 2026';
+      S.mutateFillLedger('t21c-mix', (rows) => rows.concat([{
+        execId: 'afl-old-entry', key: liveKey, ticker: 'AFL', role: 'entry',
+        qty: 82, price: 121.1, time: '2026-08-12T12:00:00.000Z'
+      }, {
+        execId: 'afl-old-exit', key: liveKey, ticker: 'AFL', role: 'flatten',
+        qty: 82, price: 121.1, time: '2026-08-12T15:00:00.000Z'
+      }, {
+        execId: 'recon-entry-AFL-pad', key: liveKey, ticker: 'AFL', role: 'entry',
+        qty: 82, price: 121.1, recon: 'qty-pad', time: '2026-08-25T12:00:00.000Z'
+      }]));
+      ok('T21c mixed key is not pad-only', !S.entryFillsAreQtyPadOnly(S.readIbkrFillRows(), liveKey));
+      ok('T21c pad qty 82', S.qtyPadEntryQty(S.readIbkrFillRows(), liveKey) === 82);
+      const n = S.dropQtyPadFillsForKeys([liveKey]);
+      ok('T21c dropped mixed-key pad', n >= 1, 'n=' + n);
+      ok('T21c pad qty after drop 0', S.qtyPadEntryQty(S.readIbkrFillRows(), liveKey) === 0);
+    })();
     (function t22() {
       const key = 'CORR.X|short|Wed Aug 19 2026';
       const base = {
