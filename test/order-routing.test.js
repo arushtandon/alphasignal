@@ -9,6 +9,7 @@ const {
   isSessionBlockedError,
   isShortSaleReject,
   asiaCashBlocksRestingOrders,
+  shouldDeferProtectiveChildren,
   ibLocalSymbol,
   placeableStkContract
 } = require('../lib/ibkr/order-routing');
@@ -77,4 +78,18 @@ test('HK/JP lunch and overnight block new resting orders; US does not', () => {
   assert.equal(asiaCashBlocksRestingOrders(hk, 'closed'), true);
   assert.equal(asiaCashBlocksRestingOrders(hk, 'rth'), false);
   assert.equal(asiaCashBlocksRestingOrders(us, 'closed'), false);
+});
+
+test('on parent fill, try GTC except during HK/JP lunch', () => {
+  const hk = { market: 'HK', currency: 'HKD', primaryExch: 'SEHK' };
+  const us = { market: 'US', currency: 'USD', primaryExch: 'NASDAQ', usRth: true };
+  const fut = { market: 'US', currency: 'USD', secType: 'FUT' };
+  assert.equal(shouldDeferProtectiveChildren(hk, 'lunch', { onFill: true }), true);
+  assert.equal(shouldDeferProtectiveChildren(hk, 'closed', { onFill: true }), false);
+  assert.equal(shouldDeferProtectiveChildren(hk, 'rth', { onFill: true }), false);
+  assert.equal(shouldDeferProtectiveChildren(us, 'closed', { onFill: true }), false);
+  assert.equal(shouldDeferProtectiveChildren(fut, 'rth', { onFill: true }), false);
+  assert.equal(shouldDeferProtectiveChildren(hk, 'closed', {}), true);
+  assert.equal(shouldDeferProtectiveChildren(us, 'closed', {}), true);
+  assert.equal(shouldDeferProtectiveChildren(us, 'rth', {}), false);
 });

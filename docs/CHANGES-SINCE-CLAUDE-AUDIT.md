@@ -2,12 +2,32 @@
 
 **Audit baseline:** `e7ea485` — *Fix audit findings B1/B2/B3/F2* (entry_finalized gate, flatten cap, events `tail=1`, Target2 scale).
 
-**Current HEAD:** `391ed82` — *Separate error-trade PnL and net flatten exits by ticker.*
+**6 Aug 2026 Claude report:** uploaded `AlphaSignal_Audit_Report.md` (B1/B2/B3/F1/F2).  
+**28 Aug 2026 operator report:** `docs/AUDIT-REPORT-2026-08-28.md`  
+**Claude follow-up prompt:** `docs/claude-audit-prompt-execution-architecture.md`
 
-**Scope:** `server.js`, `public/index.html`, `ibkr-bridge/bridge.js`, `ibkr-bridge/run-forever.ps1`, `ibkr-bridge/flatten-tickers.js`, `ibkr-bridge/error-tickers.txt`
+**Current HEAD:** fill-time TP1+SL park · server build `20260828-fill-bracket-v8.2.1`  
+**Previous tagged execution HEAD:** `6b999eb` — 1-lot full TP1 + AFL restore guards
 
-**Period:** ~Aug 2026 (post-audit IBKR paper trading hardening)
+**Scope:** `server.js`, `public/index.html`, `ibkr-bridge/bridge.js`, `lib/ibkr/*`, `scripts/lifecycle-invariants.js`
 
+**Period:** Aug 2026 (post-audit IBKR paper trading)
+
+---
+
+## 0. 28 Aug 2026 — fill-time protective bracket (this pass)
+
+| Change | Why |
+|--------|-----|
+| Parent **fill** calls `scheduleProtectiveBracket` | Children used to wait for a 60s/15m sweep; Asia standalone + 1-lot skip left lots naked (AFL, BZ=F) |
+| `shouldDeferProtectiveChildren`: on-fill skips only HK/JP **lunch** | Sweep still skips cash-closed; a just-filled lot may park GTC overnight |
+| Native 3-leg already submitted → do **not** mint a second bag | Avoid duplicate STP/LMT on US/EU parents |
+| 1-lot / 1-contract: `tp1OrderQty` = 100%, OCA with SL (`6b999eb`) | User: sell the whole lot at TP1; no runner TSL |
+| AFL: book IB 82 @ 116.44 as stop-loss; never re-pad a fully exited key; close leftover entry on IB-flat pad-drop | Repeat: site open while IB flat → restore padded 82 |
+
+---
+
+## A. Recommendation / signal gates (`server.js`)
 ---
 
 ## A. Recommendation / signal gates (`server.js`)
@@ -75,10 +95,32 @@
 5. Timezone: mix of SGT helpers vs remaining `toDateString()` host-local calls (mostly SGT now).
 6. Orphan flatten of 6690/3690 may still retry without AlphaSignal keys (debounce softens).
 7. Conf gate + one-pick-per-pane filters can shrink board vs what bridge already traded.
+8. **LSE GTC often missing from `reqOpenOrders`** (MNDI.L / BA.L shrink loop) — state-id vs IB echo.
+9. **Elevated client-27 zombie** — non-elevated restart cannot load new `bridge.js`.
+10. Overlay stacking (F1) still unmeasured.
 
 ---
 
-## Commit list (`e7ea485..HEAD`)
+## E. Major execution commits after `391ed82` (not in the original delta)
+
+```
+(this)     Park TP1+SL on parent fill; skip lunch-only defer on fill
+6b999eb    1-lot / 1-contract sells 100% at TP1 (OCA); close leftover entry on IB-flat pad-drop
+b939611    Restore must not re-pad a fully exited key
+32ded30    Book AFL 82 @ 116.44 as stop-loss
+bc315ef    Stop IBKR tab keeping AFL open after IB flat
+a8f25a1    outsideRth + 20-client pool; drop AFL pads when IB is flat
+5d5c13a    JP standalone through-limit (TSE bags never ack)
+31930ea    Park live 50% TP1 on every splittable equity
+58008d5    Error vs model PnL at ingest; boot riskState TDZ (C1–C5)
+e7ea485    LAST AUDIT BASELINE (B1/B2/B3/F2)
+```
+
+Full list: `git log --oneline e7ea485..HEAD`
+
+---
+
+## Commit list (`e7ea485..HEAD`) — original Aug-6..error-trade slice
 
 ```
 391ed82 Separate error-trade PnL and net flatten exits by ticker.

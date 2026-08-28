@@ -30,6 +30,9 @@
  *                      fill exits the whole position and cancels the SL.
  *                    After the entry fill prints, TP1 and SL are rescaled off
  *                    the actual fill (same % as rec entry→TP1 / entry→SL).
+ *                    If the parent was sent standalone (HK/JP) or a child was
+ *                    rejected, the fill handler parks TP1+SL immediately — it
+ *                    does not wait for the 60s / 15-min sweep.
  *                    TP2 on the live book is the runner TSL, not a second limit.
  *     TP1 fill     → IB orderStatus on the TP1 child only. Stop resized to the
  *                    runner and raised to breakeven. Server `tp1_partial` is ignored.
@@ -117,6 +120,7 @@ const {
   isSessionBlockedError,
   isShortSaleReject,
   asiaCashBlocksRestingOrders,
+  shouldDeferProtectiveChildren,
   ibLocalSymbol,
   placeableStkContract
 } = require('../lib/ibkr/order-routing');
@@ -148,6 +152,7 @@ const BASE = String(process.env.ALPHASIGNAL_URL || 'http://127.0.0.1:3000').repl
 const TOKEN = process.env.IBKR_EVENTS_TOKEN || '';
 const HOST = process.env.IBKR_HOST || '127.0.0.1';
 const PORT = parseInt(process.env.IBKR_PORT || '7497', 10);
+const _bracketParkPending = new Set();
 /** Prefer env; else randomize per launch (avoids zombie clientId conflicts). */
 const CLIENT_ID = (() => {
   const fromEnv = parseInt(process.env.IBKR_CLIENT_ID || '', 10);
@@ -1544,6 +1549,7 @@ async function main() {
               row.ibAvgFill = px;
             }
             applyFillRebase(key, row, row.ibAvgFill);
+            scheduleProtectiveBracket(key);
           }
           const fillAt = new Date().toISOString();
           const cMeta = enrichSessionMeta(row.contract || contract || toContract(row.ticker));
@@ -3344,6 +3350,7 @@ async function main() {
         row.entryFilled = true;
         if (Number.isFinite(avgFillPrice) && avgFillPrice > 0) row.ibAvgFill = avgFillPrice;
         applyFillRebase(key, row, row.ibAvgFill);
+        scheduleProtectiveBracket(key);
         saveState(state);
       } else if (row.parentId === orderId && Number.isFinite(avgFillPrice) && avgFillPrice > 0) {
         row.ibAvgFill = avgFillPrice;
@@ -4536,18 +4543,20 @@ async function main() {
   }
 
   /** Place a live STP when the filled lot has none. Adopt existing first. */
-  async function ensureWorkingStops(workingOrders) {
+  async function ensureWorkingStops(workingOrders, opts = {}) {
     if (DRY || !ib) return 0;
+    const onFill = !!(opts && opts.onFill);
+    const onlyKey = opts && opts.onlyKey;
     const working = workingOrders || await listWorkingOrders();
     await adoptWorkingStops(working);
     let n = 0;
     for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (onlyKey && key !== onlyKey) continue;
       if (!row || row.closed || row.errorTrade || !row.entryFilled) continue;
       if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK' && row.contract.secType !== 'FUT')) continue;
       if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
       const phase = sessionPhase(row.contract);
-      if (phase === 'closed') continue;
-      if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
+      if (shouldDeferProtectiveChildren(row.contract, phase, opts)) continue;
       if (row.stopSessionBlocked) row.stopSessionBlocked = false;
       const held = heldForContract(row.contract);
       let posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
@@ -4629,14 +4638,16 @@ async function main() {
       }
       // Do not mint a second STP just because the working-order snapshot missed
       // the last one — that left dozens of 157-share DHL sell-stops at IB.
-      if (row.stopId != null && !row.stopRoutingFailed) {
+      // On-fill parks skip the 15-min cooldown so a standalone parent is not
+      // left naked until the next sweep.
+      if (!onFill && row.stopId != null && !row.stopRoutingFailed) {
         const lastSent = row.stopAttachAttemptAt ? Date.parse(row.stopAttachAttemptAt) : NaN;
         if (Number.isFinite(lastSent) && Date.now() - lastSent < 15 * 60 * 1000) continue;
       }
-      if (!childNotYetWorking(row.stopId, null, row.stopAttachAttemptAt, row.stopRoutingFailed)) continue;
+      if (!onFill && !childNotYetWorking(row.stopId, null, row.stopAttachAttemptAt, row.stopRoutingFailed)) continue;
       const wait = attachRetryWaitMs(row.stopRoutingFailed);
       const last = row.stopAttachAttemptAt ? Date.parse(row.stopAttachAttemptAt) : NaN;
-      if (Number.isFinite(last) && Date.now() - last < wait) continue;
+      if (!onFill && Number.isFinite(last) && Date.now() - last < wait) continue;
       if (!(Number(row.contract.conId) > 0)) {
         try { row.contract = await resolveInstrument(row.contract) || row.contract; }
         catch (e) { log('stop attach resolve failed', key, e.message); continue; }
@@ -4670,12 +4681,16 @@ async function main() {
   }
 
   /** Park a live TP1 LMT: 50% on splittable names, 100% OCA with the stop on
-   *  1-lot / 1-contract names (including BZ=F). HK/JP wait for cash RTH. */
-  async function ensureWorkingTp1Children(workingOrders) {
+   *  1-lot / 1-contract names (including BZ=F). HK/JP wait for cash RTH on
+   *  the sweep; a parent fill parks immediately except during HK/JP lunch. */
+  async function ensureWorkingTp1Children(workingOrders, opts = {}) {
     if (DRY || !ib) return 0;
+    const onFill = !!(opts && opts.onFill);
+    const onlyKey = opts && opts.onlyKey;
     const working = workingOrders || await listWorkingOrders();
     let n = 0;
     for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (onlyKey && key !== onlyKey) continue;
       if (!row || row.closed || row.errorTrade || !row.entryFilled || row.tp1Done) continue;
       if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK' && row.contract.secType !== 'FUT')) continue;
       if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
@@ -4688,8 +4703,7 @@ async function main() {
       const isSell = row.side === 'sell';
       const spec = openIfAboveSpec(row.ticker);
       const phase = sessionPhase(row.contract);
-      if (phase === 'closed') continue;
-      if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
+      if (shouldDeferProtectiveChildren(row.contract, phase, opts)) continue;
       if (row.tp1SessionBlocked) row.tp1SessionBlocked = false;
       const half = spec
         ? Math.min(Number(spec.qty) || 0, tp1OrderQty(posInDir, lot) || Number(spec.qty) || 0)
@@ -4755,14 +4769,14 @@ async function main() {
           }
         }
       }
-      if (row.tp1Id != null && !row.tp1RoutingFailed) {
+      if (!onFill && row.tp1Id != null && !row.tp1RoutingFailed) {
         const lastSent = row.tp1AttachAttemptAt ? Date.parse(row.tp1AttachAttemptAt) : NaN;
         if (Number.isFinite(lastSent) && Date.now() - lastSent < 15 * 60 * 1000) continue;
       }
-      if (!childNotYetWorking(row.tp1Id, null, row.tp1AttachAttemptAt, row.tp1RoutingFailed)) continue;
+      if (!onFill && !childNotYetWorking(row.tp1Id, null, row.tp1AttachAttemptAt, row.tp1RoutingFailed)) continue;
       const wait = attachRetryWaitMs(row.tp1RoutingFailed);
       const lastAttempt = row.tp1AttachAttemptAt ? Date.parse(row.tp1AttachAttemptAt) : NaN;
-      if (Number.isFinite(lastAttempt) && Date.now() - lastAttempt < wait) continue;
+      if (!onFill && Number.isFinite(lastAttempt) && Date.now() - lastAttempt < wait) continue;
       if (row.tp1Id != null && !pendingOrders.has(Number(row.tp1Id))) {
         log('TP1 id not working — treating as missed', key, 'oid=' + row.tp1Id);
         row.tp1Id = null;
@@ -4861,6 +4875,34 @@ async function main() {
     if (n) saveState(state);
     return n;
   }
+
+  /** After a parent fill, park TP1+SL now if they were not sent with the bag. */
+  function scheduleProtectiveBracket(key) {
+    if (!key || DRY || !ib) return;
+    if (_bracketParkPending.has(key)) return;
+    _bracketParkPending.add(key);
+    setImmediate(() => {
+      parkProtectiveBracket(key)
+        .catch(e => log('on-fill bracket park failed', key, e.message))
+        .finally(() => _bracketParkPending.delete(key));
+    });
+  }
+  async function parkProtectiveBracket(key) {
+    const row = state.byKey[key];
+    if (!row || row.closed || !row.entryFilled) return;
+    // Native 3-leg already submitted with the parent — do not mint a second bag.
+    if (row.stopId != null && (row.tp1Done || row.tp1Id != null)) {
+      log('on-fill bracket already submitted with parent', key,
+        'stop=' + row.stopId, 'tp1=' + row.tp1Id);
+      return;
+    }
+    const working = await listWorkingOrders();
+    const nStop = await ensureWorkingStops(working, { onFill: true, onlyKey: key });
+    const working2 = await listWorkingOrders();
+    const nTp1 = await ensureWorkingTp1Children(working2, { onFill: true, onlyKey: key });
+    log('on-fill bracket park', key, 'stops=' + nStop, 'tp1=' + nTp1);
+  }
+
   async function maybeSendRiskAlert(findings, { force = false } = {}) {
     if (!telegramConfigured() || DRY) return;
     const list = Array.isArray(findings) ? findings : [];
