@@ -568,6 +568,39 @@ function ok(name, cond, detail) {
       ok('T21d drop-qty-pad is benign', S.isBenignReconAdjustment('drop-qty-pad-ib-flat'));
       ok('T21d qty-pad action is not benign', !S.isBenignReconAdjustment('qty-pad'));
     })();
+    // ── T21e AFL 82 IB print booked as stop-loss (full) ──────────────────────
+    (function t21e() {
+      const spec = S.AFL_IB_STOP_BOOK;
+      const errKey = S.toCursorErrIbkrKey(spec.key);
+      S.mutateFillLedger('t21e-clear-afl', (rows) => rows.filter(r => {
+        const k = String(r && r.key || '');
+        return k !== spec.key && k !== errKey;
+      }), {
+        mayDropProtected: (r) => {
+          const k = String(r && r.key || '');
+          return k === spec.key || k === errKey;
+        }
+      });
+      const r = S.bookAflStopLossFromIbPrint();
+      ok('T21e booked AFL stop', r.added >= 1 || r.already, JSON.stringify(r));
+      const rows = S.readIbkrFillRows().filter(x => x.key === spec.key);
+      const entryQty = rows.filter(x => x.role === 'entry').reduce((s, x) => s + Number(x.qty || 0), 0);
+      const stopQty = rows.filter(x => x.role === 'stop').reduce((s, x) => s + Number(x.qty || 0), 0);
+      ok('T21e entry 82', entryQty === 82, 'entryQty=' + entryQty);
+      ok('T21e stop 82', stopQty === 82, 'stopQty=' + stopQty);
+      const stop = rows.find(x => x.role === 'stop');
+      ok('T21e stop px 116.44', stop && Number(stop.price) === 116.44, stop && stop.price);
+      ok('T21e stop stays on model key', stop && !stop.errorTrade && stop.role === 'stop');
+      const q = S.quarantineFillForLedger(stop);
+      ok('T21e stop not quarantined', q && q.key === spec.key && !q.errorTrade, q && q.key);
+      const nPad = S.dropQtyPadFillsForKeys([spec.key, errKey]);
+      ok('T21e pad-drop leaves ibhist', nPad === 0
+        && S.readIbkrFillRows().some(x => x.execId === spec.stopExecId));
+      const r2 = S.bookAflStopLossFromIbPrint();
+      ok('T21e idempotent', r2.already === true || r2.added === 0, JSON.stringify(r2));
+      const pnl = (spec.stopPx - spec.entryPx) * spec.qty;
+      ok('T21e AFL SL PnL -382.12', Math.abs(pnl - (-382.12)) < 0.005, 'pnl=' + pnl);
+    })();
     (function t22() {
       const key = 'CORR.X|short|Wed Aug 19 2026';
       const base = {

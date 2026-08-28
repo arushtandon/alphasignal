@@ -8233,7 +8233,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260828-ibkr-recon-afl-v8.1.3',
+    server_build: '20260828-ibkr-recon-afl-v8.1.4',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -13960,6 +13960,105 @@ function isBenignReconAdjustment(action) {
   return action === 'avg-correct' || action === 'drop-qty-pad-ib-flat';
 }
 
+/**
+ * AFL 82 was sold at IB on 27 Aug 2026 09:30 ET as orphan OPG, not the $117.80
+ * child stop (that stop was cancelled 12 Aug). Book the real 82-share PnL on
+ * the model key as stop-loss so Exit Quality + totals include it.
+ * Print: NYSE cash open $116.44 (Gateway exec history has since aged out).
+ */
+const AFL_IB_STOP_BOOK = {
+  key: 'AFL|short|Wed Aug 12 2026',
+  ticker: 'AFL',
+  qty: 82,
+  entryPx: 121.10,
+  stopPx: 116.44,
+  entryTime: '2026-08-12T13:30:00.000Z',
+  stopTime: '2026-08-27T13:30:11.000Z',
+  stopCommission: 0.82484,
+  entryExecId: 'ibhist-AFL-entry-82',
+  stopExecId: 'ibhist-AFL-stop-82'
+};
+
+function bookAflStopLossFromIbPrint() {
+  const spec = AFL_IB_STOP_BOOK;
+  try {
+    dropQtyPadFillsForKeys([spec.key, toCursorErrIbkrKey(spec.key)]);
+  } catch (_) {}
+  const rowsNow = readIbkrFillRows();
+  const live = rowsNow.filter(r => r && r.key === spec.key);
+  const entryQty = live.filter(r => r.role === 'entry').reduce((s, r) => s + (Number(r.qty) || 0), 0);
+  const stopQty = live.filter(r => r.role === 'stop').reduce((s, r) => s + (Number(r.qty) || 0), 0);
+  const ids = new Set(rowsNow.map(r => String(r && r.execId || '')));
+  if (ids.has(spec.stopExecId) && stopQty >= spec.qty) return { added: 0, already: true };
+  const added = [];
+  mutateFillLedger('book-afl-ib-stop', (rows) => {
+    const have = new Set(rows.map(r => String(r && r.execId || '')));
+    const base = {
+      key: spec.key, ticker: spec.ticker, hz: 'short', side: 'buy',
+      currency: 'USD', ccyScale: 1, errorTrade: false,
+      recon: 'ib-exec-history', markSrc: 'ibkr-exec'
+    };
+    if (entryQty < spec.qty && !have.has(spec.entryExecId)) {
+      const entry = applyEstimatedCommission({
+        ...base, execId: spec.entryExecId, role: 'entry',
+        qty: spec.qty, price: spec.entryPx, time: spec.entryTime,
+        session: 'rth', sessionLabel: 'Market',
+        note: '[booked AFL IB entry 82 @ 121.10]'
+      });
+      rows.push(entry);
+      added.push('entry');
+    }
+    if (stopQty < spec.qty && !have.has(spec.stopExecId)) {
+      rows.push({
+        ...base, execId: spec.stopExecId, role: 'stop',
+        qty: spec.qty, price: spec.stopPx, time: spec.stopTime,
+        session: 'rth', sessionLabel: 'Market',
+        commission: spec.stopCommission, commissionCcy: 'USD',
+        note: '[booked AFL IB stop 82 @ NYSE open 116.44 27 Aug]'
+      });
+      added.push('stop');
+    }
+    return rows;
+  });
+  if (added.length) {
+    try {
+      _tradeEventSeq += 1;
+      const evt = {
+        seq: _tradeEventSeq, t: spec.stopTime, type: 'exit',
+        key: spec.key, ticker: spec.ticker, hz: 'short', side: 'buy',
+        status: 'sl_hit', exitReason: 'stop-loss (full)',
+        exitPrice: spec.stopPx,
+        pnlDollar: +((spec.stopPx - spec.entryPx) * spec.qty).toFixed(2),
+        reason: 'booked-ib-stop',
+        sharesTotal: spec.qty
+      };
+      fs.appendFileSync(TRADE_EVENTS_FILE, JSON.stringify(evt) + '\n');
+    } catch (e) {
+      console.warn('AFL sl_hit event write failed:', e.message);
+    }
+    try {
+      let nHist = 0;
+      for (const h of (tradeHistory || [])) {
+        if (!h || String(h.ticker || '').toUpperCase() !== 'AFL') continue;
+        const hz = 'short';
+        h[hz + 'Status'] = 'sl_hit';
+        h.status = 'sl_hit';
+        h[hz + 'ExitPrice'] = spec.stopPx;
+        h[hz + 'ExitReason'] = 'Stop loss hit (IB print)';
+        h[hz + 'PnlDollar'] = +((spec.stopPx - spec.entryPx) * spec.qty).toFixed(2);
+        h[hz + 'PnlPct'] = +(((spec.stopPx / spec.entryPx) - 1) * 100).toFixed(2);
+        h[hz + 'ExitTs'] = Date.parse(spec.stopTime);
+        nHist++;
+      }
+      if (nHist) saveHistoryFile(tradeHistory);
+    } catch (e) {
+      console.warn('AFL History sl_hit stamp failed:', e.message);
+    }
+    console.log('IBKR booked AFL stop-loss', spec.qty, '@', spec.stopPx, added.join('+'));
+  }
+  return { added: added.length, already: added.length === 0 };
+}
+
 function dropQtyPadFillsForKeys(keys) {
   const want = new Set((keys || []).filter(Boolean));
   if (!want.size) return 0;
@@ -13995,7 +14094,9 @@ function isModelIbSyncFill(r) {
   const recon = String(r.recon || '');
   const exec = String(r.execId || '');
   if (recon === 'qty-pad' || recon === 'qty-trim' || recon === 'avg-correct') return true;
+  if (recon === 'ib-exec-history' && !exec.startsWith('ibhist-flat-')) return true;
   if (exec.startsWith('recon-entry-') || exec.startsWith('recon-trim-')) return true;
+  if (exec.startsWith('ibhist-') && !exec.startsWith('ibhist-flat-')) return true;
   return false;
 }
 
@@ -14010,10 +14111,12 @@ function shouldQuarantineFillToCursorErr(r) {
   if (IBKR_LEGACY_ERROR_KEYS.has(String(r.key || ''))) return true;
   if (isForceIbkrErrorTicker(r.ticker)) return true;
   if (r.errorTrade === true) return true;
-  // Model IB sync (pad/trim/avg) must stay on the live key.
+  // Model IB sync (pad/trim/avg/historical print) must stay on the live key.
   if (isModelIbSyncFill(r)) return false;
   const recon = String(r.recon || '');
   const exec = String(r.execId || '');
+  if (recon === 'ib-exec-history' && !exec.startsWith('ibhist-flat-')) return false;
+  if (exec.startsWith('ibhist-') && !exec.startsWith('ibhist-flat-')) return false;
   if (recon === 'ghost-flat' || recon === 'recover-entry' || recon === 'cursor-recon-error') return true;
   if (exec.startsWith('recon-flat-') || exec.startsWith('recover-entry-')
     || exec.startsWith('repair-ibflat-') || exec.startsWith('cursor-err-')) return true;
@@ -15807,6 +15910,11 @@ function backfillMissingIbkrCommissions() {
 try { restoreOpenModelFillsFromCursorErr(); } catch (e) {
   console.warn('boot restore open-model fills failed:', e.message);
 }
+try {
+  if (process.env.AUTH_TEST_BYPASS !== '1') bookAflStopLossFromIbPrint();
+} catch (e) {
+  console.warn('boot AFL stop-loss book failed:', e.message);
+}
 try { backfillMissingIbkrCommissions(); } catch (e) {
   console.warn('boot backfill missing commissions failed:', e.message);
 }
@@ -15957,6 +16065,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     }
 
     try { restoreOpenModelFillsFromCursorErr(positions); } catch (_) {}
+    try { bookAflStopLossFromIbPrint(); } catch (_) {}
     try { quarantineExcessModelEntriesVsIb(positions); } catch (_) {}
     try {
       _ibkrExecIds.clear();
@@ -18837,6 +18946,8 @@ module.exports = {
   dropQtyPadFillsForKeys,
   missingIbPosMeansFlat,
   isBenignReconAdjustment,
+  bookAflStopLossFromIbPrint,
+  AFL_IB_STOP_BOOK,
   quarantineKeyFillsToCursorErr,
   reArmModelEntry,
   isNewEntryRiskBlocked,
