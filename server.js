@@ -8233,7 +8233,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260828-ibkr-recon-afl-v8.1.5',
+    server_build: '20260828-tp1-1lot-v8.2.0',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -13944,6 +13944,40 @@ function fillKeyIsFullyExited(rows, key) {
   return entry > 0 && exit >= entry;
 }
 
+/** After IB-flat pad-drop, close leftover model entry events so restore cannot re-pad. */
+function closeOpenEventsIfFillFlat(keys) {
+  const rows = readIbkrFillRows();
+  let n = 0;
+  for (const key of (keys || [])) {
+    if (!key || isCursorErrIbkrKey(key)) continue;
+    let entry = 0;
+    let exit = 0;
+    for (const r of rows) {
+      if (!r || String(r.key) !== key) continue;
+      const q = Number(r.qty) || 0;
+      if (r.role === 'entry') entry += q;
+      else exit += q;
+    }
+    if (Math.max(0, entry - exit) > 0) continue;
+    if (!hasOpenEmittedEntryForKey(key)) continue;
+    try {
+      _tradeEventSeq += 1;
+      const evt = {
+        seq: _tradeEventSeq, t: new Date().toISOString(), type: 'exit',
+        key, ticker: String(key).split('|')[0],
+        hz: String(key).split('|')[1] || 'short',
+        status: 'closed', reason: 'ib-flat-drop-qty-pad',
+        exitReason: 'IB flat — dropped qty-pad'
+      };
+      fs.appendFileSync(TRADE_EVENTS_FILE, JSON.stringify(evt) + '\n');
+      n++;
+    } catch (e) {
+      console.warn('closeOpenEventsIfFillFlat failed', key, e.message);
+    }
+  }
+  return n;
+}
+
 /** Qty-pad keys for a ticker and its listings, including |cursor-err. */
 function qtyPadKeysForTicker(rows, yahooTicker) {
   const aliases = ibkrYahooAliases(yahooTicker);
@@ -16310,6 +16344,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
                 note: 'IB flat — dropped synthetic qty-pad (no genuine execs)'
               });
               console.log('IBKR recon: dropped', dropped, 'qty-pad fill(s) for IB-flat', y);
+              try { closeOpenEventsIfFillFlat(padKeys); } catch (_) {}
               continue;
             }
           }
@@ -18964,6 +18999,7 @@ module.exports = {
   entryFillsAreQtyPadOnly,
   qtyPadEntryQty,
   fillKeyIsFullyExited,
+  closeOpenEventsIfFillFlat,
   qtyPadKeysForTicker,
   dropQtyPadFillsForKeys,
   missingIbPosMeansFlat,

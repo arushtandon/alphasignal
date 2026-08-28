@@ -25,7 +25,9 @@
  *                        (missed Asia opens are chased while the signal is live)
  *                    + STP stop  @ SL   for the FULL quantity  (pre-TP1 an SL hit
  *                      exits the WHOLE position — same as the simulator)
- *                    + LMT TP1   @ TP1  for the partial (half) quantity
+ *                    + LMT TP1   @ TP1  for 50% (2+ lots) or 100% (1-lot / 1-contract
+ *                      futures). Unsplittable lots are OCA with the stop so a TP1
+ *                      fill exits the whole position and cancels the SL.
  *                    After the entry fill prints, TP1 and SL are rescaled off
  *                    the actual fill (same % as rec entry→TP1 / entry→SL).
  *                    TP2 on the live book is the runner TSL, not a second limit.
@@ -83,6 +85,8 @@ const { telegramConfigured, sendTelegramAlert } = require('./telegram');
 const { calculateRiskSize, DEFAULT_LIMITS: RISK_SIZING_LIMITS } = require('../lib/risk/sizing');
 const {
   tp1SoldQty,
+  tp1OrderQty,
+  isFullQtyTp1,
   synthesizeTp1Px,
   openIfAboveSpec,
   passiveCloseLimit,
@@ -888,7 +892,7 @@ async function shareSplit(entry, contract, lotOverride, riskInput = {}) {
       total = bumped;
     }
   }
-  const sold = tp1SoldQty(total, lot);
+  const sold = tp1OrderQty(total, lot);
   return { total, sold, runner: total - sold, risk: sizing };
 }
 
@@ -1513,7 +1517,7 @@ async function main() {
               const spec = openIfAboveSpec(row.ticker);
               const half = spec && spec.qty > 0
                 ? Number(spec.qty)
-                : (tp1SoldQty(posInDir, lot) || Number(row.qtySold) || 0);
+                : (tp1OrderQty(posInDir || Number(row.qtyTotal) || 0, lot) || Number(row.qtySold) || 0);
               const tp1Px = Number(row.tp1Px) > 0
                 ? Number(row.tp1Px)
                 : (spec && spec.minPx) || synthesizeTp1Px(Number(row.ibAvgFill || row.entry), row.hz || 'short', row.side === 'sell');
@@ -1525,8 +1529,8 @@ async function main() {
                 role = 'tp1';
                 row.tp1Id = orderId;
                 row.qtySold = shares;
-                row.qtyRunner = posInDir >= shares * 1.5 ? posInDir - shares : posInDir;
-                row.qtyTotal = (Number(row.qtyRunner) || 0) + shares;
+                row.qtyRunner = Math.max(0, posInDir - shares);
+                row.qtyTotal = Math.max(Number(row.qtyTotal) || 0, posInDir, shares);
               }
             }
           }
@@ -2503,6 +2507,11 @@ async function main() {
     }
   }
 
+  function ocaGroupForKey(key) {
+    const s = String(key || 'lot').replace(/[^A-Za-z0-9]+/g, '').slice(0, 48);
+    return ('AS1L-' + s).slice(0, 64);
+  }
+
   function baseOrder(extra) {
     // eTradeOnly/firmQuoteOnly default true on newer IB API and reject cash-venue orders.
     return {
@@ -3078,20 +3087,24 @@ async function main() {
     const { entryStyle, defer, ...parentFields } = parentSpec;
     const parent = baseOrder({ orderId: parentId, ...parentFields });
     if (asiaStandalone) parent.transmit = true;
+    const fullTp1 = split.sold > 0 && !(split.runner > 0);
+    const oca = fullTp1 ? { ocaGroup: ocaGroupForKey(evt.key || evt.ticker), ocaType: 1 } : {};
     // Stop child: FULL quantity — pre-TP1 an SL hit closes the whole position
     // (identical to the simulator's sl_hit). GTC so it survives sessions.
+    // 1-lot / 1-contract: OCA with TP1 so a TP1 fill cannot leave a live STP.
     const stopOrder = (!asiaStandalone && stopId != null) ? baseOrder({
       orderId: stopId, action: closeAction, orderType: 'STP',
       auxPrice: stopPx, totalQuantity: split.total,
       parentId, transmit: tp1Id == null,
-      outsideRth: ORDER_OUTSIDE_RTH
+      outsideRth: ORDER_OUTSIDE_RTH,
+      ...oca
     }) : null;
-    // TP1 child: partial quantity. NOT OCA with the stop — a TP1 fill must not
-    // cancel the stop; instead onOrderStatus resizes the stop to the runner.
+    // TP1 child: 50% on splittable names; 100% (OCA with stop) when unsplittable.
     const tp1Order = (!asiaStandalone && tp1Id != null) ? baseOrder({
       orderId: tp1Id, action: closeAction, orderType: 'LMT',
       lmtPrice: tp1Px, totalQuantity: split.sold,
-      parentId, outsideRth: ORDER_OUTSIDE_RTH, transmit: true
+      parentId, outsideRth: ORDER_OUTSIDE_RTH, transmit: true,
+      ...oca
     }) : null;
 
     if (DRY || !ib) {
@@ -3121,6 +3134,7 @@ async function main() {
       extLmt: parent.lmtPrice != null ? Number(parent.lmtPrice) : null,
       qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
       contract, tp1Done: false, closed: false,
+      ocaLinked: !!(split.sold > 0 && !(split.runner > 0)),
       decisionId: evt.decisionId || null,
       rulesVersion: evt.rulesVersion || null,
       admittedAt: evt.admittedAt || evt.t || new Date().toISOString(),
@@ -3210,6 +3224,8 @@ async function main() {
     }
     row.ibAvgFill = Number(fillPx);
     const closeAction = isSell ? 'BUY' : 'SELL';
+    const oca = (!(Number(row.qtyRunner) > 0) && Number(row.qtySold) > 0)
+      ? { ocaGroup: ocaGroupForKey(key), ocaType: 1 } : {};
     if (!tp1Same && Number(row.qtySold) > 0) {
       if (row.tp1Id != null) cancelOrder(row.tp1Id, 'TP1 rebase replace ' + key);
       const tp1Id = nidForRow(row);
@@ -3217,7 +3233,7 @@ async function main() {
       row.tp1ClientId = state.orderClients[tp1Id] || row.placeClientId;
       transmitOrder(tp1Id, row.contract, baseOrder({
         orderId: tp1Id, action: closeAction, orderType: 'LMT',
-        lmtPrice: tp1, totalQuantity: row.qtySold, transmit: true
+        lmtPrice: tp1, totalQuantity: row.qtySold, transmit: true, ...oca
       }), 'TP1 rebase ' + key);
     }
     const stopQty = Number(row.qtyTotal) || 0;
@@ -3228,7 +3244,7 @@ async function main() {
       row.stopClientId = state.orderClients[sid] || row.placeClientId;
       transmitOrder(sid, row.contract, baseOrder({
         orderId: sid, action: closeAction, orderType: 'STP',
-        auxPrice: sl, totalQuantity: stopQty, transmit: true
+        auxPrice: sl, totalQuantity: stopQty, transmit: true, ...oca
       }), 'SL rebase ' + key);
     }
     log('REBASE exits from fill', key, 'fill=' + fillPx,
@@ -4388,20 +4404,21 @@ async function main() {
       });
     }
 
-    // Filled, splittable lot with no live TP1 LMT while cash/US RTH is open.
+    // Filled lot with no live TP1 LMT while the venue can rest a GTC.
     for (const [key, row] of Object.entries(state.byKey || {})) {
       if (!row || row.closed || row.errorTrade || !row.entryFilled || row.tp1Done) continue;
       if (keyState && keyState.get(key) !== 'open') continue;
-      if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK')) continue;
+      if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK' && row.contract.secType !== 'FUT')) continue;
       if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
       const phase = sessionPhase(row.contract);
-      if (phase !== 'rth') continue;
+      if (phase === 'closed') continue;
+      if (row.contract.secType === 'STK' && phase !== 'rth') continue;
       if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
       const held = row.contract ? heldForContract(row.contract) : null;
       const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
       const lot = Math.max(boardLotHint(row.ticker, row.contract.lotHint), 1);
-      const half = tp1SoldQty(posInDir, lot);
-      if (!(half >= lot) || !(posInDir > half)) continue;
+      const half = tp1OrderQty(posInDir, lot);
+      if (!(half >= lot) || half > posInDir + 1e-9) continue;
       if (row.tp1Id != null && !row.tp1RoutingFailed && !row.tp1SessionBlocked) continue;
       findings.push({
         sev: 'error',
@@ -4553,7 +4570,11 @@ async function main() {
       const bookedTp1 = (!row.tp1Done && row.tp1Id != null && !row.tp1RoutingFailed)
         ? Math.max(Number(row.qtySold) || 0, 0) : 0;
       const tp1Qty = Math.max(tp1WorkingQty, bookedTp1);
-      const stopQty = Math.max(0, posInDir - tp1Qty);
+      const lot = Math.max(boardLotHint(row.ticker, row.contract && row.contract.lotHint), 1);
+      const fullTp1 = !row.tp1Done && isFullQtyTp1(posInDir, lot);
+      // 50% TP1: stop covers the runner only. 100% TP1: stop stays full and
+      // is OCA-linked so a TP1 fill cannot leave a live STP.
+      const stopQty = (fullTp1 || row.tp1Done) ? posInDir : Math.max(0, posInDir - tp1Qty);
       const existing = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null) || stps[0];
       if (existing) {
         const wantSl = Number(row.stopPx);
@@ -4582,6 +4603,10 @@ async function main() {
             transmit: true
           }), 'shrink stop for TP1 ' + key);
           log('RECONCILE: stop qty capped', key, existing.qty, '→', stopQty, '(TP1 working', tp1WorkingQty + ')');
+        } else if (stopQty > 0 && existing.qty + 1e-6 < stopQty) {
+          cancelOrder(existing.orderId, 'stop undersize replace ' + key);
+          log('RECONCILE: waiting to replace undersized stop', key, existing.qty, '→', stopQty);
+          continue;
         }
         for (const extra of stps) {
           if (extra.orderId === existing.orderId) continue;
@@ -4644,16 +4669,15 @@ async function main() {
     return n;
   }
 
-  /** Park a live 50% TP1 LMT on every splittable equity that is missing one.
-   *  Not parked until IB shows Submitted/PreSubmitted. HK/JP wait for cash RTH
-   *  (lunch/overnight marketable sells → error 201 short-sale). */
+  /** Park a live TP1 LMT: 50% on splittable names, 100% OCA with the stop on
+   *  1-lot / 1-contract names (including BZ=F). HK/JP wait for cash RTH. */
   async function ensureWorkingTp1Children(workingOrders) {
     if (DRY || !ib) return 0;
     const working = workingOrders || await listWorkingOrders();
     let n = 0;
     for (const [key, row] of Object.entries(state.byKey || {})) {
       if (!row || row.closed || row.errorTrade || !row.entryFilled || row.tp1Done) continue;
-      if (!row.contract || row.contract.secType && row.contract.secType !== 'STK') continue;
+      if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK' && row.contract.secType !== 'FUT')) continue;
       if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
       const held = heldForContract(row.contract);
       const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
@@ -4668,14 +4692,10 @@ async function main() {
       if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
       if (row.tp1SessionBlocked) row.tp1SessionBlocked = false;
       const half = spec
-        ? Math.min(Number(spec.qty) || 0, tp1SoldQty(posInDir, lot) || Number(spec.qty) || 0)
-        : tp1SoldQty(posInDir, lot);
-      if (!(half >= lot) || !(posInDir > half)) {
-        if (!spec) {
-          logOnce('tp1-1lot-' + key, 'TP1 skip (1-lot / cannot split 50%)', key, 'pos', posInDir, 'lot', lot);
-        }
-        continue;
-      }
+        ? Math.min(Number(spec.qty) || 0, tp1OrderQty(posInDir, lot) || Number(spec.qty) || 0)
+        : tp1OrderQty(posInDir, lot);
+      if (!(half >= lot) || half > posInDir + 1e-9) continue;
+      const fullExit = Math.abs(half - posInDir) < 1e-9;
       const lmts = working.filter(o =>
         o.type === 'LMT' && o.action === closeAction && rowMatchesWorking(row, o)
       );
@@ -4694,7 +4714,7 @@ async function main() {
           row.tp1Id = existing.orderId;
           row.qtyTotal = posInDir;
           row.qtySold = half;
-          row.qtyRunner = posInDir - half;
+          row.qtyRunner = Math.max(0, posInDir - half);
           if (existing.lmt > 0 && !(Number(row.modelTp1) > 0)) row.tp1Px = existing.lmt;
           row.tp1RoutingFailed = false;
           row.tp1ThroughMarket = false;
@@ -4704,7 +4724,6 @@ async function main() {
             'lmt=' + existing.lmt, 'qty=' + existing.qty, 'tif=' + existing.tif);
         }
         if (existing.qty > half + 1e-6) {
-          // Bracket children cannot be qty-modified (IB 105). Cancel, then park a half-size TP1.
           cancelOrder(existing.orderId, 'TP1 shrink replace ' + key);
           log('RECONCILE: waiting to replace oversized TP1', key, existing.qty, '→', half);
           await waitCancel(existing.orderId, 4000);
@@ -4720,7 +4739,7 @@ async function main() {
         o.type === 'STP' && o.action === closeAction && rowMatchesWorking(row, o)
       );
       const stpQty = stps.reduce((s, o) => s + (Number(o.qty) || 0), 0);
-      if (stpQty + half > posInDir + 1e-6 && stps.length > 1) {
+      if (!fullExit && stpQty + half > posInDir + 1e-6 && stps.length > 1) {
         const keep = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null) || stps[0];
         let cancelled = 0;
         for (const o of stps) {
@@ -4736,7 +4755,6 @@ async function main() {
           }
         }
       }
-      // Do not mint a second TP1 just because reqOpenOrders missed the last LSE GTC.
       if (row.tp1Id != null && !row.tp1RoutingFailed) {
         const lastSent = row.tp1AttachAttemptAt ? Date.parse(row.tp1AttachAttemptAt) : NaN;
         if (Number.isFinite(lastSent) && Date.now() - lastSent < 15 * 60 * 1000) continue;
@@ -4779,6 +4797,44 @@ async function main() {
         log('TP1 skip (no price)', key);
         continue;
       }
+      if (fullExit) {
+        for (const o of stps) {
+          cancelOrder(o.orderId, '1-lot OCA rebuild stop ' + key);
+        }
+        for (const o of stps) await waitCancel(o.orderId, 4000);
+        const group = ocaGroupForKey(key);
+        const stpPx = roundPx(row.stopPx, row.contract);
+        const sid = nidForRow(row);
+        row.stopId = sid;
+        row.stopClientId = state.orderClients[sid] || row.placeClientId;
+        const oid = nidForRow(row);
+        row.tp1Id = oid;
+        row.tp1ClientId = state.orderClients[oid] || row.placeClientId;
+        row.tp1Px = tp1Px;
+        row.qtyTotal = posInDir;
+        row.qtySold = half;
+        row.qtyRunner = 0;
+        row.ocaLinked = true;
+        row.tp1AttachAttemptAt = new Date().toISOString();
+        row.stopAttachAttemptAt = row.tp1AttachAttemptAt;
+        row.updated = row.tp1AttachAttemptAt;
+        if (stpPx > 0) {
+          transmitOrder(sid, row.contract, baseOrder({
+            orderId: sid, action: closeAction, orderType: 'STP',
+            auxPrice: stpPx, totalQuantity: posInDir, tif: 'GTC',
+            ocaGroup: group, ocaType: 1, transmit: true
+          }), '1-lot OCA stop ' + key);
+        }
+        transmitOrder(oid, row.contract, baseOrder({
+          orderId: oid, action: closeAction, orderType: 'LMT',
+          lmtPrice: tp1Px, totalQuantity: half, tif,
+          ocaGroup: group, ocaType: 1, transmit: true
+        }), '1-lot OCA tp1 ' + key);
+        n++;
+        log('RECONCILE: attached 1-lot OCA TP1+SL', key, closeAction, 'LMT', tp1Px, 'x' + half,
+          'STP', stpPx, 'tif=' + tif);
+        continue;
+      }
       const oid = nidForRow(row);
       row.tp1Id = oid;
       row.tp1ClientId = state.orderClients[oid] || row.placeClientId;
@@ -4805,7 +4861,6 @@ async function main() {
     if (n) saveState(state);
     return n;
   }
-
   async function maybeSendRiskAlert(findings, { force = false } = {}) {
     if (!telegramConfigured() || DRY) return;
     const list = Array.isArray(findings) ? findings : [];

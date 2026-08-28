@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   tp1SoldQty,
+  tp1OrderQty,
+  isFullQtyTp1,
   synthesizeTp1Px,
   maybeTwoLotTotal,
   openIfAboveSpec,
@@ -18,6 +20,15 @@ test('TP1 half is lot-rounded and zero on a single board lot', () => {
   assert.equal(tp1SoldQty(2000, 2000), 0);
   assert.equal(tp1SoldQty(100, 100), 0);
   assert.equal(tp1SoldQty(400, 400), 0);
+});
+
+test('unsplittable 1-lot / 1-contract sells the full qty at TP1', () => {
+  assert.equal(tp1OrderQty(6000, 1000), 3000);
+  assert.equal(tp1OrderQty(1, 1), 1);
+  assert.equal(tp1OrderQty(2000, 2000), 2000);
+  assert.equal(isFullQtyTp1(1, 1), true);
+  assert.equal(isFullQtyTp1(82, 1), false);
+  assert.equal(isFullQtyTp1(2000, 2000), true);
 });
 
 test('synthesize TP1 uses horizon percentages', () => {
