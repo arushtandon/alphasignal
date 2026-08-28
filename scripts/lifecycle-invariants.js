@@ -601,6 +601,23 @@ function ok(name, cond, detail) {
       const pnl = (spec.stopPx - spec.entryPx) * spec.qty;
       ok('T21e AFL SL PnL -382.12', Math.abs(pnl - (-382.12)) < 0.005, 'pnl=' + pnl);
     })();
+    // ── T21f closed AFL must not be qty-padded back open (the repeat bug) ──
+    (function t21f() {
+      const spec = S.AFL_IB_STOP_BOOK;
+      ok('T21f fills already fully exited', S.fillKeyIsFullyExited(S.readIbkrFillRows(), spec.key));
+      fs.appendFileSync(S.TRADE_EVENTS_FILE, JSON.stringify({
+        seq: 920002, t: '2026-08-28T10:00:00.000Z', type: 'entry',
+        key: spec.key, ticker: 'AFL', hz: 'short', side: 'buy', status: 'open'
+      }) + '\n');
+      const moved = S.restoreOpenModelFillsFromCursorErr([
+        { ticker: 'AFL', qty: 82, avgCost: 121.10, currency: 'USD' }
+      ]);
+      ok('T21f restore does not re-pad closed AFL', S.qtyPadEntryQty(S.readIbkrFillRows(), spec.key) === 0,
+        'moved=' + moved + ' pads=' + S.qtyPadEntryQty(S.readIbkrFillRows(), spec.key));
+      const stopQty = S.readIbkrFillRows().filter(x => x.key === spec.key && x.role === 'stop')
+        .reduce((s, x) => s + Number(x.qty || 0), 0);
+      ok('T21f stop 82 still booked', stopQty === 82, 'stopQty=' + stopQty);
+    })();
     (function t22() {
       const key = 'CORR.X|short|Wed Aug 19 2026';
       const base = {

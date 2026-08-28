@@ -8233,7 +8233,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260828-ibkr-recon-afl-v8.1.4',
+    server_build: '20260828-ibkr-recon-afl-v8.1.5',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -13931,6 +13931,19 @@ function qtyPadEntryQty(rows, key) {
     .reduce((s, r) => s + (Number(r.qty) || 0), 0);
 }
 
+/** True when the model key already has a full exit (stop/flatten/tp) covering entries. */
+function fillKeyIsFullyExited(rows, key) {
+  let entry = 0;
+  let exit = 0;
+  for (const r of rows || []) {
+    if (!r || String(r.key) !== key) continue;
+    const q = Number(r.qty) || 0;
+    if (r.role === 'entry') entry += q;
+    else exit += q;
+  }
+  return entry > 0 && exit >= entry;
+}
+
 /** Qty-pad keys for a ticker and its listings, including |cursor-err. */
 function qtyPadKeysForTicker(rows, yahooTicker) {
   const aliases = ibkrYahooAliases(yahooTicker);
@@ -14840,7 +14853,15 @@ function restoreOpenModelFillsFromCursorErr(positionsOverride) {
 
       // Still short vs IB and no more err fills → durable qty-pad on live key.
       liveQty = liveQtyOf();
+      // Never reopen a key that already has a full stop/flatten. AFL looped
+      // because pad-drop left the model entry open, then restore padded 82
+      // again from a stale IB snapshot.
+      if (fillKeyIsFullyExited(out, liveKey)) continue;
+      // Boot restore reads the last recon file — that snapshot can still list
+      // a name IB already sold. Only invent pads from a live POST snapshot.
+      const liveSnapshot = Array.isArray(positionsOverride) && positionsOverride.length > 0;
       if (liveQty < ibAbs) {
+        if (!liveSnapshot) continue;
         const delta = ibAbs - liveQty;
         const liveEntries = out.filter(r => r && String(r.key) === liveKey && r.role === 'entry');
         const sample = liveEntries[0] || (errEntries[0] && errEntries[0].r);
@@ -18942,6 +18963,7 @@ module.exports = {
   isIbkrQtyPadFill,
   entryFillsAreQtyPadOnly,
   qtyPadEntryQty,
+  fillKeyIsFullyExited,
   qtyPadKeysForTicker,
   dropQtyPadFillsForKeys,
   missingIbPosMeansFlat,
