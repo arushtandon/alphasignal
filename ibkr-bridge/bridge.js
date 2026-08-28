@@ -5418,7 +5418,7 @@ async function main() {
             lastRearmAt: row.lastRearmAt,
             orderSubmittedAt: row.orderSubmittedAt,
             now: Date.now(),
-            minutesSinceRth,
+            minutesSinceRth: minsSinceRth,
             auctionHoldMin: AUCTION_HOLD_MIN
           });
           if (phase === 'rth' && isAuctionEntryStyle(row.entryStyle) && !row.contractRejected
