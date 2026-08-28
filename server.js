@@ -16775,11 +16775,14 @@ app.get('/api/ibkr/trades', async (req, res) => {
           commission: f.commission != null ? Number(f.commission) : null,
           commissionCcy: f.commissionCcy || null,
           ibRealizedPnl: f.ibRealizedPnl != null ? Number(f.ibRealizedPnl) : null,
+          multiplier: f.multiplier != null ? Number(f.multiplier) : null,
           session,
           sessionLabel: f.sessionLabel || ibkrSessionLabel(session)
         };
       };
       const fillViews = fills.map(enrichFill);
+      const stampedMult = fills.map(f => Number(f.multiplier)).find(n => n > 0)
+        || (Number(f0.multiplier) > 0 ? Number(f0.multiplier) : null);
       const entrySessions = [...new Set(fillViews.filter(f => f.role === 'entry').map(f => f.sessionLabel))];
       const exitSessions = [...new Set(fillViews.filter(f => f.role !== 'entry').map(f => f.sessionLabel))];
       let sessionSummary = entrySessions[0] || '—';
@@ -16811,7 +16814,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
         })(),
         lastTime: fills[fills.length - 1].time,
         status: openQty > 0 ? (exitQty > 0 ? 'partial' : 'open') : 'closed',
-        errorTrade: !!(f0.errorTrade || fills.some(f => f.errorTrade) || isCursorErrIbkrKey(key))
+        errorTrade: !!(f0.errorTrade || fills.some(f => f.errorTrade) || isCursorErrIbkrKey(key)),
+        multiplier: stampedMult
       };
       t.errorTrade = isIbkrErrorTrade(t, errExtra);
       trades.push(t);
@@ -17107,10 +17111,10 @@ app.get('/api/ibkr/trades', async (req, res) => {
       t.mark = mark;
       t.markSrc = mark != null ? (markMap[t.ticker] && markMap[t.ticker].src) || null : null;
       t.unrealizedUsd = (t.openQty > 0 && mark != null)
-        ? +(((mark - t.avgEntry) * t.openQty * dir * futuresMultiplierFor(t.ticker, f0.multiplier) / (t.ccyScale || 1)) * fx).toFixed(2)
+        ? +(((mark - t.avgEntry) * t.openQty * dir * futuresMultiplierFor(t.ticker, t.multiplier) / (t.ccyScale || 1)) * fx).toFixed(2)
         : (t.openQty > 0 ? null : 0);
       const nQty = t.openQty > 0 ? t.openQty : t.entryQty;
-      t.notionalUsd = +((Math.abs(t.avgEntry * nQty * futuresMultiplierFor(t.ticker, f0.multiplier) / (t.ccyScale || 1)) * fx)).toFixed(2);
+      t.notionalUsd = +((Math.abs(t.avgEntry * nQty * futuresMultiplierFor(t.ticker, t.multiplier) / (t.ccyScale || 1)) * fx)).toFixed(2);
 
       if (t.errorTrade) {
         errRealUsd += t.realizedUsd;
@@ -17134,7 +17138,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       for (const f of t.fills) {
         if (f.role === 'entry') continue;
         const day = String(f.time).slice(0, 10);
-        const pnlUsd = ((f.price - t.avgEntry) * f.qty * dir * futuresMultiplierFor(t.ticker, f.multiplier || f0.multiplier) / (t.ccyScale || 1)) * fx;
+        const pnlUsd = ((f.price - t.avgEntry) * f.qty * dir * futuresMultiplierFor(t.ticker, f.multiplier || t.multiplier) / (t.ccyScale || 1)) * fx;
         if (t.errorTrade) dailyError.set(day, (dailyError.get(day) || 0) + pnlUsd);
         else daily.set(day, (daily.get(day) || 0) + pnlUsd);
       }
