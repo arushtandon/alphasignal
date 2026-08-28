@@ -226,6 +226,7 @@ const {
   bloombergTicker,
   yahooSuffixFromIbPrimary
 } = require('./listing-aliases.js');
+const { asiaUnfilledRearmReason } = require('../lib/ibkr/asia-entry-rearm');
 
 /**
  * IB execDetails sometimes returns coarse integer prices (9988 @124) while
@@ -626,6 +627,13 @@ function minutesSinceEuRth(nowMs = Date.now()) {
   return localClock(nowMs, MARKET_CLOCKS.XETRA.timeZone).minutes - MARKET_CLOCKS.XETRA.open;
 }
 
+/** Minutes since TSE / SEHK cash open. */
+function minutesSinceMarketRth(market, nowMs = Date.now()) {
+  const w = MARKET_CLOCKS[market];
+  if (!w) return null;
+  return localClock(nowMs, w.timeZone).minutes - w.open;
+}
+
 /** Human label for fill/session stamps on the IBKR tab. */
 function sessionLabel(phase) {
   return ({
@@ -733,7 +741,7 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
       const ref = quotePx > 0 ? quotePx : entryPx;
       if (ref > 0) {
         const sell = side === 'sell';
-        const raw = sell ? ref * 0.99 : ref * 1.01;
+        const raw = sell ? ref * 0.98 : ref * 1.02;
         return {
           orderType: 'LMT', action, totalQuantity: qty,
           lmtPrice: roundPx(raw, contract, sell ? 'down' : 'up'),
@@ -4205,6 +4213,8 @@ async function main() {
       if (isAuctionEntryStyle(row.entryStyle) && !row.contractRejected) {
         if (eu && minutesSinceEuRth(now) < AUCTION_HOLD_MIN) continue;
         if (row.contract.usRth && minutesSinceUsRth(now) < AUCTION_HOLD_MIN) continue;
+        if ((market === 'JP' || market === 'HK')
+          && minutesSinceMarketRth(market, now) < AUCTION_HOLD_MIN) continue;
       }
       const rthMins = eu ? minutesSinceEuRth(now)
         : (row.contract.usRth ? minutesSinceUsRth(now) : null);
@@ -4267,11 +4277,12 @@ async function main() {
     return findings;
   }
 
-  function listWorkingOrders() {
+  function listWorkingOrdersDetailed() {
     return new Promise(resolve => {
       const orders = [];
-      if (DRY || !ib || !EventName) return resolve(orders);
-      const t = setTimeout(() => { cleanup(); resolve(orders); }, 5000);
+      let complete = false;
+      if (DRY || !ib || !EventName) return resolve({ orders, complete: true });
+      const t = setTimeout(() => { cleanup(); resolve({ orders, complete }); }, 5000);
       const onOpen = (orderId, contract, order, orderState) => {
         const st = String((orderState && orderState.status) || '');
         if (st === 'Cancelled' || st === 'Filled' || st === 'Inactive') return;
@@ -4288,7 +4299,7 @@ async function main() {
           status: st
         });
       };
-      const onEnd = () => { cleanup(); resolve(orders); };
+      const onEnd = () => { complete = true; cleanup(); resolve({ orders, complete }); };
       const cleanup = () => {
         clearTimeout(t);
         try { ib.off(EventName.openOrder, onOpen); } catch (_) {}
@@ -4296,8 +4307,11 @@ async function main() {
       };
       ib.on(EventName.openOrder, onOpen);
       ib.on(EventName.openOrderEnd, onEnd);
-      try { ib.reqAllOpenOrders(); } catch (e) { cleanup(); resolve(orders); }
+      try { ib.reqAllOpenOrders(); } catch (e) { cleanup(); resolve({ orders, complete: false }); }
     });
+  }
+  function listWorkingOrders() {
+    return listWorkingOrdersDetailed().then(r => r.orders);
   }
 
   /** Bind an already-working IB STP onto a recovered fill so Telegram does not
@@ -5300,11 +5314,16 @@ async function main() {
       }
 
       // 0. Re-arm unfilled parents still open on the model.
-      //   • HK / JP: chase while model open (missed OPG must not stay dead)
+      //   • HK / JP: OPG before open; hold through the auction; then one
+      //     LMT-THROUGH / MKT that sits until fill (do not 2-min cancel-loop).
       //   • EU / UK: OPG before open; hold through the auction; then MKT
       //   • US: OPG overnight; in pre/extended upgrade to LMT-EXT immediately
       //     when the live quote is at/better than the AlphaSignal entry; else
       //     stay OPG through 09:30. Never MKT-EXT (IB queues those until RTH).
+      const listedParents = await listWorkingOrdersDetailed();
+      const workingParentIds = new Set(
+        (listedParents.orders || []).map(o => Number(o.orderId)).filter(n => n > 0)
+      );
       for (const [key, row] of Object.entries(state.byKey)) {
         if (row.closed || !row.ticker) continue;
         if (keyState.get(key) !== 'open' && !row.userReentry && !keepUnfilledWorking(row, key)) continue;
@@ -5382,25 +5401,31 @@ async function main() {
         const us = !!contract.usRth;
 
         let reason = null;
-        const asiaLive = row.entryStyle === 'MKT' || row.entryStyle === 'LMT-THROUGH';
-        const needsStandaloneRefresh = asia && !row.entryFilled
-          && (row.stopId != null || row.tp1Id != null || row.rearmBlocked);
         if (asia) {
-          if (phase === 'lunch') {
-            // Wait for 13:00 HKT reopen — do not cancel/replace during the break
-          } else if ((phase === 'pre' || phase === 'closed') && (needsStandaloneRefresh || asiaLive || !row.entryStyle)) {
-            reason = (row.entryStyle === 'OPG' || needsStandaloneRefresh) ? 'asia-opg-refresh' : 'asia-to-opg';
-          } else if (phase === 'rth' && (!asiaLive || row.contractRejected || row.deferred)) {
-            reason = 'asia-rth';
+          const minsSinceRth = minutesSinceMarketRth(market);
+          reason = asiaUnfilledRearmReason({
+            phase,
+            entryStyle: row.entryStyle,
+            stopId: row.stopId,
+            tp1Id: row.tp1Id,
+            rearmBlocked: row.rearmBlocked,
+            contractRejected: row.contractRejected,
+            deferred: row.deferred,
+            parentId: row.parentId,
+            parentWorking: row.parentId != null && workingParentIds.has(Number(row.parentId)),
+            parentGone: row.parentId != null && unknownOrderIds.has(Number(row.parentId)),
+            openOrdersComplete: listedParents.complete === true,
+            lastRearmAt: row.lastRearmAt,
+            orderSubmittedAt: row.orderSubmittedAt,
+            now: Date.now(),
+            minutesSinceRth,
+            auctionHoldMin: AUCTION_HOLD_MIN
+          });
+          if (phase === 'rth' && isAuctionEntryStyle(row.entryStyle) && !row.contractRejected
+            && Number.isFinite(minsSinceRth) && minsSinceRth < AUCTION_HOLD_MIN) {
+            log('RECONCILE: hold JP/HK opening order through auction', key,
+              'style=', row.entryStyle, 'minsSinceRth=', minsSinceRth);
           }
-          else if (phase === 'rth' && asiaLive) {
-            const t0 = Date.parse(row.lastRearmAt || row.orderSubmittedAt || 0);
-            if (!Number.isFinite(t0) || Date.now() - t0 > 2 * 60 * 1000) {
-              // Unfilled TSE LMT-THROUGH / SEHK MKT (or a rejected first fire) — retry
-              reason = 'asia-rth-retry';
-            }
-          } else if (phase !== 'rth' && phase !== 'lunch' && asiaLive) reason = 'asia-to-opg';
-          else if (!row.entryStyle) reason = 'asia-missing-style';
         } else if (eu && phase === 'rth' && (isAuctionEntryStyle(row.entryStyle) || row.restoreAfterFalseOrphan)) {
           if (row.restoreAfterFalseOrphan) {
             reason = 'eu-restore-after-orphan';
@@ -6138,5 +6163,7 @@ module.exports = {
   asiaUnfilledCarryActive,
   forceCashOpenActive,
   keepUnfilledWorking,
+  minutesSinceMarketRth,
+  asiaUnfilledRearmReason,
   isLiveAuthorizedServerExit: require('../lib/ibkr/live-exit-authority').isLiveAuthorizedServerExit
 };

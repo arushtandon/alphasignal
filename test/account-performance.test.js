@@ -152,7 +152,7 @@ test('US EOD for today is included in Sharpe', () => {
     eod: [
       { date: '2026-08-06', currentBalance: startEq, netPnlUsd: 0 },
       { date: '2026-08-18', currentBalance: 464_000, netPnlUsd: 2000 },
-      { date: today, currentBalance: eq, netPnlUsd: eq - startEq }
+      { date: today, currentBalance: eq, netPnlUsd: eq - startEq, session: 'us-post-close' }
     ]
   });
   const a = mk(464_000);
@@ -197,7 +197,7 @@ test('intra-day NLV is not a closed Sharpe day', () => {
     asOf: '2026-08-27',
     ibkrEquity: 466_000,
     netPnlUsd: 2000,
-    eod: eod.concat([{ date: '2026-08-27', currentBalance: 466_000, netPnlUsd: 2000 }])
+    eod: eod.concat([{ date: '2026-08-27', currentBalance: 466_000, netPnlUsd: 2000, session: 'us-post-close' }])
   });
   assert.ok(closed.sharpeDays < withTodayEod.sharpeDays);
 });
@@ -224,6 +224,67 @@ test('stale $1M book peak is replaced by live IBKR NLV', () => {
   });
   assert.equal(snap.peakNlv, 464_000);
   assert.equal(snap.troughNlv, 464_000);
+  assert.equal(snap.maxDrawdownUsd, 0);
+});
+
+test('intra-day EOD snapshot is not a closed Sharpe day', () => {
+  const today = '2026-08-28';
+  const eod = [
+    { date: '2026-08-06', currentBalance: 464_000, netPnlUsd: 0 },
+    { date: '2026-08-25', currentBalance: 467_000, netPnlUsd: 3000 },
+    { date: today, currentBalance: 468_000, netPnlUsd: 4000 }
+  ];
+  const p = computeAccountPerformance({
+    bookStart: '2026-08-06',
+    today,
+    asOf: today,
+    ibkrEquity: 468_000,
+    netPnlUsd: 4000,
+    eod
+  });
+  const closed = computeAccountPerformance({
+    bookStart: '2026-08-06',
+    today,
+    asOf: today,
+    ibkrEquity: 468_000,
+    netPnlUsd: 4000,
+    eod: eod.slice(0, 2)
+  });
+  assert.equal(p.sharpe, closed.sharpe);
+  assert.equal(p.sharpeDays, closed.sharpeDays);
+});
+
+test('missing EOD NLV does not invent a Sharpe crash from fill-PnL cum', () => {
+  const p = computeAccountPerformance({
+    bookStart: '2026-08-06',
+    today: '2026-08-28',
+    asOf: '2026-08-28',
+    ibkrEquity: 468_813,
+    netPnlUsd: 6919,
+    daily: [{ date: '2026-08-27', cumUsd: 1756 }],
+    eod: [
+      { date: '2026-08-20', currentBalance: 461_266 },
+      { date: '2026-08-25', currentBalance: 467_329 },
+      { date: '2026-08-27', currentBalance: null, netPnlUsd: 0 }
+    ],
+    peakIbkrEquity: 470_130,
+    troughIbkrEquity: 462_029
+  });
+  assert.ok(p.sharpe > 1.5, 'Sharpe=' + p.sharpe);
+  assert.ok(p.drawdownUsd < 2500, 'fake daily-cum cliff would print ~$3.7k, got dd=' + p.drawdownUsd);
+});
+
+test('max drawdown never shrinks below the persisted high-water', () => {
+  const p = computeAccountPerformance({
+    bookStart: '2026-08-06',
+    today: '2026-08-28',
+    asOf: '2026-08-28',
+    ibkrEquity: 468_813,
+    netPnlUsd: 6919,
+    eod: [{ date: '2026-08-25', currentBalance: 467_329 }],
+    persistedMaxDrawdownUsd: 5000
+  });
+  assert.ok(p.drawdownUsd >= 5000, 'dd=' + p.drawdownUsd);
 });
 
 test('a profitable IBKR book does not get a negative Sharpe from peak NLV stamped on day one', () => {

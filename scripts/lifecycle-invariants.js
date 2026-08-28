@@ -517,6 +517,17 @@ function ok(name, cond, detail) {
         'qty=' + qty + ' n=' + live.length);
     })();
 
+    // ── T21b IB flat drops qty-pad (AFL) — not a DHL ghost-flatten ───────────
+    (function t21b() {
+      const liveKey = 'AFL|short|Wed Aug 12 2026';
+      ok('T21b pad-only before drop', S.entryFillsAreQtyPadOnly(S.readIbkrFillRows(), liveKey));
+      const n = S.dropQtyPadFillsForKeys([liveKey]);
+      ok('T21b dropped pad', n >= 1, 'n=' + n);
+      const qty = S.readIbkrFillRows().filter(r => r.key === liveKey && r.role === 'entry')
+        .reduce((s, r) => s + Number(r.qty || 0), 0);
+      ok('T21b AFL site qty 0', qty === 0, 'qty=' + qty);
+    })();
+
     // ── T22 Corrective flatten must finish before board re-entry ─────────────
     (function t22() {
       const key = 'CORR.X|short|Wed Aug 19 2026';

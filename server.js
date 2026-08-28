@@ -13920,6 +13920,32 @@ function isIbkrQtyPadFill(r) {
   return recon === 'qty-pad' || exec.startsWith('recon-entry-');
 }
 
+function entryFillsAreQtyPadOnly(rows, key) {
+  const entries = (rows || []).filter(r => r && r.key === key && r.role === 'entry');
+  if (!entries.length) return false;
+  return entries.every(isIbkrQtyPadFill);
+}
+
+function dropQtyPadFillsForKeys(keys) {
+  const want = new Set((keys || []).filter(Boolean));
+  if (!want.size) return 0;
+  let n = 0;
+  mutateFillLedger('ib-flat-drop-qty-pad', (rows) => {
+    const out = [];
+    for (const r of rows) {
+      if (r && want.has(r.key) && r.role === 'entry' && isIbkrQtyPadFill(r)) {
+        n++;
+        continue;
+      }
+      out.push(r);
+    }
+    return out;
+  }, {
+    mayDropProtected: (r) => !!(r && want.has(r.key) && r.role === 'entry' && isIbkrQtyPadFill(r))
+  });
+  return n;
+}
+
 function isGenuineIbExecFill(r) {
   if (!r) return false;
   if (r.synthetic === true) return false;
@@ -15859,6 +15885,8 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           peakNlvAt: prev.peakNlvAt,
           troughNlv: prev.troughNlv,
           troughNlvAt: prev.troughNlvAt,
+          maxDrawdownUsd: prev.maxDrawdownUsd,
+          maxDrawdownAt: prev.maxDrawdownAt,
           peakBookEquity: prev.peakBookEquity,
           peakBookEquityAt: prev.peakBookEquityAt,
           troughBookEquity: prev.troughBookEquity,
@@ -16095,6 +16123,29 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           // DHL 25 Aug: oversell flipped IB short, cover went flat, recon then
           // Error-flattened the long at the mark and quarantined the model lot.
           // A side-mismatch that resolves to flat is a cover, not an orphan.
+          const aliasYs = [...ibkrYahooAliases(y)];
+          for (const a of aliasYs) dualListHandled.add(a);
+          const mergedOpens = [];
+          for (const a of aliasYs) {
+            for (const o of (asByTicker.get(a) || [])) {
+              if (isCursorErrIbkrKey(o.key)) continue;
+              mergedOpens.push(o);
+            }
+          }
+          const fillRowsNow = readIbkrFillRows();
+          const liveOpens = mergedOpens.filter(o => o && o.openQty > 0);
+          const padOnly = liveOpens.length > 0 && liveOpens.every(o => entryFillsAreQtyPadOnly(fillRowsNow, o.key));
+          if (padOnly) {
+            const dropped = dropQtyPadFillsForKeys(liveOpens.map(o => o.key));
+            if (dropped > 0) {
+              adjusted.push({
+                ticker: y, action: 'drop-qty-pad-ib-flat', qty: asAbs,
+                note: 'IB flat — dropped synthetic qty-pad (no genuine execs)'
+              });
+              console.log('IBKR recon: dropped', dropped, 'qty-pad fill(s) for IB-flat', y);
+            }
+            continue;
+          }
           const mismatchAt = Number(pending[y + '|side-mismatch'] || 0);
           if (mismatchAt > 0 && (Date.now() - mismatchAt) < 24 * 3600 * 1000) {
             issues.push({
@@ -16111,17 +16162,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           // Fresh entry grace: wait for listing lag / fill settle. After grace,
           // IB flat is authoritative — close site opens (and emit exit) even if
           // the model entry event is still open (SU.PA orphan-flatten 2026-08-12).
-          const aliasYs = [...ibkrYahooAliases(y)];
-          for (const a of aliasYs) dualListHandled.add(a);
-          const mergedOpens = [];
-          for (const a of aliasYs) {
-            for (const o of (asByTicker.get(a) || [])) {
-              if (isCursorErrIbkrKey(o.key)) continue;
-              mergedOpens.push(o);
-            }
-          }
           const GHOST_FLAT_GRACE_MS = 15 * 60 * 1000;
-          const fillRowsNow = readIbkrFillRows();
           const recentEntry = mergedOpens.some(o => {
             return fillRowsNow.some(r => {
               if (!r || r.key !== o.key || r.role !== 'entry') return false;
@@ -16516,6 +16557,8 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
         peakNlvAt: prev.peakNlvAt,
         troughNlv: prev.troughNlv,
         troughNlvAt: prev.troughNlvAt,
+        maxDrawdownUsd: prev.maxDrawdownUsd,
+        maxDrawdownAt: prev.maxDrawdownAt,
         peakBookEquity: prev.peakBookEquity,
         peakBookEquityAt: prev.peakBookEquityAt,
         troughBookEquity: prev.troughBookEquity,
@@ -17200,6 +17243,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
       troughIbkrEquity: accountSnap && accountSnap.troughNlv != null ? Number(accountSnap.troughNlv) : null,
       peakIbkrEquityAt: accountSnap && accountSnap.peakNlvAt,
       troughIbkrEquityAt: accountSnap && accountSnap.troughNlvAt,
+      persistedMaxDrawdownUsd: accountSnap && accountSnap.maxDrawdownUsd != null
+        ? Number(accountSnap.maxDrawdownUsd) : null,
       daily: dailyArr,
       eod: readIbkrEodPerformance(500),
       riskOff: !!riskState.riskOff,
@@ -17207,6 +17252,15 @@ app.get('/api/ibkr/trades', async (req, res) => {
       blocked: !!(riskState && riskState._ready && isNewEntryRiskBlocked()),
       pausePct: LIQ_PAUSE_PCT
     });
+    if (accountSnap && Number.isFinite(Number(performance.drawdownUsd))) {
+      const prevDd = Number(accountSnap.maxDrawdownUsd);
+      const dd = Number(performance.drawdownUsd);
+      if (!Number.isFinite(prevDd) || dd > prevDd) {
+        accountSnap.maxDrawdownUsd = dd;
+        accountSnap.maxDrawdownAt = new Date().toISOString();
+        try { saveIbkrAccountSnapshot(accountSnap); } catch (_) {}
+      }
+    }
     const netLiqAvail = accountSnap
       ? Number(accountSnap.netLiquidityAvailable != null
         ? accountSnap.netLiquidityAvailable : accountSnap.availableFunds)
@@ -17455,6 +17509,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
       peakNlvAt: accountSnap.peakNlvAt || null,
       troughNlv: accountSnap.troughNlv != null ? Number(accountSnap.troughNlv) : null,
       troughNlvAt: accountSnap.troughNlvAt || null,
+      maxDrawdownUsd: accountSnap.maxDrawdownUsd != null ? Number(accountSnap.maxDrawdownUsd) : null,
+      maxDrawdownAt: accountSnap.maxDrawdownAt || null,
       totalCashValue: accountSnap.totalCashValue != null ? Number(accountSnap.totalCashValue) : null,
       buyingPower: accountSnap.buyingPower != null ? Number(accountSnap.buyingPower) : null,
       ibDailyPnl: accountSnap.dailyPnl != null ? Number(accountSnap.dailyPnl) : null,
@@ -18735,6 +18791,9 @@ module.exports = {
   quarantineExcessModelEntriesVsIb,
   restoreOpenModelFillsFromCursorErr,
   isModelIbSyncFill,
+  isIbkrQtyPadFill,
+  entryFillsAreQtyPadOnly,
+  dropQtyPadFillsForKeys,
   quarantineKeyFillsToCursorErr,
   reArmModelEntry,
   isNewEntryRiskBlocked,
