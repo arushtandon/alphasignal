@@ -8233,7 +8233,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260819-trade-lifecycle-v8.1.2',
+    server_build: '20260828-ibkr-recon-afl-v8.1.3',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -13931,6 +13931,35 @@ function qtyPadEntryQty(rows, key) {
     .reduce((s, r) => s + (Number(r.qty) || 0), 0);
 }
 
+/** Qty-pad keys for a ticker and its listings, including |cursor-err. */
+function qtyPadKeysForTicker(rows, yahooTicker) {
+  const aliases = ibkrYahooAliases(yahooTicker);
+  const keys = [];
+  const seen = new Set();
+  for (const r of rows || []) {
+    if (!r || r.role !== 'entry' || !isIbkrQtyPadFill(r) || !r.key) continue;
+    const y = normalizeIbkrYahooTicker(r.ticker || String(r.key).split('|')[0]);
+    if (!aliases.has(y)) continue;
+    if (seen.has(r.key)) continue;
+    seen.add(r.key);
+    keys.push(r.key);
+  }
+  return keys;
+}
+
+/** Display overlay: a fresh IB snapshot with no row for this name means flat. */
+function missingIbPosMeansFlat(ibp, ibPosByY) {
+  const ibAbs = Math.abs(Number(ibp && ibp.qty) || 0);
+  if (ibAbs > 0) return false;
+  if (!ibp && !(ibPosByY && ibPosByY.size)) return false;
+  return true;
+}
+
+/** Ledger rewrites that already match IB — do not flash the Differences banner. */
+function isBenignReconAdjustment(action) {
+  return action === 'avg-correct' || action === 'drop-qty-pad-ib-flat';
+}
+
 function dropQtyPadFillsForKeys(keys) {
   const want = new Set((keys || []).filter(Boolean));
   if (!want.size) return 0;
@@ -16138,11 +16167,11 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
             }
           }
           const fillRowsNow = readIbkrFillRows();
-          const liveOpens = mergedOpens.filter(o => o && o.openQty > 0);
           // AFL: IB went flat while a qty-pad still held the site lot. Drop pads
           // whenever they exist — do not require every historical entry to be a pad
           // (that skipped AFL and left side-mismatch-then-flat as a sticky banner).
-          const padKeys = liveOpens.map(o => o.key).filter(k => qtyPadEntryQty(fillRowsNow, k) > 0);
+          // Include |cursor-err pads so the Error table does not keep 82 open.
+          const padKeys = qtyPadKeysForTicker(fillRowsNow, y);
           if (padKeys.length) {
             const dropped = dropQtyPadFillsForKeys(padKeys);
             if (dropped > 0) {
@@ -16399,7 +16428,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     // Fully matched = no outstanding errors, pending drifts, or IB-only lots.
     // A successful avg-correct in this sweep already rewrote the ledger to IB —
     // do not flash "Differences" for a fix that just landed (BZ 87442→87.44).
-    const outstandingAdj = adjusted.filter(a => a && a.action !== 'avg-correct');
+    const outstandingAdj = adjusted.filter(a => a && !isBenignReconAdjustment(a.action));
     const inSync = issues.filter(i => i.severity === 'error').length === 0
       && issues.filter(i => i.severity === 'pending').length === 0
       && outstandingAdj.length === 0
@@ -16781,6 +16810,7 @@ function ibkrExitQualityType(status, modelReason, hasTp1, hasStop, hasFlat, erro
 // Aggregated per-trade view of the paper account, built purely from real fills.
 // READ-ONLY: never mutate ibkr_fills.jsonl here (phantom drop / quarantine run in recon/boot).
 app.get('/api/ibkr/trades', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const allRows = dedupeIbkrFillsByExecId(readIbkrFillRows());
     const rows = allRows.filter(r => !isPhantomIbkrKey(r.key, r.time, r));
@@ -17036,10 +17066,11 @@ app.get('/api/ibkr/trades', async (req, res) => {
         const y = k.split('|')[0];
         const asSign = Number(k.split('|')[1]) || 1;
         const ibp = resolveIbPosForYahoo(y, ibPosByY, ibPosByConId);
-        if (!ibp) continue;
-        const ibQty = Number(ibp.qty) || 0;
+        const ibQty = ibp ? Number(ibp.qty) || 0 : 0;
         const ibAbs = Math.abs(ibQty);
-        if (ibAbs === 0) {
+        // Missing from a populated snapshot is IB-flat (AFL 82 stayed "open"
+        // because overlay used to `continue` when the name was absent).
+        if (missingIbPosMeansFlat(ibp, ibPosByY)) {
           for (const t of group) {
             if (!(t.openQty > 0)) continue;
             t.openQty = 0;
@@ -18802,7 +18833,10 @@ module.exports = {
   isIbkrQtyPadFill,
   entryFillsAreQtyPadOnly,
   qtyPadEntryQty,
+  qtyPadKeysForTicker,
   dropQtyPadFillsForKeys,
+  missingIbPosMeansFlat,
+  isBenignReconAdjustment,
   quarantineKeyFillsToCursorErr,
   reArmModelEntry,
   isNewEntryRiskBlocked,

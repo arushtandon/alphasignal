@@ -547,6 +547,27 @@ function ok(name, cond, detail) {
       ok('T21c dropped mixed-key pad', n >= 1, 'n=' + n);
       ok('T21c pad qty after drop 0', S.qtyPadEntryQty(S.readIbkrFillRows(), liveKey) === 0);
     })();
+    // ── T21d IB-flat also drops |cursor-err pads; missing IB row is display-flat
+    (function t21d() {
+      const liveKey = 'AFL|short|Wed Aug 12 2026';
+      const errKey = S.toCursorErrIbkrKey(liveKey);
+      S.mutateFillLedger('t21d-err-pad', (rows) => rows.concat([{
+        execId: 'recon-entry-AFL-err', key: errKey, ticker: 'AFL', role: 'entry',
+        qty: 82, price: 121.1, recon: 'qty-pad', synthetic: true, errorTrade: true,
+        time: '2026-08-25T12:00:00.000Z'
+      }]));
+      const keys = S.qtyPadKeysForTicker(S.readIbkrFillRows(), 'AFL');
+      ok('T21d pad keys include cursor-err', keys.includes(errKey), String(keys));
+      const n = S.dropQtyPadFillsForKeys(keys);
+      ok('T21d dropped err pad', n >= 1, 'n=' + n);
+      ok('T21d err pad qty 0', S.qtyPadEntryQty(S.readIbkrFillRows(), errKey) === 0);
+      const ibMap = new Map([['NVDA', { ticker: 'NVDA', qty: 10 }]]);
+      ok('T21d missing AFL is flat vs populated snapshot', S.missingIbPosMeansFlat(null, ibMap));
+      ok('T21d empty snapshot does not mass-close', !S.missingIbPosMeansFlat(null, new Map()));
+      ok('T21d held lot is not flat', !S.missingIbPosMeansFlat({ qty: 82 }, ibMap));
+      ok('T21d drop-qty-pad is benign', S.isBenignReconAdjustment('drop-qty-pad-ib-flat'));
+      ok('T21d qty-pad action is not benign', !S.isBenignReconAdjustment('qty-pad'));
+    })();
     (function t22() {
       const key = 'CORR.X|short|Wed Aug 19 2026';
       const base = {
