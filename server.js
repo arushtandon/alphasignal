@@ -40,6 +40,8 @@ const {
 const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/account-performance');
 const { ibkrAvgToFillUnit, futuresMultiplierFor } = require('./lib/ibkr/avg-cost');
 const { fifoLotEconomics } = require('./lib/ibkr/fifo-lots');
+const { officialFuturesSettlePx } = require('./lib/ibkr/commodity-futures');
+const { isFuturesRollFill, liveIbkrKey, rebuildFuturesRollFills } = require('./lib/ibkr/futures-roll');
 const {
   applyEstimatedCommission,
   fillNeedsEstimatedCommission
@@ -8258,7 +8260,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260831-fut-roll-settle-v8.2.4',
+    server_build: '20260831-fut-roll-pnl-v8.2.5',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -14180,6 +14182,7 @@ function isModelIbSyncFill(r) {
   const recon = String(r.recon || '');
   const exec = String(r.execId || '');
   if (recon === 'qty-pad' || recon === 'qty-trim' || recon === 'avg-correct') return true;
+  if (isFuturesRollFill(r)) return true;
   if (recon === 'ib-exec-history' && !exec.startsWith('ibhist-flat-')) return true;
   if (exec.startsWith('recon-entry-') || exec.startsWith('recon-trim-')) return true;
   if (exec.startsWith('ibhist-') && !exec.startsWith('ibhist-flat-')) return true;
@@ -14196,11 +14199,12 @@ function shouldQuarantineFillToCursorErr(r) {
   if (isCursorErrIbkrKey(r.key)) return false;
   if (IBKR_LEGACY_ERROR_KEYS.has(String(r.key || ''))) return true;
   if (isForceIbkrErrorTicker(r.ticker)) return true;
-  if (r.errorTrade === true) return true;
+  if (r.errorTrade === true && !isFuturesRollFill(r)) return true;
   // Model IB sync (pad/trim/avg/historical print) must stay on the live key.
   if (isModelIbSyncFill(r)) return false;
   const recon = String(r.recon || '');
   const exec = String(r.execId || '');
+  if (isFuturesRollFill(r)) return false;
   if (recon === 'ib-exec-history' && !exec.startsWith('ibhist-flat-')) return false;
   if (exec.startsWith('ibhist-') && !exec.startsWith('ibhist-flat-')) return false;
   if (recon === 'ghost-flat' || recon === 'recover-entry' || recon === 'cursor-recon-error') return true;
@@ -16004,6 +16008,9 @@ function backfillMissingIbkrCommissions() {
 try { restoreOpenModelFillsFromCursorErr(); } catch (e) {
   console.warn('boot restore open-model fills failed:', e.message);
 }
+try { repairFuturesRollLedger(); } catch (e) {
+  console.warn('boot futures-roll repair failed:', e.message);
+}
 try {
   if (process.env.AUTH_TEST_BYPASS !== '1') bookAflStopLossFromIbPrint();
 } catch (e) {
@@ -16012,6 +16019,37 @@ try {
 try { backfillMissingIbkrCommissions(); } catch (e) {
   console.warn('boot backfill missing commissions failed:', e.message);
 }
+/** Qty matches IB — do not rewrite the expired-month fill to the new-month avgCost. */
+function ibkrKeyHasFuturesRoll(key) {
+  const live = liveIbkrKey(key);
+  try {
+    return readIbkrFillRows().some(r => r && isFuturesRollFill(r) && liveIbkrKey(r.key) === live);
+  } catch (_) { return false; }
+}
+
+function repairFuturesRollLedger() {
+  try {
+    const before = readIbkrFillRows();
+    const { rows, changed } = rebuildFuturesRollFills(before, {
+      officialSettlePx: (ticker) => officialFuturesSettlePx(ticker, '')
+    });
+    if (!changed) return 0;
+    const rollLives = new Set();
+    for (const r of before) {
+      if (isFuturesRollFill(r)) rollLives.add(liveIbkrKey(r.key));
+    }
+    mutateFillLedger('repair_futures_roll', () => rows, {
+      mayDropProtected: (r) => !!(r && rollLives.has(liveIbkrKey(r.key)))
+    });
+    console.log('Repaired futures-roll fills onto model keys', changed);
+    try { auditLog('ibkr_repair_futures_roll', { lots: changed }); } catch (_) {}
+    return changed;
+  } catch (e) {
+    console.warn('repairFuturesRollLedger failed', e.message);
+    return 0;
+  }
+}
+
 /** Aggregate open lots from fill rows (same math as /api/ibkr/trades). */
 function aggregateIbkrOpenFromFills(rows, opts) {
   opts = opts || {};
@@ -16171,6 +16209,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     }
 
     try { restoreOpenModelFillsFromCursorErr(positions); } catch (_) {}
+    try { repairFuturesRollLedger(); } catch (_) {}
     try { bookAflStopLossFromIbPrint(); } catch (_) {}
     try { quarantineExcessModelEntriesVsIb(positions); } catch (_) {}
     try {
@@ -16570,6 +16609,12 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         delete pending[wantKey];
         // Qty matches — check avg
         if (ib && Number(ib.avgCost) > 0 && primary) {
+          if (ibkrKeyHasFuturesRoll(primary.key)) {
+            matched.push({
+              ticker: y, openQty: asAbs, avgEntry: +primary.avgEntry.toFixed(6),
+              ibQty: ibQty
+            });
+          } else {
           const avg = ibkrAvgToFillUnit(ib.avgCost, primary.ccyScale, primary.avgEntry, {
             ticker: primary.rawTicker || y, multiplier: ib.multiplier
           });
@@ -16590,6 +16635,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
             }
           } else {
             matched.push({ ticker: y, openQty: asAbs, ibQty });
+          }
           }
         } else if (asAbs === 0 && ibAbs === 0) {
           /* nothing */
@@ -19098,6 +19144,7 @@ module.exports = {
   missingIbPosMeansFlat,
   isBenignReconAdjustment,
   bookAflStopLossFromIbPrint,
+  repairFuturesRollLedger,
   AFL_IB_STOP_BOOK,
   quarantineKeyFillsToCursorErr,
   reArmModelEntry,

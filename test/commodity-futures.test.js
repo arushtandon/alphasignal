@@ -77,6 +77,7 @@ assert.strictEqual(futuresExpired({
   lastTradeDateOrContractMonth: lastBz
 }, new Date('2026-08-31T06:00:00Z')), false);
 assert.strictEqual(officialFuturesSettlePx('BZ=F', lastBz), 89.31);
+assert.strictEqual(officialFuturesSettlePx('BZ=F', ''), 89.31);
 assert.strictEqual(officialFuturesSettlePx('BZ=F', '20261130'), 0);
 
 console.log('PASS commodity-futures minis');

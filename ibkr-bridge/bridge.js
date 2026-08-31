@@ -5319,7 +5319,6 @@ async function main() {
       sessionLabel: sessionLabel(phase),
       recon: 'futures-roll',
       markSrc: 'settlement',
-      synthetic: true,
       time: fillAt
     });
     row.rollSettleReported = true;
