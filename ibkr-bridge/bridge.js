@@ -141,6 +141,7 @@ const {
   YAHOO_FUTURES,
   INSTRUMENT_NOTIONAL_USD,
   orderedCommoditySpecs,
+  keepHeldSpecOnRoll,
   specFields,
   ibFutSymbolToYahoo,
   isCommodityYahoo,
@@ -5344,6 +5345,13 @@ async function main() {
     row.rollInFlight = true;
     saveState(state);
     _futFrontCache.delete(old.yahooTicker || row.ticker);
+    const rollPx = Number(row.entry) || Number(old.ibAvgFill) || Number(settlePx) || undefined;
+    const keepSpec = keepHeldSpecOnRoll(row.ticker, old, rollPx);
+    if (!keepSpec) {
+      log('FUTURES ROLL downsize to mini', key,
+        (old.localSymbol || old.symbol) + '×' + (old.multiplier || '?'),
+        'notional~' + Math.round((Number(rollPx) || 0) * (Number(old.multiplier) || 0)));
+    }
     const stub = {
       yahooTicker: row.ticker,
       symbol: old.symbol,
@@ -5357,10 +5365,10 @@ async function main() {
       lotHint: 1,
       needsFrontMonth: true,
       usRth: false,
-      rollKeepSpec: true,
+      rollKeepSpec: keepSpec,
       rollExcludeConId: old.conId,
       rollExcludeMonth: String(old.lastTradeDateOrContractMonth || '').replace(/\D/g, '').slice(0, 8),
-      entryPx: Number(row.entry) || undefined
+      entryPx: rollPx
     };
     const next = await resolveInstrument(stub);
     if (!next || !(next.conId > 0) || Number(next.conId) === Number(old.conId)) {

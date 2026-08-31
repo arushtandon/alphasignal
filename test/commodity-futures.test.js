@@ -3,6 +3,7 @@ const assert = require('assert');
 const {
   preferredCommoditySpec,
   orderedCommoditySpecs,
+  keepHeldSpecOnRoll,
   ibFutSymbolToYahoo,
   INSTRUMENT_NOTIONAL_USD,
   futuresLocalMonthLabel,
@@ -79,5 +80,13 @@ assert.strictEqual(futuresExpired({
 assert.strictEqual(officialFuturesSettlePx('BZ=F', lastBz), 89.31);
 assert.strictEqual(officialFuturesSettlePx('BZ=F', ''), 89.31);
 assert.strictEqual(officialFuturesSettlePx('BZ=F', '20261130'), 0);
+
+assert.strictEqual(keepHeldSpecOnRoll('BZ=F', { symbol: 'BZ', multiplier: 1000 }, 87.44), false,
+  'full-size Brent (~$87k) must roll onto the mini, not another BZ×1000');
+assert.strictEqual(keepHeldSpecOnRoll('BZ=F', { symbol: 'G', multiplier: 100 }, 87.44), true,
+  'already on the ICE mini — keep G');
+assert.strictEqual(keepHeldSpecOnRoll('CL=F', { symbol: 'MCL', multiplier: 100 }, 75), true);
+assert.strictEqual(keepHeldSpecOnRoll('ES=F', { symbol: 'ES', multiplier: 50 }, 5300), true,
+  'index futures are not on the commodity mini ladder');
 
 console.log('PASS commodity-futures minis');

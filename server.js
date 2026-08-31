@@ -8260,7 +8260,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260831-fut-roll-pnl-v8.2.5',
+    server_build: '20260831-fut-roll-pnl-v8.2.6',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -14264,6 +14264,10 @@ function quarantineErrorFillsOffModelKeys() {
       }
     } catch (_) {}
     const before = readIbkrFillRows();
+    const rollLiveKeys = new Set();
+    for (const r of before) {
+      if (isFuturesRollFill(r)) rollLiveKeys.add(liveIbkrKey(r.key));
+    }
     let moved = 0;
     const next = before.map(r => {
       if (!r || !r.key) return r;
@@ -14279,6 +14283,9 @@ function quarantineErrorFillsOffModelKeys() {
         moved++;
         return q;
       }
+      // Oct opener / cash-settle must stay with the Nov roll-in. SU.PA-style
+      // pre-open-entry hygiene would bounce them to |cursor-err and hide Realised.
+      if (isFuturesRollFill(r) || rollLiveKeys.has(liveIbkrKey(r.key))) return r;
       // Pre-open-entry fills → Error ONLY when a newer entry fill already exists
       // on the live key (true re-arm cycle). Otherwise restoring KHC after a false
       // stale-abandon would immediately bounce the lot back to |cursor-err.
@@ -14373,6 +14380,8 @@ function quarantineExcessModelEntriesVsIb(positionsOverride) {
         const sum = group.reduce((s, o) => s + Number(o.openQty || 0), 0);
         if (!(sum > ibAbs)) continue;
         const keySet = new Set(group.map(o => o.key));
+        const hasRoll = out.some(r => r && keySet.has(String(r.key)) && isFuturesRollFill(r));
+        if (hasRoll) continue;
         const rank = (r) => {
           if (isIbkrQtyPadFill(r)) return 0;
           if (r && r.synthetic) return 1;
@@ -16729,6 +16738,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     try { pruneStaleOpenHistoryRows(); } catch (ePrune) {
       console.warn('History prune after recon:', ePrune.message);
     }
+    try { repairFuturesRollLedger(); } catch (_) {}
     res.json({
       ok: true,
       inSync,
@@ -17080,7 +17090,9 @@ function ibkrExitQualityType(status, modelReason, hasTp1, hasStop, hasFlat, erro
 app.get('/api/ibkr/trades', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
-    const allRows = dedupeIbkrFillsByExecId(readIbkrFillRows());
+    const allRows = rebuildFuturesRollFills(dedupeIbkrFillsByExecId(readIbkrFillRows()), {
+      officialSettlePx: (ticker) => officialFuturesSettlePx(ticker, '')
+    }).rows;
     const rows = allRows.filter(r => !isPhantomIbkrKey(r.key, r.time, r));
     const errExtra = loadIbkrErrorTradeExtra();
     const byKey = new Map();

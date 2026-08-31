@@ -54,3 +54,27 @@ test('roll settle + opener restore onto the model key so Oct PnL is not Error', 
   assert.equal(+fifo.avgEntry.toFixed(2), 91.25);
   assert.equal(+fifo.realizedLocal.toFixed(2), 1868);
 });
+
+test('mint official settle flatten when roll-settle never landed, restore opener from priceCorrectedFrom', () => {
+  const { rebuildFuturesRollFills } = require('../lib/ibkr/futures-roll');
+  const { fifoLotEconomics } = require('../lib/ibkr/fifo-lots');
+  const live = 'BZ=F|short|Thu Aug 27 2026';
+  const err = live + '|cursor-err';
+  const { rows, changed } = rebuildFuturesRollFills([
+    { key: live, role: 'entry', qty: 1, price: 91.25, recon: 'futures-roll',
+      execId: '0000e1a7.6a971cd6.01.01', time: '2026-08-31T10:05:30.255Z', ticker: 'BZ=F', side: 'buy' },
+    { key: err, role: 'entry', qty: 1, price: 91.25236, recon: 'avg-correct', errorTrade: true,
+      execId: '0000e1a7.6a939e15.01.01', time: '2026-08-27T04:47:34.990Z', ticker: 'BZ=F', side: 'buy',
+      priceCorrectedFrom: 87.442 }
+  ], { officialSettlePx: () => 89.31 });
+  assert.equal(changed, 1);
+  const flat = rows.find(r => r.role === 'flatten');
+  assert.ok(flat);
+  assert.equal(flat.price, 89.31);
+  assert.equal(flat.key, live);
+  assert.equal(flat.errorTrade, false);
+  const fifo = fifoLotEconomics(rows, { dir: 1, futMult: 1000 });
+  assert.equal(fifo.openQty, 1);
+  assert.equal(+fifo.avgEntry.toFixed(2), 91.25);
+  assert.equal(+fifo.realizedLocal.toFixed(2), 1868);
+});
