@@ -39,6 +39,7 @@ const {
 } = require('./lib/ibkr/live-exit-authority');
 const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/account-performance');
 const { ibkrAvgToFillUnit, futuresMultiplierFor } = require('./lib/ibkr/avg-cost');
+const { fifoLotEconomics } = require('./lib/ibkr/fifo-lots');
 const {
   applyEstimatedCommission,
   fillNeedsEstimatedCommission
@@ -8257,7 +8258,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260831-analyze-timeout-v8.2.3',
+    server_build: '20260831-fut-roll-settle-v8.2.4',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -16141,14 +16142,26 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       if (!y) continue;
       const qty = Number(p.qty) || 0;
       if (!qty) continue;
-      const prev = ibByY.get(y) || { qty: 0, avgCost: null, currency: p.currency, conId: p.conId };
-      prev.qty = qty;
-      if (Number(p.avgCost) > 0) prev.avgCost = Number(p.avgCost);
-      if (p.currency) prev.currency = p.currency;
-      if (p.conId) prev.conId = p.conId;
-      if (Number(p.multiplier) > 1) prev.multiplier = Number(p.multiplier);
-      if (p.secType) prev.secType = p.secType;
-      ibByY.set(y, prev);
+      const expired = p.futExpired === true;
+      const prev = ibByY.get(y);
+      if (prev && !prev.futExpired && expired) {
+        const cidSkip = Number(p.conId);
+        if (cidSkip > 0 && !ibByConId.has(cidSkip)) ibByConId.set(cidSkip, y);
+        continue;
+      }
+      const next = prev && prev.futExpired && !expired
+        ? { qty: 0, avgCost: null, currency: p.currency, conId: p.conId }
+        : (prev || { qty: 0, avgCost: null, currency: p.currency, conId: p.conId });
+      next.qty = qty;
+      if (Number(p.avgCost) > 0) next.avgCost = Number(p.avgCost);
+      if (p.currency) next.currency = p.currency;
+      if (p.conId) next.conId = p.conId;
+      if (Number(p.multiplier) > 1) next.multiplier = Number(p.multiplier);
+      if (p.secType) next.secType = p.secType;
+      next.futExpired = expired;
+      if (p.lastTradeDateOrContractMonth) next.lastTradeDateOrContractMonth = p.lastTradeDateOrContractMonth;
+      if (p.localSymbol) next.localSymbol = p.localSymbol;
+      ibByY.set(y, next);
       const cid = Number(p.conId);
       if (cid > 0) {
         const existing = ibByConId.get(cid);
@@ -17034,7 +17047,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
     // pence for LSE, JPY for Tokyo, etc., so scales cancel out).
     const trades = [];
     const needMarks = [];
-    for (const [key, fills] of byKey) {
+    for (const [key, fillsRaw] of byKey) {
+      const fills = fillsRaw.slice().sort((a, b) =>
+        String(a && a.time || '').localeCompare(String(b && b.time || '')));
       const f0 = fills[0];
       const dir = f0.side === 'sell' ? -1 : 1;
       const entries = fills.filter(f => f.role === 'entry');
@@ -17046,16 +17061,20 @@ app.get('/api/ibkr/trades', async (req, res) => {
       const ticker = f0.ticker;
       const futMult = futuresMultiplierFor(ticker, f0.multiplier);
       const unitPx = (px) => ibkrAvgToFillUnit(px, scale, px, { ticker, multiplier: f0.multiplier }) || Number(px) || 0;
-      const avgEntryRaw = entries.reduce((s, f) => s + f.price * f.qty, 0) / entryQty;
-      const avgEntry = unitPx(avgEntryRaw);
+      const fifo = fifoLotEconomics(fills, { dir, unitPx, scale, futMult });
+      const avgEntry = Number(fifo.avgEntry) || 0;
       const avgExit = exitQty > 0
         ? unitPx(exits.reduce((s, f) => s + f.price * f.qty, 0) / exitQty)
         : null;
       const lastExit = exitQty > 0 ? exits[exits.length - 1] : null;
-      const realizedLocal = exits.reduce((s, f) => s + (unitPx(f.price) - avgEntry) * f.qty * dir, 0) / scale * futMult;
-      const openQty = Math.max(0, entryQty - exitQty);
+      const realizedLocal = Number(fifo.realizedLocal) || 0;
+      const openQty = Math.max(0, fifo.openQty);
+      const rollSettleFill = fills.find(f => f && String(f.recon || '') === 'futures-roll' && f.role !== 'entry');
+      const rollSettlePx = rollSettleFill ? unitPx(rollSettleFill.price) : null;
+      const fifoByExit = (fifo.exitMatches || []).slice();
       const enrichFill = (f) => {
         const session = ibkrFillSession(f, f.ticker || f0.ticker, f.time);
+        const matched = f.role === 'entry' ? null : fifoByExit.shift();
         return {
           role: f.role, qty: f.qty, price: unitPx(f.price), time: f.time,
           ticker: f.ticker || f0.ticker,
@@ -17066,6 +17085,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
           commissionCcy: f.commissionCcy || null,
           ibRealizedPnl: f.ibRealizedPnl != null ? Number(f.ibRealizedPnl) : null,
           multiplier: f.multiplier != null ? Number(f.multiplier) : null,
+          recon: f.recon ? String(f.recon) : null,
+          realizedLocal: matched && Number.isFinite(Number(matched.realizedLocal))
+            ? Number(matched.realizedLocal) : null,
           session,
           sessionLabel: f.sessionLabel || ibkrSessionLabel(session)
         };
@@ -17103,7 +17125,10 @@ app.get('/api/ibkr/trades', async (req, res) => {
           return ibkrRecDayIsoFromKey(key) || (entries[0] && entries[0].time) || f0.time;
         })(),
         lastTime: fills[fills.length - 1].time,
-        status: openQty > 0 ? (exitQty > 0 ? 'partial' : 'open') : 'closed',
+        rollSettlePx,
+        status: openQty > 0
+          ? (rollSettlePx > 0 || exitQty <= 0 ? 'open' : 'partial')
+          : 'closed',
         errorTrade: !!(f0.errorTrade || fills.some(f => f.errorTrade) || isCursorErrIbkrKey(key)),
         multiplier: stampedMult
       };
@@ -17214,6 +17239,14 @@ app.get('/api/ibkr/trades', async (req, res) => {
       for (const p of reconSnap.positions) {
         if (!p || !p.ticker) continue;
         const yt = normalizeIbkrYahooTicker(p.ticker);
+        const prev = ibPosByY.get(yt);
+        // Prefer the live month when IB still shows an expired ghost (BZV6)
+        // next to the rolled-in contract (BZX6).
+        if (prev && !prev.futExpired && p.futExpired) {
+          const cidSkip = Number(p.conId);
+          if (cidSkip > 0 && !ibPosByConId.has(cidSkip)) ibPosByConId.set(cidSkip, yt);
+          continue;
+        }
         ibPosByY.set(yt, p);
         const cid = Number(p.conId);
         if (cid > 0) ibPosByConId.set(cid, yt);
@@ -17310,7 +17343,12 @@ app.get('/api/ibkr/trades', async (req, res) => {
               take = Math.min(fillOpen, remaining);
             } else if (remaining > 0 && ordered.filter(x => x.openQty > 0).length === 0) {
               // No key still open on fills — park leftover IB on preferred host only.
-              take = remaining;
+              // Do not reopen a cash-settled / rolled lot from an expired IB ghost.
+              if (ibp && ibp.futExpired && ordered.some(x => x.hasFlatten || x.exitQty > 0)) {
+                take = 0;
+              } else {
+                take = remaining;
+              }
             }
           }
           remaining -= take;
@@ -17343,8 +17381,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
         }
         // Leftover IB after filling open keys → pad onto preferred model host.
         if (remaining > 0) {
+          if (ibp && ibp.futExpired) remaining = 0;
           const host = ibkrOverlayPadHost(ordered);
-          if (host) {
+          if (host && remaining > 0) {
             host.openQty = (Number(host.openQty) || 0) + remaining;
             host.status = host.exitQty > 0 ? 'partial' : 'open';
             host.ibReconciled = host.ibReconciled ? host.ibReconciled + '+pad' : 'qty-pad';
@@ -17437,7 +17476,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
       for (const f of t.fills) {
         if (f.role === 'entry') continue;
         const day = String(f.time).slice(0, 10);
-        const pnlUsd = ((f.price - t.avgEntry) * f.qty * dir * futuresMultiplierFor(t.ticker, f.multiplier || t.multiplier) / (t.ccyScale || 1)) * fx;
+        const pnlUsd = (f.realizedLocal != null && Number.isFinite(Number(f.realizedLocal)))
+          ? Number(f.realizedLocal) * fx
+          : ((f.price - t.avgEntry) * f.qty * dir * futuresMultiplierFor(t.ticker, f.multiplier || t.multiplier) / (t.ccyScale || 1)) * fx;
         if (t.errorTrade) dailyError.set(day, (dailyError.get(day) || 0) + pnlUsd);
         else daily.set(day, (daily.get(day) || 0) + pnlUsd);
       }

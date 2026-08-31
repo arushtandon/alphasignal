@@ -7,7 +7,8 @@ const {
   INSTRUMENT_NOTIONAL_USD,
   futuresLocalMonthLabel,
   futuresStillTradable,
-  futuresExpired
+  futuresExpired,
+  officialFuturesSettlePx
 } = require('../lib/ibkr/commodity-futures');
 const { toContract } = require('../ibkr-bridge/bridge');
 const { calculateRiskSize } = require('../lib/risk/sizing');
@@ -75,5 +76,7 @@ assert.strictEqual(futuresExpired({
   secType: 'STK',
   lastTradeDateOrContractMonth: lastBz
 }, new Date('2026-08-31T06:00:00Z')), false);
+assert.strictEqual(officialFuturesSettlePx('BZ=F', lastBz), 89.31);
+assert.strictEqual(officialFuturesSettlePx('BZ=F', '20261130'), 0);
 
 console.log('PASS commodity-futures minis');

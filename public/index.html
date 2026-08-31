@@ -2550,7 +2550,9 @@ async function renderIbkr(force){
       const reason = err ? ('ERROR · '+(t.exitType||'unauthorized'))
         : (t.status==='closed'
           ? (t.rec && t.rec.exitReason ? t.rec.exitReason : (t.exitType||'—'))
-          : (t.exitType || (t.rec && t.rec.lastTrailSl ? 'open · TSL '+fmtPx(t.rec.lastTrailSl) : 'open')));
+          : (t.rollSettlePx > 0
+            ? ('open · rolled @ '+fmtPx(t.rollSettlePx)+(t.rec && t.rec.lastTrailSl ? ' · TSL '+fmtPx(t.rec.lastTrailSl) : ''))
+            : (t.exitType || (t.rec && t.rec.lastTrailSl ? 'open · TSL '+fmtPx(t.rec.lastTrailSl) : 'open'))));
       const _ms = String(t.markSrc || '');
       const markTag = _ms === 'ibkr' ? ' <span style="font-size:8px;color:var(--ac)">IB</span>'
         : (_ms === 'fmp' ? ' <span style="font-size:8px;color:var(--m1)">FMP</span>'
@@ -2558,7 +2560,7 @@ async function renderIbkr(force){
       const exitPx = t.avgExit != null ? t.avgExit : t.lastExitPrice;
       const sess = t.sessionSummary || t.entrySession || '—';
       const futNote = t.futLabel
-        ? ' <span style="font-size:8px;color:'+(t.futExpired?'var(--sell)':'var(--m1)')+'" title="'+(t.localSymbol||'')+(t.futExpired?' · expired — cash settle, not rolled':'')+'">'
+        ? ' <span style="font-size:8px;color:'+(t.futExpired?'var(--sell)':'var(--m1)')+'" title="'+(t.localSymbol||'')+(t.futExpired?' · expired — rolling to next month':'')+'">'
           +(t.futExpired?'exp ':'')+t.futLabel+(t.localSymbol?' · '+t.localSymbol:'')+'</span>'
         : '';
       return '<tr data-ibkr-key="'+t.key+'" data-ibkr-open="'+(t.openQty>0?'1':'0')+'"'+(err?' style="opacity:.85"':'')+'>'

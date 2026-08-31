@@ -146,7 +146,8 @@ const {
   isCommodityYahoo,
   futuresStillTradable,
   futuresExpired,
-  futuresLocalMonthLabel
+  futuresLocalMonthLabel,
+  officialFuturesSettlePx
 } = require('../lib/ibkr/commodity-futures');
 const { futuresDueForRoll, planFuturesRoll } = require('../lib/ibkr/futures-roll');
 const {
@@ -1461,6 +1462,14 @@ async function main() {
             forceReconcile = true;
             log('IB entry rejected — will retry', key, row.ticker, 'code=' + code);
           }
+          if (closeHit && row.futuresRollPending && !row.rollInId && Number(code) === 201) {
+            row.rollOutRejectedExpired = true;
+            const settle = futuresSettlePx(row);
+            if (settle > 0) queueRollSettleReport(key, row, settle);
+            saveState(state);
+            log('FUTURES ROLL — cash settle (IB 201 expired)', key, 'settle=' + settle);
+            void completeFuturesRollIn(key, row);
+          }
         }
       }
     });
@@ -1501,6 +1510,13 @@ async function main() {
           if (Number(reqId) === Number(_execHistReqId)) return;
         }
         for (const [key, row] of Object.entries(state.byKey)) {
+          const rolledOff = Number(row && (row.rolledOffConId
+            || (row.rolledFrom && row.rolledFrom.conId))) || 0;
+          if (rolledOff > 0 && Number(contract && contract.conId) === rolledOff) {
+            log('FUTURES ROLL ignore exec on rolled-off contract', key,
+              contract && (contract.localSymbol || contract.conId));
+            continue;
+          }
           let role = null;
           const fillOrderType = String(exec.orderType || '').toUpperCase();
           const isFlattenOrder = (row.closeIds || []).includes(orderId)
@@ -1610,6 +1626,7 @@ async function main() {
             sessionLabel: sessionLabel(phase),
             time: fillAt
           };
+          if (row.rolledFrom && role === 'entry') report.recon = 'futures-roll';
           if (comm) {
             report.commission = comm.commission;
             report.commissionCcy = comm.currency;
@@ -4311,7 +4328,10 @@ async function main() {
         conId: conId || null,
         symbol: contract.symbol || null,
         secType: contract.secType || null,
-        multiplier: futMult
+        multiplier: futMult,
+        localSymbol: contract.localSymbol || null,
+        lastTradeDateOrContractMonth: contract.lastTradeDateOrContractMonth || null,
+        futExpired: contract.secType === 'FUT' && futuresExpired(contract)
       });
       const mk = portfolioMarks.get(y);
       if (mk && Number(mk.price) > 0) marks[y] = Number(mk.price);
@@ -5255,19 +5275,21 @@ async function main() {
   }
 
   function futuresSettlePx(row) {
+    const y = normalizeYahooTicker(row && row.ticker);
+    const official = officialFuturesSettlePx(y,
+      row && row.contract && row.contract.lastTradeDateOrContractMonth);
+    if (official > 0) return official;
     const cid = Number(row && row.contract && row.contract.conId);
-    if (cid > 0) {
+    if (cid > 0 && !futuresExpired(row && row.contract)) {
       for (const pm of portfolioMarks.values()) {
         if (pm && pm.contract && Number(pm.contract.conId) === cid && Number(pm.price) > 0) {
           return Number(pm.price);
         }
       }
     }
-    const y = normalizeYahooTicker(row && row.ticker);
-    // October 2026 ICE Brent / NYMEX BZ last-day print (28 Aug 2026).
-    if (y === 'BZ=F') return 89.31;
     const pm = y && portfolioMarks.get(y);
-    return (pm && Number(pm.price) > 0) ? Number(pm.price) : Number(row && row.ibAvgFill) || 0;
+    return (pm && Number(pm.price) > 0 && !futuresExpired(row && row.contract))
+      ? Number(pm.price) : Number(row && row.ibAvgFill) || 0;
   }
 
   function queueRollSettleReport(key, row, settlePx) {
@@ -5297,6 +5319,7 @@ async function main() {
       sessionLabel: sessionLabel(phase),
       recon: 'futures-roll',
       markSrc: 'settlement',
+      synthetic: true,
       time: fillAt
     });
     row.rollSettleReported = true;
@@ -5304,17 +5327,23 @@ async function main() {
   }
 
   async function completeFuturesRollIn(key, row) {
-    if (!row || row.closed || row.rollInId) return;
+    if (!row || row.closed || row.rollInId || row.rollInFlight) return;
     const old = row.contract;
     if (!old || old.secType !== 'FUT') return;
+    const expired = futuresExpired(old) || row.rollOutRejectedExpired;
     const oldHeld = heldForConId(old.conId);
-    if (oldHeld && Math.abs(Number(oldHeld.pos) || 0) > 0) return;
-    const settlePx = Number(row.rollSettlePx) || futuresSettlePx(row);
+    if (!expired && oldHeld && Math.abs(Number(oldHeld.pos) || 0) > 0) return;
+    row.rolledOffConId = Number(old.conId) || row.rolledOffConId;
+    const official = officialFuturesSettlePx(normalizeYahooTicker(row.ticker),
+      old.lastTradeDateOrContractMonth);
+    const settlePx = official || Number(row.rollSettlePx) || futuresSettlePx(row);
     if (settlePx > 0) queueRollSettleReport(key, row, settlePx);
     if (!(Number(row.modelEntry) > 0)) row.modelEntry = Number(row.entry);
     if (!(Number(row.modelTp1) > 0) && Number(row.tp1Px) > 0) row.modelTp1 = Number(row.tp1Px);
     if (!(Number(row.modelSl) > 0)) row.modelSl = Number(row.originalSl || row.stopPx);
     if (!(Number(row.modelTp2) > 0) && Number(row.tp2Px) > 0) row.modelTp2 = Number(row.tp2Px);
+    row.rollInFlight = true;
+    saveState(state);
     _futFrontCache.delete(old.yahooTicker || row.ticker);
     const stub = {
       yahooTicker: row.ticker,
@@ -5375,6 +5404,11 @@ async function main() {
     if (!row || row.closed || !row.entryFilled || row.errorTrade) return;
     if (!futuresDueForRoll(row.contract)) return;
     if (row.rollInId) return;
+    if (row.rollInFlight) {
+      const age = Date.now() - Date.parse(row.rollAttemptAt || 0);
+      if (Number.isFinite(age) && age < 120 * 1000) return;
+      row.rollInFlight = false;
+    }
     const last = row.rollAttemptAt ? Date.parse(row.rollAttemptAt) : NaN;
     if (Number.isFinite(last) && Date.now() - last < 90 * 1000) return;
     row.rollAttemptAt = new Date().toISOString();
@@ -5389,12 +5423,18 @@ async function main() {
     const posInDir = held
       ? (row.side === 'sell' ? Math.max(0, -held.pos) : Math.max(0, held.pos))
       : 0;
+    const expired = futuresExpired(row.contract) || row.rollOutRejectedExpired;
     const settlePx = futuresSettlePx(row);
-    if (!(posInDir > 0)) {
+    // Last-day financials cannot be MKT'd after last trade (IB 201). Book the
+    // official settle and buy the next month even if IB still shows ghost qty.
+    if (!(posInDir > 0) || expired) {
+      row.rolledOffConId = oldCid || row.rolledOffConId;
+      row.rollSettlePx = settlePx;
       if (settlePx > 0) queueRollSettleReport(key, row, settlePx);
       saveState(state);
-      log('FUTURES ROLL — expired lot already flat', key,
-        row.contract && row.contract.localSymbol, 'settle=' + settlePx);
+      log('FUTURES ROLL — cash settle', key,
+        row.contract && row.contract.localSymbol, 'settle=' + settlePx,
+        expired ? 'expired' : 'already-flat');
       await completeFuturesRollIn(key, row);
       return;
     }
