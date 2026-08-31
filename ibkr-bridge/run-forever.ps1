@@ -23,7 +23,8 @@ $env:IBKR_EXEC_POOL_START = "30"
 $env:IBKR_MARKET_DATA_TYPE = "3"
 # Full IB↔AS reconcile + Telegram risk digest (default 15 minutes).
 $env:IBKR_RECON_MS = "900000"
-# Telegram risk alerts (untracked IB, unfilled RTH orders, recon errors).
+# Telegram risk alerts (untracked IB, unfilled RTH orders, recon errors,
+# Gateway down >5 min).
 # Prefer local-secrets.ps1 (gitignored) so the bot token is never committed.
 # Or uncomment placeholders below for a one-off local run:
 # $env:TELEGRAM_BOT_TOKEN = "123456:ABC..."

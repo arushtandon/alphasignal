@@ -77,6 +77,8 @@
  *   IBKR_EOD_ALERTS      set 0 to disable EOD summary only (default on with Telegram)
  *   IBKR_ALERT_MIN_MS    min gap between identical alerts (default = IBKR_RECON_MS)
  *   IBKR_UNFILLED_ALERT_MIN_MS  unfilled RTH entry age before alert (default 10 min)
+ *   IBKR_GATEWAY_DOWN_ALERT_MIN_MS  Telegram after Gateway refused (default 5 min)
+ *   IBKR_GATEWAY_DOWN_REMIND_MS     reminder while still down (default 30 min)
  */
 const fs = require('fs');
 const path = require('path');
@@ -85,6 +87,12 @@ const https = require('https');
 const crypto = require('crypto');
 const Holidays = require('date-holidays');
 const { telegramConfigured, sendTelegramAlert } = require('./telegram');
+const {
+  gatewayDownDecision,
+  gatewayRecoverDecision,
+  formatGatewayDownAlert,
+  formatGatewayRecoveredAlert
+} = require('../lib/ibkr/gateway-alert');
 const { calculateRiskSize, DEFAULT_LIMITS: RISK_SIZING_LIMITS } = require('../lib/risk/sizing');
 const {
   tp1SoldQty,
@@ -181,6 +189,14 @@ const ALERT_MIN_MS = Math.max(
 const UNFILLED_ALERT_MIN_MS = Math.max(
   60 * 1000,
   parseInt(process.env.IBKR_UNFILLED_ALERT_MIN_MS || String(10 * 60 * 1000), 10) || (10 * 60 * 1000)
+);
+const GATEWAY_DOWN_ALERT_MIN_MS = Math.max(
+  60 * 1000,
+  parseInt(process.env.IBKR_GATEWAY_DOWN_ALERT_MIN_MS || String(5 * 60 * 1000), 10) || (5 * 60 * 1000)
+);
+const GATEWAY_DOWN_REMIND_MS = Math.max(
+  60 * 1000,
+  parseInt(process.env.IBKR_GATEWAY_DOWN_REMIND_MS || String(30 * 60 * 1000), 10) || (30 * 60 * 1000)
 );
 /** EOD Telegram summary after US post-market close (default on with Telegram). */
 const EOD_ALERTS = process.env.IBKR_EOD_ALERTS !== '0';
@@ -1628,6 +1644,11 @@ async function main() {
         log('IB disconnected during connect — is clientId', activeClientId, 'already in use?');
         return;
       }
+      const meta = state.alertMeta || (state.alertMeta = {});
+      if (!meta.gatewayDownSince) {
+        meta.gatewayDownSince = Date.now();
+        saveState(state);
+      }
       log('IB disconnected — exiting so run-forever can restart');
       process.exit(2);
     });
@@ -1649,12 +1670,49 @@ async function main() {
         saveState(state);
         log('IB handshake failed on clientId', activeClientId, '— next launch will try', state.clientId);
       }
+      try {
+        const decided = gatewayDownDecision(state.alertMeta, Date.now(), {
+          alertAfterMs: GATEWAY_DOWN_ALERT_MIN_MS,
+          remindAfterMs: GATEWAY_DOWN_REMIND_MS
+        });
+        state.alertMeta = decided.meta;
+        saveState(state);
+        if (decided.send && telegramConfigured() && !DRY) {
+          await sendTelegramAlert(formatGatewayDownAlert({
+            host: HOST,
+            port: PORT,
+            account: ACCOUNT,
+            downMs: decided.downMs,
+            remind: decided.remind,
+            reason: e1 && e1.message
+          }));
+          log(decided.remind ? 'TELEGRAM: gateway-down reminder sent' : 'TELEGRAM: gateway-down sent');
+        }
+      } catch (te) {
+        log('TELEGRAM: gateway-down failed', te.message);
+      }
       throw e1;
     }
     state.clientId = activeClientId;
     saveState(state);
     log('IB connected with clientId', activeClientId);
     ibReady = true;
+    try {
+      const rec = gatewayRecoverDecision(state.alertMeta, Date.now());
+      state.alertMeta = rec.meta;
+      saveState(state);
+      if (rec.send && telegramConfigured() && !DRY) {
+        await sendTelegramAlert(formatGatewayRecoveredAlert({
+          host: HOST,
+          port: PORT,
+          account: ACCOUNT,
+          downMs: rec.downMs
+        }));
+        log('TELEGRAM: gateway-recovered sent');
+      }
+    } catch (e) {
+      log('TELEGRAM: gateway-recovered failed', e.message);
+    }
     // TWS's nextValidId can lag behind ids burned by other API clients in the
     // same TWS session (e.g. flatten-all), causing "Duplicate order id" (103).
     // Floor the counter to seconds-since-2025 so every run starts above any
@@ -6403,6 +6461,8 @@ module.exports = {
   publishedBoardHasPick,
   shouldAlertReconFailure,
   riskFindingsFingerprint,
+  gatewayDownDecision,
+  gatewayRecoverDecision,
   isAuctionEntryStyle,
   asiaUnfilledCarryActive,
   forceCashOpenActive,

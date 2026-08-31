@@ -628,6 +628,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
         <div id="exitQualityPerformance"></div>
         <div id="histPerformance"></div>
         <div id="bracketPerformance"></div>
+        <div id="geoPerformance"></div>
       </div>
     </div>
 
@@ -1704,6 +1705,7 @@ function switchTab(t){
       try { renderExitQualityPerformance(); } catch (e) { console.warn(e); }
       try { renderPerformancePanel(); } catch (e) { console.warn(e); }
       try { renderBracketPerformance(); } catch (e) { console.warn(e); }
+      try { renderGeoPerformance(); } catch (e) { console.warn(e); }
     };
     renderPerf();
     loadHistoryFromServer().then(function(){
@@ -1901,12 +1903,48 @@ function ibkrFmtWhen(iso) {
   const mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
   return d.getUTCDate() + ' ' + mon + ' ' + d.getUTCFullYear();
 }
+function rememberIbkrBook(d) {
+  _ibkrLastPayload = d;
+  window._ibkrHistAllow = ibkrHistAllowFromPayload(d);
+  window._ibkrHistAllowAt = Date.now();
+  window._ibkrHistAllowP = Promise.resolve(window._ibkrHistAllow);
+  return d;
+}
 async function fetchIbkrBook() {
   const r = await fetch('/api/ibkr/trades?t=' + Date.now(), { cache: 'no-store' });
   const d = await r.json();
   if (!d.ok) throw new Error(d.error || 'bad response');
-  _ibkrLastPayload = d;
-  return d;
+  return rememberIbkrBook(d);
+}
+function ibkrFillForPick(ticker, hz) {
+  const trades = (_ibkrLastPayload && _ibkrLastPayload.trades) || [];
+  const up = String(ticker || '').toUpperCase();
+  if (!up) return null;
+  const sameHz = trades.filter(function (t) {
+    return !t.errorTrade && String(t.ticker || '').toUpperCase() === up && (!hz || t.hz === hz);
+  });
+  return sameHz[0] || trades.filter(function (t) {
+    return !t.errorTrade && String(t.ticker || '').toUpperCase() === up;
+  })[0] || null;
+}
+function dashIbkrFillLine(ticker, hz) {
+  const t = ibkrFillForPick(ticker, hz);
+  if (!t || !(t.entryQty > 0)) return '';
+  const qty = t.openQty > 0 ? t.openQty : t.entryQty;
+  const px = t.avgEntry != null ? t.avgEntry : '—';
+  const label = t.status === 'closed' ? 'IB closed' : 'IB filled';
+  return '<div class="pc-conf" style="color:var(--buy)">' + label + ' ' + qty + ' @ ' + px + '</div>';
+}
+function ibkrOpenKeySet(d) {
+  return (d && d.trades || []).filter(function (t) {
+    return t && !t.errorTrade && t.openQty > 0;
+  }).map(function (t) { return t.key; }).sort().join('|');
+}
+function ibkrDomOpenKeySet() {
+  return Array.prototype.map.call(
+    document.querySelectorAll('#ibkrContent tr[data-ibkr-open="1"]'),
+    function (el) { return el.getAttribute('data-ibkr-key'); }
+  ).sort().join('|');
 }
 function ibkrHistAllowFromPayload(d) {
   const set = new Set();
@@ -1927,14 +1965,19 @@ function ibkrHistAllowFromPayload(d) {
   return set;
 }
 function loadIbkrHistFilter() {
-  if (window._ibkrHistAllow instanceof Set) return Promise.resolve(window._ibkrHistAllow);
-  if (window._ibkrHistAllowP) return window._ibkrHistAllowP;
-  window._ibkrHistAllowP = fetchIbkrBook().then(function (d) {
-    window._ibkrHistAllow = ibkrHistAllowFromPayload(d);
+  const fresh = window._ibkrHistAllow instanceof Set
+    && window._ibkrHistAllowAt
+    && (Date.now() - window._ibkrHistAllowAt) < 10000;
+  if (fresh) return Promise.resolve(window._ibkrHistAllow);
+  if (window._ibkrHistAllowP && (Date.now() - (window._ibkrHistAllowAt || 0)) < 10000) {
+    return window._ibkrHistAllowP;
+  }
+  window._ibkrHistAllowP = fetchIbkrBook().then(function () {
     return window._ibkrHistAllow;
   }).catch(function (e) {
     console.warn(e);
     window._ibkrHistAllow = new Set();
+    window._ibkrHistAllowAt = Date.now();
     return window._ibkrHistAllow;
   });
   return window._ibkrHistAllowP;
@@ -1963,6 +2006,116 @@ function ibkrPeriodFromDaily(daily, stake) {
     }).reverse();
   };
   return { monthly: fmt(months, 12), weekly: fmt(weeks, 8) };
+}
+/** Listing geography — keep in sync with lib/research/geography.js */
+function geoOfTicker(sym) {
+  const up = String(sym || '').trim().toUpperCase();
+  if (!up) return 'Other';
+  if (up.indexOf('=F') >= 0 || up.slice(-4) === '.FUT') return 'Commodities';
+  if (up.slice(-4) === '-USD' || ((up.indexOf('BTC') === 0 || up.indexOf('ETH') === 0) && up.indexOf('USD') >= 0)) return 'Crypto';
+  const dot = up.lastIndexOf('.');
+  const suf = dot >= 0 ? up.slice(dot) : '';
+  if (suf === '.NS' || suf === '.BO') return 'India';
+  if (suf === '.T') return 'Japan';
+  if (suf === '.HK') return 'Hong Kong';
+  if (suf === '.DE' || suf === '.F' || suf === '.DU' || suf === '.MU' || suf === '.SG' || suf === '.BE') return 'Germany';
+  if (suf === '.PA') return 'France';
+  if (suf === '.L') return 'United Kingdom';
+  if (suf === '.AS' || suf === '.BR' || suf === '.MI' || suf === '.MC' || suf === '.SW' || suf === '.LS'
+    || suf === '.VI' || suf === '.ST' || suf === '.HE' || suf === '.CO' || suf === '.OL' || suf === '.IR') return 'Europe';
+  if (suf === '.KS' || suf === '.KQ') return 'Korea';
+  if (suf === '.TW' || suf === '.TWO') return 'Taiwan';
+  return 'United States';
+}
+const GEO_ORDER = ['United States','Hong Kong','Japan','United Kingdom','Germany','France','Europe','India','Korea','Taiwan','Commodities','Crypto','Other'];
+function emptyGeoStats(geo) {
+  return {
+    geo: geo,
+    open: 0, closed: 0, realised: 0, unrealised: 0, wins: 0,
+    tp1: 0, tp2: 0, runners: 0, donSum: 0, donN: 0, exh: 0,
+    buyN: 0, sellN: 0, buyOpen: 0, sellOpen: 0, buyClosed: 0, sellClosed: 0,
+    buyPnl: 0, sellPnl: 0,
+    short: 0, medium: 0, long: 0,
+    shortBuy: 0, shortSell: 0, mediumBuy: 0, mediumSell: 0, longBuy: 0, longSell: 0
+  };
+}
+function ibkrGeoBuckets(trades) {
+  const map = {};
+  (trades || []).forEach(function(t) {
+    const g = geoOfTicker(t.ticker);
+    const b = map[g] || (map[g] = emptyGeoStats(g));
+    const hz = t.hz === 'medium' ? 'medium' : t.hz === 'long' ? 'long' : 'short';
+    const isSell = String(t.side || '').toLowerCase() === 'sell';
+    const real = Number(t.realizedUsd) || 0;
+    const unrl = Number(t.unrealizedUsd) || 0;
+    const pnl = real + unrl;
+    b[hz]++;
+    if (isSell) {
+      b.sellN++;
+      b.sellPnl += pnl;
+      b[hz + 'Sell']++;
+    } else {
+      b.buyN++;
+      b.buyPnl += pnl;
+      b[hz + 'Buy']++;
+    }
+    if (t.status === 'closed') {
+      b.closed++;
+      b.realised += real;
+      if (isSell) b.sellClosed++; else b.buyClosed++;
+      if (real > 0) b.wins++;
+    } else {
+      b.open++;
+      b.unrealised += unrl;
+      if (isSell) b.sellOpen++; else b.buyOpen++;
+    }
+    if (t.hasTp1 || (t.fills || []).some(function(f){ return f.role === 'tp1'; })) b.tp1++;
+    if (t.exitType && String(t.exitType).indexOf('tp1 banked') === 0) b.runners++;
+  });
+  return GEO_ORDER.map(function(g){ return map[g]; }).concat(
+    Object.keys(map).filter(function(g){ return GEO_ORDER.indexOf(g) < 0; }).sort().map(function(g){ return map[g]; })
+  ).filter(Boolean);
+}
+function ibkrGeoHtml(trades) {
+  const rows = ibkrGeoBuckets(trades).filter(function(b){ return b.open || b.closed; });
+  if (!rows.length) return '';
+  const th = 'padding:2px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase';
+  const tr = rows.map(function(b){
+    const total = b.realised + b.unrealised;
+    const wr = b.closed ? Math.round(b.wins / b.closed * 100) : null;
+    return '<tr>'
+      +'<td style="padding:3px 8px;font-family:DM Mono,monospace;font-size:9px;color:var(--t1)">'+b.geo+'</td>'
+      +'<td style="padding:3px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px">'+b.open+'</td>'
+      +'<td style="padding:3px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px">'+b.closed+'</td>'
+      +'<td style="padding:3px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+ibkrPc(b.realised)+'">'+ibkrFp(b.realised)+'</td>'
+      +'<td style="padding:3px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+ibkrPc(b.unrealised)+'">'+ibkrFp(b.unrealised)+'</td>'
+      +'<td style="padding:3px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:'+ibkrPc(total)+'">'+ibkrFp(total)+'</td>'
+      +'<td style="padding:3px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(wr==null?'var(--m1)':wr>=55?'var(--buy)':wr>=40?'#F5C842':'var(--sell)')+'">'+(wr!=null?wr+'%':'—')+'</td>'
+      +'<td style="padding:3px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--buy)">'+b.buyN+' <span style="color:'+ibkrPc(b.buyPnl)+'">'+ibkrFp(b.buyPnl)+'</span></td>'
+      +'<td style="padding:3px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--sell)">'+b.sellN+' <span style="color:'+ibkrPc(b.sellPnl)+'">'+ibkrFp(b.sellPnl)+'</span></td>'
+      +'<td style="padding:3px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--m2)">'+b.short+' / '+b.medium+' / '+b.long+'</td>'
+      +'<td style="padding:3px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--buy)">'+b.tp1+'</td>'
+      +'<td style="padding:3px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(b.runners?'var(--buy)':'var(--m1)')+'">'+b.runners+'</td>'
+      +'</tr>';
+  }).join('');
+  return '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:14px;overflow-x:auto">'
+    +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">By geography — IBKR fills (Buy / Sell · short / medium / long)</div>'
+    +'<table style="width:100%;border-collapse:collapse;min-width:980px"><thead><tr>'
+    +'<th style="text-align:left;'+th+'">Geography</th>'
+    +'<th style="text-align:right;'+th+'">Open</th>'
+    +'<th style="text-align:right;'+th+'">Closed</th>'
+    +'<th style="text-align:right;'+th+'">Realised</th>'
+    +'<th style="text-align:right;'+th+'">Unrealised</th>'
+    +'<th style="text-align:right;'+th+'">Total PnL</th>'
+    +'<th style="text-align:right;'+th+'">Win %</th>'
+    +'<th style="text-align:right;'+th+'">Buy n / PnL</th>'
+    +'<th style="text-align:right;'+th+'">Sell n / PnL</th>'
+    +'<th style="text-align:right;'+th+'">S / M / L</th>'
+    +'<th style="text-align:right;'+th+'">TP1 hit</th>'
+    +'<th style="text-align:right;'+th+'">Runner</th>'
+    +'</tr></thead><tbody>'+tr+'</tbody></table>'
+    +'<div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;padding:6px 8px 0">S/M/L is trade count by horizon. Buy/Sell PnL is realised + unrealised on that side.</div>'
+    +'</div>';
 }
 function renderIbkrPerformanceExtras() {
   const el = document.getElementById('ibkrPerfCapital');
@@ -2033,6 +2186,7 @@ function renderIbkrPerformanceExtras() {
       + tile('Return %', (retPct>=0?'+':'')+retPct+'%', 'fill PnL / IBKR equity '+ibkrBal(stake), ibkrPc(retPct))
       + tile('Win rate', st.winRate!=null?st.winRate+'%':'—', st.wins+'W / '+st.losses+'L', wrC)
       + '</div>'
+      + ibkrGeoHtml(model)
       + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
       + tbl('Monthly realised — IBKR fills', periods.monthly, 'Month')
       + tbl('Weekly realised — last 8 weeks', periods.weekly, 'Week')
@@ -2062,7 +2216,12 @@ async function tickIbkrMtm(){
     const r = await fetch('/api/ibkr/trades?t=' + Date.now(), { cache: 'no-store' });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || 'bad response');
-    _ibkrLastPayload = d;
+    rememberIbkrBook(d);
+    if (ibkrOpenKeySet(d) !== ibkrDomOpenKeySet()) {
+      _ibkrMtmBusy = false;
+      await renderIbkr(true);
+      return;
+    }
     const openN = (d.trades || []).filter(t => t.openQty > 0).length;
     setIbkrMtmStamp('MTM live · ' + openN + ' open · auto every 5s');
     const uEl = document.getElementById('ibkrCardUnreal');
@@ -2144,7 +2303,7 @@ async function renderIbkr(force){
     const r = await fetch('/api/ibkr/trades?t=' + Date.now(), { cache: 'no-store' });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || 'bad response');
-    _ibkrLastPayload = d;
+    rememberIbkrBook(d);
     setIbkrMtmStamp('MTM live · auto every 5s');
     if (!d.trades.length) {
       el.innerHTML = '<div class="emp"><div class="emp-a">α</div><p>No IBKR executions reported yet.<br>'
@@ -2395,7 +2554,7 @@ async function renderIbkr(force){
           : (_ms.indexOf('yahoo') === 0 || _ms === 'v7' ? ' <span style="font-size:8px;color:var(--m1)">YF</span>' : ''));
       const exitPx = t.avgExit != null ? t.avgExit : t.lastExitPrice;
       const sess = t.sessionSummary || t.entrySession || '—';
-      return '<tr data-ibkr-key="'+t.key+'"'+(err?' style="opacity:.85"':'')+'>'
+      return '<tr data-ibkr-key="'+t.key+'" data-ibkr-open="'+(t.openQty>0?'1':'0')+'"'+(err?' style="opacity:.85"':'')+'>'
         + td('left') + '<span style="font-weight:600">'+t.ticker+'</span> <span style="font-size:8px;color:var(--m1)">'+hzTag(t.hz)+(err?' · ERR':'')+'</span></td>'
         + td('left',dirC) + t.side.toUpperCase()+'</td>'
         + td('right','var(--m2)') + String(t.entryTime).slice(0,10)
@@ -5037,6 +5196,7 @@ async function renderDashboard(data, opts){
   const syms=[...(data.short||[]),...(data.medium||[]),...(data.long||[]),...(data.shortSell||[]),...(data.medSell||[]),...(data.longSell||[])].map(s=>s.ticker).filter(Boolean);
   const u=[...new Set(syms)];
   if(u.length){ try{ await fetchLivePrices(u); }catch(e){} }
+  try { await fetchIbkrBook(); } catch (e) {}
   ['short','medium','long','shortSell','medSell','longSell'].forEach(function(k){
     (data[k]||[]).forEach(function(s){ enrichDashPickLevels(s); });
   });
@@ -5117,6 +5277,7 @@ function renderPicksPane(elId,picks,hz,side){
       <div class="pc-name">${s.name||s.ticker}</div>
       <div class="pc-action ${ac}">${ratingLabel}</div>
       <div class="pc-conf">${action} setup · Conf: ${conf}%</div>
+      ${dashIbkrFillLine(s.ticker, hz)}
       ${s.sectorTrend?`<div style="font-family:'DM Mono',monospace;font-size:9px;color:${s.sectorTrend.includes('↑')?'var(--buy)':s.sectorTrend.includes('↓')?'var(--sell)':'var(--m1)'};margin-top:2px" title="Sector trend via sector-ETF proxy — trade with the sector's tide">${s.sectorTrend}</div>`:''}
       <div class="pc-divider"></div>
       <div class="pc-pnl">
@@ -7126,6 +7287,153 @@ function renderBracketPerformance() {
     +'<th style="text-align:right;'+th+'" title="Average giveback donation % (post-TP1 fav extreme → exit/CMP; only trades where TP1 printed)">Avg Don %</th>'
     +'<th style="text-align:right;'+th+'" title="Trades currently flagged with move exhaustion">Exh</th>'
     +'</tr></thead><tbody>'+tr+'</tbody></table></div>';
+}
+
+function emptyHistGeo(geo) {
+  return emptyGeoStats(geo);
+}
+function calcGeoPerformance() {
+  const map = {};
+  const brackets = {};
+  getDisplayHistory().forEach(function(t){
+    const geo = geoOfTicker(t.ticker);
+    const hz = t.hz || 'short';
+    const act = String(t.action||'').toLowerCase()==='sell' ? 'Sell' : 'Buy';
+    const b = map[geo] || (map[geo] = emptyHistGeo(geo));
+    const bk = geo+'|'+act+'|'+hz;
+    const br = brackets[bk] || (brackets[bk] = {
+      geo: geo, act: act, hz: hz,
+      open:0, closed:0, realised:0, unrealised:0, wins:0,
+      tp1:0, tp2:0, runners:0, donSum:0, donN:0, exh:0
+    });
+    const st = t[hz+'Status'] || t.status || 'open';
+    const snap = histRowPnlSnapshot(t, hz);
+    const pnl = (snap.pnl != null && Number.isFinite(Number(snap.pnl))) ? Number(snap.pnl) : null;
+    const isSell = act === 'Sell';
+    b[hz === 'medium' ? 'medium' : hz === 'long' ? 'long' : 'short']++;
+    if (isSell) b.sellN++; else b.buyN++;
+    b[hz + (isSell ? 'Sell' : 'Buy')]++;
+    if (snap.isOpen) {
+      b.open++; br.open++;
+      if (isSell) b.sellOpen++; else b.buyOpen++;
+      if (pnl != null) {
+        b.unrealised += pnl; br.unrealised += pnl;
+        if (isSell) b.sellPnl += pnl; else b.buyPnl += pnl;
+      }
+    } else if (snap.isClosed) {
+      b.closed++; br.closed++;
+      if (isSell) b.sellClosed++; else b.buyClosed++;
+      if (pnl != null) {
+        b.realised += pnl; br.realised += pnl;
+        if (isSell) b.sellPnl += pnl; else b.buyPnl += pnl;
+        if (pnl >= 0) { b.wins++; br.wins++; }
+      }
+    }
+    if (t[hz+'Tp1Hit'] || st.indexOf('tp1') === 0 || st === 'tp2_hit') { b.tp1++; br.tp1++; }
+    if (t[hz+'Tp2Hit']) { b.tp2++; br.tp2++; }
+    if (st === 'tp1_open') { b.runners++; br.runners++; }
+    const don = t[hz+'DonationPct'] != null ? t[hz+'DonationPct'] : t[hz+'DrawdownFromPeakPct'];
+    if (don != null && isFinite(don) && don > 0) {
+      b.donSum += Number(don); b.donN++;
+      br.donSum += Number(don); br.donN++;
+    }
+    if (t[hz+'Exhaustion']) { b.exh++; br.exh++; }
+  });
+  const geos = GEO_ORDER.map(function(g){ return map[g]; }).concat(
+    Object.keys(map).filter(function(g){ return GEO_ORDER.indexOf(g) < 0; }).sort().map(function(g){ return map[g]; })
+  ).filter(function(b){ return b && (b.open || b.closed); });
+  const lines = Object.keys(brackets).sort().map(function(k){ return brackets[k]; })
+    .filter(function(r){ return r.open || r.closed; });
+  return { geos: geos, lines: lines };
+}
+
+function renderGeoPerformance() {
+  const el = document.getElementById('geoPerformance');
+  if (!el) return;
+  const data = calcGeoPerformance();
+  if (!data.geos.length) { el.innerHTML = ''; return; }
+  const fp = function(v){ if(v==null) return '—'; var x=Math.round(v); return (x>=0?'+':'-')+'$'+Math.abs(x); };
+  const HZL = { short:'Short · 1d-1mo', medium:'Medium · 1-3mo', long:'Long · 4-12mo' };
+  const th = 'padding:4px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.05em';
+  const geoTr = data.geos.map(function(b){
+    const wr = b.closed ? Math.round(b.wins/b.closed*100) : null;
+    const avgDon = b.donN ? (b.donSum/b.donN) : null;
+    const total = b.realised + b.unrealised;
+    return '<tr style="border-top:1px solid var(--b1)">'
+      +'<td style="padding:5px 8px;font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:var(--t1)">'+b.geo+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--t1)">'+b.open+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--m2)">'+b.closed+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(b.realised>=0?'var(--buy)':'var(--sell)')+'">'+fp(b.realised)+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(b.unrealised>=0?'var(--buy)':'var(--sell)')+'">'+fp(b.unrealised)+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:'+(total>=0?'var(--buy)':'var(--sell)')+'">'+fp(total)+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(wr==null?'var(--m1)':wr>=55?'var(--buy)':wr>=40?'#F5C842':'var(--sell)')+'">'+(wr!=null?wr+'%':'—')+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--buy)">'+b.buyN+' <span style="color:'+(b.buyPnl>=0?'var(--buy)':'var(--sell)')+'">'+fp(b.buyPnl)+'</span></td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--sell)">'+b.sellN+' <span style="color:'+(b.sellPnl>=0?'var(--buy)':'var(--sell)')+'">'+fp(b.sellPnl)+'</span></td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--m2)">'+b.short+' / '+b.medium+' / '+b.long+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--buy)">'+b.tp1+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(b.tp2?'var(--buy)':'var(--m1)')+'">'+b.tp2+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(b.runners?'var(--buy)':'var(--m1)')+'">'+b.runners+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(avgDon!=null&&avgDon>=5?'var(--sell)':avgDon!=null&&avgDon>=2?'#F5C842':'var(--m2)')+'">'+(avgDon!=null?'↓'+avgDon.toFixed(1)+'%':'—')+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(b.exh?'#F5C842':'var(--m1)')+'">'+b.exh+'</td>'
+      +'</tr>';
+  }).join('');
+  const lineTr = data.lines.map(function(r){
+    const wr = r.closed ? Math.round(r.wins/r.closed*100) : null;
+    const avgDon = r.donN ? (r.donSum/r.donN) : null;
+    const total = r.realised + r.unrealised;
+    const cAct = r.act==='Buy'?'var(--buy)':'var(--sell)';
+    return '<tr style="border-top:1px solid var(--b1)">'
+      +'<td style="padding:5px 8px;font-family:DM Mono,monospace;font-size:9px;color:var(--t1)">'+r.geo+'</td>'
+      +'<td style="padding:5px 8px;font-family:DM Mono,monospace;font-size:9px"><span style="color:'+cAct+';font-weight:700">'+r.act.toUpperCase()+'</span> <span style="color:var(--m1)">'+HZL[r.hz]+'</span></td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--t1)">'+r.open+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--m2)">'+r.closed+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.realised>=0?'var(--buy)':'var(--sell)')+'">'+fp(r.realised)+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.unrealised>=0?'var(--buy)':'var(--sell)')+'">'+fp(r.unrealised)+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;font-weight:700;color:'+(total>=0?'var(--buy)':'var(--sell)')+'">'+fp(total)+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(wr==null?'var(--m1)':wr>=55?'var(--buy)':wr>=40?'#F5C842':'var(--sell)')+'">'+(wr!=null?wr+'%':'—')+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:var(--buy)">'+r.tp1+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.tp2?'var(--buy)':'var(--m1)')+'">'+r.tp2+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.runners?'var(--buy)':'var(--m1)')+'">'+r.runners+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(avgDon!=null&&avgDon>=5?'var(--sell)':avgDon!=null&&avgDon>=2?'#F5C842':'var(--m2)')+'">'+(avgDon!=null?'↓'+avgDon.toFixed(1)+'%':'—')+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.exh?'#F5C842':'var(--m1)')+'">'+r.exh+'</td>'
+      +'</tr>';
+  }).join('');
+  el.innerHTML = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:10px;overflow-x:auto">'
+    +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">By geography — open / closed · Buy / Sell · all horizons</div>'
+    +'<table style="width:100%;border-collapse:collapse;min-width:1100px"><thead><tr>'
+    +'<th style="text-align:left;'+th+'">Geography</th>'
+    +'<th style="text-align:right;'+th+'">Open</th>'
+    +'<th style="text-align:right;'+th+'">Closed</th>'
+    +'<th style="text-align:right;'+th+'">Realised</th>'
+    +'<th style="text-align:right;'+th+'">Unrealised</th>'
+    +'<th style="text-align:right;'+th+'">Total PnL</th>'
+    +'<th style="text-align:right;'+th+'">Win %</th>'
+    +'<th style="text-align:right;'+th+'">Buy n / PnL</th>'
+    +'<th style="text-align:right;'+th+'">Sell n / PnL</th>'
+    +'<th style="text-align:right;'+th+'">S / M / L</th>'
+    +'<th style="text-align:right;'+th+'">TP1 hit</th>'
+    +'<th style="text-align:right;'+th+'">TP2 hit</th>'
+    +'<th style="text-align:right;'+th+'">Runner (TSL)</th>'
+    +'<th style="text-align:right;'+th+'">Avg Don %</th>'
+    +'<th style="text-align:right;'+th+'">Exh</th>'
+    +'</tr></thead><tbody>'+geoTr+'</tbody></table></div>'
+    +'<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:10px;overflow-x:auto">'
+    +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">Geography × Buy / Sell × horizon — same lines as trade brackets</div>'
+    +'<table style="width:100%;border-collapse:collapse;min-width:900px"><thead><tr>'
+    +'<th style="text-align:left;'+th+'">Geography</th>'
+    +'<th style="text-align:left;'+th+'">Bracket</th>'
+    +'<th style="text-align:right;'+th+'">Open</th>'
+    +'<th style="text-align:right;'+th+'">Closed</th>'
+    +'<th style="text-align:right;'+th+'">Realised</th>'
+    +'<th style="text-align:right;'+th+'">Unrealised</th>'
+    +'<th style="text-align:right;'+th+'">Total PnL</th>'
+    +'<th style="text-align:right;'+th+'">Win %</th>'
+    +'<th style="text-align:right;'+th+'">TP1 hit</th>'
+    +'<th style="text-align:right;'+th+'">TP2 hit</th>'
+    +'<th style="text-align:right;'+th+'">Runner (TSL)</th>'
+    +'<th style="text-align:right;'+th+'">Avg Don %</th>'
+    +'<th style="text-align:right;'+th+'">Exh</th>'
+    +'</tr></thead><tbody>'+lineTr+'</tbody></table></div>';
 }
 
 function renderPerformancePanel() {
