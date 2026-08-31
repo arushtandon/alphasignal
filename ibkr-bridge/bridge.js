@@ -143,8 +143,12 @@ const {
   orderedCommoditySpecs,
   specFields,
   ibFutSymbolToYahoo,
-  isCommodityYahoo
+  isCommodityYahoo,
+  futuresStillTradable,
+  futuresExpired,
+  futuresLocalMonthLabel
 } = require('../lib/ibkr/commodity-futures');
+const { futuresDueForRoll, planFuturesRoll } = require('../lib/ibkr/futures-roll');
 const {
   buildExecPoolIds,
   orderIdFloor,
@@ -1502,6 +1506,7 @@ async function main() {
           const isFlattenOrder = (row.closeIds || []).includes(orderId)
             || !!row.tp1CoverSentAt;
           if (row.parentId === orderId) role = 'entry';
+          else if (row.rollInId != null && Number(row.rollInId) === orderId) role = 'entry';
           else if (row.stopId === orderId) role = 'stop';
           else if ((row.closeIds || []).includes(orderId)) role = 'flatten';
           else if (row.tp1Id === orderId) {
@@ -1559,6 +1564,12 @@ async function main() {
           if (role === 'tp1') onTp1Filled(key, row);
           if (role === 'entry') {
             row.entryFilled = true;
+            if (row.rollInId != null && Number(row.rollInId) === orderId) {
+              row.parentId = orderId;
+              row.rollInId = null;
+              row.rollInFlight = false;
+              log('FUTURES ROLL in-fill', key, (row.contract && row.contract.localSymbol) || row.ticker, px);
+            }
             if (Number.isFinite(oa.avgFillPrice) && oa.avgFillPrice > 0) {
               row.ibAvgFill = oa.avgFillPrice;
             } else if (Number(px) > 0) {
@@ -1606,6 +1617,9 @@ async function main() {
           }
           state.pendingReports.push(report);
           saveState(state);
+          if (role === 'flatten' && row.futuresRollPending && !row.rollInId) {
+            void completeFuturesRollIn(key, row);
+          }
           if (role === 'flatten' && row.correctiveReentry) {
             row.correctiveExitFilled = (Number(row.correctiveExitFilled) || 0) + (Number(exec.shares) || 0);
             const expected = Number(row.correctiveExitQty) || Number(row.qtyTotal) || 0;
@@ -2298,13 +2312,13 @@ async function main() {
     if (contract.secType !== 'FUT' || !contract.needsFrontMonth) return contract;
     const yKey = contract.yahooTicker || contract.symbol;
     const cached = _futFrontCache.get(yKey);
-    if (cached && (Date.now() - cached.at) < 6 * 3600 * 1000 && cached.contract) {
+    if (cached && !contract.rollExcludeConId && (Date.now() - cached.at) < 6 * 3600 * 1000 && cached.contract) {
       Object.assign(contract, cached.contract);
       contract.needsFrontMonth = false;
       return contract;
     }
     const specs = orderedCommoditySpecs(yKey, contract.entryPx);
-    if (specs.length && specFields(specs[0])) {
+    if (specs.length && specFields(specs[0]) && !contract.rollKeepSpec) {
       Object.assign(contract, specFields(specs[0]), { yahooTicker: contract.yahooTicker, secType: 'FUT' });
     }
     if (DRY || !ib || !EventName) {
@@ -2327,9 +2341,6 @@ async function main() {
         try { ib.off(EventName.contractDetails, onDet); } catch (_) {}
         try { ib.off(EventName.contractDetailsEnd, onEnd); } catch (_) {}
         const today = new Date();
-        const todayKey = String(today.getUTCFullYear())
-          + String(today.getUTCMonth() + 1).padStart(2, '0')
-          + String(today.getUTCDate()).padStart(2, '0');
         const matched = cands.filter(x => {
           if (wantClass && String(x.tradingClass || '').toUpperCase() !== wantClass
             && String(x.symbol || '').toUpperCase() !== String(spec.symbol).toUpperCase()) {
@@ -2340,8 +2351,15 @@ async function main() {
           return true;
         });
         const pool = matched.length ? matched : cands;
+        const excludeId = Number(contract.rollExcludeConId) || 0;
+        const excludeMonth = String(contract.rollExcludeMonth || '').replace(/\D/g, '').slice(0, 8);
         const live = pool
-          .filter(x => String(x.month || '') >= todayKey.slice(0, 6))
+          .filter(x => futuresStillTradable(x.month, today))
+          .filter(x => !(excludeId > 0 && Number(x.conId) === excludeId))
+          .filter(x => {
+            if (!excludeMonth) return true;
+            return String(x.month || '').replace(/\D/g, '').slice(0, 8) !== excludeMonth;
+          })
           .sort((a, b) => String(a.month).localeCompare(String(b.month)));
         resolvePick(live[0] || pool.sort((a, b) => String(a.month).localeCompare(String(b.month)))[0] || null);
       };
@@ -2385,10 +2403,19 @@ async function main() {
         finish();
       }
     });
-    const trySpecs = specs.length ? specs : [{
+    const trySpecs = (contract.rollKeepSpec && contract.symbol)
+      ? [{
+          symbol: contract.symbol,
+          exchange: contract.exchange,
+          currency: contract.currency || 'USD',
+          multiplier: contract.multiplier,
+          tick: contract.tick,
+          tradingClass: contract.tradingClass
+        }]
+      : (specs.length ? specs : [{
       symbol: contract.symbol, exchange: contract.exchange, currency: contract.currency,
       multiplier: contract.multiplier, tick: contract.tick, tradingClass: contract.tradingClass
-    }];
+    }]);
     for (const spec of trySpecs) {
       const pick = await reqOneFutFront(spec);
       if (!pick || !(pick.conId > 0 || pick.month)) {
@@ -2522,6 +2549,12 @@ async function main() {
       const mid = spreadOk ? (row.bid + row.ask) / 2 : null;
       const px = (row.last > 0 ? row.last : null) || mid || (row.close > 0 ? row.close : null);
       if (!(px > 0)) continue;
+      const y = normalizeYahooTicker(row.ticker);
+      // Expired dated futures: delayed ticks often print the *next* Yahoo continuous
+      // month (~89) over the IB portfolio last (~91). Keep the portfolio mark.
+      const held = Object.values(state.byKey || {}).find(r =>
+        r && !r.closed && normalizeYahooTicker(r.ticker) === y && r.contract);
+      if (held && futuresExpired(held.contract)) continue;
       const prev = byTicker.get(row.ticker);
       // Prefer fresher tick over a stale portfolio print.
       if (!prev || (row.lastTickAt && row.lastTickAt >= (prev.lastTickAt || 0))) {
@@ -2532,6 +2565,17 @@ async function main() {
           src: 'ibkr', at: new Date().toISOString()
         });
       }
+    }
+    for (const row of Object.values(state.byKey || {})) {
+      if (!row || row.closed || !row.contract || row.contract.secType !== 'FUT') continue;
+      const y = row.ticker;
+      const mark = byTicker.get(y);
+      if (!mark) continue;
+      mark.localSymbol = row.contract.localSymbol || null;
+      mark.lastTradeDateOrContractMonth = row.contract.lastTradeDateOrContractMonth || null;
+      mark.futLabel = futuresLocalMonthLabel(row.contract.localSymbol)
+        || String(row.contract.lastTradeDateOrContractMonth || '').slice(0, 8);
+      mark.futExpired = futuresExpired(row.contract);
     }
     const marks = [...byTicker.values()];
     if (!marks.length && accountSnap.netLiquidation == null && accountSnap.availableFunds == null
@@ -2598,6 +2642,7 @@ async function main() {
       if (row.parentId === oldId) row.parentId = newId;
       if (row.stopId === oldId) row.stopId = newId;
       if (row.tp1Id === oldId) row.tp1Id = newId;
+      if (row.rollInId === oldId) row.rollInId = newId;
       if (Array.isArray(row.closeIds)) {
         row.closeIds = row.closeIds.map(id => id === oldId ? newId : id);
       }
@@ -3263,10 +3308,12 @@ async function main() {
     if (!(Number(row.modelEntry) > 0)) row.modelEntry = Number(row.entry);
     if (!(Number(row.modelTp1) > 0) && Number(row.tp1Px) > 0) row.modelTp1 = Number(row.tp1Px);
     if (!(Number(row.modelSl) > 0)) row.modelSl = Number(row.originalSl || row.stopPx);
+    if (!(Number(row.modelTp2) > 0) && Number(row.tp2Px) > 0) row.modelTp2 = Number(row.tp2Px);
     const planned = rebaseExitsFromFill({
       modelEntry: row.modelEntry,
       modelTp1: row.modelTp1,
       modelSl: row.modelSl,
+      modelTp2: row.modelTp2,
       fillPx
     });
     if (!planned) return false;
@@ -3286,6 +3333,7 @@ async function main() {
       row.stopPx = sl;
       row.originalSl = sl;
     }
+    if (planned.tp2 > 0) row.tp2Px = roundPx(planned.tp2, row.contract);
     row.ibAvgFill = Number(fillPx);
     const closeAction = isSell ? 'BUY' : 'SELL';
     const oca = (!(Number(row.qtyRunner) > 0) && Number(row.qtySold) > 0)
@@ -4475,6 +4523,11 @@ async function main() {
       if (keyState && keyState.get(key) !== 'open') continue;
       if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK' && row.contract.secType !== 'FUT')) continue;
       if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
+      if (futuresDueForRoll(row.contract)) {
+        logOnce('fut-exp-prot-' + key, 'skip protective attach — rolling expired futures',
+          row.contract.localSymbol || row.ticker, row.contract.lastTradeDateOrContractMonth);
+        continue;
+      }
       const phase = sessionPhase(row.contract);
       if (phase === 'closed') continue;
       if (row.contract.secType === 'STK' && phase !== 'rth') continue;
@@ -4613,6 +4666,11 @@ async function main() {
       if (!row || row.closed || row.errorTrade || !row.entryFilled) continue;
       if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK' && row.contract.secType !== 'FUT')) continue;
       if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
+      if (futuresDueForRoll(row.contract)) {
+        logOnce('fut-exp-prot-' + key, 'skip protective attach — rolling expired futures',
+          row.contract.localSymbol || row.ticker, row.contract.lastTradeDateOrContractMonth);
+        continue;
+      }
       const phase = sessionPhase(row.contract);
       if (shouldDeferProtectiveChildren(row.contract, phase, opts)) continue;
       if (row.stopSessionBlocked) row.stopSessionBlocked = false;
@@ -4752,6 +4810,11 @@ async function main() {
       if (!row || row.closed || row.errorTrade || !row.entryFilled || row.tp1Done) continue;
       if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK' && row.contract.secType !== 'FUT')) continue;
       if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
+      if (futuresDueForRoll(row.contract)) {
+        logOnce('fut-exp-prot-' + key, 'skip protective attach — rolling expired futures',
+          row.contract.localSymbol || row.ticker, row.contract.lastTradeDateOrContractMonth);
+        continue;
+      }
       const held = heldForContract(row.contract);
       const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
       if (!(posInDir > 0)) continue;
@@ -5182,6 +5245,185 @@ async function main() {
   // The account is the source of truth for SHARES; AlphaSignal events are the
   // source of truth for which trades are model-authorized. Every sweep:
   //   1. Flatten ONLY error-tagged unauthorized names (Hold→Buy bugs, dual-list
+  function heldForConId(conId) {
+    const cid = Number(conId);
+    if (!(cid > 0)) return null;
+    for (const v of posMap.values()) {
+      if (v && v.contract && Number(v.contract.conId) === cid) return v;
+    }
+    return null;
+  }
+
+  function futuresSettlePx(row) {
+    const cid = Number(row && row.contract && row.contract.conId);
+    if (cid > 0) {
+      for (const pm of portfolioMarks.values()) {
+        if (pm && pm.contract && Number(pm.contract.conId) === cid && Number(pm.price) > 0) {
+          return Number(pm.price);
+        }
+      }
+    }
+    const y = normalizeYahooTicker(row && row.ticker);
+    // October 2026 ICE Brent / NYMEX BZ last-day print (28 Aug 2026).
+    if (y === 'BZ=F') return 89.31;
+    const pm = y && portfolioMarks.get(y);
+    return (pm && Number(pm.price) > 0) ? Number(pm.price) : Number(row && row.ibAvgFill) || 0;
+  }
+
+  function queueRollSettleReport(key, row, settlePx) {
+    if (row.rollSettleReported) return;
+    const qty = Math.max(1, Number(row.qtyRunner) > 0 && row.tp1Done
+      ? Number(row.qtyRunner) : Number(row.qtyTotal) || 1);
+    const fillAt = new Date().toISOString();
+    const cMeta = enrichSessionMeta(row.contract);
+    const phase = sessionPhase(cMeta || {}, Date.parse(fillAt));
+    state.pendingReports = state.pendingReports || [];
+    state.pendingReports.push({
+      kind: 'exec',
+      execId: 'roll-settle-' + key + '-' + (row.contract && row.contract.conId || 'x'),
+      key,
+      ticker: row.ticker,
+      hz: row.hz || 'short',
+      side: row.side === 'sell' ? 'sell' : 'buy',
+      role: 'flatten',
+      orderId: null,
+      qty,
+      price: +Number(settlePx).toFixed(6),
+      currency: (row.contract && row.contract.currency) || 'USD',
+      ccyScale: 1,
+      multiplier: Number(row.contract && row.contract.multiplier) || null,
+      ibSymbol: row.contract && row.contract.symbol || null,
+      session: phase,
+      sessionLabel: sessionLabel(phase),
+      recon: 'futures-roll',
+      markSrc: 'settlement',
+      time: fillAt
+    });
+    row.rollSettleReported = true;
+    row.rollSettlePx = Number(settlePx);
+  }
+
+  async function completeFuturesRollIn(key, row) {
+    if (!row || row.closed || row.rollInId) return;
+    const old = row.contract;
+    if (!old || old.secType !== 'FUT') return;
+    const oldHeld = heldForConId(old.conId);
+    if (oldHeld && Math.abs(Number(oldHeld.pos) || 0) > 0) return;
+    const settlePx = Number(row.rollSettlePx) || futuresSettlePx(row);
+    if (settlePx > 0) queueRollSettleReport(key, row, settlePx);
+    if (!(Number(row.modelEntry) > 0)) row.modelEntry = Number(row.entry);
+    if (!(Number(row.modelTp1) > 0) && Number(row.tp1Px) > 0) row.modelTp1 = Number(row.tp1Px);
+    if (!(Number(row.modelSl) > 0)) row.modelSl = Number(row.originalSl || row.stopPx);
+    if (!(Number(row.modelTp2) > 0) && Number(row.tp2Px) > 0) row.modelTp2 = Number(row.tp2Px);
+    _futFrontCache.delete(old.yahooTicker || row.ticker);
+    const stub = {
+      yahooTicker: row.ticker,
+      symbol: old.symbol,
+      secType: 'FUT',
+      exchange: old.exchange,
+      currency: old.currency || 'USD',
+      multiplier: old.multiplier,
+      tick: old.tick,
+      tradingClass: old.tradingClass,
+      market: old.market || 'GLOBE',
+      lotHint: 1,
+      needsFrontMonth: true,
+      usRth: false,
+      rollKeepSpec: true,
+      rollExcludeConId: old.conId,
+      rollExcludeMonth: String(old.lastTradeDateOrContractMonth || '').replace(/\D/g, '').slice(0, 8),
+      entryPx: Number(row.entry) || undefined
+    };
+    const next = await resolveInstrument(stub);
+    if (!next || !(next.conId > 0) || Number(next.conId) === Number(old.conId)) {
+      log('FUTURES ROLL in failed — no next month', key, next && next.localSymbol);
+      row.rollInFlight = false;
+      saveState(state);
+      return;
+    }
+    row.rolledFrom = {
+      localSymbol: old.localSymbol,
+      conId: old.conId,
+      lastTradeDateOrContractMonth: old.lastTradeDateOrContractMonth,
+      settlePx
+    };
+    row.contract = next;
+    row.stopId = null;
+    row.tp1Id = null;
+    const qty = Math.max(1, Number(row.qtyTotal) || 1);
+    const oid = nidForRow(row);
+    row.rollInId = oid;
+    row.parentId = oid;
+    row.futuresRollPending = false;
+    row.rollInFlight = true;
+    row.orderSubmittedAt = new Date().toISOString();
+    saveState(state);
+    transmitOrder(oid, next, baseOrder({
+      orderId: oid,
+      action: row.side === 'sell' ? 'SELL' : 'BUY',
+      orderType: 'MKT',
+      totalQuantity: qty,
+      tif: 'DAY',
+      outsideRth: true,
+      transmit: true
+    }), 'futures roll-in ' + key + ' ' + (next.localSymbol || next.symbol));
+    log('FUTURES ROLL in', key, old.localSymbol, '→', next.localSymbol,
+      'settle=' + settlePx, 'qty=' + qty);
+  }
+
+  async function maybeRollExpiredFutures(key, row) {
+    if (!row || row.closed || !row.entryFilled || row.errorTrade) return;
+    if (!futuresDueForRoll(row.contract)) return;
+    if (row.rollInId) return;
+    const last = row.rollAttemptAt ? Date.parse(row.rollAttemptAt) : NaN;
+    if (Number.isFinite(last) && Date.now() - last < 90 * 1000) return;
+    row.rollAttemptAt = new Date().toISOString();
+    row.futuresRollPending = true;
+    if (!(Number(row.modelEntry) > 0)) row.modelEntry = Number(row.entry);
+    if (!(Number(row.modelTp1) > 0) && Number(row.tp1Px) > 0) row.modelTp1 = Number(row.tp1Px);
+    if (!(Number(row.modelSl) > 0)) row.modelSl = Number(row.originalSl || row.stopPx);
+    if (row.stopId != null) { cancelOrder(row.stopId, 'roll cancel stop ' + key); row.stopId = null; }
+    if (row.tp1Id != null) { cancelOrder(row.tp1Id, 'roll cancel tp1 ' + key); row.tp1Id = null; }
+    const oldCid = Number(row.contract && row.contract.conId);
+    const held = heldForConId(oldCid);
+    const posInDir = held
+      ? (row.side === 'sell' ? Math.max(0, -held.pos) : Math.max(0, held.pos))
+      : 0;
+    const settlePx = futuresSettlePx(row);
+    if (!(posInDir > 0)) {
+      if (settlePx > 0) queueRollSettleReport(key, row, settlePx);
+      saveState(state);
+      log('FUTURES ROLL — expired lot already flat', key,
+        row.contract && row.contract.localSymbol, 'settle=' + settlePx);
+      await completeFuturesRollIn(key, row);
+      return;
+    }
+    const fid = nidForRow(row);
+    row.closeIds = [...(row.closeIds || []), fid];
+    row.rollSettlePx = settlePx;
+    saveState(state);
+    transmitOrder(fid, row.contract, baseOrder({
+      orderId: fid,
+      action: row.side === 'sell' ? 'BUY' : 'SELL',
+      orderType: 'MKT',
+      totalQuantity: posInDir,
+      tif: 'DAY',
+      outsideRth: true,
+      transmit: true
+    }), 'futures roll-out ' + key);
+    log('FUTURES ROLL out', key, row.contract.localSymbol, 'qty=' + posInDir, 'settle~' + settlePx);
+  }
+
+  async function rollExpiredFutures() {
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      try {
+        await maybeRollExpiredFutures(key, row);
+      } catch (e) {
+        log('FUTURES ROLL failed', key, e.message);
+      }
+    }
+  }
+
   //      duplicates). NEVER flatten a live model recommendation (e.g. 9988 short).
   //      Untagged IB leftovers are left alone until the model exits or manual close.
   //   2. State rows flat at IB with no model-open key are marked closed; if the
@@ -5190,6 +5432,7 @@ async function main() {
     if (DRY || !ib) return;
     if (!positionsReady) { log('reconcile skipped — waiting for IB position snapshot'); return; }
     try {
+      await rollExpiredFutures();
       // tail=1 → NEWEST 2000 events (oldest-first truncation went stale past
       // the limit). Old keys whose entries fall outside the window fail closed:
       // unknown tickers are never flattened.
@@ -6219,6 +6462,7 @@ async function main() {
         // A pending or rejected parent with no fill is not a closed trade merely
         // because IB has no position yet. Re-arm logic owns these rows.
         if (!row.entryFilled) continue;
+        if (row.futuresRollPending || row.rollInFlight || row.rollInId) continue;
         const held = heldForContract(row.contract);
         const flatAtIb = held ? held.pos === 0 : !held;
         if (!flatAtIb || inDir > 0) continue;

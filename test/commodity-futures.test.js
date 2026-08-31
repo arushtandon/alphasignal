@@ -4,7 +4,10 @@ const {
   preferredCommoditySpec,
   orderedCommoditySpecs,
   ibFutSymbolToYahoo,
-  INSTRUMENT_NOTIONAL_USD
+  INSTRUMENT_NOTIONAL_USD,
+  futuresLocalMonthLabel,
+  futuresStillTradable,
+  futuresExpired
 } = require('../lib/ibkr/commodity-futures');
 const { toContract } = require('../ibkr-bridge/bridge');
 const { calculateRiskSize } = require('../lib/risk/sizing');
@@ -53,5 +56,24 @@ const oz = calculateRiskSize({
 assert.strictEqual(oz.eligible, true);
 assert.strictEqual(oz.quantity, 2);
 assert.ok(oz.notionalUsd <= 10000);
+
+assert.strictEqual(futuresLocalMonthLabel('BZV6'), 'Oct 2026');
+assert.strictEqual(futuresLocalMonthLabel('BZV26'), 'Oct 2026');
+assert.strictEqual(futuresLocalMonthLabel('G X6'), 'Nov 2026');
+
+const lastBz = '20260828 14:30:00 US/Eastern';
+assert.strictEqual(futuresStillTradable(lastBz, new Date('2026-08-28T12:00:00Z')), true);
+assert.strictEqual(futuresStillTradable(lastBz, new Date('2026-08-31T06:00:00Z')), false,
+  'Oct Brent last-traded 28 Aug is expired on 31 Aug');
+assert.strictEqual(futuresStillTradable('202610', new Date('2026-08-31T06:00:00Z')), true);
+assert.strictEqual(futuresExpired({
+  secType: 'FUT',
+  lastTradeDateOrContractMonth: lastBz,
+  localSymbol: 'BZV6'
+}, new Date('2026-08-31T06:00:00Z')), true);
+assert.strictEqual(futuresExpired({
+  secType: 'STK',
+  lastTradeDateOrContractMonth: lastBz
+}, new Date('2026-08-31T06:00:00Z')), false);
 
 console.log('PASS commodity-futures minis');

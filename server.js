@@ -5213,22 +5213,38 @@ function applyDerivedFundamentals(merged) {
   }
 }
 
-async function fetchFundamentals(symbol) {
+async function fetchFundamentals(symbol, opts = {}) {
   // PRIMARY: FMP Ultimate (global) + Finnhub + Alpha Vantage + Yahoo (parallel). Bloomberg is backup only.
+  // Analyze must not wait on the slowest vendor (serial FMP variants + Yahoo HTML + Bloomberg 28s).
+  const fast = !!opts.fast;
+  const skipBloomberg = !!(opts.skipBloomberg || fast);
+  const maxMs = Number(opts.maxMs) > 0 ? Number(opts.maxMs) : (fast ? 8000 : 20000);
+  const deadline = Date.now() + maxMs;
+  const withBudget = (promise) => {
+    const left = deadline - Date.now();
+    if (left <= 0) return Promise.resolve(null);
+    return Promise.race([
+      Promise.resolve(promise).catch(() => null),
+      new Promise(resolve => setTimeout(() => resolve(null), left))
+    ]);
+  };
   let merged = {};
-  const livePx = await fetchSinglePrice(symbol).catch(() => null);
+  const livePx = opts.livePx || await withBudget(fetchSinglePrice(symbol).catch(() => null));
   const fk = fmpEnvKeyFund();
   const vendorTasks = [];
+  const maxFmpVar = fast ? 2 : (isIntlEquitySymbol(symbol) ? 8 : 4);
 
   /** FMP first — stable bundle on exchange-resolved variants (Ultimate global coverage). */
   if (fk && fmpGlobalCoverageEnabled()) {
     vendorTasks.push(
       (async () => {
         const variants = await fmpAllSymbolVariants(symbol, fk).catch(() => intlVendorSymbolVariants(symbol));
-        for (const v of variants.slice(0, isIntlEquitySymbol(symbol) ? 14 : 8)) {
+        for (const v of variants.slice(0, maxFmpVar)) {
+          if (Date.now() >= deadline) return null;
           const hit = await fetchFmpStableFundamentalsBundle(v, fk).catch(() => null);
           if (hit) return hit;
         }
+        if (Date.now() >= deadline) return null;
         return fetchFundamentalsFMP(symbol).catch(() => null);
       })()
     );
@@ -5251,11 +5267,13 @@ async function fetchFundamentals(symbol) {
   }
   vendorTasks.push(
     fetchFundamentalsFromYahooV7Quote(symbol).catch(() => null),
-    fetchFundamentalsFromYahooV8Chart(symbol).catch(() => null),
-    fetchFundamentalsYahoo(symbol).catch(() => null)
+    fetchFundamentalsFromYahooV8Chart(symbol).catch(() => null)
   );
+  if (!fast) {
+    vendorTasks.push(fetchFundamentalsYahoo(symbol).catch(() => null));
+  }
 
-  const vendorHits = await Promise.all(vendorTasks);
+  const vendorHits = await Promise.all(vendorTasks.map(t => withBudget(t)));
   for (const hit of vendorHits) {
     if (hit) merged = mergeFundSnapshots(merged, hit);
   }
@@ -5273,32 +5291,38 @@ async function fetchFundamentals(symbol) {
     livePx?.price &&
     merged.trailingPE == null &&
     merged.forwardPE == null &&
-    fmpEnvKeyFund()
+    fmpEnvKeyFund() &&
+    Date.now() < deadline
   ) {
-    const fmpDer = await fetchFmpIncomeDerivedFundamentals(symbol, livePx.price).catch(() => null);
+    const fmpDer = await withBudget(fetchFmpIncomeDerivedFundamentals(symbol, livePx.price).catch(() => null));
     if (fmpDer) merged = mergeFundSnapshots(merged, fmpDer);
   }
 
   applyDerivedFundamentals(merged);
 
   // BACKUP: Bloomberg Desktop bridge + Enterprise — fill null keys only, never override FMP/Finnhub/AV/Yahoo
-  const bb = await fetchBloombergBridgeFundamentals(symbol).catch(() => null);
-  if (bb) {
-    merged = mergeGapFillOnly(merged, bb);
-    console.log(`Fundamentals: Bloomberg bridge gap-fill for ${symbol}`);
+  if (!skipBloomberg && Date.now() < deadline) {
+    const bb = await withBudget(fetchBloombergBridgeFundamentals(symbol).catch(() => null));
+    if (bb) {
+      merged = mergeGapFillOnly(merged, bb);
+      console.log(`Fundamentals: Bloomberg bridge gap-fill for ${symbol}`);
+    }
+    if (Date.now() < deadline) {
+      const ent = await withBudget(fetchBloombergEnterpriseFundamentals(symbol).catch(() => null));
+      if (ent) merged = mergeGapFillOnly(merged, ent);
+    }
   }
-  const ent = await fetchBloombergEnterpriseFundamentals(symbol).catch(() => null);
-  if (ent) merged = mergeGapFillOnly(merged, ent);
 
   // Last-resort Yahoo PE pass
   if (
-    merged.trailingPE == null ||
+    Date.now() < deadline &&
+    (merged.trailingPE == null ||
       merged.forwardPE == null ||
     merged.pegRatio == null ||
     merged.revenueGrowth == null ||
-    merged.earningsGrowth == null
+    merged.earningsGrowth == null)
   ) {
-    const qPe = await fetchYahooQuotePE(symbol).catch(() => null);
+    const qPe = await withBudget(fetchYahooQuotePE(symbol).catch(() => null));
     if (qPe) merged = mergeFundSnapshots(merged, qPe);
   }
 
@@ -8233,7 +8257,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260831-gateway-alert-v8.2.2',
+    server_build: '20260831-analyze-timeout-v8.2.3',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -12186,13 +12210,16 @@ app.post('/api/analyze', async (req, res) => {
   if (!clean.length) return res.status(400).json({ error: 'tickers required' });
 
   const dashHint = req.body?.dashHint || null;
+  const ANALYZE_BUDGET_MS = 38000;
+  const t0 = Date.now();
+  const budgetLeft = () => ANALYZE_BUDGET_MS - (Date.now() - t0);
 
-  // ── Step 1: Live prices ────────────────────────────────────────────────────
+  // ── Step 1: Live prices (parallel, previously sequential) ─────────────────
   const priceBySym = {};
-  for (const sym of clean) {
+  await Promise.all(clean.map(async sym => {
     const p = await fetchSinglePrice(sym);
     if (p?.price) priceBySym[sym] = p;
-  }
+  }));
   if (!Object.keys(priceBySym).length) {
     return res.status(502).json({ error: 'Could not fetch live prices for requested symbols' });
   }
@@ -12221,16 +12248,24 @@ app.post('/api/analyze', async (req, res) => {
     });
   }
 
-  // ── Step 3: Fundamentals (parallel — equities only) ───────────────────────
+  // ── Step 3: Fundamentals (capped — Bloomberg/HTML quoteSummary skipped) ──
   const fundBySym = {};
-  await Promise.all(
-    clean.filter(s => priceBySym[s] && !s.includes('=F') && !s.includes('-USD')).map(async sym => {
-      try {
-        const f = await fetchFundamentals(sym);
-        if (f) fundBySym[sym] = f;
-      } catch(e) {}
-    })
-  );
+  if (budgetLeft() > 2500) {
+    const fundMs = Math.min(8000, Math.max(2500, budgetLeft() - 8000));
+    await Promise.all(
+      clean.filter(s => priceBySym[s] && !s.includes('=F') && !s.includes('-USD')).map(async sym => {
+        try {
+          const f = await fetchFundamentals(sym, {
+            fast: true,
+            skipBloomberg: true,
+            maxMs: fundMs,
+            livePx: priceBySym[sym]
+          });
+          if (f) fundBySym[sym] = f;
+        } catch(e) {}
+      })
+    );
+  }
 
   // ── Fundamentals already loaded in Step 3; detailed blocks for Claude built below ──
 
@@ -12245,15 +12280,14 @@ app.post('/api/analyze', async (req, res) => {
     const fund  = fundBySym[sym];
     const ohlcv = ohlcvBySym[sym];
     if (!tech) continue;
-    // Fast path: one short-horizon walk-forward on the ~5y window
-    // (BACKTEST_WINDOW_BARS). One short-horizon pass with a modest entryStep
-    // keeps Analyze responsive; full 3-horizon stays on the dashboard path.
+    // Analyze: one short-horizon walk-forward on ~1y (not 5y × 3 horizons).
+    // Full 3-horizon 5y stays on the dashboard path.
     let btShort = null, btMedium = null, btLong = null;
     try {
-      const btOpts = { windowBars: BACKTEST_WINDOW_BARS, entryStep: 3, symbol: sym };
-      btShort = ohlcv ? await backtestSignal(ohlcv, 'short', weeklyBySym[sym], fund, btOpts) : null;
-      btMedium = ohlcv ? await backtestSignal(ohlcv, 'medium', weeklyBySym[sym], fund, btOpts) : null;
-      btLong = ohlcv ? await backtestSignal(ohlcv, 'long', weeklyBySym[sym], fund, btOpts) : null;
+      if (ohlcv && budgetLeft() > 1500) {
+        const btOpts = { windowBars: 252, entryStep: 5, symbol: sym };
+        btShort = await backtestSignal(ohlcv, 'short', weeklyBySym[sym], fund, btOpts);
+      }
     } catch (e) {
       console.warn('backtest failed for', sym, '-', e.message);
     }
@@ -12271,25 +12305,29 @@ app.post('/api/analyze', async (req, res) => {
     console.log(`${sym}: short ${sigShort.action}(${sigShort.buyScore}/${sigShort.sellScore}) bt=${btShort?.winRate??'N/A'}% ${btShort?.trades??0}trades`);
   }
 
-  await Promise.all(
-    clean.map(async sym => {
-      const tech = techBySym[sym];
-      const fund = fundBySym[sym] || null;
-      const sig = signalBySym[sym];
-      if (!tech || !sig) return;
-      const shell = {
-        quantSignal: {
-          short: sig.short,
-          medium: sig.medium,
-          long: sig.long
-        },
-        channelPos: tech.channelPos
-      };
-      await applyMarketTierOverlays(sym, shell, { batchMode: true, fundPre: fund });
-      if (shell.fmpScore) sig.fmpScore = shell.fmpScore;
-      if (shell.danelfin) sig.danelfin = shell.danelfin;
-    })
-  );
+  if (budgetLeft() > 2000) {
+    await Promise.all(
+      clean.map(async sym => {
+        const tech = techBySym[sym];
+        const fund = fundBySym[sym] || null;
+        const sig = signalBySym[sym];
+        if (!tech || !sig) return;
+        const shell = {
+          quantSignal: {
+            short: sig.short,
+            medium: sig.medium,
+            long: sig.long
+          },
+          channelPos: tech.channelPos
+        };
+        await applyMarketTierOverlays(sym, shell, { batchMode: true, fundPre: fund });
+        if (shell.fmpScore) sig.fmpScore = shell.fmpScore;
+        if (shell.danelfin) sig.danelfin = shell.danelfin;
+      })
+    );
+  }
+
+  console.log(`Analyze pipeline ${Date.now() - t0}ms tickers=${clean.join(',')}`);
 
   // Fast default: skip Claude prose and build the card from quant signals.
   // Pass { skipAi: false } to keep the old Haiku narrative path.
@@ -16796,7 +16834,13 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
       last: m.last != null ? Number(m.last) : null,
       lastTickAt,
       src: 'ibkr',
-      at: now
+      at: now,
+      localSymbol: m.localSymbol ? String(m.localSymbol) : (prev && prev.localSymbol) || null,
+      futLabel: m.futLabel ? String(m.futLabel) : (prev && prev.futLabel) || null,
+      futExpired: m.futExpired != null ? !!m.futExpired : !!(prev && prev.futExpired),
+      lastTradeDateOrContractMonth: m.lastTradeDateOrContractMonth
+        ? String(m.lastTradeDateOrContractMonth)
+        : (prev && prev.lastTradeDateOrContractMonth) || null
     };
     n++;
   }
@@ -17082,24 +17126,26 @@ app.get('/api/ibkr/trades', async (req, res) => {
           const unit = ibkrAvgToFillUnit(ibRaw, 1, ibRaw, { ticker: sym }) || ibRaw;
           if (unit > 0) picked = { price: unit, src: 'ibkr' };
         }
-        if (!picked) {
+        // Dated futures that already last-traded: Yahoo/FMP `BZ=F` is the *next*
+        // month. Do not overlay that print on the expired lot.
+        if (!picked && !(ibm && ibm.futExpired)) {
           try {
             const fmp = await fetchFmpQuotePrice(sym);
             if (fmp && fmp.price > 0) picked = { price: fmp.price, src: 'fmp' };
           } catch (_) {}
-        }
-        if (!picked) {
-          try {
-            const bulk = await fetchQuotesV7Bulk([sym]);
-            const px = bulk[sym] && Number(bulk[sym].price);
-            if (px > 0) picked = { price: px, src: 'yahoo:v7' };
-          } catch (_) {}
-        }
-        if (!picked) {
-          try {
-            const yahoo = await fetchSessionAwareMark(sym);
-            if (yahoo && yahoo.price > 0) picked = { price: yahoo.price, src: yahoo.src || 'yahoo' };
-          } catch (_) {}
+          if (!picked) {
+            try {
+              const bulk = await fetchQuotesV7Bulk([sym]);
+              const px = bulk[sym] && Number(bulk[sym].price);
+              if (px > 0) picked = { price: px, src: 'yahoo:v7' };
+            } catch (_) {}
+          }
+          if (!picked) {
+            try {
+              const yahoo = await fetchSessionAwareMark(sym);
+              if (yahoo && yahoo.price > 0) picked = { price: yahoo.price, src: yahoo.src || 'yahoo' };
+            } catch (_) {}
+          }
         }
         if (picked) markMap[sym] = picked;
       }));
@@ -17357,6 +17403,12 @@ app.get('/api/ibkr/trades', async (req, res) => {
       if (mark != null && t.ccyScale === 100 && t.avgEntry > 0 && mark * 10 < t.avgEntry) mark *= 100;
       t.mark = mark;
       t.markSrc = mark != null ? (markMap[t.ticker] && markMap[t.ticker].src) || null : null;
+      const ibmMeta = _ibkrLiveMarks[t.ticker];
+      if (ibmMeta) {
+        t.localSymbol = ibmMeta.localSymbol || null;
+        t.futLabel = ibmMeta.futLabel || null;
+        t.futExpired = !!ibmMeta.futExpired;
+      }
       t.unrealizedUsd = (t.openQty > 0 && mark != null)
         ? +(((mark - t.avgEntry) * t.openQty * dir * futuresMultiplierFor(t.ticker, t.multiplier) / (t.ccyScale || 1)) * fx).toFixed(2)
         : (t.openQty > 0 ? null : 0);

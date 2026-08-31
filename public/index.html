@@ -2557,8 +2557,12 @@ async function renderIbkr(force){
           : (_ms.indexOf('yahoo') === 0 || _ms === 'v7' ? ' <span style="font-size:8px;color:var(--m1)">YF</span>' : ''));
       const exitPx = t.avgExit != null ? t.avgExit : t.lastExitPrice;
       const sess = t.sessionSummary || t.entrySession || '—';
+      const futNote = t.futLabel
+        ? ' <span style="font-size:8px;color:'+(t.futExpired?'var(--sell)':'var(--m1)')+'" title="'+(t.localSymbol||'')+(t.futExpired?' · expired — cash settle, not rolled':'')+'">'
+          +(t.futExpired?'exp ':'')+t.futLabel+(t.localSymbol?' · '+t.localSymbol:'')+'</span>'
+        : '';
       return '<tr data-ibkr-key="'+t.key+'" data-ibkr-open="'+(t.openQty>0?'1':'0')+'"'+(err?' style="opacity:.85"':'')+'>'
-        + td('left') + '<span style="font-weight:600">'+t.ticker+'</span> <span style="font-size:8px;color:var(--m1)">'+hzTag(t.hz)+(err?' · ERR':'')+'</span></td>'
+        + td('left') + '<span style="font-weight:600">'+t.ticker+'</span>'+futNote+' <span style="font-size:8px;color:var(--m1)">'+hzTag(t.hz)+(err?' · ERR':'')+'</span></td>'
         + td('left',dirC) + t.side.toUpperCase()+'</td>'
         + td('right','var(--m2)') + String(t.entryTime).slice(0,10)
           + ((t.key||'').split('|')[2] ? ' <span style="font-size:8px;color:var(--m1)" title="Recommendation day">'
@@ -5443,7 +5447,12 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
 
   let livePrices = {};
   try {
-    const pr = await fetch('/api/prices?symbols='+encodeURIComponent(tickers.join(',')));
+    const prCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const prTid = prCtrl ? setTimeout(function(){ try{ prCtrl.abort(); }catch(e){} }, 12000) : null;
+    const pr = await fetch('/api/prices?symbols='+encodeURIComponent(tickers.join(',')), {
+      signal: prCtrl ? prCtrl.signal : undefined
+    });
+    if(prTid) clearTimeout(prTid);
     if(pr.ok) livePrices = await pr.json();
   } catch(e) { console.warn('Price fetch failed:', e.message); }
 
@@ -5453,17 +5462,16 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
   }).filter(Boolean);
 
   if(priceLines.length === 0) {
-    if(!isTop5 && sEl) sEl.innerHTML = '<div class="eb"><strong>Could not fetch live prices.</strong> Yahoo has no quote for this exact symbol '
-      + '(check spelling). <strong>NSE:</strong> use <code>TICKER.NS</code> e.g. <code>ICICIBANK.NS</code>. <strong>Hong Kong:</strong> '
-      + '<code>9988.HK</code>. <strong>U.S.</strong> tickers normally have no suffix.</div>';
-    if(btn) btn.disabled = false;
-    return null;
+    if(!isTop5 && sEl) sEl.innerHTML = '<div class="ld"><div class="sp"></div><span>Prices slow — running analysis on the server...</span></div>';
   }
 
-  if(!isTop5 && sEl) sEl.innerHTML = '<div class="ld"><div class="sp"></div><span>Running analysis (server)...</span></div>';
+  if(!isTop5 && sEl && priceLines.length) sEl.innerHTML = '<div class="ld"><div class="sp"></div><span>Running analysis (server)...</span></div>';
 
   try{
-    const resp=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers,dashHint})});
+    const anCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const anTid = anCtrl ? setTimeout(function(){ try{ anCtrl.abort(); }catch(e){} }, 50000) : null;
+    const resp=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers,dashHint}),signal:anCtrl?anCtrl.signal:undefined});
+    if(anTid) clearTimeout(anTid);
     if(resp.status===401||resp.status===403){
       if(!isTop5) sEl.innerHTML='<div class="eb"><strong>Invalid API key.</strong> Set ANTHROPIC_API_KEY on the server (Render).</div>';
       if(btn) btn.disabled=false;
@@ -5535,7 +5543,10 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
     if(btn)btn.disabled=false;
     return stocks;
   }catch(err){
-    if(!isTop5)sEl.innerHTML=`<div class="eb"><strong>Analysis failed:</strong> ${err.message}</div>`;
+    const aborted = err && (err.name === 'AbortError' || /aborted/i.test(String(err.message||'')));
+    if(!isTop5)sEl.innerHTML=aborted
+      ? '<div class="eb"><strong>Analysis timed out.</strong> Vendor data was slow — click Analyze again. If it keeps hanging, wait a minute for the server to free Yahoo/FMP sockets.</div>'
+      : `<div class="eb"><strong>Analysis failed:</strong> ${err.message}</div>`;
     if(btn)btn.disabled=false;
     console.error(err);return null;
   }

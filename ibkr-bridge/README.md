@@ -98,6 +98,8 @@ uses fractional quantity on PAXOS.
 Skipped instruments (logged, never half-placed): NSE/BSE stocks unless
 `IBKR_ALLOW_NSE=1` (IB restricts Indian exchanges for most non-India accounts).
 Futures (`=F`) and crypto (`-USD`) **are supported** (front-month / PAXOS).
+Expired futures **roll** into the next listed month; TP1 / TP2 / SL keep the
+original model percentages off the new fill (not cash-settled and left flat).
 
 Entry events older than `IBKR_MAX_EVENT_AGE_H` (default 24h) are skipped so a
 fresh cursor never replays weeks of history as live orders.
