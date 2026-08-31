@@ -2066,6 +2066,9 @@ function ibkrGeoBuckets(trades) {
       if (real > 0) b.wins++;
     } else {
       b.open++;
+      // TP1 / other partial exits are already in realizedUsd while the runner
+      // is still open. Do not drop that bank — Unrealised is runner MTM only.
+      b.realised += real;
       b.unrealised += unrl;
       if (isSell) b.sellOpen++; else b.buyOpen++;
     }
@@ -2114,7 +2117,7 @@ function ibkrGeoHtml(trades) {
     +'<th style="text-align:right;'+th+'">TP1 hit</th>'
     +'<th style="text-align:right;'+th+'">Runner</th>'
     +'</tr></thead><tbody>'+tr+'</tbody></table>'
-    +'<div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;padding:6px 8px 0">S/M/L is trade count by horizon. Buy/Sell PnL is realised + unrealised on that side.</div>'
+    +'<div style="font-size:9px;color:var(--m1);font-family:DM Mono,monospace;padding:6px 8px 0">Realised includes TP1 banked on still-open lots. Unrealised is the runner mark. S/M/L is trade count by horizon. Buy/Sell PnL is realised + unrealised on that side.</div>'
     +'</div>';
 }
 function renderIbkrPerformanceExtras() {
