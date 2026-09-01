@@ -8260,7 +8260,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260901-nlv-mark-bias-v8.2.7',
+    server_build: '20260901-bz-oct-realised-v8.2.8',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -17203,7 +17203,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
         lastTime: fills[fills.length - 1].time,
         rollSettlePx,
         status: openQty > 0
-          ? (rollSettlePx > 0 || exitQty <= 0 ? 'open' : 'partial')
+          ? (rollSettlePx > 0 ? 'partial' : (exitQty <= 0 ? 'open' : 'partial'))
           : 'closed',
         errorTrade: !!(f0.errorTrade || fills.some(f => f.errorTrade) || isCursorErrIbkrKey(key)),
         multiplier: stampedMult

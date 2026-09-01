@@ -98,3 +98,23 @@ test('calendar bias is next-month fill minus official settle times multiplier', 
   assert.equal(bias.usd, 1940);
   assert.equal(bias.fromDate, '2026-08-28');
 });
+
+test('BZ Oct PnL rebuilds even when futures-roll recon tags were stripped', () => {
+  const { rebuildFuturesRollFills } = require('../lib/ibkr/futures-roll');
+  const { fifoLotEconomics } = require('../lib/ibkr/fifo-lots');
+  const live = 'BZ=F|short|Thu Aug 27 2026';
+  const err = live + '|cursor-err';
+  const { rows } = rebuildFuturesRollFills([
+    { key: live, role: 'entry', qty: 1, price: 91.25,
+      execId: '0000e1a7.6a971cd6.01.01', time: '2026-08-31T10:05:30.255Z', ticker: 'BZ=F', side: 'buy',
+      multiplier: 1000 },
+    { key: err, role: 'entry', qty: 1, price: 87.442, recon: 'qty-pad', errorTrade: true,
+      execId: 'recon-entry-' + live + '-p', time: '2026-08-27T00:00:00.000Z', ticker: 'BZ=F', side: 'buy',
+      multiplier: 1000 }
+  ], { officialSettlePx: () => 89.31 });
+  assert.ok(rows.every(r => r.key === live && r.errorTrade === false));
+  const fifo = fifoLotEconomics(rows, { dir: 1, futMult: 1000 });
+  assert.equal(fifo.openQty, 1);
+  assert.equal(+fifo.avgEntry.toFixed(2), 91.25);
+  assert.equal(+fifo.realizedLocal.toFixed(2), 1868);
+});
