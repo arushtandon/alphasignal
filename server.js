@@ -40,8 +40,8 @@ const {
 const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/account-performance');
 const { ibkrAvgToFillUnit, futuresMultiplierFor } = require('./lib/ibkr/avg-cost');
 const { fifoLotEconomics } = require('./lib/ibkr/fifo-lots');
-const { officialFuturesSettlePx } = require('./lib/ibkr/commodity-futures');
-const { isFuturesRollFill, liveIbkrKey, rebuildFuturesRollFills } = require('./lib/ibkr/futures-roll');
+const { officialFuturesSettlePx, officialFuturesSettleDate } = require('./lib/ibkr/commodity-futures');
+const { isFuturesRollFill, liveIbkrKey, rebuildFuturesRollFills, futuresRollCalendarBias } = require('./lib/ibkr/futures-roll');
 const {
   applyEstimatedCommission,
   fillNeedsEstimatedCommission
@@ -8260,7 +8260,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260831-fut-roll-pnl-v8.2.6',
+    server_build: '20260901-nlv-mark-bias-v8.2.7',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -15800,8 +15800,26 @@ function finalizeIbkrAccountSnapshot(merged) {
     merged.marginsUsed = +(bal - avail).toFixed(2);
   }
   merged.startingCapital = IBKR_STARTING_CAPITAL;
+  try {
+    const bias = expiredFuturesMarkBiasFromLedger();
+    if (bias && bias.usd > 0) {
+      merged.expiredFuturesMarkBiasUsd = bias.usd;
+      merged.expiredFuturesMarkBiasFrom = bias.fromDate;
+    }
+  } catch (_) {}
   applyIbkrNlvExtremes(merged);
   return merged;
+}
+function expiredFuturesMarkBiasFromLedger() {
+  try {
+    return futuresRollCalendarBias(readIbkrFillRows(), {
+      officialSettlePx: (t) => officialFuturesSettlePx(t, ''),
+      officialSettleDate: (t) => officialFuturesSettleDate(t),
+      futMult: (t, m) => futuresMultiplierFor(t, m)
+    });
+  } catch (_) {
+    return { usd: 0, fromDate: null };
+  }
 }
 /** $1M book equity = starting capital + model fill PnL (not IB NetLiquidation). */
 function applyBookEquityExtremes(snap, netPnlUsd) {
@@ -17588,6 +17606,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       ? Number(accountSnap.currentBalance != null ? accountSnap.currentBalance : accountSnap.netLiquidation)
       : null;
     const netPnlUsd = totRealUsd + totUnrealUsd - totOpenCommissionUsd;
+    const markBias = expiredFuturesMarkBiasFromLedger();
     const performance = computeAccountPerformance({
       bookStart: IBKR_BOOK_START,
       today: singaporeDateKey(),
@@ -17600,6 +17619,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
       troughIbkrEquityAt: accountSnap && accountSnap.troughNlvAt,
       persistedMaxDrawdownUsd: accountSnap && accountSnap.maxDrawdownUsd != null
         ? Number(accountSnap.maxDrawdownUsd) : null,
+      expiredFuturesMarkBiasUsd: markBias.usd,
+      expiredFuturesMarkBiasFrom: markBias.fromDate,
       daily: dailyArr,
       eod: readIbkrEodPerformance(500),
       riskOff: !!riskState.riskOff,
@@ -17608,13 +17629,13 @@ app.get('/api/ibkr/trades', async (req, res) => {
       pausePct: LIQ_PAUSE_PCT
     });
     if (accountSnap && Number.isFinite(Number(performance.drawdownUsd))) {
-      const prevDd = Number(accountSnap.maxDrawdownUsd);
-      const dd = Number(performance.drawdownUsd);
-      if (!Number.isFinite(prevDd) || dd > prevDd) {
-        accountSnap.maxDrawdownUsd = dd;
-        accountSnap.maxDrawdownAt = new Date().toISOString();
-        try { saveIbkrAccountSnapshot(accountSnap); } catch (_) {}
+      accountSnap.maxDrawdownUsd = Number(performance.drawdownUsd);
+      accountSnap.maxDrawdownAt = new Date().toISOString();
+      if (markBias.usd > 0) {
+        accountSnap.expiredFuturesMarkBiasUsd = markBias.usd;
+        accountSnap.expiredFuturesMarkBiasFrom = markBias.fromDate;
       }
+      try { saveIbkrAccountSnapshot(accountSnap); } catch (_) {}
     }
     const netLiqAvail = accountSnap
       ? Number(accountSnap.netLiquidityAvailable != null

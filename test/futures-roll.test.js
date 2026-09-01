@@ -78,3 +78,23 @@ test('mint official settle flatten when roll-settle never landed, restore opener
   assert.equal(+fifo.avgEntry.toFixed(2), 91.25);
   assert.equal(+fifo.realizedLocal.toFixed(2), 1868);
 });
+
+test('calendar bias is next-month fill minus official settle times multiplier', () => {
+  const { rebuildFuturesRollFills, futuresRollCalendarBias } = require('../lib/ibkr/futures-roll');
+  const live = 'BZ=F|short|Thu Aug 27 2026';
+  const { rows } = rebuildFuturesRollFills([
+    { key: live, role: 'entry', qty: 1, price: 91.25, recon: 'futures-roll',
+      execId: '0000e1a7.6a971cd6.01.01', time: '2026-08-31T10:05:30.255Z', ticker: 'BZ=F', side: 'buy',
+      multiplier: 1000 },
+    { key: live, role: 'entry', qty: 1, price: 87.442, recon: 'qty-pad',
+      execId: 'recon-entry-' + live + '-p', time: '2026-08-27T00:00:00.000Z', ticker: 'BZ=F', side: 'buy',
+      multiplier: 1000 }
+  ], { officialSettlePx: () => 89.31 });
+  const bias = futuresRollCalendarBias(rows, {
+    officialSettlePx: () => 89.31,
+    officialSettleDate: () => '2026-08-28',
+    futMult: (_t, m) => Number(m) || 1000
+  });
+  assert.equal(bias.usd, 1940);
+  assert.equal(bias.fromDate, '2026-08-28');
+});

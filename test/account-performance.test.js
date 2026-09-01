@@ -305,3 +305,40 @@ test('a profitable IBKR book does not get a negative Sharpe from peak NLV stampe
   assert.ok(p.fromStartUsd > 0);
   assert.ok(p.sharpe > 0, 'Sharpe must follow the start→close path, not the high-water mark');
 });
+
+test('expired-month mark unwind does not inflate max DD or crush Sharpe', () => {
+  const peak = 470_130;
+  const live = 464_283; // peak − 5,847
+  const p = computeAccountPerformance({
+    bookStart: '2026-08-06',
+    today: '2026-08-31',
+    asOf: '2026-08-31',
+    ibkrEquity: live,
+    netPnlUsd: 4000,
+    peakIbkrEquity: peak,
+    troughIbkrEquity: live,
+    persistedMaxDrawdownUsd: 5847,
+    expiredFuturesMarkBiasUsd: 1940,
+    expiredFuturesMarkBiasFrom: '2026-08-28',
+    eod: [
+      { date: '2026-08-06', currentBalance: 465_000, netPnlUsd: 0 },
+      { date: '2026-08-25', currentBalance: 468_800, netPnlUsd: 3800 },
+      { date: '2026-08-28', currentBalance: 466_630, netPnlUsd: 3500, session: 'us-post-close' }
+    ]
+  });
+  assert.ok(p.drawdownUsd < 4000, 'fake 2.3k MTM must not stay in max DD, got ' + p.drawdownUsd);
+  assert.ok(p.sharpe > 0, 'Sharpe=' + p.sharpe);
+});
+
+test('NLV extremes do not ratchet trough while expired-mark bias is set', () => {
+  const snap = applyIbkrNlvExtremes({
+    netLiquidation: 464_000,
+    peakNlv: 470_000,
+    troughNlv: 468_000,
+    maxDrawdownUsd: 3500,
+    expiredFuturesMarkBiasUsd: 1940
+  });
+  assert.equal(snap.peakNlv, 470_000);
+  assert.equal(snap.troughNlv, 468_000);
+  assert.equal(snap.maxDrawdownUsd, 3500);
+});
