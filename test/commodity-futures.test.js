@@ -9,7 +9,8 @@ const {
   futuresLocalMonthLabel,
   futuresStillTradable,
   futuresExpired,
-  officialFuturesSettlePx
+  officialFuturesSettlePx,
+  preferLiveFuturesContract
 } = require('../lib/ibkr/commodity-futures');
 const { toContract } = require('../ibkr-bridge/bridge');
 const { calculateRiskSize } = require('../lib/risk/sizing');
@@ -80,6 +81,15 @@ assert.strictEqual(futuresExpired({
 assert.strictEqual(officialFuturesSettlePx('BZ=F', lastBz), 89.31);
 assert.strictEqual(officialFuturesSettlePx('BZ=F', ''), 89.31);
 assert.strictEqual(officialFuturesSettlePx('BZ=F', '20261130'), 0);
+
+const oct = { secType: 'FUT', lastTradeDateOrContractMonth: '20260828 14:30:00 US/Eastern', localSymbol: 'BZV6' };
+const nov = { secType: 'FUT', lastTradeDateOrContractMonth: '20260930', localSymbol: 'BZX6' };
+const now = new Date('2026-09-01T04:00:00Z');
+assert.strictEqual(futuresExpired(oct, now), true);
+assert.strictEqual(futuresExpired(nov, now), false);
+assert.strictEqual(preferLiveFuturesContract(nov, oct, now), nov,
+  'expired Oct ghost must not replace Nov portfolio mark');
+assert.strictEqual(preferLiveFuturesContract(oct, nov, now), nov);
 
 assert.strictEqual(keepHeldSpecOnRoll('BZ=F', { symbol: 'BZ', multiplier: 1000 }, 87.44), false,
   'full-size Brent (~$87k) must roll onto the mini, not another BZ×1000');

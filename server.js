@@ -40,7 +40,7 @@ const {
 const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/account-performance');
 const { ibkrAvgToFillUnit, futuresMultiplierFor } = require('./lib/ibkr/avg-cost');
 const { fifoLotEconomics } = require('./lib/ibkr/fifo-lots');
-const { officialFuturesSettlePx, officialFuturesSettleDate } = require('./lib/ibkr/commodity-futures');
+const { officialFuturesSettlePx, officialFuturesSettleDate, futuresStillTradable } = require('./lib/ibkr/commodity-futures');
 const { isFuturesRollFill, liveIbkrKey, rebuildFuturesRollFills, futuresRollCalendarBias } = require('./lib/ibkr/futures-roll');
 const {
   applyEstimatedCommission,
@@ -8260,7 +8260,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260901-bz-oct-realised-v8.2.8',
+    server_build: '20260901-bz-nov-mark-v8.2.9',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -16914,6 +16914,12 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
     } else if (!priceChanged && prev && prev.lastTickAt > 0) {
       lastTickAt = Math.min(lastTickAt, Number(prev.lastTickAt));
     }
+    const ltd = m.lastTradeDateOrContractMonth
+      ? String(m.lastTradeDateOrContractMonth)
+      : (prev && prev.lastTradeDateOrContractMonth) || null;
+    let futExpired = m.futExpired != null ? !!m.futExpired : !!(prev && prev.futExpired);
+    if (ltd && futuresStillTradable(ltd)) futExpired = false;
+    else if (ltd && !futuresStillTradable(ltd)) futExpired = true;
     _ibkrLiveMarks[ticker] = {
       price,
       bid: m.bid != null ? Number(m.bid) : null,
@@ -16924,10 +16930,8 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
       at: now,
       localSymbol: m.localSymbol ? String(m.localSymbol) : (prev && prev.localSymbol) || null,
       futLabel: m.futLabel ? String(m.futLabel) : (prev && prev.futLabel) || null,
-      futExpired: m.futExpired != null ? !!m.futExpired : !!(prev && prev.futExpired),
-      lastTradeDateOrContractMonth: m.lastTradeDateOrContractMonth
-        ? String(m.lastTradeDateOrContractMonth)
-        : (prev && prev.lastTradeDateOrContractMonth) || null
+      futExpired,
+      lastTradeDateOrContractMonth: ltd
     };
     n++;
   }
@@ -17223,13 +17227,19 @@ app.get('/api/ibkr/trades', async (req, res) => {
         // disagree with the account (oil/Asia last prints) and looked like a recon miss.
         const ibm = _ibkrLiveMarks[sym];
         const ibRaw = ibm && Number(ibm.price);
-        if (ibRaw > 0) {
+        const ibLtd = ibm && ibm.lastTradeDateOrContractMonth;
+        const settlePx = officialFuturesSettlePx(sym, ibLtd) || officialFuturesSettlePx(sym, '');
+        const ibExpired = !!(ibm && (ibm.futExpired
+          || (ibLtd && !futuresStillTradable(ibLtd))
+          || (ibRaw > 0 && settlePx > 0 && Math.abs(ibRaw - settlePx) < 0.005)));
+        // Live front month after a roll: do not keep the expired-month last print.
+        if (ibRaw > 0 && !ibExpired) {
           const unit = ibkrAvgToFillUnit(ibRaw, 1, ibRaw, { ticker: sym }) || ibRaw;
           if (unit > 0) picked = { price: unit, src: 'ibkr' };
         }
-        // Dated futures that already last-traded: Yahoo/FMP `BZ=F` is the *next*
-        // month. Do not overlay that print on the expired lot.
-        if (!picked && !(ibm && ibm.futExpired)) {
+        // Yahoo/FMP `BZ=F` is the *current* front month. Use it when IB is
+        // missing or still stuck on the cash-settled contract.
+        if (!picked) {
           try {
             const fmp = await fetchFmpQuotePrice(sym);
             if (fmp && fmp.price > 0) picked = { price: fmp.price, src: 'fmp' };
@@ -17520,9 +17530,17 @@ app.get('/api/ibkr/trades', async (req, res) => {
       t.markSrc = mark != null ? (markMap[t.ticker] && markMap[t.ticker].src) || null : null;
       const ibmMeta = _ibkrLiveMarks[t.ticker];
       if (ibmMeta) {
-        t.localSymbol = ibmMeta.localSymbol || null;
-        t.futLabel = ibmMeta.futLabel || null;
-        t.futExpired = !!ibmMeta.futExpired;
+        const metaLtd = ibmMeta.lastTradeDateOrContractMonth;
+        const metaExpired = !!(ibmMeta.futExpired
+          || (metaLtd && !futuresStillTradable(metaLtd)));
+        if (metaExpired && t.openQty > 0) {
+          // Rolled lot: do not keep "exp Oct" chrome on the live month.
+          t.futExpired = false;
+        } else {
+          t.localSymbol = ibmMeta.localSymbol || null;
+          t.futLabel = ibmMeta.futLabel || null;
+          t.futExpired = !!ibmMeta.futExpired;
+        }
       }
       t.unrealizedUsd = (t.openQty > 0 && mark != null)
         ? +(((mark - t.avgEntry) * t.openQty * dir * futuresMultiplierFor(t.ticker, t.multiplier) / (t.ccyScale || 1)) * fx).toFixed(2)

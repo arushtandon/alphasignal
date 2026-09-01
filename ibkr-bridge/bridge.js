@@ -147,6 +147,7 @@ const {
   isCommodityYahoo,
   futuresStillTradable,
   futuresExpired,
+  preferLiveFuturesContract,
   futuresLocalMonthLabel,
   officialFuturesSettlePx
 } = require('../lib/ibkr/commodity-futures');
@@ -2050,6 +2051,8 @@ async function main() {
       }
       for (const t of aliases) {
         const prev = portfolioMarks.get(t);
+        const keep = preferLiveFuturesContract(prev && prev.contract, contract);
+        if (keep && keep !== contract && prev && Number(prev.price) > 0) continue;
         // Only bump `at` when price moves — sticky portfolio reprints must not
         // look like fresh ticks on the AlphaSignal server.
         const moved = !prev || Math.abs(Number(prev.price) - px) > 1e-9;
@@ -2482,7 +2485,20 @@ async function main() {
 
   /** Subscribe to IB market data for an AlphaSignal ticker (idempotent). */
   function ensureMktData(ticker, contract) {
-    if (DRY || !ib || !ticker || !contract || mktSubscribed.has(ticker)) return;
+    if (DRY || !ib || !ticker || !contract) return;
+    const existing = [...mktById.values()].find(r => r && r.ticker === ticker);
+    if (existing) {
+      const keep = preferLiveFuturesContract(existing.contract, contract);
+      if (keep === existing.contract) return;
+      for (const [id, row] of mktById) {
+        if (!row || row.ticker !== ticker) continue;
+        try { ib.cancelMktData(id); } catch (_) {}
+        mktById.delete(id);
+      }
+      mktSubscribed.delete(ticker);
+    } else if (mktSubscribed.has(ticker)) {
+      return;
+    }
     const id = nextMktId++;
     mktById.set(id, {
       ticker, last: null, bid: null, ask: null, close: null,
@@ -2498,7 +2514,8 @@ async function main() {
       });
     try {
       ib.reqMktData(id, oc, '', false, false);
-      log('mktData subscribed', ticker, 'reqId=' + id);
+      log('mktData subscribed', ticker, 'reqId=' + id,
+        contract.localSymbol || contract.lastTradeDateOrContractMonth || '');
     } catch (e) { log('mktData subscribe failed', ticker, e.message); }
   }
 
@@ -2541,6 +2558,8 @@ async function main() {
     }
     for (const row of _openTickersCache.rows) {
       if (!row || row.openQty <= 0 || !row.ticker) continue;
+      // Generic toContract(BZ=F) is the ICE mini — do not replace a live BZX6 sub.
+      if ([...mktById.values()].some(r => r && r.ticker === row.ticker)) continue;
       const c = toContract(row.ticker);
       if (c) ensureMktData(row.ticker, c);
     }
@@ -2569,10 +2588,15 @@ async function main() {
       if (!(px > 0)) continue;
       const y = normalizeYahooTicker(row.ticker);
       // Expired dated futures: delayed ticks often print the *next* Yahoo continuous
-      // month (~89) over the IB portfolio last (~91). Keep the portfolio mark.
-      const held = Object.values(state.byKey || {}).find(r =>
-        r && !r.closed && normalizeYahooTicker(r.ticker) === y && r.contract);
-      if (held && futuresExpired(held.contract)) continue;
+      // month over the IB portfolio last. Keep the portfolio mark — unless a live
+      // next-month lot is already on the book (BZ Oct ghost + Nov live).
+      const heldLive = Object.values(state.byKey || {}).find(r =>
+        r && !r.closed && normalizeYahooTicker(r.ticker) === y && r.contract
+        && !futuresExpired(r.contract));
+      const heldExp = Object.values(state.byKey || {}).find(r =>
+        r && !r.closed && normalizeYahooTicker(r.ticker) === y && r.contract
+        && futuresExpired(r.contract));
+      if (!heldLive && heldExp) continue;
       const prev = byTicker.get(row.ticker);
       // Prefer fresher tick over a stale portfolio print.
       if (!prev || (row.lastTickAt && row.lastTickAt >= (prev.lastTickAt || 0))) {
@@ -2586,6 +2610,12 @@ async function main() {
     }
     for (const row of Object.values(state.byKey || {})) {
       if (!row || row.closed || !row.contract || row.contract.secType !== 'FUT') continue;
+      if (futuresExpired(row.contract)) {
+        const live = Object.values(state.byKey || {}).find(r =>
+          r && !r.closed && r !== row && r.ticker === row.ticker && r.contract
+          && !futuresExpired(r.contract));
+        if (live) continue;
+      }
       const y = row.ticker;
       const mark = byTicker.get(y);
       if (!mark) continue;
