@@ -8260,7 +8260,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260901-bz-nov-mark-v8.2.9',
+    server_build: '20260902-bz-tp1-keep-v8.2.10',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -14176,6 +14176,19 @@ function isGenuineIbExecFill(r) {
   return !/^(recon-|recover-entry-|repair-ibflat-|cursor-err-|ibhist-|synth-)/.test(exec);
 }
 
+/** Real TP1 / stop / flatten already on the ticker — IB flat is that close, not a ghost. */
+function hasGenuineCoveringExitForTicker(yahooTicker, fillRows) {
+  const aliases = ibkrYahooAliases(yahooTicker);
+  for (const r of fillRows || []) {
+    if (!r || r.role === 'entry') continue;
+    if (!isGenuineIbExecFill(r)) continue;
+    const ty = normalizeIbkrYahooTicker(r.ticker || String(r.key || '').split('|')[0]);
+    if (!aliases.has(ty)) continue;
+    return true;
+  }
+  return false;
+}
+
 function isModelIbSyncFill(r) {
   if (!r) return false;
   if (r.userReentry === true) return true;
@@ -16514,6 +16527,11 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
                 ? `Site open ${asAbs} but IB flat — fresh entry/fill grace; defer close`
                 : `Site open ${asAbs} but IB flat — entry fill <15m old; defer ghost-flatten`
             });
+            continue;
+          }
+          if (hasGenuineCoveringExitForTicker(y, fillRowsNow)) {
+            // BZ Nov TP1 96.83 (2 Sep): roll rebuild used to drop that fill and
+            // leave the lot "open", then recon wrote ghost-flatten every cycle.
             continue;
           }
           let anyFlat = false;
@@ -19194,6 +19212,7 @@ module.exports = {
   dropQtyPadFillsForKeys,
   missingIbPosMeansFlat,
   isBenignReconAdjustment,
+  hasGenuineCoveringExitForTicker,
   bookAflStopLossFromIbPrint,
   repairFuturesRollLedger,
   AFL_IB_STOP_BOOK,

@@ -2301,6 +2301,12 @@ async function renderIbkr(force){
   if (!el) return;
   if (_ibkrMtmBusy) { _ibkrMtmQueued = true; return; }
   _ibkrMtmBusy = true;
+  let keepRealisedOpen = false;
+  let keepErrorOpen = false;
+  try {
+    keepRealisedOpen = !!(document.getElementById('ibkrRealisedDetails') || {}).open;
+    keepErrorOpen = !!(document.getElementById('ibkrErrorDetails') || {}).open;
+  } catch (_) {}
   try {
     setIbkrMtmStamp('MTM loading…');
     const r = await fetch('/api/ibkr/trades?t=' + Date.now(), { cache: 'no-store' });
@@ -2602,14 +2608,14 @@ async function renderIbkr(force){
         ? (tradeTableHead + openRows + '</tbody></table>')
         : '<div style="padding:10px 12px;font-size:11px;color:var(--m2);font-family:DM Mono,monospace">No open model trades</div>')
       + '</div>';
-    const realisedHtml = '<details style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:10px">'
+    const realisedHtml = '<details id="ibkrRealisedDetails" style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:10px">'
       +'<summary style="cursor:pointer;font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:4px 8px">'
       +'Realised trades · '+realisedTrades.length+' closed (click to expand)</summary>'
       + (realisedTrades.length
         ? ('<div style="overflow-x:auto;margin-top:6px">' + tradeTableHead + realRows + '</tbody></table></div>')
         : '<div style="padding:10px 12px;font-size:11px;color:var(--m2);font-family:DM Mono,monospace">No realised model trades yet</div>')
       + '</details>';
-    const errHtml = '<details style="background:var(--s1);border:1px solid #8B3A3A;border-radius:8px;padding:8px 4px;margin-bottom:14px">'
+    const errHtml = '<details id="ibkrErrorDetails" style="background:var(--s1);border:1px solid #8B3A3A;border-radius:8px;padding:8px 4px;margin-bottom:14px">'
       +'<summary style="cursor:pointer;font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:#E88;font-family:DM Mono,monospace;padding:4px 8px">'
       +'Error trades · '+errorTrades.length
       +' · PnL '+fp(errNet)
@@ -2621,6 +2627,14 @@ async function renderIbkr(force){
       + '</details>';
 
     el.innerHTML = cards + analysisHtml + dailyHtml + openHtml + realisedHtml + errHtml;
+    if (keepRealisedOpen) {
+      const d = document.getElementById('ibkrRealisedDetails');
+      if (d) d.open = true;
+    }
+    if (keepErrorOpen) {
+      const d = document.getElementById('ibkrErrorDetails');
+      if (d) d.open = true;
+    }
   } catch (e) {
     setIbkrMtmStamp('MTM error: '+e.message+' · retrying every 5s');
     el.innerHTML = '<div class="emp"><div class="emp-a">!</div><p>Could not load IBKR trades: '+e.message+'</p></div>';
