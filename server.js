@@ -41,7 +41,7 @@ const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/
 const { ibkrAvgToFillUnit, futuresMultiplierFor } = require('./lib/ibkr/avg-cost');
 const { fifoLotEconomics } = require('./lib/ibkr/fifo-lots');
 const { officialFuturesSettlePx, officialFuturesSettleDate, futuresStillTradable } = require('./lib/ibkr/commodity-futures');
-const { isFuturesRollFill, liveIbkrKey, rebuildFuturesRollFills, futuresRollCalendarBias } = require('./lib/ibkr/futures-roll');
+const { isFuturesRollFill, liveIbkrKey, rebuildFuturesRollFills, futuresRollCalendarBias, RESTORED_POST_ROLL_EXITS } = require('./lib/ibkr/futures-roll');
 const {
   applyEstimatedCommission,
   fillNeedsEstimatedCommission
@@ -8260,7 +8260,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260902-bz-tp1-keep-v8.2.10',
+    server_build: '20260902-bz-tp1-book-v8.2.11',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -14147,6 +14147,52 @@ function bookAflStopLossFromIbPrint() {
   return { added: added.length, already: added.length === 0 };
 }
 
+/** Put wiped post-roll IB exits (BZ Nov TP1 96.83) back on the model key. */
+function bookRestoredFuturesPostRollExits() {
+  const specs = RESTORED_POST_ROLL_EXITS || [];
+  if (!specs.length) return { added: 0 };
+  const liveWant = new Set(specs.map(s => liveIbkrKey(s.key)));
+  const added = [];
+  mutateFillLedger('book-restored-futures-exits', (rows) => {
+    const next = [];
+    const have = new Set();
+    for (const r of rows || []) {
+      if (!r) continue;
+      const live = liveIbkrKey(r.key);
+      if (liveWant.has(live) && (r.recon === 'ghost-flat' || String(r.execId || '').startsWith('recon-flat-'))) {
+        continue;
+      }
+      const spec = specs.find(s => String(s.execId) === String(r.execId));
+      if (spec) {
+        next.push(Object.assign({}, r, spec, {
+          key: liveIbkrKey(spec.key),
+          errorTrade: false,
+          role: spec.role,
+          price: spec.price
+        }));
+        have.add(String(spec.execId));
+        continue;
+      }
+      next.push(r);
+    }
+    for (const spec of specs) {
+      if (have.has(String(spec.execId))) continue;
+      next.push(Object.assign({}, spec, { key: liveIbkrKey(spec.key), errorTrade: false }));
+      have.add(String(spec.execId));
+      added.push(spec.execId);
+    }
+    return next;
+  }, {
+    mayDropProtected: (r) => !!(r && liveWant.has(liveIbkrKey(r.key))
+      && (r.recon === 'ghost-flat' || String(r.execId || '').startsWith('recon-flat-')))
+  });
+  if (added.length) {
+    console.log('Restored post-roll IB exit fill(s)', added);
+    try { auditLog('ibkr_book_restored_futures_exit', { execIds: added }); } catch (_) {}
+  }
+  return { added: added.length };
+}
+
 function dropQtyPadFillsForKeys(keys) {
   const want = new Set((keys || []).filter(Boolean));
   if (!want.size) return 0;
@@ -16056,6 +16102,11 @@ try {
 } catch (e) {
   console.warn('boot AFL stop-loss book failed:', e.message);
 }
+try {
+  if (process.env.AUTH_TEST_BYPASS !== '1') bookRestoredFuturesPostRollExits();
+} catch (e) {
+  console.warn('boot restored futures exits failed:', e.message);
+}
 try { backfillMissingIbkrCommissions(); } catch (e) {
   console.warn('boot backfill missing commissions failed:', e.message);
 }
@@ -16071,7 +16122,8 @@ function repairFuturesRollLedger() {
   try {
     const before = readIbkrFillRows();
     const { rows, changed } = rebuildFuturesRollFills(before, {
-      officialSettlePx: (ticker) => officialFuturesSettlePx(ticker, '')
+      officialSettlePx: (ticker) => officialFuturesSettlePx(ticker, ''),
+      restoreMissingExits: true
     });
     if (!changed) return 0;
     const rollLives = new Set();
@@ -16251,6 +16303,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     try { restoreOpenModelFillsFromCursorErr(positions); } catch (_) {}
     try { repairFuturesRollLedger(); } catch (_) {}
     try { bookAflStopLossFromIbPrint(); } catch (_) {}
+    try { bookRestoredFuturesPostRollExits(); } catch (_) {}
     try { quarantineExcessModelEntriesVsIb(positions); } catch (_) {}
     try {
       _ibkrExecIds.clear();
@@ -16775,6 +16828,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       console.warn('History prune after recon:', ePrune.message);
     }
     try { repairFuturesRollLedger(); } catch (_) {}
+    try { bookRestoredFuturesPostRollExits(); } catch (_) {}
     res.json({
       ok: true,
       inSync,
@@ -17131,7 +17185,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     const allRows = rebuildFuturesRollFills(dedupeIbkrFillsByExecId(readIbkrFillRows()), {
-      officialSettlePx: (ticker) => officialFuturesSettlePx(ticker, '')
+      officialSettlePx: (ticker) => officialFuturesSettlePx(ticker, ''),
+      restoreMissingExits: true
     }).rows;
     const rows = allRows.filter(r => !isPhantomIbkrKey(r.key, r.time, r));
     const errExtra = loadIbkrErrorTradeExtra();
@@ -17385,7 +17440,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       // Exit type from the actual fills (what really closed the trade at IB).
       const hasTp1 = t.fills.some(f => f.role === 'tp1');
       const hasStop = t.fills.some(f => f.role === 'stop');
-      const hasFlat = t.fills.some(f => f.role === 'flatten');
+      const hasFlat = t.fills.some(f => f.role === 'flatten' && f.recon !== 'futures-roll');
       t.hasFlatten = hasFlat;
       t.hasStop = hasStop;
       t.hasTp1 = hasTp1;
@@ -19214,6 +19269,7 @@ module.exports = {
   isBenignReconAdjustment,
   hasGenuineCoveringExitForTicker,
   bookAflStopLossFromIbPrint,
+  bookRestoredFuturesPostRollExits,
   repairFuturesRollLedger,
   AFL_IB_STOP_BOOK,
   quarantineKeyFillsToCursorErr,

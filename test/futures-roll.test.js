@@ -99,6 +99,27 @@ test('calendar bias is next-month fill minus official settle times multiplier', 
   assert.equal(bias.fromDate, '2026-08-28');
 });
 
+test('restoreMissingExits books the wiped Nov TP1 so Realised includes +5580', () => {
+  const { rebuildFuturesRollFills } = require('../lib/ibkr/futures-roll');
+  const { fifoLotEconomics } = require('../lib/ibkr/fifo-lots');
+  const live = 'BZ=F|short|Thu Aug 27 2026';
+  const { rows } = rebuildFuturesRollFills([
+    { key: live, role: 'entry', qty: 1, price: 91.25, recon: 'futures-roll',
+      execId: '0000e1a7.6a971cd6.01.01', time: '2026-08-31T10:05:30.255Z', ticker: 'BZ=F', side: 'buy',
+      multiplier: 1000 },
+    { key: live, role: 'entry', qty: 1, price: 87.442, recon: 'qty-pad',
+      execId: 'recon-entry-' + live + '-p', time: '2026-08-27T00:00:00.000Z', ticker: 'BZ=F', side: 'buy',
+      multiplier: 1000 }
+  ], { officialSettlePx: () => 89.31, restoreMissingExits: true });
+  const tp1 = rows.find(r => r.role === 'tp1');
+  assert.ok(tp1);
+  assert.equal(tp1.price, 96.83);
+  assert.equal(tp1.execId, '0000e1a7.6a9971a3.01.01');
+  const fifo = fifoLotEconomics(rows, { dir: 1, futMult: 1000 });
+  assert.equal(fifo.openQty, 0);
+  assert.equal(+fifo.realizedLocal.toFixed(2), 1868 + 5580);
+});
+
 test('rebuild keeps a real Nov TP1 so the lot stays closed (no ghost-flatten loop)', () => {
   const { rebuildFuturesRollFills } = require('../lib/ibkr/futures-roll');
   const { fifoLotEconomics } = require('../lib/ibkr/fifo-lots');
