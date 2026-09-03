@@ -83,3 +83,17 @@ test('TP1 is only a limit fill at/through the TP1 price, never a flatten', () =>
   }), false);
 });
 
+test('false tp1Done with a reduced IB lot infers qtySold; a full lot unlatches', () => {
+  const { reconcileTp1LatchFromPosition } = require('../lib/ibkr/tp1-policy');
+  const half = { tp1Done: true, qtySold: 0, qtyTotal: 600, qtyRunner: 600 };
+  const a = reconcileTp1LatchFromPosition(half, 300, 100);
+  assert.equal(a.reason, 'infer-from-reduced-qty');
+  assert.equal(half.qtySold, 300);
+  assert.equal(half.qtyRunner, 300);
+  assert.equal(half.tp1Done, true);
+  const full = { tp1Done: true, qtySold: 0, qtyTotal: 600, qtyRunner: 600 };
+  const b = reconcileTp1LatchFromPosition(full, 600, 100);
+  assert.equal(b.reason, 'unlatch-full-lot');
+  assert.equal(full.tp1Done, false);
+});
+

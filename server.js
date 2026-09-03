@@ -16267,6 +16267,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         if (r && r.execId) _ibkrExecIds.add(String(r.execId));
       }
     } catch (_) {}
+    const liveStopsIn = Array.isArray(req.body && req.body.liveStops) ? req.body.liveStops : [];
     const positions = Array.isArray(req.body && req.body.positions) ? req.body.positions : [];
     const marksIn = (req.body && req.body.marks && typeof req.body.marks === 'object') ? req.body.marks : {};
     // Persist TWS account window numbers for the IBKR tab (starting / available).
@@ -16846,6 +16847,12 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       positions: [...ibByY.entries()].map(([ticker, v]) => ({
         ticker, qty: v.qty, avgCost: v.avgCost, currency: v.currency || null, conId: v.conId || null,
         multiplier: v.multiplier || null, secType: v.secType || null
+      })),
+      // Live IB STP prices — History was stuck on original rec.sl (9988 126.5)
+      // because paper tsl_update almost never arrives.
+      liveStops: liveStopsIn.filter(s => s && Number(s.aux) > 0).map(s => ({
+        ticker: s.ticker, aux: Number(s.aux), qty: Number(s.qty) || null,
+        orderId: s.orderId || null, clientId: s.clientId || null
       }))
     };
     saveIbkrReconReport(report);
@@ -17445,6 +17452,14 @@ app.get('/api/ibkr/trades', async (req, res) => {
         const pct = ({ short: 0.025, medium: 0.05, long: 0.08 })[t.hz || 'short'] || 0.025;
         rec.sl = +((t.side === 'sell' ? e * (1 + pct) : e * (1 - pct)).toFixed(4));
         rec.slSynthesized = true;
+      }
+      const liveStop = Array.isArray(reconSnap && reconSnap.liveStops)
+        ? reconSnap.liveStops.find(s =>
+          s && normalizeIbkrYahooTicker(s.ticker) === normalizeIbkrYahooTicker(t.ticker)
+          && Number(s.aux) > 0)
+        : null;
+      if (liveStop && (t.status === 'open' || t.status === 'partial') && Number(liveStop.aux) > 0) {
+        rec.lastTrailSl = Number(liveStop.aux);
       }
       t.rec = rec;
       // Exit type from the actual fills (what really closed the trade at IB).

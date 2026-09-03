@@ -79,3 +79,15 @@ test('runWithConcurrency keeps a cap and awaits all', async () => {
   assert.deepEqual(seen.sort(), [1, 2, 3, 4, 5]);
   assert.ok(maxLive <= 2);
 });
+
+test('manager all-open snapshot does not stamp manager id when IB omits clientId', () => {
+  const { tagOpenOrderClientId, preferWorkerOpenOrder } = require('../lib/ibkr/exec-client-pool');
+  assert.equal(tagOpenOrderClientId({ clientId: 0 }, { manager: true, clientId: 27 }, 27), 0);
+  assert.equal(tagOpenOrderClientId({}, { manager: true, clientId: 27 }, 27), 0);
+  assert.equal(tagOpenOrderClientId({ clientId: 0 }, { manager: false, clientId: 35 }, 27), 35);
+  assert.equal(tagOpenOrderClientId({ clientId: 42 }, { manager: true, clientId: 27 }, 27), 42);
+  const mgrRow = { orderId: 9, clientId: 0, aux: 123.8 };
+  const workerRow = { orderId: 9, clientId: 35, aux: 123.8 };
+  assert.equal(preferWorkerOpenOrder(mgrRow, workerRow, 27).clientId, 35);
+  assert.equal(preferWorkerOpenOrder(workerRow, { orderId: 9, clientId: 27 }, 27).clientId, 35);
+});

@@ -103,7 +103,8 @@ const {
   openIfAboveSpec,
   passiveCloseLimit,
   maybeTwoLotTotal,
-  isLimitTp1Fill
+  isLimitTp1Fill,
+  reconcileTp1LatchFromPosition
 } = require('../lib/ibkr/tp1-policy');
 const { tslAfterTp1, catchUpTslFromDailyBars, pickLiveTslCatchUp } = require('../lib/ibkr/tsl-policy');
 const { rebaseExitsFromFill } = require('../lib/ibkr/fill-rebase');
@@ -161,6 +162,8 @@ const {
   rememberOrderClient,
   clientForOrder,
   rowOwningOrder,
+  tagOpenOrderClientId,
+  preferWorkerOpenOrder,
   runWithConcurrency
 } = require('../lib/ibkr/exec-client-pool');
 
@@ -1216,6 +1219,7 @@ async function main() {
   const unknownOrderIds = new Set(); // IB 10147 — gone, do not keep cancelling
   let positionsReady = false; // set once IB's initial position snapshot lands
   let forceReconcile = false; // set on positionEnd so Asia re-arms don't wait 5m
+  let lastLiveStops = [];
   const _seedBlocked = new Set(); // tickers/keys that failed portfolio risk this session
   const posKeyOf = c => {
     if (!c) return '';
@@ -3607,7 +3611,24 @@ async function main() {
     let n = 0;
     for (const [key, row] of Object.entries(state.byKey || {})) {
       if (!row || row.closed || row.tp1Done !== true || !row.entryFilled) continue;
-      if (!row.contract || row.stopId == null) continue;
+      if (!row.contract) continue;
+      if (row.stopId == null) {
+        const y = normalizeYahooTicker(row.ticker);
+        const hit = (lastLiveStops || []).find(s =>
+          s && normalizeYahooTicker(s.ticker) === y && Number(s.orderId) > 0);
+        if (hit) {
+          row.stopId = hit.orderId;
+          if (Number(hit.clientId) > 0) {
+            rememberOrderClient(state.orderClients, hit.orderId, hit.clientId);
+            row.stopClientId = hit.clientId;
+          }
+          log('TSL catch-up adopted live stop', key, 'oid=' + hit.orderId, 'client=' + hit.clientId);
+        }
+      }
+      if (row.stopId == null) continue;
+      if (Number(row.stopClientId) > 0) {
+        rememberOrderClient(state.orderClients, row.stopId, row.stopClientId);
+      }
       const held = heldForContract(row.contract);
       const posInDir = held
         ? (row.side === 'sell' ? -held.pos : held.pos)
@@ -4634,6 +4655,7 @@ async function main() {
         positions,
         marks,
         charges,
+        liveStops: lastLiveStops,
         account: ACCOUNT || accountSnap.account || '',
         accountSnapshot: {
           ...accountSnap,
@@ -4863,14 +4885,20 @@ async function main() {
 
   function listWorkingOrdersDetailed() {
     return new Promise(resolve => {
-      const orders = [];
-      let complete = false;
-      if (DRY || !ib || !EventName) return resolve({ orders, complete: true });
-      const t = setTimeout(() => { cleanup(); resolve({ orders, complete }); }, 5000);
-      const onOpen = (orderId, contract, order, orderState) => {
+      const byId = new Map();
+      let finished = false;
+      if (DRY || !EventName) return resolve({ orders: [], complete: true });
+      const slots = (execSlots || []).filter(s => s && s.ready && s.api);
+      const apis = slots.length ? slots : (ib ? [{ api: ib, clientId: activeClientId, manager: true }] : []);
+      if (!apis.length) return resolve({ orders: [], complete: true });
+      let pending = apis.length;
+      const t = setTimeout(() => finish(false), 5000);
+      const cleanups = [];
+      const upsert = (orderId, contract, order, orderState, slot) => {
         const st = String((orderState && orderState.status) || '');
         if (st === 'Cancelled' || st === 'Filled' || st === 'Inactive') return;
-        orders.push({
+        const cid = tagOpenOrderClientId(order, slot, activeClientId);
+        const row = {
           orderId,
           conId: Number(contract && contract.conId) || 0,
           action: String(order.action || '').toUpperCase(),
@@ -4880,22 +4908,55 @@ async function main() {
           aux: Number(order.auxPrice) || 0,
           tif: String(order.tif || '').toUpperCase(),
           yahoo: yahooFromContract(contract),
-          status: st
-        });
+          status: st,
+          clientId: cid
+        };
+        byId.set(orderId, preferWorkerOpenOrder(byId.get(orderId), row, activeClientId));
       };
-      const onEnd = () => { complete = true; cleanup(); resolve({ orders, complete }); };
-      const cleanup = () => {
+      const finish = (allEnded) => {
+        if (finished) return;
+        finished = true;
         clearTimeout(t);
-        try { ib.off(EventName.openOrder, onOpen); } catch (_) {}
-        try { ib.off(EventName.openOrderEnd, onEnd); } catch (_) {}
+        for (const fn of cleanups) {
+          try { fn(); } catch (_) {}
+        }
+        resolve({ orders: [...byId.values()], complete: !!allEnded });
       };
-      ib.on(EventName.openOrder, onOpen);
-      ib.on(EventName.openOrderEnd, onEnd);
-      try { ib.reqAllOpenOrders(); } catch (e) { cleanup(); resolve({ orders, complete: false }); }
+      for (const slot of apis) {
+        const onOpen = (orderId, contract, order, orderState) =>
+          upsert(orderId, contract, order, orderState, slot);
+        const onEnd = () => {
+          pending -= 1;
+          if (pending <= 0) finish(true);
+        };
+        try {
+          slot.api.on(EventName.openOrder, onOpen);
+          slot.api.on(EventName.openOrderEnd, onEnd);
+        } catch (_) {}
+        cleanups.push(() => {
+          try { slot.api.off(EventName.openOrder, onOpen); } catch (_) {}
+          try { slot.api.off(EventName.openOrderEnd, onEnd); } catch (_) {}
+        });
+        try {
+          if (slot.manager) slot.api.reqAllOpenOrders();
+          else slot.api.reqOpenOrders();
+        } catch (_) {
+          pending -= 1;
+          if (pending <= 0) finish(true);
+        }
+      }
     });
   }
   function listWorkingOrders() {
-    return listWorkingOrdersDetailed().then(r => r.orders);
+    return listWorkingOrdersDetailed().then(r => {
+      lastLiveStops = (r.orders || [])
+        .filter(o => o && o.type === 'STP')
+        .map(o => ({
+          ticker: o.yahoo, aux: o.aux, qty: o.qty,
+          orderId: o.orderId, clientId: o.clientId
+        }));
+      return r.orders;
+    });
   }
 
   /** Bind an already-working IB STP onto a recovered fill so Telegram does not
@@ -4995,6 +5056,12 @@ async function main() {
         posInDir = row.side === 'sell' ? -yq : yq;
       }
       if (!(posInDir > 0)) continue;
+      const latch = reconcileTp1LatchFromPosition(row, posInDir,
+        Math.max(boardLotHint(row.ticker, row.contract && row.contract.lotHint), 1));
+      if (latch.changed) {
+        log('RECONCILE: TP1 latch', latch.reason, key, 'pos', posInDir,
+          'sold', row.qtySold, 'tp1Done', row.tp1Done);
+      }
       const closeAction = row.side === 'sell' ? 'BUY' : 'SELL';
       const stps = working.filter(o =>
         o.type === 'STP' && o.action === closeAction && rowMatchesWorking(row, o)
@@ -5004,24 +5071,52 @@ async function main() {
           o.type === 'LMT' && o.action === closeAction && rowMatchesWorking(row, o)
         ).reduce((s, o) => s + (Number(o.qty) || 0), 0)
         : 0;
-      // Never size the stop as the original lot while a TP1 LMT is still live.
-      // DHL 25 Aug: STP 157 + TP1 78 both working on a 157 long → short 78.
+      // Never size the stop as the original lot while a TP1 LMT is still live
+      // (or about to be parked this sweep). DHL 25 Aug: STP 157 + TP1 78 both
+      // working on a 157 long → short 78.
+      const lot = Math.max(boardLotHint(row.ticker, row.contract && row.contract.lotHint), 1);
+      const plannedHalf = (!row.tp1Done) ? (tp1OrderQty(posInDir, lot) || 0) : 0;
       const bookedTp1 = (!row.tp1Done && row.tp1Id != null && !row.tp1RoutingFailed)
         ? Math.max(Number(row.qtySold) || 0, 0) : 0;
-      const tp1Qty = Math.max(tp1WorkingQty, bookedTp1);
-      const lot = Math.max(boardLotHint(row.ticker, row.contract && row.contract.lotHint), 1);
+      const tp1Qty = Math.max(tp1WorkingQty, bookedTp1, plannedHalf);
       const fullTp1 = !row.tp1Done && isFullQtyTp1(posInDir, lot);
       // 50% TP1: stop covers the runner only. 100% TP1: stop stays full and
       // is OCA-linked so a TP1 fill cannot leave a live STP.
       const stopQty = (fullTp1 || row.tp1Done) ? posInDir : Math.max(0, posInDir - tp1Qty);
       const existing = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null) || stps[0];
       if (existing) {
+        const ownerCid = Number(existing.clientId) || Number(state.orderClients[existing.orderId]) || 0;
+        if (ownerCid > 0) {
+          rememberOrderClient(state.orderClients, existing.orderId, ownerCid);
+          row.stopClientId = ownerCid;
+        }
+        const canModify = ownerCid > 0;
         const wantSl = Number(row.stopPx);
         const slack = Math.max(Math.abs(wantSl) * 0.001, 0.01);
         if (wantSl > 0 && existing.aux > 0 && Math.abs(existing.aux - wantSl) > slack) {
-          // Never mint a second STP while the old one is still working.
-          cancelOrder(existing.orderId, 'SL fill-rebase replace ' + key);
-          log('RECONCILE: waiting to replace stop', key, 'have', existing.aux, 'want', wantSl);
+          // Modify the live worker STP in place. Cancel-from-manager never
+          // reaches client 30–48, so 9988 sat at 123.8 while state wanted 115.
+          if (!canModify) {
+            row.stopId = existing.orderId;
+            log('RECONCILE: cannot in-place stop — missing worker clientId', key,
+              'oid=' + existing.orderId, 'have', existing.aux, 'want', wantSl);
+            continue;
+          }
+          const qty = stopQty > 0 ? stopQty : existing.qty;
+          transmitOrder(existing.orderId, row.contract, baseOrder({
+            orderId: existing.orderId,
+            action: closeAction,
+            orderType: 'STP',
+            auxPrice: wantSl,
+            totalQuantity: qty,
+            transmit: true
+          }), 'stop px in-place ' + key);
+          row.stopId = existing.orderId;
+          row.stopPx = wantSl;
+          row.stopRoutingFailed = false;
+          row.updated = new Date().toISOString();
+          n++;
+          log('RECONCILE: stop px updated in place', key, existing.aux, '→', wantSl, 'qty', qty);
           continue;
         }
         if (row.stopId !== existing.orderId) {
@@ -5032,7 +5127,12 @@ async function main() {
           n++;
           log('RECONCILE: adopted working stop', key, 'orderId=' + existing.orderId, 'stp=' + existing.aux);
         }
-        if (stopQty > 0 && existing.qty > stopQty + 1e-6) {
+        if (stopQty > 0 && Math.abs(existing.qty - stopQty) > 1e-6) {
+          if (!canModify) {
+            log('RECONCILE: cannot resize stop — missing worker clientId', key,
+              existing.qty, '→', stopQty);
+            continue;
+          }
           transmitOrder(existing.orderId, row.contract, baseOrder({
             orderId: existing.orderId,
             action: closeAction,
@@ -5040,12 +5140,9 @@ async function main() {
             auxPrice: existing.aux > 0 ? existing.aux : roundPx(row.stopPx, row.contract),
             totalQuantity: stopQty,
             transmit: true
-          }), 'shrink stop for TP1 ' + key);
-          log('RECONCILE: stop qty capped', key, existing.qty, '→', stopQty, '(TP1 working', tp1WorkingQty + ')');
-        } else if (stopQty > 0 && existing.qty + 1e-6 < stopQty) {
-          cancelOrder(existing.orderId, 'stop undersize replace ' + key);
-          log('RECONCILE: waiting to replace undersized stop', key, existing.qty, '→', stopQty);
-          continue;
+          }), 'stop qty in-place ' + key);
+          log('RECONCILE: stop qty updated in place', key, existing.qty, '→', stopQty,
+            '(TP1 working', tp1WorkingQty + ')');
         }
         for (const extra of stps) {
           if (extra.orderId === existing.orderId) continue;
@@ -5068,8 +5165,17 @@ async function main() {
       }
       // Do not mint a second STP just because the working-order snapshot missed
       // the last one — that left dozens of 157-share DHL sell-stops at IB.
-      // On-fill parks skip the 15-min cooldown so a standalone parent is not
-      // left naked until the next sweep.
+      // 9988: a 103-duplicate catch-up parked a new 115 while 123.8 was still live.
+      if (!onFill && row.stopRoutingFailed) {
+        const yFail = normalizeYahooTicker(row.ticker);
+        const liveStp = stps.length > 0 || (lastLiveStops || []).some(s =>
+          s && normalizeYahooTicker(s.ticker) === yFail);
+        if (liveStp) {
+          logOnce('stop-no-mint-failed-' + key,
+            'stop attach skip — live STP already at IB; in-place when client tagged', key);
+          continue;
+        }
+      }
       if (!onFill && row.stopId != null && !row.stopRoutingFailed) {
         const lastSent = row.stopAttachAttemptAt ? Date.parse(row.stopAttachAttemptAt) : NaN;
         if (Number.isFinite(lastSent) && Date.now() - lastSent < 15 * 60 * 1000) continue;
