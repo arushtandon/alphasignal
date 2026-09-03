@@ -4589,6 +4589,8 @@ async function main() {
       const half = tp1OrderQty(posInDir, lot);
       if (!(half >= lot) || half > posInDir + 1e-9) continue;
       if (row.tp1Id != null && !row.tp1RoutingFailed && !row.tp1SessionBlocked) continue;
+      const attachAge = row.tp1AttachAttemptAt ? Date.now() - Date.parse(row.tp1AttachAttemptAt) : Infinity;
+      if (row.ocaLinked && Number.isFinite(attachAge) && attachAge < 30 * 60 * 1000) continue;
       findings.push({
         sev: 'error',
         code: 'missing-tp1',
@@ -4945,11 +4947,19 @@ async function main() {
         const lastSent = row.tp1AttachAttemptAt ? Date.parse(row.tp1AttachAttemptAt) : NaN;
         if (Number.isFinite(lastSent) && Date.now() - lastSent < 15 * 60 * 1000) continue;
       }
+      if (fullExit && row.ocaLinked && row.tp1Id != null && row.stopId != null) {
+        const ocaAge = row.tp1AttachAttemptAt ? Date.now() - Date.parse(row.tp1AttachAttemptAt) : Infinity;
+        if (Number.isFinite(ocaAge) && ocaAge < 30 * 60 * 1000) {
+          logOnce('oca-grace-' + key, '1-lot OCA still in grace — not rebuilding', key,
+            'tp1=' + row.tp1Id, 'stop=' + row.stopId);
+          continue;
+        }
+      }
       if (!onFill && !childNotYetWorking(row.tp1Id, null, row.tp1AttachAttemptAt, row.tp1RoutingFailed)) continue;
       const wait = attachRetryWaitMs(row.tp1RoutingFailed);
       const lastAttempt = row.tp1AttachAttemptAt ? Date.parse(row.tp1AttachAttemptAt) : NaN;
       if (!onFill && Number.isFinite(lastAttempt) && Date.now() - lastAttempt < wait) continue;
-      if (row.tp1Id != null && !pendingOrders.has(Number(row.tp1Id))) {
+      if (row.tp1Id != null && !pendingOrders.has(Number(row.tp1Id)) && !row.ocaLinked) {
         log('TP1 id not working — treating as missed', key, 'oid=' + row.tp1Id);
         row.tp1Id = null;
       }
@@ -4990,12 +5000,16 @@ async function main() {
         for (const o of stps) await waitCancel(o.orderId, 4000);
         const group = ocaGroupForKey(key);
         const stpPx = roundPx(row.stopPx, row.contract);
-        const sid = nidForRow(row);
+        const ocaSlot = pickExecSlot();
+        const ocaClient = row.placeClientId || row.parentClientId || row.tp1ClientId
+          || row.stopClientId || (ocaSlot && ocaSlot.clientId);
+        const sid = nid(ocaClient);
         row.stopId = sid;
-        row.stopClientId = state.orderClients[sid] || row.placeClientId;
-        const oid = nidForRow(row);
+        row.stopClientId = state.orderClients[sid] || ocaClient;
+        row.placeClientId = row.stopClientId;
+        const oid = nid(row.stopClientId);
         row.tp1Id = oid;
-        row.tp1ClientId = state.orderClients[oid] || row.placeClientId;
+        row.tp1ClientId = state.orderClients[oid] || row.stopClientId;
         row.tp1Px = tp1Px;
         row.qtyTotal = posInDir;
         row.qtySold = half;

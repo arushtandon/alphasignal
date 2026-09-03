@@ -19,6 +19,21 @@ test('working JP LMT-THROUGH is not cancel-replaced every 2 minutes', () => {
   assert.equal(reason, null);
 });
 
+test('LMT-THROUGH absent from manager open-order list is not treated as dead', () => {
+  const reason = asiaUnfilledRearmReason({
+    phase: 'rth',
+    entryStyle: 'LMT-THROUGH',
+    parentId: 56792335,
+    parentWorking: false,
+    parentGone: false,
+    openOrdersComplete: true,
+    lastRearmAt: new Date(NOW - 10 * 60 * 1000).toISOString(),
+    now: NOW,
+    minutesSinceRth: 30
+  });
+  assert.equal(reason, null);
+});
+
 test('dead JP parent (10147 / missing from open orders) is retried once', () => {
   const reason = asiaUnfilledRearmReason({
     phase: 'rth',
