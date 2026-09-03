@@ -47,7 +47,7 @@ assert.strictEqual(shouldApplyLiveTslUpdate({
 }), false, 'closed lots do not ratchet');
 assert.strictEqual(shouldApplyLiveTslUpdate({
   closed: false, tp1Done: false, qtyTotal: 413, qtySold: 207, qtyRunner: 206
-}), true, 'remaining runner after partial');
+}), false, 'working TP1 qty is not a fill — no TSL');
 
 const {
   isForceCashOpenTicker,

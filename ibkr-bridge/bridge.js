@@ -3325,8 +3325,21 @@ async function main() {
   /** Remaining shares are the runner: no TP1 child, STP at TSL (BE floor). */
   function restoreRunnerStop(key, row, qty) {
     if (!row || !(qty > 0) || !row.contract) return false;
+    if (!row.tp1Done) {
+      log('runner TSL restore skipped — no real TP1 print', key);
+      return false;
+    }
     const stp = runnerStopPx(row, row.stopPx);
     if (!(stp > 0)) return false;
+    const y = normalizeYahooTicker(row.ticker);
+    const lastPx = Number(portfolioMarks.get(y) && portfolioMarks.get(y).price)
+      || Number(portfolioMarks.get(row.ticker) && portfolioMarks.get(row.ticker).price)
+      || 0;
+    const through = lastPx > 0 && (row.side === 'sell' ? lastPx >= stp : lastPx <= stp);
+    if (through) {
+      log('runner TSL restore skipped — stop through last', key, 'stp', stp, 'last', lastPx);
+      return false;
+    }
     if (row.tp1Id != null) {
       cancelOrder(row.tp1Id, 'runner resume — no TP1 ' + key);
       row.tp1Id = null;
@@ -3337,7 +3350,6 @@ async function main() {
     row.stopPx = stp;
     row.qtyRunner = qty;
     row.qtySold = Math.max(0, (Number(row.qtyTotal) || qty) - qty);
-    row.tp1Done = true;
     transmitOrder(sid, row.contract, baseOrder({
       orderId: sid,
       action: row.side === 'sell' ? 'BUY' : 'SELL',
@@ -5619,23 +5631,20 @@ async function main() {
         saveState(state);
       }
 
-      // 0a3. Paper TSL flattened the runner on the site, but IB still holds it
-      // (DSY.PA: 207 sold, 206 live, TP1 never filled). Resume runner TSL only —
-      // do not place TP1 again, do not flatten the remainder.
+      // 0a3. Paper TSL flattened the runner on the site, but IB still holds it.
+      // Resume TSL only after a real limit TP1. A half-size IB book is not a
+      // TP1 print — that dumped the PLTR/SNDK remainder at the cash open.
       for (const [key, row] of Object.entries(state.byKey)) {
         if (!row || !row.closed || !row.contract) continue;
         if (row.errorTrade || row.preReleaseCancelled || row.holdCancelledUnfilled
           || row.staleUnfilledAbandoned) continue;
+        if (!row.tp1Done) continue;
         const held = heldForContract(row.contract);
         const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
         if (!(posInDir > 0)) continue;
         const total = Number(row.qtyTotal) || 0;
-        const halfish = total > 0 && posInDir < total
-          && posInDir >= total * 0.4 && posInDir <= total * 0.6;
-        if (!(row.tp1Done || halfish)) continue;
         row.closed = false;
         row.entryFilled = true;
-        row.tp1Done = true;
         row.qtyRunner = posInDir;
         row.qtySold = Math.max(0, total - posInDir);
         restoreRunnerStop(key, row, posInDir);
