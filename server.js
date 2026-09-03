@@ -8260,7 +8260,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260903-tsl-require-tp1-v8.2.12',
+    server_build: '20260903-restore-sndk-pltr-v8.2.13',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -14566,6 +14566,19 @@ function reArmModelEntry(key, opts) {
     delete h[hz + 'SettledTs'];
     delete h[hz + 'PnlDollar'];
     delete h[hz + 'PnlPct'];
+    delete h[hz + 'LiveTrailSL'];
+    if (Number(opts && opts.entry) > 0) {
+      h[hz + 'Entry'] = Number(opts.entry);
+      h.entry = Number(opts.entry);
+    }
+    if (Number(opts && opts.sl) > 0) {
+      h[hz + 'StopLoss'] = Number(opts.sl);
+      h.stopLoss = Number(opts.sl);
+    }
+    if (Number(opts && opts.tp1) > 0) {
+      h[hz + 'Target1'] = Number(opts.tp1);
+      h.target1 = Number(opts.tp1);
+    }
     h.entryDate = new Date().toISOString();
     assertRiskStateReady('reArmModelEntry');
     let gateOk = true;
@@ -14576,7 +14589,15 @@ function reArmModelEntry(key, opts) {
     if (!gateOk && !force) {
       return { ok: false, emitted: 0, reason: 'shouldEmit-blocked' };
     }
-    const snap = tradeEventSnapshot(h, hz, { reason: 'rearm-model-entry' });
+    const snap = tradeEventSnapshot(h, hz, {
+      reason: 'rearm-model-entry',
+      userReentry: true,
+      skipChase: true,
+      trailSl: null
+    });
+    snap.trailSl = null;
+    snap.userReentry = true;
+    snap.skipChase = true;
     if (snap.side !== 'buy' && snap.side !== 'sell') {
       return { ok: false, emitted: 0, reason: 'bad-side' };
     }
@@ -15758,7 +15779,12 @@ app.post('/api/ibkr/rearm', express.json({ limit: '16kb' }), (req, res) => {
   }
   if (!key) return res.status(400).json({ error: 'key required (ticker|hz|Day)' });
   try {
-    const result = reArmModelEntry(key, { force });
+    const result = reArmModelEntry(key, {
+      force,
+      entry: req.body && req.body.entry,
+      sl: req.body && req.body.sl,
+      tp1: req.body && req.body.tp1
+    });
     res.json({ ok: !!(result && result.ok), ...result });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -15774,7 +15800,12 @@ app.post('/api/ibkr/rearm-entry', express.json({ limit: '16kb' }), (req, res) =>
     key = `${tk}|${hz}|${singaporeToDateString()}`;
   }
   try {
-    const result = reArmModelEntry(key, { force });
+    const result = reArmModelEntry(key, {
+      force,
+      entry: req.body && req.body.entry,
+      sl: req.body && req.body.sl,
+      tp1: req.body && req.body.tp1
+    });
     res.json({ ok: !!(result && result.ok), ...result });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });

@@ -118,6 +118,7 @@ const {
 const {
   isLiveAuthorizedServerExit,
   shouldApplyLiveTslUpdate,
+  initialProtectiveStop,
   isForceCashOpenTicker,
   ignoreServerExitForUnfilledForcePrint
 } = require('../lib/ibkr/live-exit-authority');
@@ -1215,6 +1216,58 @@ async function main() {
       }
     }
     return null;
+  }
+
+  // 3 Sep user restore: illegal TSL dumped these longs; original SL never printed.
+  // Reopen as deferred userReentry so US pre/OPG buys them back. Do not invent size.
+  const USER_REQUESTED_RESTORES = [
+    {
+      key: 'SNDK|short|Tue Aug 25 2026', qty: 7,
+      entry: 1493.12, sl: 1373.67, tp1: 1660.29
+    },
+    {
+      key: 'PLTR|short|Tue Aug 25 2026', qty: 66,
+      entry: 175.89, sl: 164.71, tp1: 189.72
+    }
+  ];
+  function applyUserRequestedRestores() {
+    let n = 0;
+    for (const spec of USER_REQUESTED_RESTORES) {
+      const [ticker, hz] = spec.key.split('|');
+      let row = state.byKey[spec.key];
+      if (row && row.entryFilled && !row.closed) continue;
+      const contract = (row && row.contract) || toContract(ticker);
+      const held = contract ? heldForContract(contract) : null;
+      const posInDir = held ? ((row && row.side === 'sell') ? -held.pos : held.pos) : 0;
+      if (posInDir > 0) continue;
+      if (row && row.userReentry && !row.closed && !row.entryFilled) continue;
+      if (!row) {
+        row = { ticker, hz: hz || 'short', side: 'buy', contract };
+        state.byKey[spec.key] = row;
+      }
+      row.closed = false;
+      row.deferred = true;
+      row.entryFilled = false;
+      row.tp1Done = false;
+      row.userReentry = true;
+      row.parentId = null;
+      row.stopId = null;
+      row.tp1Id = null;
+      row.entryStyle = 'DEFER-US-UNTIL-PRE';
+      row.entry = spec.entry;
+      row.stopPx = spec.sl;
+      row.originalSl = spec.sl;
+      row.tp1Px = spec.tp1;
+      row.qtyTotal = spec.qty;
+      row.qtySold = 0;
+      row.qtyRunner = spec.qty;
+      row.userRestoreReason = 'illegal-tsl-restore-2026-09-03';
+      row.updated = new Date().toISOString();
+      n++;
+      log('USER RESTORE: deferred re-entry', spec.key, 'qty', spec.qty, 'sl', spec.sl);
+    }
+    if (n) saveState(state);
+    return n;
   }
   const _flattenTried = new Map(); // pk -> last reconcile-flatten attempt ts
   const _orphanFlattenedConIds = new Set(); // conIds we sold as "IB-only orphan"
@@ -3026,7 +3079,7 @@ async function main() {
     const isSell = evt.side === 'sell';
     const lot = await resolveLot(contract);
     contract.lotHint = lot;
-    const rawStop = evt.trailSl != null ? evt.trailSl : evt.sl;
+    const rawStop = initialProtectiveStop(evt);
     const nlv = Number(accountSnap.netLiquidation || evt.accountNlv);
     ensureMktData(evt.ticker, contract);
     const sizingQuote = DRY ? null : await waitIbExtQuote(evt.ticker, 800);
@@ -3048,6 +3101,15 @@ async function main() {
       netLiquidityAvailable: availLiq,
       liquidityFloorPct: 0.20
     });
+    if (evt.userReentry) {
+      const forceQty = Number(evt.qtyTotal || evt.sharesTotal);
+      if (forceQty > 0) {
+        const sold = tp1OrderQty(forceQty, lot) || 0;
+        split.total = forceQty;
+        split.sold = Math.min(sold, forceQty);
+        split.runner = Math.max(0, forceQty - split.sold);
+      }
+    }
     if (!(split.total > 0)) {
       log('skip entry — zero size for', evt.ticker, 'entry', evt.entry, 'lot', lot);
       postJson('/api/ibkr/risk-decision', {
@@ -3095,7 +3157,7 @@ async function main() {
     // 06:00 SGT published names are the day's allocation. The 30% gross /
     // country / USD cluster caps are for extras (re-entry, unauthorized), not
     // for blocking the board (DHL-day SNDK/PLTR/ABNB sat behind a 60% book).
-    const portfolioCaps = boardEntry
+    const portfolioCaps = (boardEntry || evt.userReentry)
       ? Object.assign({}, DEFAULT_CAPS, {
         grossPct: 1, netAbsPct: 1, sectorPct: 1,
         countryPct: 1, currencyPct: 1, clusterPct: 1,
@@ -3215,7 +3277,7 @@ async function main() {
       side: evt.side, entryPx: evt.entry, quotePx,
       forceOpg: !!evt.forceOpg,
       forceExt: String(evt.reason || '') === 'rearm-model-entry',
-      skipChase: !!evt.skipChase
+      skipChase: !!evt.skipChase || !!evt.userReentry
     });
     if (parentSpec.defer) {
       log('defer entry', evt.ticker, parentSpec.entryStyle, 'phase=', sessionPhase(contract));
@@ -3233,6 +3295,7 @@ async function main() {
         sector: evt.sector || null, country: evt.country || contract.market,
         correlationCluster: evt.correlationCluster || evt.sector || contract.market,
         riskSizing: split.risk, portfolioAdmission: portfolioGate,
+        userReentry: evt.userReentry === true,
         updated: evt.t || new Date().toISOString(), dry: DRY
       };
     }
@@ -3306,6 +3369,7 @@ async function main() {
       tp1ClientId: tp1Id != null ? execClientId : null,
       riskSizing: split.risk,
       portfolioAdmission: portfolioGate,
+      userReentry: evt.userReentry === true,
       updated: evt.t || new Date().toISOString(), dry: DRY
     };
   }
@@ -5535,6 +5599,7 @@ async function main() {
     if (DRY || !ib) return;
     if (!positionsReady) { log('reconcile skipped — waiting for IB position snapshot'); return; }
     try {
+      applyUserRequestedRestores();
       await rollExpiredFutures();
       // tail=1 → NEWEST 2000 events (oldest-first truncation went stale past
       // the limit). Old keys whose entries fall outside the window fail closed:
@@ -6006,20 +6071,24 @@ async function main() {
             key, ticker: row.ticker, hz: row.hz, side: row.side || src.side,
             entry: src.entry != null ? src.entry : row.entry,
             tp1: src.tp1 != null ? src.tp1 : row.tp1Px,
-            sl: src.sl != null ? src.sl : row.stopPx,
-            trailSl: src.trailSl != null ? src.trailSl : (src.sl != null ? src.sl : row.stopPx),
+            sl: Number(row.originalSl) > 0 ? Number(row.originalSl)
+              : (src.sl != null ? src.sl : row.stopPx),
+            trailSl: null,
             entryDate: src.entryDate || src.t || row.admittedAt,
             t: src.entryDate || src.t || row.admittedAt || new Date().toISOString(),
-            reason: src.reason,
+            reason: src.reason || (row.userReentry ? 'rearm-model-entry' : undefined),
             decisionId: src.decisionId || row.decisionId,
             admittedAt: row.admittedAt,
             sector: src.sector || row.sector,
             country: src.country || row.country,
             correlationCluster: src.correlationCluster || row.correlationCluster,
+            userReentry: !!(row.userReentry || src.userReentry),
+            qtyTotal: Number(row.qtyTotal) || undefined,
             forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-pre-park-opg'
               || reason === 'us-pre-unfavorable-to-opg'
               || reason === 'asia-opg-refresh' || reason === 'asia-to-opg',
-            skipChase: reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg',
+            skipChase: !!(row.userReentry || src.userReentry)
+              || reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg',
             carryUnfilled: (asia && !row.entryFilled) || forceCashOpenActive(row)
           });
           if (placed) {

@@ -5,7 +5,8 @@ const {
   isOperationalIbkrExit,
   isLiveAuthorizedServerExit,
   isPaperPathSimExit,
-  shouldApplyLiveTslUpdate
+  shouldApplyLiveTslUpdate,
+  initialProtectiveStop
 } = require('../lib/ibkr/live-exit-authority');
 
 assert.strictEqual(isPaperPathSimExit({
@@ -48,6 +49,16 @@ assert.strictEqual(shouldApplyLiveTslUpdate({
 assert.strictEqual(shouldApplyLiveTslUpdate({
   closed: false, tp1Done: false, qtyTotal: 413, qtySold: 207, qtyRunner: 206
 }), false, 'working TP1 qty is not a fill — no TSL');
+
+assert.strictEqual(initialProtectiveStop({
+  side: 'buy', entry: 1493.12, sl: 1373.67, trailSl: 1533.69
+}), 1373.67, 'long TSL must not replace the original SL');
+assert.strictEqual(initialProtectiveStop({
+  side: 'buy', entry: 175.89, sl: 164.71, trailSl: null
+}), 164.71);
+assert.strictEqual(initialProtectiveStop({
+  side: 'sell', entry: 100, sl: 110, trailSl: 95
+}), 110, 'short TSL must not replace the original SL');
 
 const {
   isForceCashOpenTicker,
