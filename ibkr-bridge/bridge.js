@@ -36,8 +36,9 @@
  *                    TP2 on the live book is the runner TSL, not a second limit.
  *     TP1 fill     → IB orderStatus on the TP1 child only. Stop resized to the
  *                    runner and raised to breakeven. Server `tp1_partial` is ignored.
- *     tsl_update   → after TP1 is done (IB fill or remaining runner), ratchet
- *                    the live STP. Never loosen. Never apply if TP1 has not
+ *     tsl_update   → paper History may emit this; live authority is the bridge
+ *                    daily catch-up after a real IB TP1 print (tp1Done).
+ *                    Never loosen. Never apply if TP1 has not
  *                    actually been banked. TP2 is a History reference only.
  *     exit         → flatten only on a live Buy↔Sell flip or an operational
  *                    close (unauthorized / abandon / IB-flat). Paper `tp1_then_sl`
@@ -104,7 +105,7 @@ const {
   maybeTwoLotTotal,
   isLimitTp1Fill
 } = require('../lib/ibkr/tp1-policy');
-const { tslAfterTp1 } = require('../lib/ibkr/tsl-policy');
+const { tslAfterTp1, catchUpTslFromDailyBars, pickLiveTslCatchUp } = require('../lib/ibkr/tsl-policy');
 const { rebaseExitsFromFill } = require('../lib/ibkr/fill-rebase');
 const { evaluatePortfolioAddition, DEFAULT_CAPS } = require('../lib/risk/portfolio');
 const { BridgeSqliteStore } = require('../lib/storage/bridge-sqlite');
@@ -413,6 +414,41 @@ function fetchYahooExtQuote(ticker) {
     }
     return null;
   })();
+}
+
+function fetchYahooDailyBars(ticker) {
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    Accept: 'application/json',
+    'Accept-Language': 'en-US,en;q=0.9',
+    Referer: 'https://finance.yahoo.com/',
+    Origin: 'https://finance.yahoo.com'
+  };
+  const url = 'https://query1.finance.yahoo.com/v8/finance/chart/'
+    + encodeURIComponent(ticker) + '?interval=1d&range=3mo';
+  return new Promise((resolve) => {
+    const req = https.get(url, { headers }, res => {
+      let raw = '';
+      res.on('data', c => { raw += c; });
+      res.on('end', () => {
+        try {
+          const r = JSON.parse(raw)?.chart?.result?.[0];
+          const q = r && r.indicators && r.indicators.quote && r.indicators.quote[0];
+          const ts = (r && r.timestamp) || [];
+          if (!q || !ts.length) return resolve([]);
+          const bars = [];
+          for (let i = 0; i < ts.length; i++) {
+            const o = Number(q.open && q.open[i]);
+            const c = Number(q.close && q.close[i]);
+            if (o > 0 || c > 0) bars.push({ t: ts[i] * 1000, o: o || c, c: c || o });
+          }
+          resolve(bars);
+        } catch (_) { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.setTimeout(8000, () => { try { req.destroy(); } catch (_) {} resolve([]); });
+  });
 }
 
 function postJson(urlPath, body) {
@@ -3545,6 +3581,7 @@ async function main() {
     } else {
       cancelOrder(row.stopId, 'stop (no runner) ' + key);
     }
+    row.tp1FilledAt = row.tp1FilledAt || new Date().toISOString();
     log('TP1 filled', key, '— stop resized to runner', row.qtyRunner, '@ TSL', runnerStop);
     cancelExtraStopsAfterTp1(key, row).catch(e => log('extra-stop cancel failed', key, e.message));
     if (!DRY && telegramConfigured()) {
@@ -3557,6 +3594,147 @@ async function main() {
         .then(() => log('TELEGRAM: TP1 hit sent', key))
         .catch(e => log('TELEGRAM: TP1 hit failed', e.message));
     }
+  }
+
+  /**
+   * After a real IB TP1 print, the live STP must ratchet from daily opens.
+   * Paper History `tsl_update` is not the authority — it almost never arrives
+   * with tp1Done, so runners sat at the original SL until they were stopped out.
+   */
+  const _tslCatchUpAt = new Map();
+  async function applyLiveRunnerTsl() {
+    const now = Date.now();
+    let n = 0;
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (!row || row.closed || row.tp1Done !== true || !row.entryFilled) continue;
+      if (!row.contract || row.stopId == null) continue;
+      const held = heldForContract(row.contract);
+      const posInDir = held
+        ? (row.side === 'sell' ? -held.pos : held.pos)
+        : 0;
+      if (!(posInDir > 0)) continue;
+      const lastAt = _tslCatchUpAt.get(key) || 0;
+      if (lastAt > 0 && now - lastAt < 55 * 60 * 1000) continue;
+      _tslCatchUpAt.set(key, now);
+
+      const isSell = row.side === 'sell';
+      const entryPx = Number(row.ibAvgFill || row.entry) || 0;
+      const floorTsl = tslAfterTp1({
+        entry: entryPx,
+        tp1: Number(row.tp1Px),
+        sl: Number(row.originalSl || row.stopPx),
+        isSell
+      });
+      const y = normalizeYahooTicker(row.ticker);
+      let bars = [];
+      try { bars = await fetchYahooDailyBars(y || row.ticker); } catch (_) {}
+      let caught = 0;
+      if (bars.length >= 2) {
+        const tp1At = Date.parse(row.tp1FilledAt || row.tp1AttachAttemptAt || 0);
+        let after = bars;
+        if (Number.isFinite(tp1At) && tp1At > 0) {
+          const cut = bars.findIndex((b, i) => i > 0 && b.t >= tp1At - 86400000);
+          if (cut > 0) after = bars.slice(Math.max(0, cut - 1));
+        } else {
+          after = bars.slice(-20);
+        }
+        caught = catchUpTslFromDailyBars(
+          floorTsl > 0 ? floorTsl : Number(row.stopPx),
+          after,
+          isSell,
+          entryPx
+        );
+      }
+      const lastPx = Number(portfolioMarks.get(y) && portfolioMarks.get(y).price)
+        || Number(portfolioMarks.get(row.ticker) && portfolioMarks.get(row.ticker).price)
+        || 0;
+      const raw = pickLiveTslCatchUp({
+        current: Number(row.stopPx) || 0,
+        floorTsl,
+        caught,
+        lastPx,
+        isSell
+      });
+      if (!(raw > 0)) {
+        if (lastPx > 0 && floorTsl > 0) {
+          log('TSL catch-up skipped — through last', key, 'floor', floorTsl, 'last', lastPx);
+        }
+        continue;
+      }
+      const want = runnerStopPx(row, raw);
+      const improves = isSell ? want < Number(row.stopPx) : want > Number(row.stopPx);
+      if (!improves || !(want > 0)) continue;
+      row.stopPx = want;
+      row.lastTslRatchetAt = new Date().toISOString();
+      transmitOrder(row.stopId, row.contract, baseOrder({
+        orderId: row.stopId,
+        action: isSell ? 'BUY' : 'SELL',
+        orderType: 'STP', auxPrice: want, totalQuantity: posInDir,
+        transmit: true
+      }), 'tsl live-catchup ' + key);
+      n++;
+      log('TSL live catch-up', key, 'stp', want, 'qty', posInDir);
+    }
+    if (n) saveState(state);
+    return n;
+  }
+
+  /** IB already printed TP1 on a worker; manager never saw orderStatus Filled. */
+  function latchMissedTp1FromExecs() {
+    let n = 0;
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (!row || row.closed || row.tp1Done || !row.entryFilled || !row.contract) continue;
+      const tp1Px = Number(row.tp1Px) || 0;
+      if (!(tp1Px > 0)) continue;
+      const yRow = normalizeYahooTicker(row.ticker);
+      const cid = Number(row.contract.conId) || 0;
+      const wantClose = row.side === 'sell' ? 'BOT' : 'SLD';
+      const lot = Number(row.contract.lotHint) || 1;
+      const half = Number(row.qtySold) > 0
+        ? Number(row.qtySold)
+        : (tp1OrderQty(Number(row.qtyTotal) || 0, lot) || 0);
+      const match = (_execHistBuf || []).find((e) => {
+        if (!e || !e.exec) return false;
+        if (row.tp1Id != null && Number(e.orderId) === Number(row.tp1Id)) {
+          return isLimitTp1Fill({
+            fillPx: Number(e.price), tp1Px, isSellPosition: row.side === 'sell',
+            orderType: String(e.exec.orderType || 'LMT').toUpperCase(),
+            isFlattenOrder: false
+          });
+        }
+        const ey = normalizeYahooTicker(yahooFromContract(e.contract) || '');
+        const cidExec = Number(e.contract && e.contract.conId) || 0;
+        const same = (cid > 0 && cidExec === cid) || (!!ey && ey === yRow);
+        if (!same) return false;
+        const side = String(e.exec.side || '').toUpperCase();
+        const okSide = side === wantClose
+          || side === (wantClose === 'SLD' ? 'SELL' : 'BUY')
+          || side === (wantClose === 'SLD' ? 'S' : 'B');
+        if (!okSide) return false;
+        const qty = Number(e.exec.shares) || 0;
+        if (half > 0 && Math.abs(qty - half) > 1e-6) return false;
+        return isLimitTp1Fill({
+          fillPx: Number(e.price), tp1Px, isSellPosition: row.side === 'sell',
+          orderType: String(e.exec.orderType || 'LMT').toUpperCase(),
+          isFlattenOrder: false
+        });
+      });
+      if (!match) continue;
+      const shares = Number(match.exec.shares) || half || 0;
+      const held = heldForContract(row.contract);
+      const posInDir = held
+        ? (row.side === 'sell' ? Math.max(0, -held.pos) : Math.max(0, held.pos))
+        : 0;
+      if (shares > 0) row.qtySold = shares;
+      if (posInDir > 0) row.qtyRunner = posInDir;
+      if (match.orderId) row.tp1Id = Number(match.orderId);
+      onTp1Filled(key, row);
+      n++;
+      log('TSL latch: missed TP1 print recovered from IB execs', key,
+        shares + '@' + Number(match.price));
+    }
+    if (n) saveState(state);
+    return n;
   }
 
   function onOrderStatus(orderId, status, filled, avgFillPrice) {
@@ -4254,7 +4432,8 @@ async function main() {
     const backfilled = backfillRealEntriesFromHistory(serverTrades, usedExecIds);
     queueCommissionPatchesFromMap();
     queueMissingCommissionPatches(serverTrades);
-    if (queued || backfilled) saveState(state);
+    const latched = latchMissedTp1FromExecs();
+    if (queued || backfilled || latched) saveState(state);
     await flushReports();
   }
 
@@ -6153,9 +6332,12 @@ async function main() {
           }
           continue;
         }
-        if (posInDir > 0 && parentFilledQty > 0) {
-          row.entryFilled = true;
-          saveState(state);
+        if (posInDir > 0) {
+          if (!row.entryFilled) {
+            row.entryFilled = true;
+            saveState(state);
+            log('RECONCILE: entryFilled from IB position', key, 'qty', posInDir);
+          }
           continue;
         }
         // Never chase keys older than the event-age gate (prevents Aug 05
@@ -6696,6 +6878,7 @@ async function main() {
         const working = await listWorkingOrders();
         await ensureWorkingStops(working);
         await ensureWorkingTp1Children(working);
+        await applyLiveRunnerTsl();
         const findings = collectRiskFindings(keyState, lastIbReconResp);
         await maybeSendRiskAlert(findings);
       } catch (e) { log('TELEGRAM: risk check failed', e.message); }
@@ -6803,6 +6986,7 @@ async function main() {
         const working = await listWorkingOrders();
         await ensureWorkingStops(working);
         await ensureWorkingTp1Children(working);
+        await applyLiveRunnerTsl();
       })().catch(e => log('ensure-exits error', e.message));
     }
     // HK afternoon reopen: chase rows that are not on a live RTH MKT yet.
