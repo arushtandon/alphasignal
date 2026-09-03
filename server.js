@@ -38,7 +38,7 @@ const {
   isLiveAuthorizedServerExit
 } = require('./lib/ibkr/live-exit-authority');
 const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/account-performance');
-const { ibkrExitQualityType, summarizeExitQuality } = require('./lib/ibkr/exit-quality');
+const { ibkrExitQualityType, summarizeExitQuality, bookedExitPnlUsd, fillExitPnlUsd } = require('./lib/ibkr/exit-quality');
 const { ibkrAvgToFillUnit, futuresMultiplierFor } = require('./lib/ibkr/avg-cost');
 const { fifoLotEconomics } = require('./lib/ibkr/fifo-lots');
 const { officialFuturesSettlePx, officialFuturesSettleDate, futuresStillTradable } = require('./lib/ibkr/commodity-futures');
@@ -8261,7 +8261,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260903-ibkr-stats-font-math-v8.2.16',
+    server_build: '20260903-hist-tp-booked-v8.2.17',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -17606,6 +17606,14 @@ app.get('/api/ibkr/trades', async (req, res) => {
       t.realizedUsd = lotClosed
         ? +(realizedGrossUsd - commissionUsd).toFixed(2)
         : +realizedGrossUsd.toFixed(2);
+      const booked = bookedExitPnlUsd(t, fx);
+      t.tp1RealizedUsd = booked.tp1Usd;
+      t.tp2RealizedUsd = booked.tp2Usd;
+      t.restRealizedUsd = booked.restUsd;
+      for (const f of t.fills) {
+        if (!f || f.role === 'entry') continue;
+        f.realizedUsd = +fillExitPnlUsd(t, f, fx).toFixed(2);
+      }
       let mark = markMap[t.ticker] && Number(markMap[t.ticker].price) > 0 ? Number(markMap[t.ticker].price) : null;
       // LSE fills are in pence (ccyScale=100); IB sometimes ticks in pounds.
       if (mark != null && t.ccyScale === 100 && t.avgEntry > 0 && mark * 10 < t.avgEntry) mark *= 100;

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260903-ibkr-stats-font-math-v8.2.16">
+<meta name="alphasignal-build" content="20260903-hist-tp-booked-v8.2.17">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1966,11 +1966,6 @@ function ibkrTradeLifecycle(t) {
         tp2Print = px;
       }
     }
-    const mark = Number(t.mark) || 0;
-    if (!tp2Hit && mark > 0 && (isSell ? mark <= tp2Px : mark >= tp2Px)) {
-      tp2Hit = true;
-      tp2Print = mark;
-    }
   }
   return {
     entryQty: t.entryQty,
@@ -2002,6 +1997,58 @@ function ibkrTradeLifecycle(t) {
     fills: fills
   };
 }
+function ibkrFillBookedUsd(t, f) {
+  if (!f || f.role === 'entry') return 0;
+  if (String(f.recon || '') === 'futures-roll') return 0;
+  if (f.realizedUsd != null && Number.isFinite(Number(f.realizedUsd))) return Number(f.realizedUsd);
+  const local = Number(f.realizedLocal);
+  const tradeLocal = Number(t && t.realizedLocal);
+  const gross = Number(t && t.realizedUsdGross);
+  const fx = (Number.isFinite(tradeLocal) && tradeLocal !== 0 && Number.isFinite(gross))
+    ? (gross / tradeLocal) : 1;
+  if (Number.isFinite(local)) return local * fx;
+  const dir = t && t.side === 'sell' ? -1 : 1;
+  const qty = Number(f.qty) || 0;
+  const px = Number(f.price) || 0;
+  const entry = Number(t && t.avgEntry) || 0;
+  const mult = Number(f.multiplier || (t && t.multiplier)) || 1;
+  const scale = Number(t && t.ccyScale) || 1;
+  if (!(qty > 0) || !(px > 0) || !(entry > 0)) return 0;
+  return ((px - entry) * qty * dir * mult / scale) * fx;
+}
+function ibkrBookedExitPnl(t) {
+  if (!t) return { tp1Usd: null, tp2Usd: null, restUsd: null, netUsd: 0 };
+  if (t.tp1RealizedUsd != null || t.tp2RealizedUsd != null) {
+    return {
+      tp1Usd: t.tp1RealizedUsd != null ? Number(t.tp1RealizedUsd) : 0,
+      tp2Usd: t.tp2RealizedUsd != null ? Number(t.tp2RealizedUsd) : 0,
+      restUsd: t.restRealizedUsd != null ? Number(t.restRealizedUsd) : 0,
+      netUsd: Number(t.realizedUsd) || 0
+    };
+  }
+  const rec = t.rec || {};
+  const tp2Px = Number(rec.tp2) || 0;
+  const isSell = t.side === 'sell';
+  let tp1 = 0, tp2 = 0, rest = 0;
+  for (const f of t.fills || []) {
+    if (!f || f.role === 'entry' || String(f.recon || '') === 'futures-roll') continue;
+    const usd = ibkrFillBookedUsd(t, f);
+    if (f.role === 'tp1') { tp1 += usd; continue; }
+    const px = Number(f.price) || 0;
+    const through = f.role === 'tp2' || (tp2Px > 0 && px > 0 && (isSell ? px <= tp2Px : px >= tp2Px));
+    if (through) tp2 += usd;
+    else rest += usd;
+  }
+  return {
+    tp1Usd: +tp1.toFixed(2),
+    tp2Usd: +tp2.toFixed(2),
+    restUsd: +rest.toFixed(2),
+    netUsd: Number(t.realizedUsd) || 0
+  };
+}
+function ibkrHistSortKey(t) {
+  return String((t && (t.lastExitTime || t.lastTime || t.entryTime)) || '');
+}
 function renderIbkrHistoryLedger(d, hzKey, view) {
   if (!d || !d.trades) {
     return '<div style="padding:14px 12px;color:var(--m2);font-family:DM Mono,monospace;font-size:11px">Loading IBKR fills…</div>';
@@ -2010,7 +2057,17 @@ function renderIbkrHistoryLedger(d, hzKey, view) {
   if (hzKey && hzKey !== 'all') trades = trades.filter(function (t) { return (t.hz || 'short') === hzKey; });
   const live = trades.filter(function (t) { return t.status === 'open' || t.status === 'partial'; });
   const closed = trades.filter(function (t) { return t.status === 'closed'; });
-  const show = view === 'closed' ? closed : live;
+  const byExit = function (a, b) {
+    const ka = ibkrHistSortKey(a);
+    const kb = ibkrHistSortKey(b);
+    if (ka === kb) return String(a.entryTime || '').localeCompare(String(b.entryTime || ''));
+    if (!ka) return 1;
+    if (!kb) return -1;
+    return ka < kb ? -1 : 1;
+  };
+  live.sort(byExit);
+  closed.sort(byExit);
+  const show = (view === 'closed' ? closed : live).slice();
   const liveN = live.length, closedN = closed.length;
   const pnlSum = show.reduce(function (s, t) {
     return s + (Number(t.realizedUsd) || 0) + (view === 'closed' ? 0 : (Number(t.unrealizedUsd) || 0));
@@ -2020,7 +2077,7 @@ function renderIbkrHistoryLedger(d, hzKey, view) {
   const cell = function (html, align, col) {
     return '<td style="padding:8px 9px;border-bottom:1px solid var(--b1);text-align:'+(align||'left')+';vertical-align:top;font-family:DM Mono,monospace;font-size:12px;color:'+(col||'var(--tx)')+'">'+html+'</td>';
   };
-  const hitBox = function (hit, label, px, qty, when, target) {
+  const hitBox = function (hit, label, px, qty, when, target, bookedUsd) {
     const ok = !!hit;
     const col = ok ? 'var(--buy)' : 'var(--m2)';
     const title = ok ? 'Hit' : 'Not hit';
@@ -2030,38 +2087,52 @@ function renderIbkrHistoryLedger(d, hzKey, view) {
     if (target != null && target !== '') {
       line += '<div style="font-size:11px;color:var(--m1)">tgt '+fmtPx(target)+'</div>';
     }
+    if (ok && bookedUsd != null && Number.isFinite(Number(bookedUsd))) {
+      line += '<div style="margin-top:4px;font-size:13px;font-weight:600;color:'+ibkrPc(bookedUsd)+'">'+ibkrFp(bookedUsd)+'</div>';
+    } else {
+      line += '<div style="margin-top:4px;font-size:12px;color:var(--m1)">—</div>';
+    }
     return line;
   };
   const rows = show.map(function (t) {
     const lc = ibkrTradeLifecycle(t);
+    const booked = ibkrBookedExitPnl(t);
     const dirC = t.side === 'sell' ? 'var(--sell)' : 'var(--buy)';
     const fillLines = (lc.fills || []).map(function (f) {
       const role = String(f.role || 'fill').toUpperCase();
+      const fillPnl = f.role !== 'entry' ? ibkrFillBookedUsd(t, f) : null;
       return '<div style="font-size:11px;color:var(--m2);padding:1px 0">'
         + role + ' ' + (f.qty || 0) + ' @ ' + fmtPx(f.price)
         + ' · ' + ibkrFmtWhenSgt(f.time) + ' SGT'
         + (f.sessionLabel ? ' · ' + f.sessionLabel : '')
+        + (fillPnl != null && Number.isFinite(fillPnl) ? ' · <span style="color:'+ibkrPc(fillPnl)+'">'+ibkrFp(fillPnl)+'</span>' : '')
         + (f.commission != null ? ' · comm ' + f.commission + ' ' + (f.commissionCcy || '') : '')
         + '</div>';
     }).join('');
     const slLabel = lc.slHit ? 'TSL/SL hit' : (lc.tsl ? 'TSL live' : 'SL');
     const slPx = lc.slHit ? lc.slPx : (lc.tsl != null ? lc.tsl : lc.sl);
+    const bookedCell = '<div style="font-size:11px;color:var(--m2)">TP1 <span style="font-size:13px;font-weight:600;color:'
+      +ibkrPc(lc.tp1Hit?booked.tp1Usd:null)+'">'+(lc.tp1Hit?ibkrFp(booked.tp1Usd):'—')+'</span></div>'
+      +'<div style="font-size:11px;color:var(--m2);margin-top:3px">TP2 <span style="font-size:13px;font-weight:600;color:'
+      +ibkrPc(booked.tp2Usd)+'">'+((lc.tp2Hit && booked.tp2Usd)?ibkrFp(booked.tp2Usd):'—')+'</span></div>'
+      +'<div style="font-size:11px;color:var(--m2);margin-top:4px">Net <span style="font-size:14px;font-weight:700;color:'
+      +ibkrPc(booked.netUsd)+'">'+ibkrFp(booked.netUsd)+'</span></div>';
     return '<tr>'
       + cell('<div style="font-weight:600;color:var(--tx);font-size:13px">'+t.ticker+'</div>'
         +'<div style="font-size:11px;color:var(--m2);text-transform:uppercase">'+(t.hz||'short')+'</div>', 'left')
       + cell(String(t.side||'').toUpperCase(), 'left', dirC)
       + cell(String(lc.entryQty||t.entryQty||'—'), 'right')
       + cell(fmtPx(lc.entryPx)+'<div style="font-size:11px;color:var(--m2);margin-top:2px">'+ibkrFmtWhenSgt(lc.entryAt)+' SGT</div>', 'right')
-      + cell(hitBox(lc.tp1Hit, 'TP1', lc.tp1Px, lc.tp1Qty, lc.tp1At, lc.tp1Target), 'left')
-      + cell(hitBox(lc.tp2Hit, 'TP2', lc.tp2Print, 0, lc.tp2At, lc.tp2Target), 'left')
-      + cell(hitBox(lc.slHit, slLabel, slPx, lc.slQty, lc.slAt, lc.sl), 'left')
+      + cell(hitBox(lc.tp1Hit, 'TP1', lc.tp1Px, lc.tp1Qty, lc.tp1At, lc.tp1Target, lc.tp1Hit ? booked.tp1Usd : null), 'left')
+      + cell(hitBox(lc.tp2Hit, 'TP2', lc.tp2Print, 0, lc.tp2At, lc.tp2Target, (lc.tp2Hit && booked.tp2Usd) ? booked.tp2Usd : null), 'left')
+      + cell(hitBox(lc.slHit, slLabel, slPx, lc.slQty, lc.slAt, lc.sl, (lc.slHit && Math.abs(booked.restUsd) > 0.5) ? booked.restUsd : null), 'left')
       + cell((lc.exitQty>0?fmtPx(lc.exitPx)+' ×'+lc.exitQty:'—')
         +'<div style="font-size:11px;color:var(--m2);margin-top:2px">'+(lc.exitAt?ibkrFmtWhenSgt(lc.exitAt)+' SGT':'open '+(lc.openQty||0))+'</div>', 'right')
-      + cell(ibkrFp(t.realizedUsd), 'right', ibkrPc(t.realizedUsd))
+      + cell(bookedCell, 'right')
       + cell(t.openQty>0?ibkrFp(t.unrealizedUsd):'—', 'right', t.openQty>0?ibkrPc(t.unrealizedUsd):'var(--m1)')
       + cell('<div>'+(t.status||'—')+'</div><div style="font-size:11px;color:var(--m2)">'+(t.exitType||'—')+'</div>', 'left', 'var(--m2)')
       + cell('<details><summary style="cursor:pointer;color:var(--ac);font-size:11px">'+(lc.fills||[]).length+' fills</summary>'
-        +'<div style="margin-top:4px;max-width:320px">'+ (fillLines || '<span style="color:var(--m1)">none</span>') +'</div></details>', 'left')
+        +'<div style="margin-top:4px;max-width:360px">'+ (fillLines || '<span style="color:var(--m1)">none</span>') +'</div></details>', 'left')
       + '</tr>';
   }).join('');
   const th = 'padding:8px;font-size:11px;font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:.06em;font-weight:500;border-bottom:1px solid var(--b1);background:var(--s2);color:var(--tx)';
@@ -2084,11 +2155,12 @@ function renderIbkrHistoryLedger(d, hzKey, view) {
     +'<th style="text-align:left;'+th+'">TP2 hit · date</th>'
     +'<th style="text-align:left;'+th+'">TSL / SL hit · date</th>'
     +'<th style="text-align:right;'+th+'">Exit · date</th>'
-    +'<th style="text-align:right;'+th+'">Realised</th>'
+    +'<th style="text-align:right;'+th+'">Booked · TP1 / TP2 / Net</th>'
     +'<th style="text-align:right;'+th+'">Unrealised</th>'
     +'<th style="text-align:left;'+th+'">Status</th>'
     +'<th style="text-align:left;'+th+'">All fills</th>'
-    +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    +'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div style="font-size:11px;color:var(--m1);font-family:DM Mono,monospace;padding:8px 10px 4px;line-height:1.45">TP1 / TP2 are fill dollars. Net is after closed commission. Oldest exit first.</div></div>';
 }
 function rememberIbkrBook(d) {
   _ibkrLastPayload = d;

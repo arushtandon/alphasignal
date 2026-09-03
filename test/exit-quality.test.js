@@ -58,3 +58,39 @@ test('open runner with flatten fill is not a flatten-exit dollar', () => {
   assert.equal(q.buckets.find((b) => b.type === 'flatten exit').n, 0);
   assert.equal(q.buckets.find((b) => b.type === 'tp1 banked — runner live').realizedUsd, 50);
 });
+
+test('TP1 fill PnL is booked separately from a TSL that never reached TP2', () => {
+  const { bookedExitPnlUsd } = require('../lib/ibkr/exit-quality');
+  const t = {
+    side: 'buy',
+    avgEntry: 100,
+    rec: { tp2: 120 },
+    fills: [
+      { role: 'entry', qty: 100, price: 100 },
+      { role: 'tp1', qty: 50, price: 110, realizedLocal: 500 },
+      { role: 'stop', qty: 50, price: 105, realizedLocal: 250 }
+    ]
+  };
+  const b = bookedExitPnlUsd(t, 1);
+  assert.equal(b.tp1Usd, 500);
+  assert.equal(b.tp2Usd, 0);
+  assert.equal(b.restUsd, 250);
+  assert.equal(b.grossUsd, 750);
+});
+
+test('runner fill through TP2 is booked as TP2, not TSL remainder', () => {
+  const { bookedExitPnlUsd } = require('../lib/ibkr/exit-quality');
+  const t = {
+    side: 'buy',
+    avgEntry: 100,
+    rec: { tp2: 118 },
+    fills: [
+      { role: 'tp1', qty: 50, price: 110, realizedLocal: 500 },
+      { role: 'stop', qty: 50, price: 119, realizedLocal: 950 }
+    ]
+  };
+  const b = bookedExitPnlUsd(t, 1);
+  assert.equal(b.tp1Usd, 500);
+  assert.equal(b.tp2Usd, 950);
+  assert.equal(b.restUsd, 0);
+});
