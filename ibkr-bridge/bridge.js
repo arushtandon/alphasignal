@@ -3615,7 +3615,6 @@ async function main() {
       if (!(posInDir > 0)) continue;
       const lastAt = _tslCatchUpAt.get(key) || 0;
       if (lastAt > 0 && now - lastAt < 55 * 60 * 1000) continue;
-      _tslCatchUpAt.set(key, now);
 
       const isSell = row.side === 'sell';
       const entryPx = Number(row.ibAvgFill || row.entry) || 0;
@@ -3645,20 +3644,27 @@ async function main() {
           entryPx
         );
       }
-      const lastPx = Number(portfolioMarks.get(y) && portfolioMarks.get(y).price)
+      let lastPx = Number(portfolioMarks.get(y) && portfolioMarks.get(y).price)
         || Number(portfolioMarks.get(row.ticker) && portfolioMarks.get(row.ticker).price)
         || 0;
+      if (!(lastPx > 0) && bars.length) {
+        lastPx = Number(bars[bars.length - 1].c) || 0;
+      }
+      if (!(lastPx > 0)) {
+        log('TSL catch-up deferred — no last print', key);
+        continue;
+      }
+      _tslCatchUpAt.set(key, now);
       const raw = pickLiveTslCatchUp({
         current: Number(row.stopPx) || 0,
         floorTsl,
         caught,
         lastPx,
-        isSell
+        isSell,
+        minGapPct: 0.006
       });
       if (!(raw > 0)) {
-        if (lastPx > 0 && floorTsl > 0) {
-          log('TSL catch-up skipped — through last', key, 'floor', floorTsl, 'last', lastPx);
-        }
+        log('TSL catch-up skipped — through/tight last', key, 'floor', floorTsl, 'last', lastPx);
         continue;
       }
       const want = runnerStopPx(row, raw);
@@ -5834,6 +5840,7 @@ async function main() {
         const dayPart = key.split('|')[2];
         const keyTs = Date.parse(dayPart || 0);
         if (!Number.isFinite(keyTs) || (Date.now() - keyTs) <= STALE_ORDER_MS) continue;
+        if (row.userReentry && !row.entryFilled) continue;
         const held = heldForContract(row.contract);
         const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
         if (posInDir > 0) continue; // still live long/short in thesis direction — leave alone

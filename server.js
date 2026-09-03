@@ -8260,7 +8260,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260903-restore-sndk-pltr-v8.2.13',
+    server_build: '20260903-ibkr-history-ledger-v8.2.14',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',

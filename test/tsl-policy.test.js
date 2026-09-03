@@ -53,14 +53,28 @@ test('catch-up applies each favorable open after TP1', () => {
 
 test('catch-up clips to post-TP1 floor when the daily walk is through last', () => {
   const picked = pickLiveTslCatchUp({
-    current: 22.94, floorTsl: 24.93, caught: 25.40, lastPx: 24.96, isSell: false
+    current: 22.94, floorTsl: 24.93, caught: 25.40, lastPx: 25.20, isSell: false
   });
   assert.equal(+picked.toFixed(2), 24.93);
+});
+
+test('catch-up skips a 1-tick park under last (0883 dump)', () => {
+  const picked = pickLiveTslCatchUp({
+    current: 22.94, floorTsl: 24.93, caught: 25.40, lastPx: 24.96, isSell: false
+  });
+  assert.equal(picked, 0);
 });
 
 test('catch-up skips entirely when even the floor is through last', () => {
   const picked = pickLiveTslCatchUp({
     current: 22.94, floorTsl: 24.93, caught: 25.40, lastPx: 24.80, isSell: false
+  });
+  assert.equal(picked, 0);
+});
+
+test('catch-up refuses when last is missing', () => {
+  const picked = pickLiveTslCatchUp({
+    current: 22.94, floorTsl: 24.93, caught: 25.40, lastPx: 0, isSell: false
   });
   assert.equal(picked, 0);
 });
