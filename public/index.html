@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="alphasignal-build" content="20260903-ibkr-history-ledger-v8.2.14">
+<meta name="alphasignal-build" content="20260903-ibkr-open-dropdown-v8.2.15">
 <meta name="theme-color" content="#07080B">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -31,6 +31,14 @@ body::after{content:'';position:fixed;top:-40%;left:-20%;width:80%;height:80%;ba
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--b2);border-radius:2px}
+.ibkr-book{font-family:'DM Sans',sans-serif;letter-spacing:0.01em}
+.ibkr-book summary{list-style-position:outside;font-family:'DM Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;cursor:pointer;padding:6px 8px;line-height:1.35}
+.ibkr-book summary::-webkit-details-marker{color:currentColor}
+.ibkr-book table{width:100%;border-collapse:collapse;min-width:1100px;font-variant-numeric:tabular-nums lining-nums}
+.ibkr-book th{padding:5px 7px;font-family:'DM Sans',sans-serif;font-size:7px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--tx);border-bottom:1px solid var(--b1);background:var(--s2)}
+.ibkr-book td{padding:4px 7px;font-family:'DM Mono',monospace;font-size:8px;line-height:1.4;font-weight:400;color:var(--tx);font-variant-numeric:tabular-nums}
+.ibkr-book .ibkr-tk{font-family:'DM Sans',sans-serif;font-size:8px;font-weight:600;letter-spacing:0.02em}
+.ibkr-book .ibkr-sub{font-size:7px;color:var(--m2);letter-spacing:0.02em}
 
 /* HEADER */
 header{position:sticky;top:0;z-index:300;background:rgba(7,8,11,0.88);backdrop-filter:blur(24px);border-bottom:1px solid var(--b1);padding:0 max(1rem, env(safe-area-inset-left)) 0 max(1rem, env(safe-area-inset-right));height:56px;display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -2467,9 +2475,12 @@ async function renderIbkr(force){
   if (!el) return;
   if (_ibkrMtmBusy) { _ibkrMtmQueued = true; return; }
   _ibkrMtmBusy = true;
+  let keepOpenOpen = true;
   let keepRealisedOpen = false;
   let keepErrorOpen = false;
   try {
+    const openEl = document.getElementById('ibkrOpenDetails');
+    keepOpenOpen = openEl ? !!openEl.open : true;
     keepRealisedOpen = !!(document.getElementById('ibkrRealisedDetails') || {}).open;
     keepErrorOpen = !!(document.getElementById('ibkrErrorDetails') || {}).open;
   } catch (_) {}
@@ -2606,8 +2617,8 @@ async function renderIbkr(force){
       + riskBanner
       + rcBanner;
 
-    const th = s => '<th style="text-align:'+s+';padding:4px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;border-bottom:1px solid var(--b1)">';
-    const td = (s,c) => '<td style="text-align:'+s+';padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;color:'+(c||'var(--t1)')+'">';
+    const th = s => '<th style="text-align:'+s+'">';
+    const td = (s,c) => '<td style="text-align:'+s+';color:'+(c||'var(--tx)')+'">';
 
     let dailyHtml = '';
     if (d.daily.length) {
@@ -2615,8 +2626,8 @@ async function renderIbkr(force){
         '<tr>'+td('left','var(--m2)')+x.date+'</td>'
         +td('right',pc(x.realizedUsd))+fp(x.realizedUsd)+'</td>'
         +td('right',pc(x.cumUsd))+fp(x.cumUsd)+'</td></tr>').join('');
-      dailyHtml = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:14px;max-width:420px">'
-        +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">Daily realised PnL (USD)</div>'
+      dailyHtml = '<div class="ibkr-book" style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:14px;max-width:420px">'
+        +'<div style="font-size:8px;letter-spacing:0.06em;text-transform:uppercase;color:var(--m2);font-family:DM Sans,sans-serif;font-weight:600;padding:0 8px 5px">Daily realised PnL (USD)</div>'
         +'<table style="width:100%;border-collapse:collapse"><thead><tr>'
         + th('left')+'Date</th>'+th('right')+'Realised</th>'+th('right')+'Cumulative</th>'
         +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
@@ -2715,9 +2726,9 @@ async function renderIbkr(force){
       const showReal = t.realizedUsd;
       const realNote = (t.tickerGroupRealizedUsd != null && t.hasFlatten
         && Math.abs(t.tickerGroupRealizedUsd - t.realizedUsd) > 0.005)
-        ? ' <span style="font-size:8px;color:var(--m1)" title="All flatten legs on this ticker">Σ '+fp(t.tickerGroupRealizedUsd)+'</span>'
+        ? ' <span class="ibkr-sub" title="All flatten legs on this ticker">Σ '+fp(t.tickerGroupRealizedUsd)+'</span>'
         : (t.commissionUsd > 0
-          ? ' <span style="font-size:8px;color:var(--m1)" title="IB commissionReport">comm '+ibkrComm(-Math.abs(t.commissionUsd))+'</span>'
+          ? ' <span class="ibkr-sub" title="IB commissionReport">comm '+ibkrComm(-Math.abs(t.commissionUsd))+'</span>'
           : '');
       const reason = err ? ('ERROR · '+(t.exitType||'unauthorized'))
         : (t.status==='closed'
@@ -2726,39 +2737,39 @@ async function renderIbkr(force){
             ? ('open · rolled @ '+fmtPx(t.rollSettlePx)+(t.rec && t.rec.lastTrailSl ? ' · TSL '+fmtPx(t.rec.lastTrailSl) : ''))
             : (t.exitType || (t.rec && t.rec.lastTrailSl ? 'open · TSL '+fmtPx(t.rec.lastTrailSl) : 'open'))));
       const _ms = String(t.markSrc || '');
-      const markTag = _ms === 'ibkr' ? ' <span style="font-size:8px;color:var(--ac)">IB</span>'
-        : (_ms === 'fmp' ? ' <span style="font-size:8px;color:var(--m1)">FMP</span>'
-          : (_ms.indexOf('yahoo') === 0 || _ms === 'v7' ? ' <span style="font-size:8px;color:var(--m1)">YF</span>' : ''));
+      const markTag = _ms === 'ibkr' ? ' <span class="ibkr-sub" style="color:var(--ac)">IB</span>'
+        : (_ms === 'fmp' ? ' <span class="ibkr-sub">FMP</span>'
+          : (_ms.indexOf('yahoo') === 0 || _ms === 'v7' ? ' <span class="ibkr-sub">YF</span>' : ''));
       const exitPx = t.avgExit != null ? t.avgExit : t.lastExitPrice;
       const sess = t.sessionSummary || t.entrySession || '—';
       const futNote = t.futLabel
-        ? ' <span style="font-size:8px;color:'+(t.futExpired?'var(--sell)':'var(--m1)')+'" title="'+(t.localSymbol||'')+(t.futExpired?' · expired — rolling to next month':'')+'">'
+        ? ' <span class="ibkr-sub" style="color:'+(t.futExpired?'var(--sell)':'var(--m2)')+'" title="'+(t.localSymbol||'')+(t.futExpired?' · expired — rolling to next month':'')+'">'
           +(t.futExpired?'exp ':'')+t.futLabel+(t.localSymbol?' · '+t.localSymbol:'')+'</span>'
         : '';
       return '<tr data-ibkr-key="'+t.key+'" data-ibkr-open="'+(t.openQty>0?'1':'0')+'"'+(err?' style="background:rgba(245,200,66,0.07)"':'')+'>'
-        + td('left') + '<span style="font-weight:600">'+t.ticker+'</span>'+futNote+' <span style="font-size:8px;color:var(--m1)">'+hzTag(t.hz)+(err?' · ERR':'')+'</span></td>'
+        + td('left') + '<span class="ibkr-tk">'+t.ticker+'</span>'+futNote+' <span class="ibkr-sub">'+hzTag(t.hz)+(err?' · ERR':'')+'</span></td>'
         + td('left',dirC) + t.side.toUpperCase()+'</td>'
         + td('right','var(--m2)') + String(t.entryTime).slice(0,10)
-          + ((t.key||'').split('|')[2] ? ' <span style="font-size:8px;color:var(--m1)" title="Recommendation day">'
+          + ((t.key||'').split('|')[2] ? ' <span class="ibkr-sub" title="Recommendation day">'
             + String((t.key||'').split('|')[2]).replace(/^\w{3}\s/,'').slice(0,6)+'</span>' : '')+'</td>'
         + td('right') + (t.openQty > 0 ? t.openQty : t.entryQty)+'</td>'
-        + td('right') + fmtPx(t.avgEntry)+' <span style="font-size:8px;color:var(--m1)">'+t.currency+'</span></td>'
+        + td('right') + fmtPx(t.avgEntry)+' <span class="ibkr-sub">'+t.currency+'</span></td>'
         + td('right') + (exitPx!=null?fmtPx(exitPx):'—')
-          + (t.exitQty>0?' <span style="font-size:8px;color:var(--m1)">x'+t.exitQty+'</span>':'')+'</td>'
-        + td('left','var(--m2)') + '<span style="font-size:9px" title="Entry/exit session (Market = RTH)">'+sess+'</span></td>'
+          + (t.exitQty>0?' <span class="ibkr-sub">x'+t.exitQty+'</span>':'')+'</td>'
+        + td('left','var(--m2)') + '<span title="Entry/exit session (Market = RTH)">'+sess+'</span></td>'
         + td('right','var(--m2)') + (t.rec&&t.rec.tp1?fmtPx(t.rec.tp1):'—')+'</td>'
         + td('right', t.rec&&t.rec.tp2 ? '#3DDB7B' : 'var(--m2)') + (t.rec&&t.rec.tp2?fmtPx(t.rec.tp2):'—')+'</td>'
         + td('right','var(--m2)') + (t.rec?(fmtPx(t.rec.lastTrailSl!=null?t.rec.lastTrailSl:t.rec.sl)):'—')+'</td>'
         + td('right') + (t.openQty>0?t.openQty:'—')+'</td>'
-        + '<td data-ibkr-mark="'+t.key+'" style="text-align:right;padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;color:var(--t1)">'+fmtPx(t.mark)+markTag+'</td>'
+        + '<td data-ibkr-mark="'+t.key+'" style="text-align:right;color:var(--tx)">'+fmtPx(t.mark)+markTag+'</td>'
         + td('right',pc(showReal)) + fp(showReal)+realNote+'</td>'
-        + '<td data-ibkr-unreal="'+t.key+'" style="text-align:right;padding:4px 8px;font-family:DM Mono,monospace;font-size:10px;color:'+pc(t.unrealizedUsd)+'">'+(t.openQty>0?fp(t.unrealizedUsd):'—')+'</td>'
+        + '<td data-ibkr-unreal="'+t.key+'" style="text-align:right;color:'+pc(t.unrealizedUsd)+'">'+(t.openQty>0?fp(t.unrealizedUsd):'—')+'</td>'
         + td('left',stC) + t.status+'</td>'
-        + td('left','var(--m2)') + '<span style="font-size:9px">'+reason+'</span></td>'
+        + td('left','var(--m2)') + reason+'</td>'
         + '</tr>';
     };
     const fillN = d.fillCount != null ? d.fillCount : (d.fillsCount || 0);
-    const tradeTableHead = '<table style="width:100%;border-collapse:collapse;min-width:1100px"><thead><tr>'
+    const tradeTableHead = '<table><thead><tr>'
       + th('left')+'Ticker</th>'+th('left')+'Side</th>'+th('right')+'Fill date</th>'+th('right')+'Qty</th>'
       + th('right')+'Avg entry</th>'+th('right')+'Avg exit</th>'+th('left')+'Session</th>'
       + th('right')+'TP1</th>'+th('right')+'TP2</th>'+th('right')+'SL/TSL</th>'
@@ -2772,31 +2783,31 @@ async function renderIbkr(force){
     const realPnl = realisedTrades.reduce((s,t)=>s+(Number(t.realizedUsd)||0),0);
     const openHeadCol = openPnl >= 0 ? 'var(--buy)' : 'var(--sell)';
     const realHeadCol = realPnl >= 0 ? 'var(--buy)' : 'var(--sell)';
-    const openHtml = '<div style="background:var(--s1);border:1px solid '+openHeadCol+';border-radius:8px;padding:8px 4px;overflow-x:auto;margin-bottom:10px">'
-      +'<div style="font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:'+openHeadCol+';font-family:DM Mono,monospace;font-weight:600;padding:6px 8px 8px">Open trades · '+openTrades.length+(fillN?' · '+fillN+' fills':'')+' · '+fp(openPnl)+'</div>'
+    const openHtml = '<details id="ibkrOpenDetails" class="ibkr-book" style="background:var(--s1);border:1px solid '+openHeadCol+';border-radius:8px;padding:8px 4px;margin-bottom:10px">'
+      +'<summary style="color:'+openHeadCol+'">Open trades · '+openTrades.length+(fillN?' · '+fillN+' fills':'')+' · '+fp(openPnl)+'</summary>'
       + (openTrades.length
-        ? (tradeTableHead + openRows + '</tbody></table>')
-        : '<div style="padding:10px 12px;font-size:11px;color:var(--m2);font-family:DM Mono,monospace">No open model trades</div>')
-      + '</div>';
-    const realisedHtml = '<details id="ibkrRealisedDetails" style="background:var(--s1);border:1px solid '+realHeadCol+';border-radius:8px;padding:8px 4px;margin-bottom:10px">'
-      +'<summary style="cursor:pointer;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:'+realHeadCol+';font-family:DM Mono,monospace;font-weight:600;padding:6px 8px">'
-      +'Realised trades · '+realisedTrades.length+' closed · '+fp(realPnl)+' (click to expand)</summary>'
+        ? ('<div style="overflow-x:auto;margin-top:6px">' + tradeTableHead + openRows + '</tbody></table></div>')
+        : '<div style="padding:10px 12px;font-size:9px;color:var(--m2);font-family:DM Sans,sans-serif">No open model trades</div>')
+      + '</details>';
+    const realisedHtml = '<details id="ibkrRealisedDetails" class="ibkr-book" style="background:var(--s1);border:1px solid '+realHeadCol+';border-radius:8px;padding:8px 4px;margin-bottom:10px">'
+      +'<summary style="color:'+realHeadCol+'">Realised trades · '+realisedTrades.length+' closed · '+fp(realPnl)+'</summary>'
       + (realisedTrades.length
         ? ('<div style="overflow-x:auto;margin-top:6px">' + tradeTableHead + realRows + '</tbody></table></div>')
-        : '<div style="padding:10px 12px;font-size:11px;color:var(--m2);font-family:DM Mono,monospace">No realised model trades yet</div>')
+        : '<div style="padding:10px 12px;font-size:9px;color:var(--m2);font-family:DM Sans,sans-serif">No realised model trades yet</div>')
       + '</details>';
-    const errHtml = '<details id="ibkrErrorDetails" style="background:var(--s1);border:1px solid rgba(245,200,66,0.55);border-radius:8px;padding:8px 4px;margin-bottom:14px">'
-      +'<summary style="cursor:pointer;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:#F5C842;font-family:DM Mono,monospace;font-weight:600;padding:6px 8px">'
-      +'Error trades · '+errorTrades.length
+    const errHtml = '<details id="ibkrErrorDetails" class="ibkr-book" style="background:var(--s1);border:1px solid rgba(245,200,66,0.55);border-radius:8px;padding:8px 4px;margin-bottom:14px">'
+      +'<summary style="color:#F5C842">Error trades · '+errorTrades.length
       +' · PnL '+fp(errNet)
       +' (real '+fp(tt.errorRealizedUsd||0)+' · open '+(tt.errorOpenCount||0)+' · today '+fp(todayErrReal)+')'
       +' — excluded from model PnL</summary>'
       + (errorTrades.length
         ? ('<div style="overflow-x:auto;margin-top:6px">' + tradeTableHead + eRows + '</tbody></table></div>')
-        : '<div style="padding:10px 12px;font-size:11px;color:var(--m2);font-family:DM Mono,monospace">No error trades</div>')
+        : '<div style="padding:10px 12px;font-size:9px;color:var(--m2);font-family:DM Sans,sans-serif">No error trades</div>')
       + '</details>';
 
     el.innerHTML = cards + analysisHtml + dailyHtml + openHtml + realisedHtml + errHtml;
+    const openBox = document.getElementById('ibkrOpenDetails');
+    if (openBox) openBox.open = keepOpenOpen;
     if (keepRealisedOpen) {
       const d = document.getElementById('ibkrRealisedDetails');
       if (d) d.open = true;
