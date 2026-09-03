@@ -38,6 +38,7 @@ const {
   isLiveAuthorizedServerExit
 } = require('./lib/ibkr/live-exit-authority');
 const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/account-performance');
+const { ibkrExitQualityType, summarizeExitQuality } = require('./lib/ibkr/exit-quality');
 const { ibkrAvgToFillUnit, futuresMultiplierFor } = require('./lib/ibkr/avg-cost');
 const { fifoLotEconomics } = require('./lib/ibkr/fifo-lots');
 const { officialFuturesSettlePx, officialFuturesSettleDate, futuresStillTradable } = require('./lib/ibkr/commodity-futures');
@@ -8260,7 +8261,7 @@ app.get('/api/health', async (req, res) => {
     const ak = anthropicApiKey();
   res.json({
     status: 'ok',
-    server_build: '20260903-ibkr-open-dropdown-v8.2.15',
+    server_build: '20260903-ibkr-stats-font-math-v8.2.16',
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
@@ -17186,29 +17187,7 @@ function isIbkrSyntheticFillRow(f) {
   return /^(recon-|recover-entry-|ibhist-|synth-)/.test(e);
 }
 
-/** Map model exit strings + IB fill roles onto the IBKR Exit Quality buckets. */
-function ibkrExitQualityType(status, modelReason, hasTp1, hasStop, hasFlat, errorTrade) {
-  if (errorTrade && (status === 'closed' || hasFlat)) return 'error flatten';
-  const raw = String(modelReason || '').toLowerCase();
-  if (status !== 'closed') return hasTp1 ? 'tp1 banked — runner live' : null;
-  if (hasStop && hasTp1) return 'trailing stop (post-TP1)';
-  if (hasStop && !hasTp1) return 'stop-loss (full)';
-  if (hasFlat && !hasTp1) return 'flatten exit';
-  if (hasTp1 && hasFlat) return 'trailing stop (post-TP1)';
-  if (hasTp1) return 'tp exit';
-  if (raw.includes('tp1_then_sl') || raw.includes('trailing stop closed runner')) {
-    return 'trailing stop (post-TP1)';
-  }
-  if (raw === 'sl_hit' || raw.includes('stop loss') || raw.includes('stop-loss')) {
-    return 'stop-loss (full)';
-  }
-  if (raw.includes('signal_exit') || raw.includes('signal reversal')
-    || raw.includes('time_limit') || raw.includes('time limit') || raw.includes('horizon time')) {
-    return 'signal/time exit';
-  }
-  if (raw === 'flatten exit' || raw.includes('flatten')) return 'flatten exit';
-  return 'flatten exit';
-}
+/** Exit-quality classifier lives in lib/ibkr/exit-quality.js (one lot, one bucket). */
 
 // Aggregated per-trade view of the paper account, built purely from real fills.
 // READ-ONLY: never mutate ibkr_fills.jsonl here (phantom drop / quarantine run in recon/boot).
@@ -18041,6 +18020,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
         resumePct: LIQ_RESUME_PCT
       },
       performance,
+      exitQuality: summarizeExitQuality(trades),
       totals: {
         realizedUsd: +totRealUsd.toFixed(2),
         realizedUsdGross: +totRealGrossUsd.toFixed(2),

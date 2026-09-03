@@ -252,6 +252,8 @@ test('intra-day EOD snapshot is not a closed Sharpe day', () => {
   });
   assert.equal(p.sharpe, closed.sharpe);
   assert.equal(p.sharpeDays, closed.sharpeDays);
+  assert.equal(p.sharpeIncludesToday, false);
+  assert.equal(p.sharpeMethod, 'nlv-daily-annualized');
 });
 
 test('missing EOD NLV does not invent a Sharpe crash from fill-PnL cum', () => {
