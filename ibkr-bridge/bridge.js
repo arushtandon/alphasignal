@@ -1220,6 +1220,7 @@ async function main() {
   let positionsReady = false; // set once IB's initial position snapshot lands
   let forceReconcile = false; // set on positionEnd so Asia re-arms don't wait 5m
   let lastLiveStops = [];
+  let lastWorkingOrders = [];
   const _seedBlocked = new Set(); // tickers/keys that failed portfolio risk this session
   const posKeyOf = c => {
     if (!c) return '';
@@ -1438,7 +1439,62 @@ async function main() {
       orderClients: state.orderClients, row, managerId: activeClientId
     });
     const slot = slotByClientId(cid);
-    return (slot && slot.api) || ib;
+    if (slot && slot.api) return slot.api;
+    // Do not silently place/cancel on the manager. Worker and pre-pool
+    // clients (17/19/21) own live STPs; manager placeOrder is IB 103.
+    if (cid === activeClientId || !(cid > 0)) return ib;
+    return null;
+  }
+  async function connectExecSlot(cid, opts = {}) {
+    const existing = slotByClientId(cid);
+    if (existing && existing.ready && existing.api) return existing;
+    if (!(cid > 0) || cid === activeClientId) return slotByClientId(activeClientId);
+    const api = new stoqey.IBApi({ host: HOST, port: PORT, clientId: cid });
+    for (const ev of [EventName.error, EventName.orderStatus, EventName.execDetails]) {
+      for (const fn of ib.listeners(ev)) api.on(ev, fn);
+    }
+    let workerReady = false;
+    api.on(EventName.disconnected, () => {
+      const slot = slotByClientId(cid);
+      if (slot) slot.ready = false;
+      if (workerReady) log((opts.orphan ? 'orphan owner' : 'exec worker') + ' disconnected', cid);
+    });
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('connect timeout')), 12000);
+      api.once(EventName.connected, () => { clearTimeout(t); resolve(); });
+      api.connect();
+    });
+    const ibNext = await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('nextValidId timeout')), 12000);
+      api.once(EventName.nextValidId, id => { clearTimeout(t); resolve(Number(id) || 1); });
+      api.reqIds();
+    });
+    workerReady = true;
+    const startId = orderIdFloor(cid, ibNext);
+    const slot = {
+      clientId: cid, api, nextOrderId: startId, ready: true, inflight: 0,
+      manager: false, orphan: !!opts.orphan
+    };
+    const idx = execSlots.findIndex(s => s && s.clientId === cid);
+    if (idx >= 0) execSlots[idx] = slot;
+    else execSlots.push(slot);
+    log(opts.orphan ? 'orphan owner connected' : 'exec worker connected', cid, 'orderId=', startId);
+    return slot;
+  }
+  const _orphanConnectInflight = new Map();
+  async function ensureOwnerSlot(clientId) {
+    const cid = Number(clientId);
+    if (!(cid > 0)) return null;
+    const have = slotByClientId(cid);
+    if (have && have.ready && have.api) return have;
+    if (cid === activeClientId) return slotByClientId(activeClientId);
+    if (_orphanConnectInflight.has(cid)) return _orphanConnectInflight.get(cid);
+    const p = connectExecSlot(cid, { orphan: true }).catch(e => {
+      log('orphan owner skipped', cid, e.message);
+      return null;
+    }).finally(() => { _orphanConnectInflight.delete(cid); });
+    _orphanConnectInflight.set(cid, p);
+    return p;
   }
   function bumpInflight(clientId, delta) {
     const slot = slotByClientId(clientId);
@@ -1538,6 +1594,18 @@ async function main() {
         return;
       }
       log('IB error', code, 'reqId=' + reqId, err && err.message ? err.message : err);
+      if (Number(code) === 10289) {
+        for (const [key, row] of Object.entries(state.byKey || {})) {
+          if (!row || row.closed) continue;
+          if (row.parentId !== Number(reqId) && row.stopId !== Number(reqId) && row.tp1Id !== Number(reqId)) continue;
+          row.contractRejected = true;
+          row.cryptoCashQtyRejected = true;
+          row.updated = new Date().toISOString();
+          log('IB crypto cashQty reject — will not rearm', key);
+        }
+        saveState(state);
+        return;
+      }
       if (Number(code) === 103 || Number(code) === 105) {
         markChildUnparked(Number(reqId), 'error ' + code);
       }
@@ -1858,36 +1926,8 @@ async function main() {
     const poolIds = buildExecPoolIds(activeClientId, EXEC_POOL_SIZE, EXEC_POOL_START);
     for (const cid of poolIds) {
       if (cid === activeClientId) continue;
-      try {
-        const api = new stoqey.IBApi({ host: HOST, port: PORT, clientId: cid });
-        for (const ev of [EventName.error, EventName.orderStatus, EventName.execDetails]) {
-          for (const fn of ib.listeners(ev)) api.on(ev, fn);
-        }
-        let workerReady = false;
-        api.on(EventName.disconnected, () => {
-          const slot = slotByClientId(cid);
-          if (slot) slot.ready = false;
-          if (workerReady) log('exec worker disconnected', cid);
-        });
-        await new Promise((resolve, reject) => {
-          const t = setTimeout(() => reject(new Error('connect timeout')), 12000);
-          api.once(EventName.connected, () => { clearTimeout(t); resolve(); });
-          api.connect();
-        });
-        const ibNext = await new Promise((resolve, reject) => {
-          const t = setTimeout(() => reject(new Error('nextValidId timeout')), 12000);
-          api.once(EventName.nextValidId, id => { clearTimeout(t); resolve(Number(id) || 1); });
-          api.reqIds();
-        });
-        workerReady = true;
-        const startId = orderIdFloor(cid, ibNext);
-        execSlots.push({
-          clientId: cid, api, nextOrderId: startId, ready: true, inflight: 0, manager: false
-        });
-        log('exec worker connected', cid, 'orderId=', startId);
-      } catch (e) {
-        log('exec worker skipped', cid, e.message);
-      }
+      try { await connectExecSlot(cid); }
+      catch (e) { log('exec worker skipped', cid, e.message); }
     }
     log('exec pool ready', execSlots.filter(s => s.ready).map(s => s.clientId).join(',')
       || String(activeClientId));
@@ -2924,6 +2964,11 @@ async function main() {
     });
     bumpInflight(clientId, 1);
     const api = apiForOrderId(orderId);
+    if (!api) {
+      log('order skipped — no socket for client', clientId, label, 'oid=' + orderId);
+      releasePending(Number(orderId));
+      return;
+    }
     api.placeOrder(orderId, oc, order);
     log('order sent', label, oc && oc.symbol, 'exch=' + (oc && oc.exchange),
       order.action, order.orderType, 'qty=' + order.totalQuantity,
@@ -2936,6 +2981,12 @@ async function main() {
     if (unknownOrderIds.has(Number(orderId))) return;
     if (DRY || !ib) { log('DRY cancel', label, orderId); return; }
     const api = apiForOrderId(orderId);
+    if (!api) {
+      log('cancel skipped — no socket for client',
+        clientForOrder(orderId, { orderClients: state.orderClients, row: rowOwningOrder(state.byKey, orderId), managerId: activeClientId }),
+        label, orderId);
+      return;
+    }
     try { api.cancelOrder(orderId); log('cancel sent', label, orderId, 'client=' + clientForOrder(orderId, { orderClients: state.orderClients, row: rowOwningOrder(state.byKey, orderId), managerId: activeClientId })); } catch (e) { log('cancel failed', label, orderId, e.message); }
   }
 
@@ -3628,6 +3679,11 @@ async function main() {
       if (row.stopId == null) continue;
       if (Number(row.stopClientId) > 0) {
         rememberOrderClient(state.orderClients, row.stopId, row.stopClientId);
+        const tslSlot = await ensureOwnerSlot(row.stopClientId);
+        if (!tslSlot || !tslSlot.ready) {
+          log('TSL catch-up deferred — no socket for client', row.stopClientId, key);
+          continue;
+        }
       }
       const held = heldForContract(row.contract);
       const posInDir = held
@@ -4802,6 +4858,8 @@ async function main() {
       if (!row || row.closed || row.entryFilled) continue;
       if (keyState && keyState.get(key) !== 'open') continue;
       if (!row.contract) continue;
+      if (row.cryptoCashQtyRejected) continue;
+      if (row.contract.secType === 'CRYPTO' || row.contract.market === 'CRYPTO') continue;
       const phase = sessionPhase(row.contract);
       if (phase !== 'rth') continue;
       const market = row.contract.market;
@@ -4823,6 +4881,17 @@ async function main() {
       const waitMs = Number.isFinite(rthMins) && rthMins >= 0 ? rthMins * 60000 : Math.max(ageOk, rearmAge || 0);
       if (waitMs < UNFILLED_ALERT_MIN_MS) continue;
       const mins = Math.round(waitMs / 60000);
+      const parentWorking = row.parentId != null && (lastWorkingOrders || []).some(o =>
+        Number(o && o.orderId) === Number(row.parentId));
+      if (parentWorking && String(row.entryStyle || '').includes('LMT')) {
+        findings.push({
+          sev: 'warn',
+          code: 'unfilled-working-lmt',
+          fingerprint: `unfilled-working-lmt:${key}:${row.entryStyle || '?'}`,
+          text: `Working ${row.entryStyle} still unfilled (RTH ${mins}m): ${key}`
+        });
+        continue;
+      }
       findings.push({
         sev: 'error',
         code: row.contractRejected ? 'contract-rejected' : 'unfilled-rth',
@@ -4839,6 +4908,8 @@ async function main() {
       if (!row || row.closed || !row.entryFilled) continue;
       if (keyState && keyState.get(key) !== 'open') continue;
       if (row.stopId != null) continue;
+      const yStop = normalizeYahooTicker(row.ticker);
+      if ((lastLiveStops || []).some(s => s && normalizeYahooTicker(s.ticker) === yStop && Number(s.orderId) > 0)) continue;
       const phase = row.contract ? sessionPhase(row.contract) : 'closed';
       if (!row.contract || phase === 'closed') continue;
       if (asiaCashBlocksRestingOrders(row.contract, phase)) continue;
@@ -4872,6 +4943,11 @@ async function main() {
       const half = tp1OrderQty(posInDir, lot);
       if (!(half >= lot) || half > posInDir + 1e-9) continue;
       if (row.tp1Id != null && !row.tp1RoutingFailed && !row.tp1SessionBlocked) continue;
+      const yTp1 = normalizeYahooTicker(row.ticker);
+      const closeAct = row.side === 'sell' ? 'BUY' : 'SELL';
+      if ((lastWorkingOrders || []).some(o =>
+        o && o.type === 'LMT' && o.action === closeAct
+        && normalizeYahooTicker(o.yahoo) === yTp1)) continue;
       const attachAge = row.tp1AttachAttemptAt ? Date.now() - Date.parse(row.tp1AttachAttemptAt) : Infinity;
       if (row.ocaLinked && Number.isFinite(attachAge) && attachAge < 30 * 60 * 1000) continue;
       findings.push({
@@ -4949,7 +5025,8 @@ async function main() {
   }
   function listWorkingOrders() {
     return listWorkingOrdersDetailed().then(r => {
-      lastLiveStops = (r.orders || [])
+      lastWorkingOrders = r.orders || [];
+      lastLiveStops = lastWorkingOrders
         .filter(o => o && o.type === 'STP')
         .map(o => ({
           ticker: o.yahoo, aux: o.aux, qty: o.qty,
@@ -5102,6 +5179,13 @@ async function main() {
               'oid=' + existing.orderId, 'have', existing.aux, 'want', wantSl);
             continue;
           }
+          const ownerSlot = await ensureOwnerSlot(ownerCid);
+          if (!ownerSlot || !ownerSlot.ready) {
+            row.stopId = existing.orderId;
+            log('RECONCILE: cannot in-place stop — no socket for client', ownerCid, key,
+              'oid=' + existing.orderId);
+            continue;
+          }
           const qty = stopQty > 0 ? stopQty : existing.qty;
           transmitOrder(existing.orderId, row.contract, baseOrder({
             orderId: existing.orderId,
@@ -5131,6 +5215,11 @@ async function main() {
           if (!canModify) {
             log('RECONCILE: cannot resize stop — missing worker clientId', key,
               existing.qty, '→', stopQty);
+            continue;
+          }
+          const resizeSlot = await ensureOwnerSlot(ownerCid);
+          if (!resizeSlot || !resizeSlot.ready) {
+            log('RECONCILE: cannot resize stop — no socket for client', ownerCid, key);
             continue;
           }
           transmitOrder(existing.orderId, row.contract, baseOrder({
@@ -5459,12 +5548,14 @@ async function main() {
   async function maybeSendRiskAlert(findings, { force = false } = {}) {
     if (!telegramConfigured() || DRY) return;
     const list = Array.isArray(findings) ? findings : [];
-    // Human-readable elapsed minutes may change every poll; fingerprint only
-    // the underlying incident so the configured alert cadence is respected.
-    const fp = riskFindingsFingerprint(list);
+    const errors = list.filter(f => f.sev === 'error');
+    const warns = list.filter(f => f.sev !== 'error');
+    // Warnings (working LMT-THROUGH, etc.) stay in the log. Telegram only
+    // pages when a protective child is actually missing or an entry is dead.
+    const fp = riskFindingsFingerprint(errors);
     const now = Date.now();
     const meta = state.alertMeta || (state.alertMeta = {});
-    const hadIssues = list.length > 0;
+    const hadIssues = errors.length > 0;
     const sameFp = meta.lastFp === fp;
 
     // All-clear once when we recover from a prior alert state.
@@ -5491,8 +5582,6 @@ async function main() {
     // the fingerprint changes (fill, cancel, new name) or an all-clear fires.
     if (!force && sameFp) return;
 
-    const errors = list.filter(f => f.sev === 'error');
-    const warns = list.filter(f => f.sev !== 'error');
     const lines = [
       '🚨 AlphaSignal IBKR risk alert',
       `Account: ${ACCOUNT || 'paper'}`,
@@ -6410,6 +6499,8 @@ async function main() {
         }
         const contract = row.contract || toContract(row.ticker);
         if (!contract) continue;
+        if (row.cryptoCashQtyRejected) continue;
+        if (contract.secType === 'CRYPTO' && row.contractRejected) continue;
         const market = contract.market || (contract.usRth ? 'US' : '');
         const phase = sessionPhase(contract);
         const asia = market === 'HK' || market === 'JP';
