@@ -768,9 +768,18 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
     if (phase === 'closed') {
       return { defer: true, entryStyle: 'DEFER-GLOBE-CLOSED', action, totalQuantity: qty };
     }
+    const crypto = contract.secType === 'CRYPTO' || contract.market === 'CRYPTO';
+    // PAXOS BUY MKT requires cashQty and tif IOC (IB 10289 / 201). ETH-USD 4 Sep.
+    const ref = quotePx > 0 ? quotePx : entryPx;
+    const cashQty = crypto && String(action).toUpperCase() === 'BUY' && ref > 0 && qty > 0
+      ? Number((qty * ref).toFixed(2))
+      : undefined;
     return {
-      orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY',
-      outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'MKT-GLOBE'
+      orderType: 'MKT', action, totalQuantity: qty,
+      tif: crypto ? 'IOC' : 'DAY',
+      outsideRth: crypto ? false : ORDER_OUTSIDE_RTH,
+      transmit: crypto, entryStyle: 'MKT-GLOBE',
+      ...(cashQty > 0 ? { cashQty } : {})
     };
   }
   // IB SMART often rejects orderType 'MOO' (error 321). The portable form is
@@ -830,7 +839,12 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
       const ref = quotePx > 0 ? quotePx : entryPx;
       if (ref > 0) {
         const sell = side === 'sell';
-        const raw = sell ? ref * 0.98 : ref * 1.02;
+        const thru = Number(opts.throughPct) > 0 ? Number(opts.throughPct) : 0.02;
+        let raw = sell ? ref * (1 - thru) : ref * (1 + thru);
+        const prev = Number(opts.prevExtLmt) || 0;
+        if (prev > 0) {
+          raw = sell ? Math.min(raw, prev * (1 - thru)) : Math.max(raw, prev * (1 + thru));
+        }
         return {
           orderType: 'LMT', action, totalQuantity: qty,
           lmtPrice: roundPx(raw, contract, sell ? 'down' : 'up'),
@@ -934,7 +948,8 @@ async function shareSplit(entry, contract, lotOverride, riskInput = {}) {
     allowMinLot: riskInput.allowMinLot === true,
     netLiquidityAvailable: riskInput.netLiquidityAvailable,
     liquidityFloorPct: riskInput.liquidityFloorPct,
-    maxNotionalUsd: contract.secType === 'FUT' ? INSTRUMENT_NOTIONAL_USD : undefined
+    maxNotionalUsd: (contract.secType === 'FUT' || contract.secType === 'CRYPTO')
+      ? INSTRUMENT_NOTIONAL_USD : undefined
   });
   if (!sizing.eligible) {
     log('risk sizing rejected', contract.symbol, sizing.reason,
@@ -1622,9 +1637,14 @@ async function main() {
           if (!row.entryFilled && row.parentId === reqId) {
             row.contractRejected = true;
             row.updated = new Date().toISOString();
+            if (Number(code) === 201 && /trading permissions/i.test(msg)) {
+              row.cryptoPermissionPending = true;
+              log('IB crypto permission pending — will not rearm', key);
+            } else {
+              forceReconcile = true;
+              log('IB entry rejected — will retry', key, row.ticker, 'code=' + code);
+            }
             saveState(state);
-            forceReconcile = true;
-            log('IB entry rejected — will retry', key, row.ticker, 'code=' + code);
           }
           if (closeHit && row.futuresRollPending && !row.rollInId && Number(code) === 201) {
             row.rollOutRejectedExpired = true;
@@ -3331,7 +3351,8 @@ async function main() {
     // TSE (and SEHK) STP children often never ack. Parent stays transmit:false
     // and IB 10147 on cancel — 6098.T sat unfilled all Tokyo cash. Transmit the
     // parent alone; park SL/TP1 after fill via ensureWorkingStops.
-    const asiaStandalone = contract.market === 'JP' || contract.market === 'HK';
+    const asiaStandalone = contract.market === 'JP' || contract.market === 'HK'
+      || contract.secType === 'CRYPTO' || contract.market === 'CRYPTO';
 
     // US pre/extended + RTH chase: gate on live quote vs recommended entry.
     // JP RTH: 1% through-limit needs last/quote (native MKT is not a TSE order).
@@ -3364,12 +3385,19 @@ async function main() {
         quotePx = mark > 0 ? mark : (Number(evt.entry) || 0);
         quoteSrc = mark > 0 ? 'ib-last' : 'recommendation';
       }
+    } else if (contract.secType === 'CRYPTO' || contract.market === 'CRYPTO') {
+      ensureMktData(evt.ticker, contract);
+      const q = await fetchEntryQuote(evt.ticker, 'rth', evt.side);
+      quotePx = Number(q && q.px) || Number(ibQuoteForTicker(evt.ticker)) || Number(evt.entry) || 0;
+      quoteSrc = (q && q.src) || (quotePx ? 'entry' : null);
     }
     const parentSpec = parentEntrySpec(contract, openAction, split.total, {
       side: evt.side, entryPx: evt.entry, quotePx,
       forceOpg: !!evt.forceOpg,
       forceExt: String(evt.reason || '') === 'rearm-model-entry',
-      skipChase: !!evt.skipChase || !!evt.userReentry
+      skipChase: !!evt.skipChase || !!evt.userReentry,
+      throughPct: Number(evt.throughPct) > 0 ? Number(evt.throughPct) : undefined,
+      prevExtLmt: Number(evt.prevExtLmt) > 0 ? Number(evt.prevExtLmt) : undefined
     });
     if (parentSpec.defer) {
       log('defer entry', evt.ticker, parentSpec.entryStyle, 'phase=', sessionPhase(contract));
@@ -6432,6 +6460,7 @@ async function main() {
           const cancelStatuses = cancelWaits.length ? await Promise.all(cancelWaits) : [];
           if (cancelStatuses.some(status => status === 'timeout')) {
             const replaceDeadAsiaBag = reason === 'asia-rth' || reason === 'asia-rth-retry'
+              || reason === 'asia-rth-reprice'
               || reason === 'asia-to-opg' || reason === 'asia-missing-style'
               || reason === 'asia-opg-refresh';
             if (!replaceDeadAsiaBag) {
@@ -6471,7 +6500,10 @@ async function main() {
               || reason === 'asia-opg-refresh' || reason === 'asia-to-opg',
             skipChase: !!(row.userReentry || src.userReentry)
               || reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg',
-            carryUnfilled: (asia && !row.entryFilled) || forceCashOpenActive(row)
+            carryUnfilled: (asia && !row.entryFilled) || forceCashOpenActive(row),
+            throughPct: (reason === 'asia-rth-reprice' || reason === 'asia-rth-retry') ? 0.02 : undefined,
+            prevExtLmt: (reason === 'asia-rth-reprice' || reason === 'asia-rth-retry')
+              ? (Number(row.extLmt) || 0) : undefined
           });
           if (placed) {
             placed.lastRearmAt = new Date().toISOString();
@@ -6500,7 +6532,7 @@ async function main() {
         }
         const contract = row.contract || toContract(row.ticker);
         if (!contract) continue;
-        if (row.cryptoCashQtyRejected) continue;
+        if (row.cryptoCashQtyRejected || row.cryptoPermissionPending) continue;
         if (contract.secType === 'CRYPTO' && row.contractRejected) continue;
         const market = contract.market || (contract.usRth ? 'US' : '');
         const phase = sessionPhase(contract);
@@ -6574,6 +6606,12 @@ async function main() {
         let reason = null;
         if (asia) {
           const minsSinceRth = minutesSinceMarketRth(market);
+          let quotePx = 0;
+          if (phase === 'rth' && row.entryStyle === 'LMT-THROUGH' && !row.entryFilled) {
+            ensureMktData(row.ticker, contract);
+            const q = await fetchEntryQuote(row.ticker, 'rth', row.side);
+            quotePx = Number(q && q.px) || Number(ibQuoteForTicker(row.ticker)) || 0;
+          }
           reason = asiaUnfilledRearmReason({
             phase,
             entryStyle: row.entryStyle,
@@ -6590,8 +6628,18 @@ async function main() {
             orderSubmittedAt: row.orderSubmittedAt,
             now: Date.now(),
             minutesSinceRth: minsSinceRth,
-            auctionHoldMin: AUCTION_HOLD_MIN
+            auctionHoldMin: AUCTION_HOLD_MIN,
+            side: row.side,
+            quotePx,
+            extLmt: Number(row.extLmt) || 0
           });
+          if (reason === 'asia-rth-reprice') {
+            log('RECONCILE: JP/HK through-limit stale', key,
+              'quote=', quotePx, 'lmt=', row.extLmt, 'side=', row.side);
+          } else if (reason === 'asia-rth-retry' && quotePx > 0) {
+            log('RECONCILE: JP/HK through-limit still unfilled', key,
+              'quote=', quotePx, 'lmt=', row.extLmt, 'side=', row.side);
+          }
           if (phase === 'rth' && isAuctionEntryStyle(row.entryStyle) && !row.contractRejected
             && Number.isFinite(minsSinceRth) && minsSinceRth < AUCTION_HOLD_MIN) {
             log('RECONCILE: hold JP/HK opening order through auction', key,
@@ -6702,7 +6750,7 @@ async function main() {
         );
         const minGap = reason === 'contract-retry'
           ? contractRetryGap
-          : ((reason === 'asia-rth-retry' || auctionNow)
+          : ((reason === 'asia-rth-retry' || reason === 'asia-rth-reprice' || auctionNow)
             ? (auctionNow ? 0 : 2 * 60 * 1000)
             : 15 * 60 * 1000);
         if (last && Date.now() - last < minGap) continue;
@@ -7202,7 +7250,7 @@ async function main() {
         if (row.restoreAfterFalseOrphan && !row.closed && !row.entryFilled) { forceReconcile = true; break; }
         if (row.userReentry && !row.closed && !row.entryFilled) { forceReconcile = true; break; }
         if (row.closed || row.entryFilled || !row.contract) continue;
-        if (row.contract.market === 'HK'
+        if ((row.contract.market === 'HK' || row.contract.market === 'JP')
           && sessionPhase(row.contract) === 'rth'
           && (row.entryStyle !== 'MKT' || row.deferred || row.contractRejected)) {
           forceReconcile = true;

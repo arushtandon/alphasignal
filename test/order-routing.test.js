@@ -26,10 +26,10 @@ test('HK names route to SEHK, not SMART', () => {
   assert.equal(fallbackExchange('SEHK', c), 'SMART');
 });
 
-test('JPY names route to TSEJ', () => {
+test('JPY names route SMART first (TSEJ direct is discarded by TWS 10311)', () => {
   const c = { symbol: '6501', market: 'JP', currency: 'JPY', primaryExch: 'TSEJ', conId: 1 };
-  assert.equal(preferredExchange(c), 'TSEJ');
-  assert.equal(fallbackExchange('TSEJ', c), 'SMART');
+  assert.equal(preferredExchange(c), 'SMART');
+  assert.equal(fallbackExchange('SMART', c), 'TSEJ');
 });
 
 test('Yahoo suffixes are never sent as IB localSymbol', () => {
@@ -42,7 +42,7 @@ test('Yahoo suffixes are never sent as IB localSymbol', () => {
   };
   assert.equal(placeableStkContract(c).localSymbol, undefined);
   assert.equal(placeableStkContract(c).symbol, '6098');
-  assert.equal(placeableStkContract(c).exchange, 'TSEJ');
+  assert.equal(placeableStkContract(c).exchange, 'SMART');
 });
 
 test('US names stay on SMART and fall back to the listing venue', () => {

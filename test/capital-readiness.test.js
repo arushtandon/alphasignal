@@ -58,6 +58,16 @@ test('cost model reduces gross expectancy', () => {
   assert.ok(result.netReturn < result.grossReturn);
 });
 
+test('crypto sizes to the $10k instrument cap, not a wide-stop risk cut', () => {
+  const eth = calculateRiskSize({
+    nlv: 470_000, entry: 2510.74, stop: 1778, lot: 0.001,
+    allowFractional: true, secType: 'CRYPTO', maxNotionalUsd: 10_000
+  });
+  assert.equal(eth.eligible, true);
+  assert.equal(eth.bindingLimit, 'notional');
+  assert.ok(eth.notionalUsd >= 9990 && eth.notionalUsd <= 10000);
+});
+
 test('risk sizing respects NLV, stop, notional, lot, and drawdown', () => {
   const sized = calculateRiskSize({ nlv: 1_000_000, entry: 100, stop: 95, advShares: 1_000_000 });
   assert.equal(sized.eligible, true);

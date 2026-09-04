@@ -93,3 +93,51 @@ test('lunch does not cancel a working Asia parent', () => {
     now: NOW
   }), null);
 });
+
+test('stale JP buy through-limit is repriced when last is above the parked LMT', () => {
+  const reason = asiaUnfilledRearmReason({
+    phase: 'rth',
+    entryStyle: 'LMT-THROUGH',
+    side: 'buy',
+    quotePx: 2133,
+    extLmt: 2110,
+    parentId: 56878733,
+    parentWorking: true,
+    lastRearmAt: new Date(NOW - 4 * 60 * 1000).toISOString(),
+    now: NOW,
+    minutesSinceRth: 30
+  });
+  assert.equal(reason, 'asia-rth-reprice');
+});
+
+test('fresh JP through-limit is not repriced in the first two minutes', () => {
+  const reason = asiaUnfilledRearmReason({
+    phase: 'rth',
+    entryStyle: 'LMT-THROUGH',
+    side: 'buy',
+    quotePx: 2133,
+    extLmt: 2110,
+    parentId: 56878733,
+    parentWorking: true,
+    lastRearmAt: new Date(NOW - 30 * 1000).toISOString(),
+    now: NOW,
+    minutesSinceRth: 5
+  });
+  assert.equal(reason, null);
+});
+
+test('marketable JP through-limit that has not filled in 10 minutes is retried', () => {
+  const reason = asiaUnfilledRearmReason({
+    phase: 'rth',
+    entryStyle: 'LMT-THROUGH',
+    side: 'buy',
+    quotePx: 2091,
+    extLmt: 2110,
+    parentId: 56878733,
+    parentWorking: true,
+    lastRearmAt: new Date(NOW - 12 * 60 * 1000).toISOString(),
+    now: NOW,
+    minutesSinceRth: 30
+  });
+  assert.equal(reason, 'asia-rth-retry');
+});

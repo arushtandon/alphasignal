@@ -121,6 +121,11 @@ assert.strictEqual(recRth.tif, 'DAY');
 assert.strictEqual(recRth.outsideRth, true, 'trial: JP LMT-THROUGH also sends outsideRth');
 assert.ok(recRth.lmtPrice > 17155, 'buy through-limit is above last');
 assert.strictEqual(recRth.lmtPrice, 17500, '17155*1.02 rounds up to the 10-yen band');
+const recWalk = parentEntrySpec(rec, 'BUY', 100, {
+  side: 'buy', entryPx: 17155, quotePx: 17155, phaseOverride: 'rth',
+  prevExtLmt: 17500, throughPct: 0.02
+});
+assert.ok(recWalk.lmtPrice > 17500, 'reprice walks the through-limit up from the parked LMT');
 const recRthSell = parentEntrySpec(rec, 'SELL', 100, {
   side: 'sell', entryPx: 17155, quotePx: 17155, phaseOverride: 'rth'
 });
