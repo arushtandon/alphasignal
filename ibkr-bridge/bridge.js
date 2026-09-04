@@ -1449,7 +1449,8 @@ async function main() {
     const existing = slotByClientId(cid);
     if (existing && existing.ready && existing.api) return existing;
     if (!(cid > 0) || cid === activeClientId) return slotByClientId(activeClientId);
-    const api = new stoqey.IBApi({ host: HOST, port: PORT, clientId: cid });
+    const { IBApi } = require('@stoqey/ib');
+    const api = new IBApi({ host: HOST, port: PORT, clientId: cid });
     for (const ev of [EventName.error, EventName.orderStatus, EventName.execDetails]) {
       for (const fn of ib.listeners(ev)) api.on(ev, fn);
     }
