@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { rebaseExitsFromFill } = require('../lib/ibkr/fill-rebase');
+const { rebaseExitsFromFill, alignFillToModel } = require('../lib/ibkr/fill-rebase');
 
 test('SNDK open at 1600 scales TP1/SL off the fill, not the rec entry', () => {
   const rec = rebaseExitsFromFill({
@@ -28,4 +28,15 @@ test('short percentages are preserved the same way', () => {
 test('missing entry or fill returns null', () => {
   assert.equal(rebaseExitsFromFill({ modelEntry: 0, fillPx: 1600, modelTp1: 1, modelSl: 1 }), null);
   assert.equal(rebaseExitsFromFill({ modelEntry: 1493, fillPx: 0, modelTp1: 1, modelSl: 1 }), null);
+});
+
+test('LSE pound avgCost is aligned to a pence model so TP1 is not 10.7', () => {
+  assert.equal(+alignFillToModel(9.505997, 944.2).toFixed(4), 950.5997);
+  const rec = rebaseExitsFromFill({
+    modelEntry: 944.2, modelTp1: 1058, modelSl: 868.5, fillPx: 9.505997
+  });
+  assert.ok(rec.tp1 > 1000, 'TP1 stays in pence, not pounds');
+  assert.ok(rec.sl > 800);
+  assert.ok(rec.tp1 < 1200);
+  assert.equal(alignFillToModel(870.4, 869.6), 870.4, 'MNDI pence fill is unchanged');
 });

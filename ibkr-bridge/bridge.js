@@ -30,7 +30,7 @@
  *                      fill exits the whole position and cancels the SL.
  *                    After the entry fill prints, TP1 and SL are rescaled off
  *                    the actual fill (same % as rec entry→TP1 / entry→SL).
- *                    If the parent was sent standalone (HK/JP) or a child was
+ *                    If the parent was sent standalone (HK/JP/LSE) or a child was
  *                    rejected, the fill handler parks TP1+SL immediately — it
  *                    does not wait for the 60s / 15-min sweep.
  *                    TP2 on the live book is the runner TSL, not a second limit.
@@ -104,10 +104,11 @@ const {
   passiveCloseLimit,
   maybeTwoLotTotal,
   isLimitTp1Fill,
-  reconcileTp1LatchFromPosition
+  reconcileTp1LatchFromPosition,
+  protectiveStopQty
 } = require('../lib/ibkr/tp1-policy');
 const { tslAfterTp1, catchUpTslFromDailyBars, pickLiveTslCatchUp } = require('../lib/ibkr/tsl-policy');
-const { rebaseExitsFromFill } = require('../lib/ibkr/fill-rebase');
+const { rebaseExitsFromFill, alignFillToModel } = require('../lib/ibkr/fill-rebase');
 const { evaluatePortfolioAddition, DEFAULT_CAPS } = require('../lib/risk/portfolio');
 const { BridgeSqliteStore } = require('../lib/storage/bridge-sqlite');
 const { atomicWriteJsonSync } = require('../lib/storage/atomic-json');
@@ -127,6 +128,7 @@ const {
 const {
   preferredExchange,
   fallbackExchange,
+  parentStandalone,
   isRoutingError,
   isSessionBlockedError,
   isShortSaleReject,
@@ -3348,11 +3350,10 @@ async function main() {
         updated: evt.t || new Date().toISOString(), dry: DRY
       };
     }
-    // TSE (and SEHK) STP children often never ack. Parent stays transmit:false
-    // and IB 10147 on cancel — 6098.T sat unfilled all Tokyo cash. Transmit the
-    // parent alone; park SL/TP1 after fill via ensureWorkingStops.
-    const asiaStandalone = contract.market === 'JP' || contract.market === 'HK'
-      || contract.secType === 'CRYPTO' || contract.market === 'CRYPTO';
+    // TSE / SEHK / LSE STP children often 110/201 and never ack. Parent stays
+    // transmit:false and the entry never prints (SGRO.L 4 Sep, 6098.T). Transmit
+    // the parent alone; park SL/TP1 after fill via ensureWorkingStops.
+    const asiaStandalone = parentStandalone(contract);
 
     // US pre/extended + RTH chase: gate on live quote vs recommended entry.
     // JP RTH: 1% through-limit needs last/quote (native MKT is not a TSE order).
@@ -3578,7 +3579,7 @@ async function main() {
       row.originalSl = sl;
     }
     if (planned.tp2 > 0) row.tp2Px = roundPx(planned.tp2, row.contract);
-    row.ibAvgFill = Number(fillPx);
+    row.ibAvgFill = Number(planned.fillPx || fillPx);
     const closeAction = isSell ? 'BUY' : 'SELL';
     const oca = (!(Number(row.qtyRunner) > 0) && Number(row.qtySold) > 0)
       ? { ocaGroup: ocaGroupForKey(key), ocaType: 1 } : {};
@@ -4978,7 +4979,11 @@ async function main() {
         o && o.type === 'LMT' && o.action === closeAct
         && normalizeYahooTicker(o.yahoo) === yTp1)) continue;
       const attachAge = row.tp1AttachAttemptAt ? Date.now() - Date.parse(row.tp1AttachAttemptAt) : Infinity;
+      // LSE GTC children are often omitted from reqOpenOrders. A just-sent
+      // attach (or an assigned tp1Id) is not a missing-TP1 page.
+      if (Number.isFinite(attachAge) && attachAge < 15 * 60 * 1000) continue;
       if (row.ocaLinked && Number.isFinite(attachAge) && attachAge < 30 * 60 * 1000) continue;
+      if (row.tp1Id != null && row.contract && row.contract.market === 'LSE') continue;
       findings.push({
         sev: 'error',
         code: 'missing-tp1',
@@ -5177,18 +5182,15 @@ async function main() {
           o.type === 'LMT' && o.action === closeAction && rowMatchesWorking(row, o)
         ).reduce((s, o) => s + (Number(o.qty) || 0), 0)
         : 0;
-      // Never size the stop as the original lot while a TP1 LMT is still live
-      // (or about to be parked this sweep). DHL 25 Aug: STP 157 + TP1 78 both
-      // working on a 157 long → short 78.
       const lot = Math.max(boardLotHint(row.ticker, row.contract && row.contract.lotHint), 1);
-      const plannedHalf = (!row.tp1Done) ? (tp1OrderQty(posInDir, lot) || 0) : 0;
-      const bookedTp1 = (!row.tp1Done && row.tp1Id != null && !row.tp1RoutingFailed)
-        ? Math.max(Number(row.qtySold) || 0, 0) : 0;
-      const tp1Qty = Math.max(tp1WorkingQty, bookedTp1, plannedHalf);
       const fullTp1 = !row.tp1Done && isFullQtyTp1(posInDir, lot);
-      // 50% TP1: stop covers the runner only. 100% TP1: stop stays full and
-      // is OCA-linked so a TP1 fill cannot leave a live STP.
-      const stopQty = (fullTp1 || row.tp1Done) ? posInDir : Math.max(0, posInDir - tp1Qty);
+      // Shrink the stop only when a TP1 LMT is actually working. Planned
+      // half / qtySold is not a fill (MNDI 850→425 naked, PLTR runner dump).
+      // When TP1 is live, runner-only stop: DHL 25 Aug STP 157 + TP1 78 on a
+      // 157 long would otherwise be short 78.
+      const stopQty = protectiveStopQty({
+        posInDir, tp1WorkingQty, tp1Done: row.tp1Done, fullTp1
+      });
       const existing = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null) || stps[0];
       if (existing) {
         const ownerCid = Number(existing.clientId) || Number(state.orderClients[existing.orderId]) || 0;
@@ -5278,7 +5280,7 @@ async function main() {
           totalQuantity: stopQty,
           transmit: true
         }), 'shrink stop for TP1 ' + key);
-        log('RECONCILE: stop qty capped (by id)', key, posInDir, '→', stopQty, '(booked TP1', bookedTp1 + ')');
+        log('RECONCILE: stop qty capped (by id)', key, posInDir, '→', stopQty, '(TP1 working', tp1WorkingQty + ')');
         continue;
       }
       // Do not mint a second STP just because the working-order snapshot missed
@@ -5502,6 +5504,7 @@ async function main() {
         row.ocaLinked = true;
         row.tp1AttachAttemptAt = new Date().toISOString();
         row.stopAttachAttemptAt = row.tp1AttachAttemptAt;
+        row.tp1RoutingFailed = false;
         row.updated = row.tp1AttachAttemptAt;
         if (stpPx > 0) {
           transmitOrder(sid, row.contract, baseOrder({
@@ -5528,6 +5531,7 @@ async function main() {
       row.qtySold = half;
       row.qtyRunner = posInDir - half;
       row.tp1AttachAttemptAt = new Date().toISOString();
+      row.tp1RoutingFailed = false;
       row.updated = row.tp1AttachAttemptAt;
       transmitOrder(oid, row.contract, baseOrder({
         orderId: oid,
@@ -6336,7 +6340,10 @@ async function main() {
           const held0 = posMap.get(posKeyOf(c0));
           const posInDir0 = held0 ? (src.side === 'sell' ? -held0.pos : held0.pos) : 0;
           if (!(posInDir0 > 0)) continue;
-          const avg0 = Number(portfolioAvgCost.get(y)) || Number(src.entry) || 0;
+          const avg0 = alignFillToModel(
+            Number(portfolioAvgCost.get(y)) || Number(src.entry) || 0,
+            src.entry
+          );
           if (!(avg0 > 0)) continue;
           if (!state.byKey[key]) {
             state.byKey[key] = {

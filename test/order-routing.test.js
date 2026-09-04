@@ -5,6 +5,7 @@ const {
   preferredExchange,
   fallbackExchange,
   listingVenue,
+  parentStandalone,
   isRoutingError,
   isSessionBlockedError,
   isShortSaleReject,
@@ -43,6 +44,15 @@ test('Yahoo suffixes are never sent as IB localSymbol', () => {
   assert.equal(placeableStkContract(c).localSymbol, undefined);
   assert.equal(placeableStkContract(c).symbol, '6098');
   assert.equal(placeableStkContract(c).exchange, 'SMART');
+});
+
+test('LSE parents transmit standalone so a child 110 cannot kill the entry', () => {
+  const lse = { symbol: 'SGRO', market: 'LSE', currency: 'GBP', primaryExch: 'LSE' };
+  const jp = { symbol: '7733', market: 'JP', currency: 'JPY', primaryExch: 'TSEJ' };
+  const us = { symbol: 'NVDA', market: 'US', currency: 'USD', primaryExch: 'NASDAQ', usRth: true };
+  assert.equal(parentStandalone(lse), true);
+  assert.equal(parentStandalone(jp), true);
+  assert.equal(parentStandalone(us), false);
 });
 
 test('US names stay on SMART and fall back to the listing venue', () => {

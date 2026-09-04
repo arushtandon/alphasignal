@@ -11,7 +11,8 @@ const {
   passiveCloseLimit,
   fillHonorsTp1Limit,
   isMarketLikeExit,
-  isLimitTp1Fill
+  isLimitTp1Fill,
+  protectiveStopQty
 } = require('../lib/ibkr/tp1-policy');
 
 test('TP1 half is lot-rounded and zero on a single board lot', () => {
@@ -29,6 +30,21 @@ test('unsplittable 1-lot / 1-contract sells the full qty at TP1', () => {
   assert.equal(isFullQtyTp1(1, 1), true);
   assert.equal(isFullQtyTp1(82, 1), false);
   assert.equal(isFullQtyTp1(2000, 2000), true);
+});
+
+test('protective stop stays full until a TP1 LMT is actually working', () => {
+  assert.equal(protectiveStopQty({
+    posInDir: 850, tp1WorkingQty: 0, tp1Done: false, fullTp1: false
+  }), 850, 'MNDI planned half must not naked 425');
+  assert.equal(protectiveStopQty({
+    posInDir: 850, tp1WorkingQty: 425, tp1Done: false, fullTp1: false
+  }), 425);
+  assert.equal(protectiveStopQty({
+    posInDir: 850, tp1WorkingQty: 0, tp1Done: true, fullTp1: false
+  }), 850);
+  assert.equal(protectiveStopQty({
+    posInDir: 1, tp1WorkingQty: 0, tp1Done: false, fullTp1: true
+  }), 1);
 });
 
 test('synthesize TP1 uses horizon percentages', () => {
