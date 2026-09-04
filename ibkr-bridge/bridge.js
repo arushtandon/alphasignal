@@ -94,7 +94,7 @@ const {
   formatGatewayDownAlert,
   formatGatewayRecoveredAlert
 } = require('../lib/ibkr/gateway-alert');
-const { calculateRiskSize, DEFAULT_LIMITS: RISK_SIZING_LIMITS } = require('../lib/risk/sizing');
+const { calculateRiskSize, DEFAULT_LIMITS: RISK_SIZING_LIMITS, liveTicketScale } = require('../lib/risk/sizing');
 const {
   tp1SoldQty,
   tp1OrderQty,
@@ -947,11 +947,12 @@ async function shareSplit(entry, contract, lotOverride, riskInput = {}) {
     spreadBps: riskInput.spreadBps,
     drawdownPct: riskInput.drawdownPct,
     capitalScale: riskInput.capitalScale,
+    ticketScale: liveTicketScale(),
     allowMinLot: riskInput.allowMinLot === true,
     netLiquidityAvailable: riskInput.netLiquidityAvailable,
     liquidityFloorPct: riskInput.liquidityFloorPct,
     maxNotionalUsd: (contract.secType === 'FUT' || contract.secType === 'CRYPTO')
-      ? INSTRUMENT_NOTIONAL_USD : undefined
+      ? INSTRUMENT_NOTIONAL_USD * liveTicketScale() : undefined
   });
   if (!sizing.eligible) {
     log('risk sizing rejected', contract.symbol, sizing.reason,
@@ -969,7 +970,7 @@ async function shareSplit(entry, contract, lotOverride, riskInput = {}) {
       total, lot, nlv: riskInput.nlv, entry: normalizedEntry,
       fxToUsd: 1 / localPerUsd,
       multiplier: contract.secType === 'FUT' ? Number(contract.multiplier) || 1 : 1,
-      maxPositionPct: RISK_SIZING_LIMITS.maxPositionPct,
+      maxPositionPct: RISK_SIZING_LIMITS.maxPositionPct * liveTicketScale(),
       secType: contract.secType
     });
     if (bumped > total) {
@@ -3271,14 +3272,28 @@ async function main() {
     // 06:00 SGT published names are the day's allocation. The 30% gross /
     // country / USD cluster caps are for extras (re-entry, unauthorized), not
     // for blocking the board (DHL-day SNDK/PLTR/ABNB sat behind a 60% book).
+    const ticketScale = liveTicketScale();
     const portfolioCaps = (boardEntry || evt.userReentry)
       ? Object.assign({}, DEFAULT_CAPS, {
         grossPct: 1, netAbsPct: 1, sectorPct: 1,
         countryPct: 1, currencyPct: 1, clusterPct: 1,
+        singleNamePct: Math.min(1, DEFAULT_CAPS.singleNamePct * ticketScale),
+        openStopRiskPct: Math.min(1, DEFAULT_CAPS.openStopRiskPct * ticketScale),
+        dailyNewRiskPct: Math.min(1, DEFAULT_CAPS.dailyNewRiskPct * ticketScale),
         ...(split.risk && split.risk.bindingLimit === 'min-lot-liquidity'
           ? { singleNamePct: 1, dailyNewRiskPct: 1 } : {})
       })
-      : DEFAULT_CAPS;
+      : Object.assign({}, DEFAULT_CAPS, {
+        singleNamePct: Math.min(1, DEFAULT_CAPS.singleNamePct * ticketScale),
+        openStopRiskPct: Math.min(1, DEFAULT_CAPS.openStopRiskPct * ticketScale),
+        dailyNewRiskPct: Math.min(1, DEFAULT_CAPS.dailyNewRiskPct * ticketScale),
+        grossPct: Math.min(1, DEFAULT_CAPS.grossPct * ticketScale),
+        netAbsPct: Math.min(1, DEFAULT_CAPS.netAbsPct * ticketScale),
+        sectorPct: Math.min(1, DEFAULT_CAPS.sectorPct * ticketScale),
+        countryPct: Math.min(1, DEFAULT_CAPS.countryPct * ticketScale),
+        currencyPct: Math.min(1, DEFAULT_CAPS.currencyPct * ticketScale),
+        clusterPct: Math.min(1, DEFAULT_CAPS.clusterPct * ticketScale)
+      });
     const portfolioGate = evaluatePortfolioAddition({
       nlv,
       positions: existingPositions,

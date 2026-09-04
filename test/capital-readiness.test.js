@@ -61,15 +61,31 @@ test('cost model reduces gross expectancy', () => {
 test('crypto sizes to the $10k instrument cap, not a wide-stop risk cut', () => {
   const eth = calculateRiskSize({
     nlv: 470_000, entry: 2510.74, stop: 1778, lot: 0.001,
-    allowFractional: true, secType: 'CRYPTO', maxNotionalUsd: 10_000
+    allowFractional: true, secType: 'CRYPTO', maxNotionalUsd: 10_000, ticketScale: 1
   });
   assert.equal(eth.eligible, true);
   assert.equal(eth.bindingLimit, 'notional');
   assert.ok(eth.notionalUsd >= 9990 && eth.notionalUsd <= 10000);
 });
 
+test('Monday ticket scale triples per-name notional and stop-risk budgets', () => {
+  const { liveTicketScale } = require('../lib/risk/sizing');
+  assert.equal(liveTicketScale(Date.parse('2026-09-06T15:59:00.000Z')), 1);
+  assert.equal(liveTicketScale(Date.parse('2026-09-06T16:00:00.000Z')), 3);
+  const fri = calculateRiskSize({
+    nlv: 470_000, entry: 100, stop: 95, advShares: 10_000_000, ticketScale: 1
+  });
+  const mon = calculateRiskSize({
+    nlv: 470_000, entry: 100, stop: 95, advShares: 10_000_000, ticketScale: 3
+  });
+  assert.equal(fri.eligible && mon.eligible, true);
+  assert.ok(Math.abs(mon.quantity / fri.quantity - 3) < 0.02);
+});
+
 test('risk sizing respects NLV, stop, notional, lot, and drawdown', () => {
-  const sized = calculateRiskSize({ nlv: 1_000_000, entry: 100, stop: 95, advShares: 1_000_000 });
+  const sized = calculateRiskSize({
+    nlv: 1_000_000, entry: 100, stop: 95, advShares: 1_000_000, ticketScale: 1
+  });
   assert.equal(sized.eligible, true);
   assert.ok(sized.notionalPctNlv <= 0.025);
   assert.ok(sized.riskPctNlv <= 0.003);

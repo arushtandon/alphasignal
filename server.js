@@ -12105,6 +12105,29 @@ function writeOpenRowAction(row, hz, desired) {
   return true;
 }
 
+/** Analysis UI confidence % — same field as dashboard Conf (winRateHint). */
+function stampHorizonConfidence(row, sig) {
+  if (!row) return row;
+  for (const hz of ['short', 'medium', 'long']) {
+    const s = sig && sig[hz];
+    const hint = Number(s && s.winRateHint);
+    const btKey = hz === 'short' ? 'backtestedWinRate'
+      : hz === 'medium' ? 'backtestMediumWinRate' : 'backtestLongWinRate';
+    const bt = Number(row[btKey]);
+    const score = Math.max(
+      Number(s && s.buyScore) || 0,
+      Number(s && s.sellScore) || 0,
+      Number(row[hz + 'Score']) || 0,
+      Number(row[hz + 'SellScore']) || 0
+    );
+    const conf = (Number.isFinite(hint) && hint > 0) ? hint
+      : (Number.isFinite(bt) && bt > 0) ? bt
+      : score;
+    if (conf > 0) row[hz + 'Conf'] = Math.round(conf);
+  }
+  return row;
+}
+
 function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
   if (!row || !livePrice || livePrice <= 0) return row;
   const e = livePrice;
@@ -12375,6 +12398,7 @@ app.post('/api/analyze', async (req, res) => {
       row.backtestTrades = btS?.trades ?? null;
       row.backtestAvgReturn = btS?.avgReturnPct ?? null;
       row.quantConditions = sig.short.conditions;
+      stampHorizonConfidence(row, sig);
       if (sig.fmpScore) row.fmpScore = sig.fmpScore;
       if (sig.danelfin) {
         row.danelfinAiScore = sig.danelfin.aiscore;
@@ -12548,6 +12572,7 @@ Output ONLY the JSON array. No markdown.`;
         row.support1          = tech?.support1 ?? null;
         row.resistance1       = tech?.resistance1 ?? null;
         row.analystTarget     = fund?.targetMeanPrice ?? null;
+        stampHorizonConfidence(row, sig);
       } else if (tech) {
         row.atr14        = tech.atr14 || tech.atr;
         row.atrPct       = tech.atrPct;
@@ -17400,11 +17425,17 @@ app.get('/api/ibkr/trades', async (req, res) => {
       const pct = ({ short: 0.035, medium: 0.07, long: 0.12 })[hz || 'short'] || 0.035;
       return +(isSell ? e * (1 - pct) : e * (1 + pct)).toFixed(4);
     }
-    function synthesizeTp2FromEntry(avgEntry, hz, isSell) {
+    function synthesizeTp2FromEntry(avgEntry, hz, isSell, tp1) {
       const e = Number(avgEntry);
       if (!(e > 0)) return null;
       const pct = ({ short: 0.06, medium: 0.12, long: 0.20 })[hz || 'short'] || 0.06;
-      return +(isSell ? e * (1 - pct) : e * (1 + pct)).toFixed(4);
+      let tp2 = +(isSell ? e * (1 - pct) : e * (1 + pct)).toFixed(4);
+      const t1 = Number(tp1);
+      if (t1 > 0) {
+        if (isSell && !(tp2 < t1)) tp2 = +(t1 * 0.96).toFixed(4);
+        if (!isSell && !(tp2 > t1)) tp2 = +(t1 * 1.04).toFixed(4);
+      }
+      return tp2;
     }
     // Overlay last IB paper snapshot so the tab matches account qty/avg even if
     // recon fill rows were delayed or purged. IB is source of truth for opens.
@@ -17444,7 +17475,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
         rec.tp1Synthesized = true;
       }
       if (!(Number(rec.tp2) > 0) && Number(t.avgEntry) > 0) {
-        rec.tp2 = synthesizeTp2FromEntry(t.avgEntry, t.hz, t.side === 'sell');
+        rec.tp2 = synthesizeTp2FromEntry(t.avgEntry, t.hz, t.side === 'sell', rec.tp1);
         rec.tp2Synthesized = true;
       }
       if (!(Number(rec.sl) > 0) && Number(t.avgEntry) > 0) {

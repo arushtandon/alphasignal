@@ -1957,7 +1957,9 @@ function ibkrTradeLifecycle(t) {
   let tp2Hit = false, tp2At = null, tp2Print = null;
   if (tp2Px > 0) {
     for (const f of fills) {
-      if (f.role === 'entry') continue;
+      // TP1 is a half-exit. Counting it as TP2 made 9988 look booked when
+      // the runner was still on the TSL (synthesized TP2 sat inside TP1).
+      if (f.role === 'entry' || f.role === 'tp1') continue;
       const px = Number(f.price) || 0;
       if (!(px > 0)) continue;
       if (isSell ? px <= tp2Px : px >= tp2Px) {
@@ -5847,6 +5849,15 @@ async function runAnalysis(tickers,isTop5,dashHint=null){
 // ══════════════════════════════════════════════
 // RENDER CARD
 // ══════════════════════════════════════════════
+function hzDisplayConf(s, hz) {
+  const direct = Number(s && s[hz + 'Conf']);
+  if (direct > 0) return Math.round(direct);
+  const bt = hz === 'short' ? s && s.backtestedWinRate
+    : hz === 'medium' ? s && s.backtestMediumWinRate : s && s.backtestLongWinRate;
+  if (Number(bt) > 0) return Math.round(Number(bt));
+  const score = Math.max(Number(s && s[hz + 'Score']) || 0, Number(s && s[hz + 'SellScore']) || 0);
+  return score > 0 ? Math.round(score) : 0;
+}
 function applyWinRateThreshold(rating, winRate) {
   // Downgrade Strong Buy/Sell to Buy/Sell if backtested win rate < 70%
   if (!rating) return rating;
@@ -6405,7 +6416,7 @@ function renderCard(s){
       key:'short', label:'Short', period:'1 day–1 month',
       tier:s.shortTier||0, tierLabel:s.shortTierLabel||'',
       winRateEst:s.shortWinRateEst||null, regime:s._shortRegime||s._regime||'neutral', danScore:s.danelfinAiScore||null, danDriver:s.danelfinTechnical||null, danDriverLabel:'Technical', compositeAlpha:s.compositeAlphaShort||null,
-      rating:applyWinRateThreshold(s.shortRating, s.backtestedWinRate), conf:s.shortConf,
+      rating:applyWinRateThreshold(s.shortRating, s.backtestedWinRate), conf:hzDisplayConf(s,'short'),
       weighting:s.shortWeighting||'100% Technical',
       action: hzActionFromRow('short', s.shortRating, s.shortAction),
       entry:  s.shortEntry  || s.entry,
@@ -6423,7 +6434,7 @@ function renderCard(s){
       key:'medium', label:'Medium', period:'1–3 months',
       tier:s.mediumTier||0, tierLabel:s.mediumTierLabel||'',
       winRateEst:s.mediumWinRateEst||null, regime:s._medRegime||s._regime||'neutral', danScore:s.danelfinAiScore||null, danDriver:s.danelfinAiScore||null, danDriverLabel:'AI Score', compositeAlpha:s.compositeAlphaMedium||s.compositeAlpha||null,
-      rating:applyWinRateThreshold(s.mediumRating, s.backtestMediumWinRate), conf:s.mediumConf,
+      rating:applyWinRateThreshold(s.mediumRating, s.backtestMediumWinRate), conf:hzDisplayConf(s,'medium'),
       weighting:s.mediumWeighting||'70% Technical · 30% News',
       action: hzActionFromRow('medium', s.mediumRating, s.mediumAction),
       entry:  s.mediumEntry  || s.entry,
@@ -6441,7 +6452,7 @@ function renderCard(s){
       key:'long', label:'Long', period:'4–12 months',
       tier:s.longTier||0, tierLabel:s.longTierLabel||'',
       winRateEst:s.longWinRateEst||null, regime:s._longRegime||s._regime||'neutral', danScore:s.danelfinAiScore||null, danDriver:s.danelfinFundamental||null, danDriverLabel:'Fundamental', compositeAlpha:s.compositeAlphaLong||null,
-      rating:applyWinRateThreshold(s.longRating, s.backtestLongWinRate), conf:s.longConf,
+      rating:applyWinRateThreshold(s.longRating, s.backtestLongWinRate), conf:hzDisplayConf(s,'long'),
       weighting:s.longWeighting||'60% Technical · 20% Fundamental · 20% News',
       action: hzActionFromRow('long', s.longRating, s.longAction),
       entry:  s.longEntry  || s.entry,

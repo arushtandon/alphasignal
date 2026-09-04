@@ -18,19 +18,20 @@ const CASH_QTY = Number(process.env.ETH_CASH_QTY || '10000');
 
 function log(...a) { console.log(new Date().toISOString(), ...a); }
 
-function patchState(parentId, filled, fillQty, avg) {
+function patchState(parentId, filled, fillQty, avg, extra = {}) {
   const j = JSON.parse(fs.readFileSync(STATE, 'utf8'));
   const row = j.byKey && j.byKey[KEY];
   if (!row) { log('state row missing', KEY); return; }
-  row.parentId = parentId;
+  if (parentId != null) row.parentId = parentId;
   row.stopId = null;
   row.tp1Id = null;
   row.entryStyle = 'MKT-GLOBE';
   row.entryFilled = !!filled;
   row.closed = false;
   row.deferred = false;
-  row.contractRejected = false;
+  row.contractRejected = extra.permissionPending ? true : false;
   row.cryptoCashQtyRejected = false;
+  row.cryptoPermissionPending = !!extra.permissionPending;
   row.parentClientId = CLIENT_ID;
   row.placeClientId = CLIENT_ID;
   if (fillQty > 0) {
@@ -38,11 +39,13 @@ function patchState(parentId, filled, fillQty, avg) {
     row.ibAvgFill = avg || row.ibAvgFill;
   }
   row.lastRearmAt = new Date().toISOString();
-  row.rearmReason = 'side-client-28-cashqty';
+  row.rearmReason = extra.permissionPending ? 'crypto-permission-201' : 'side-client-28-cashqty';
   row.orderSubmittedAt = row.lastRearmAt;
   row.updated = row.lastRearmAt;
   fs.writeFileSync(STATE, JSON.stringify(j, null, 2) + '\n');
-  log('state patched', KEY, 'parentId=' + parentId, 'filled=' + !!filled, 'qty=' + (fillQty || ''));
+  log('state patched', KEY, 'parentId=' + (parentId || row.parentId),
+    'filled=' + !!filled, 'qty=' + (fillQty || ''),
+    extra.permissionPending ? 'permissionPending' : '');
 }
 
 async function main() {
@@ -52,8 +55,11 @@ async function main() {
   const ib = new IBApi({ host: HOST, port: PORT, clientId: CLIENT_ID });
   let filled = 0;
   let avg = null;
+  let permissionPending = false;
   ib.on(EventName.error, (err, code, extra) => {
-    log('IB msg', code, err && err.message ? err.message : err, extra != null ? extra : '');
+    const msg = err && err.message ? err.message : String(err || '');
+    log('IB msg', code, msg, extra != null ? extra : '');
+    if (Number(code) === 201 && /trading permissions/i.test(msg)) permissionPending = true;
   });
   ib.on(EventName.execDetails, (_req, contract, exec) => {
     const sym = String(contract && contract.symbol || '');
@@ -118,6 +124,9 @@ async function main() {
   if (filled > 0) {
     try { patchState(oid, true, filled, avg); } catch (e) { log('state patch failed', e.message); }
     log('FILLED ' + filled + (avg ? ' avg=' + avg : ''));
+  } else if (permissionPending) {
+    try { patchState(oid, false, 0, null, { permissionPending: true }); } catch (e) { log('state patch failed', e.message); }
+    log('NO FILL — IB 201 trading permissions not finalized. Restart Gateway after Account Management shows crypto live, then re-run. Do not stack another ETH while 201 persists.');
   } else {
     log('NO FILL parent=' + oid + ' filled=' + filled + ' cashQty=' + CASH_QTY);
   }
