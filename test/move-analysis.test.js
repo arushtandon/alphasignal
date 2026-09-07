@@ -135,6 +135,42 @@ test('this week vs last week uses last-week realised fills when snaps start this
   assert.equal(lastWeek.rows[0].ticker, 'HO.PA');
 });
 
+test('this month realised includes earlier-in-month fills that this week does not', () => {
+  const now = Date.parse('2026-09-07T13:15:00.000Z');
+  const monday = slimBook(
+    [name('BA.L', -200)],
+    { unrealizedUsd: -200, realizedUsd: 8000, openCount: 1 },
+    { at: '2026-09-07T04:58:00.000Z' }
+  );
+  const curr = slimBook(
+    [name('BA.L', -1210), name('4062.T', 0, { openQty: 0, realizedUsd: 1623 })],
+    { unrealizedUsd: -1210, realizedUsd: 9623, openCount: 1 },
+    { at: '2026-09-07T05:11:00.000Z' }
+  );
+  const fill = (ticker, key, role, qty, price, time, extra) => Object.assign({
+    key, ticker, side: 'buy', currency: 'USD', ccyScale: 1, errorTrade: false,
+    role, qty, price, time
+  }, extra || {});
+  const fills = [
+    fill('HO.PA', 'HO.PA|short|Mon Aug 24 2026', 'entry', 10, 100, '2026-08-25T08:00:00.000Z', { currency: 'EUR' }),
+    fill('HO.PA', 'HO.PA|short|Mon Aug 24 2026', 'tp1', 10, 110, '2026-09-03T08:00:00.000Z', { currency: 'EUR' }),
+    fill('4062.T', '4062.T|short|Mon Aug 24 2026', 'entry', 100, 20000, '2026-08-24T08:00:00.000Z'),
+    fill('4062.T', '4062.T|short|Mon Aug 24 2026', 'tp1', 100, 21623, '2026-09-07T05:00:00.000Z')
+  ];
+  const notes = buildMoveNotes([monday, curr], now, { fills });
+  assert.equal(notes.day.dRealUsd, notes.week.dRealUsd);
+  assert.ok(notes.week.hideReal);
+  assert.ok(notes.week.hideUnreal);
+  assert.ok(notes.month.hideUnreal);
+  assert.equal(!!notes.month.hideReal, false);
+  assert.notEqual(notes.month.dRealUsd, notes.week.dRealUsd);
+  assert.ok(notes.month.realisedHelped.some((m) => m.ticker === 'HO.PA'));
+  assert.ok(!notes.week.realisedHelped.some((m) => m.ticker === 'HO.PA'));
+  assert.ok(notes.day.realisedHelped.some((m) => m.ticker === '4062.T'));
+  assert.ok(notes.month.realisedHelped.some((m) => m.ticker === '4062.T'));
+  assert.match(notes.week.summary, /same window as Today/i);
+});
+
 test('buildMoveNotes uses SGT day/week/month baselines', () => {
   const starts = periodStarts(Date.parse('2026-09-07T05:00:00.000Z'));
   assert.equal(starts.day.fromMs, Date.parse('2026-09-07T00:00:00+08:00'));

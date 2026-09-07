@@ -2268,10 +2268,18 @@ function moveInfoNoteCard(period) {
     + (period.label || '') + '</div>'
     + '<div style="font-size:14px;line-height:1.55;color:var(--m2)">' + (period.summary || '') + '</div>'
     + '<div style="margin-top:6px;padding-top:8px;border-top:1px solid var(--b1)">'
-    + moveInfoBucket('Realised — helped', period.realisedHelped, 'No material realised gains')
-    + moveInfoBucket('Realised — hurt', period.realisedHurt, 'No material realised losses')
-    + moveInfoBucket('Unrealised — helped', period.unrealisedHelped, 'No material mark-to-market lifts')
-    + moveInfoBucket('Unrealised — hurt', period.unrealisedHurt, 'No material mark-to-market drags')
+    + (period.hideReal
+      ? '<div style="font-size:12px;color:var(--m1);margin-top:10px">Realised fills match '
+        + (period.realSameAs || 'the shorter window')
+        + ' — week starts Monday SGT.</div>'
+      : moveInfoBucket('Realised — helped', period.realisedHelped, 'No material realised gains')
+        + moveInfoBucket('Realised — hurt', period.realisedHurt, 'No material realised losses'))
+    + (period.hideUnreal
+      ? '<div style="font-size:12px;color:var(--m1);margin-top:10px">Unrealised marks match '
+        + (period.unrealSameAs || 'the shorter window')
+        + ' — no earlier snapshot.</div>'
+      : moveInfoBucket('Unrealised — helped', period.unrealisedHelped, 'No material mark-to-market lifts')
+        + moveInfoBucket('Unrealised — hurt', period.unrealisedHurt, 'No material mark-to-market drags'))
     + '</div></div>';
 }
 async function renderMoveInfo(){
