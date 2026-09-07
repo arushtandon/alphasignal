@@ -10,7 +10,9 @@ const {
   moverSentence,
   writePeriodNote,
   buildMoveNotes,
-  periodStarts
+  periodStarts,
+  splitContributors,
+  realisedFromFills
 } = require('../lib/ibkr/move-analysis');
 
 function name(ticker, unreal, extra) {
@@ -89,9 +91,48 @@ test('period note names the names that moved PnL', () => {
   );
   const note = writePeriodNote(attributeMove(prev, curr), { label: 'Today' });
   assert.match(note.summary, /Today the book moved/);
-  assert.match(note.summary, /4062\.T/);
-  assert.match(note.summary, /BA\.L/);
+  assert.ok(note.realisedHelped.some((m) => m.ticker === '4062.T'));
+  assert.ok(note.unrealisedHurt.some((m) => m.ticker === 'BA.L'));
   assert.ok(note.movers.length >= 2);
+});
+
+test('contributors split realised and unrealised, helped and hurt', () => {
+  const split = splitContributors([
+    { ticker: '4062.T', dRealUsd: 1623, dUnrealUsd: 0 },
+    { ticker: 'SAP.DE', dRealUsd: 0, dUnrealUsd: -183 },
+    { ticker: '6758.T', dRealUsd: 0, dUnrealUsd: 102 },
+    { ticker: 'FOO', dRealUsd: -90, dUnrealUsd: 0 }
+  ]);
+  assert.equal(split.realisedHelped[0].ticker, '4062.T');
+  assert.equal(split.realisedHurt[0].ticker, 'FOO');
+  assert.equal(split.unrealisedHelped[0].ticker, '6758.T');
+  assert.equal(split.unrealisedHurt[0].ticker, 'SAP.DE');
+});
+
+test('this week vs last week uses last-week realised fills when snaps start this Monday', () => {
+  const now = Date.parse('2026-09-07T05:15:00.000Z');
+  const curr = slimBook(
+    [name('BA.L', -1210), name('4062.T', 0, { openQty: 0, realizedUsd: 1623 })],
+    { unrealizedUsd: -1210, realizedUsd: 9623, openCount: 1 },
+    { at: '2026-09-07T05:11:00.000Z' }
+  );
+  const monday = slimBook(
+    [name('BA.L', -200)],
+    { unrealizedUsd: -200, realizedUsd: 8000, openCount: 1 },
+    { at: '2026-09-07T04:58:00.000Z' }
+  );
+  const fills = [
+    { key: 'HO.PA|short|Mon Aug 24 2026', ticker: 'HO.PA', side: 'buy', currency: 'EUR', ccyScale: 1, errorTrade: false, role: 'entry', qty: 10, price: 100, time: '2026-08-25T08:00:00.000Z' },
+    { key: 'HO.PA|short|Mon Aug 24 2026', ticker: 'HO.PA', side: 'buy', currency: 'EUR', ccyScale: 1, errorTrade: false, role: 'tp1', qty: 10, price: 110, time: '2026-09-03T08:00:00.000Z' }
+  ];
+  const notes = buildMoveNotes([monday, curr], now, { fills });
+  assert.match(notes.week.vsLast, /last week/i);
+  assert.match(notes.month.vsLast, /last month/i);
+  assert.notEqual(notes.week.vsLast, notes.month.vsLast);
+  assert.ok(notes.week.last.missing || notes.week.last.fromFills);
+  const lastWeek = realisedFromFills(fills, Date.parse('2026-08-31T00:00:00+08:00'), Date.parse('2026-09-07T00:00:00+08:00'));
+  assert.ok(lastWeek.dRealUsd > 0);
+  assert.equal(lastWeek.rows[0].ticker, 'HO.PA');
 });
 
 test('buildMoveNotes uses SGT day/week/month baselines', () => {

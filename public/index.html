@@ -666,7 +666,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
       <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div>
           <div class="pt">Analysis Info</div>
-          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Note of which names moved PnL — today, this week, this month. Lifetime hole is mark vs entry.</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">This week vs last week, this month vs last month. Realised and unrealised, helped and hurt.</div>
         </div>
         <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderMoveInfo(true)">↻ Refresh</button>
       </div>
@@ -2244,23 +2244,35 @@ function moveInfoUsdTone(n) {
   if (x < 0) return 'var(--sell)';
   return 'var(--m2)';
 }
-function moveInfoNoteCard(period) {
-  if (!period) return '';
-  const movers = period.movers || [];
-  const lines = movers.map(function (m) {
-    const usd = Math.abs(Number(m.dRealUsd) || 0) >= Math.abs(Number(m.dUnrealUsd) || 0)
-      ? Number(m.dRealUsd) : Number(m.dUnrealUsd);
+function moveInfoMoverLines(rows) {
+  return (rows || []).map(function (m) {
+    const usd = Number(m.usd);
     return '<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13px;line-height:1.45">'
       + '<span>' + (m.text || m.ticker) + '</span>'
       + '<span style="font-family:DM Mono,monospace;white-space:nowrap;color:' + moveInfoUsdTone(usd) + '">'
       + ibkrFp(usd) + '</span></div>';
   }).join('');
+}
+function moveInfoBucket(title, rows, emptyText) {
+  const body = moveInfoMoverLines(rows);
+  return '<div>'
+    + '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1);margin:10px 0 4px">'
+    + title + '</div>'
+    + (body || '<div style="font-size:12px;color:var(--m1)">' + (emptyText || 'None') + '</div>')
+    + '</div>';
+}
+function moveInfoNoteCard(period) {
+  if (!period) return '';
   return '<div class="lcard" style="margin-bottom:12px;padding:12px 14px">'
     + '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1);margin-bottom:8px">'
     + (period.label || '') + '</div>'
     + '<div style="font-size:14px;line-height:1.55;color:var(--m2)">' + (period.summary || '') + '</div>'
-    + (lines ? '<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--b1)">' + lines + '</div>' : '')
-    + '</div>';
+    + '<div style="margin-top:6px;padding-top:8px;border-top:1px solid var(--b1)">'
+    + moveInfoBucket('Realised — helped', period.realisedHelped, 'No material realised gains')
+    + moveInfoBucket('Realised — hurt', period.realisedHurt, 'No material realised losses')
+    + moveInfoBucket('Unrealised — helped', period.unrealisedHelped, 'No material mark-to-market lifts')
+    + moveInfoBucket('Unrealised — hurt', period.unrealisedHurt, 'No material mark-to-market drags')
+    + '</div></div>';
 }
 async function renderMoveInfo(){
   const el = document.getElementById('moveinfoContent');

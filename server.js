@@ -18261,7 +18261,7 @@ app.get('/api/ibkr/move-analysis', (req, res) => {
     const prev = snaps.length > 1 ? snaps[snaps.length - 2] : null;
     const sessionStart = snaps.find((s) => s && s.at && String(s.at).slice(0, 10) === (curr && String(curr.at).slice(0, 10)))
       || snaps[0] || null;
-    const notes = buildMoveNotes(snaps);
+    const notes = buildMoveNotes(snaps, Date.now(), { fills: readIbkrFillRows() });
     res.json({
       ok: true,
       book,
