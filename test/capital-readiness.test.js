@@ -102,7 +102,8 @@ test('risk sizing respects NLV, stop, notional, lot, and drawdown', () => {
 test('published 1-lot still trades while leftover liquidity stays above 20% NLV', () => {
   const recruit = calculateRiskSize({
     nlv: 467_000, entry: 17155, stop: 14215, fxToUsd: 1 / 150, lot: 100,
-    allowMinLot: true, netLiquidityAvailable: 374_000, liquidityFloorPct: 0.20
+    allowMinLot: true, netLiquidityAvailable: 374_000, liquidityFloorPct: 0.20,
+    ticketScale: 1
   });
   assert.equal(recruit.eligible, true);
   assert.equal(recruit.quantity, 100);
@@ -110,7 +111,8 @@ test('published 1-lot still trades while leftover liquidity stays above 20% NLV'
 
   const brent = calculateRiskSize({
     nlv: 467_000, entry: 86.56, stop: 81.86, multiplier: 1000, lot: 1, secType: 'FUT',
-    allowMinLot: true, netLiquidityAvailable: 374_000, liquidityFloorPct: 0.20
+    allowMinLot: true, netLiquidityAvailable: 374_000, liquidityFloorPct: 0.20,
+    ticketScale: 1
   });
   assert.equal(brent.eligible, true);
   assert.equal(brent.quantity, 1);
@@ -118,7 +120,7 @@ test('published 1-lot still trades while leftover liquidity stays above 20% NLV'
 
   const brentMini = calculateRiskSize({
     nlv: 467_000, entry: 86.56, stop: 81.86, multiplier: 100, lot: 1, secType: 'FUT',
-    maxNotionalUsd: 10_000
+    maxNotionalUsd: 10_000, ticketScale: 1
   });
   assert.equal(brentMini.eligible, true);
   assert.equal(brentMini.quantity, 1);
@@ -126,14 +128,16 @@ test('published 1-lot still trades while leftover liquidity stays above 20% NLV'
 
   const tight = calculateRiskSize({
     nlv: 467_000, entry: 17155, stop: 14215, fxToUsd: 1 / 150, lot: 100,
-    allowMinLot: true, netLiquidityAvailable: 90_000, liquidityFloorPct: 0.20
+    allowMinLot: true, netLiquidityAvailable: 90_000, liquidityFloorPct: 0.20,
+    ticketScale: 1
   });
   assert.equal(tight.eligible, false);
   assert.equal(tight.reason, 'minimum-lot-exceeds-risk-budget');
 
   const noSnap = calculateRiskSize({
     nlv: 467_000, entry: 17155, stop: 14215, fxToUsd: 1 / 150, lot: 100,
-    allowMinLot: true, netLiquidityAvailable: 0, liquidityFloorPct: 0.20
+    allowMinLot: true, netLiquidityAvailable: 0, liquidityFloorPct: 0.20,
+    ticketScale: 1
   });
   assert.equal(noSnap.eligible, true);
   assert.equal(noSnap.quantity, 100);

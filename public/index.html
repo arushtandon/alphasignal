@@ -666,7 +666,7 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
       <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div>
           <div class="pt">Analysis Info</div>
-          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Lifetime MTM is mark vs entry. Session swing is the change since the last snapshot.</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Note of which names moved PnL — today, this week, this month. Lifetime hole is mark vs entry.</div>
         </div>
         <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderMoveInfo(true)">↻ Refresh</button>
       </div>
@@ -2238,22 +2238,28 @@ async function fetchIbkrBook() {
   if (!d.ok) throw new Error(d.error || 'bad response');
   return rememberIbkrBook(d, 'paper');
 }
-function moveInfoRowHtml(r, usdKey) {
-  const usd = Number(r[usdKey] != null ? r[usdKey] : r.unrealizedUsd) || 0;
-  const why = r.reason === 'new' ? 'new position'
-    : r.reason === 'closed' ? 'closed / flatten'
-      : r.reason === 'qty' ? 'size change'
-        : (r.prevMark != null && r.mark != null ? ('mark ' + r.prevMark + ' → ' + r.mark) : 'mark');
-  return '<div class="lr" style="align-items:flex-start">'
-    + '<div><div class="lt2">' + (r.ticker || '') + '</div>'
-    + '<div style="font-size:10px;color:var(--m1);font-family:DM Mono,monospace">'
-    + (r.openQty > 0 ? (r.openQty + ' open') : 'flat')
-    + (r.avgEntry != null ? ' · avg ' + r.avgEntry : '')
-    + (r.mark != null ? ' · mark ' + r.mark : '')
-    + (r.notionalUsd ? ' · notional ' + ibkrFp(r.notionalUsd).replace('+','') : '')
-    + (r.reason ? ' · ' + why : '')
-    + '</div></div>'
-    + '<div style="font-family:DM Mono,monospace;font-size:13px;color:' + ibkrPc(usd) + '">' + ibkrFp(usd) + '</div>'
+function moveInfoUsdTone(n) {
+  const x = Number(n) || 0;
+  if (x > 0) return 'var(--buy)';
+  if (x < 0) return 'var(--sell)';
+  return 'var(--m2)';
+}
+function moveInfoNoteCard(period) {
+  if (!period) return '';
+  const movers = period.movers || [];
+  const lines = movers.map(function (m) {
+    const usd = Math.abs(Number(m.dRealUsd) || 0) >= Math.abs(Number(m.dUnrealUsd) || 0)
+      ? Number(m.dRealUsd) : Number(m.dUnrealUsd);
+    return '<div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13px;line-height:1.45">'
+      + '<span>' + (m.text || m.ticker) + '</span>'
+      + '<span style="font-family:DM Mono,monospace;white-space:nowrap;color:' + moveInfoUsdTone(usd) + '">'
+      + ibkrFp(usd) + '</span></div>';
+  }).join('');
+  return '<div class="lcard" style="margin-bottom:12px;padding:12px 14px">'
+    + '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1);margin-bottom:8px">'
+    + (period.label || '') + '</div>'
+    + '<div style="font-size:14px;line-height:1.55;color:var(--m2)">' + (period.summary || '') + '</div>'
+    + (lines ? '<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--b1)">' + lines + '</div>' : '')
     + '</div>';
 }
 async function renderMoveInfo(){
@@ -2263,54 +2269,21 @@ async function renderMoveInfo(){
   try {
     const book = await fetchIbkrBook();
     const tt = (book && book.totals) || {};
-    const open = (book.trades || []).filter(function (t) { return t && !t.errorTrade && t.openQty > 0; });
-    const byT = {};
-    open.forEach(function (t) {
-      const k = String(t.ticker || '').toUpperCase();
-      if (!byT[k]) byT[k] = { ticker: k, unrealizedUsd: 0, realizedUsd: 0, openQty: 0, mark: t.mark, avgEntry: t.avgEntry, notionalUsd: 0 };
-      byT[k].unrealizedUsd += Number(t.unrealizedUsd) || 0;
-      byT[k].realizedUsd += Number(t.realizedUsd) || 0;
-      byT[k].openQty += Number(t.openQty) || 0;
-      byT[k].notionalUsd += Number(t.notionalUsd) || 0;
-      if (t.mark != null) byT[k].mark = t.mark;
-    });
-    const ranked = Object.values(byT).sort(function (a, b) { return a.unrealizedUsd - b.unrealizedUsd; });
-    const drags = ranked.filter(function (r) { return r.unrealizedUsd < 0; }).slice(0, 8);
-    const lifts = ranked.filter(function (r) { return r.unrealizedUsd > 0; }).sort(function (a, b) { return b.unrealizedUsd - a.unrealizedUsd; }).slice(0, 5);
-    const hole = Number(tt.unrealizedUsd) || 0;
-    const top = drags[0];
-    const share = top && hole < 0 ? Math.round(Math.abs(top.unrealizedUsd) / Math.abs(hole) * 100) : 0;
-    let head = 'Open book unrealised ' + ibkrFp(hole) + ' is mark vs entry on open lots (lifetime MTM), not a 1-day move.';
-    if (top && top.unrealizedUsd < -50) {
-      head += ' Largest lifetime drag: ' + top.ticker + ' ' + ibkrFp(top.unrealizedUsd);
-      if (share >= 15) head += ' (' + share + '% of the open hole)';
-      head += '.';
-    }
-    let lastHtml = '';
-    try {
-      const mr = await fetch('/api/ibkr/move-analysis?book=paper&t=' + Date.now(), { cache: 'no-store' });
-      const md = await mr.json();
-      if (md && md.ok && md.lastMove && md.lastMove.large && md.lastMove.rows && md.lastMove.rows.length) {
-        lastHtml = '<div class="lcard" style="margin-bottom:12px"><div style="padding:10px 12px 4px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1)">Last large move (since prior snapshot — this is the 1-day / session swing)'
-          + (md.lastMove.fromAt ? ' · ' + String(md.lastMove.fromAt).slice(11, 16) + ' → ' + String(md.lastMove.toAt || '').slice(11, 16) : '')
-          + '</div>'
-          + '<div style="padding:0 12px 8px;font-size:13px;font-family:DM Mono,monospace">' + md.lastMove.headline + '</div>'
-          + md.lastMove.rows.slice(0, 8).map(function (r) { return moveInfoRowHtml(r, 'dUnrealUsd'); }).join('')
-          + '</div>';
-      }
-    } catch (_) {}
-    el.innerHTML = '<div style="padding:10px 12px;margin-bottom:12px;background:var(--s1);border:1px solid var(--b1);border-radius:8px;font-size:13px;line-height:1.45">'
-      + head
-      + '<div style="margin-top:6px;font-size:11px;color:var(--m1);font-family:DM Mono,monospace">Realised ' + ibkrFp(tt.realizedUsd)
+    const mr = await fetch('/api/ibkr/move-analysis?book=paper&t=' + Date.now(), { cache: 'no-store' });
+    const md = await mr.json();
+    const summary = (md && md.ok && md.summary)
+      ? md.summary
+      : 'No move snapshots yet. Refresh after the paper book has been up for a minute.';
+    el.innerHTML = '<div style="padding:14px 16px;margin-bottom:14px;background:var(--s1);border:1px solid var(--b1);border-radius:8px">'
+      + '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1);margin-bottom:8px">What moved the PnL</div>'
+      + '<div style="font-size:15px;line-height:1.6">' + summary + '</div>'
+      + '<div style="margin-top:10px;font-size:11px;color:var(--m1);font-family:DM Mono,monospace">Lifetime realised '
+      + ibkrFp(tt.realizedUsd)
       + ' · IB unrealised ' + (book.account && book.account.ibUnrealizedPnl != null ? ibkrFp(book.account.ibUnrealizedPnl) : '—')
-      + ' · ' + (tt.openCount || open.length) + ' open</div></div>'
-      + lastHtml
-      + '<div class="lcard" style="margin-bottom:12px"><div style="padding:10px 12px 4px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1)">Largest lifetime drags — mark vs entry, not today</div>'
-      + (drags.length ? drags.map(function (r) { return moveInfoRowHtml(r, 'unrealizedUsd'); }).join('') : '<div style="padding:12px;color:var(--m2)">No open losers</div>')
-      + '</div>'
-      + '<div class="lcard"><div style="padding:10px 12px 4px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1)">Largest lifetime lifts — mark vs entry, not today</div>'
-      + (lifts.length ? lifts.map(function (r) { return moveInfoRowHtml(r, 'unrealizedUsd'); }).join('') : '<div style="padding:12px;color:var(--m2)">No open winners</div>')
-      + '</div>';
+      + ' · ' + (tt.openCount || 0) + ' open</div></div>'
+      + moveInfoNoteCard(md && md.day)
+      + moveInfoNoteCard(md && md.week)
+      + moveInfoNoteCard(md && md.month);
   } catch (e) {
     el.innerHTML = '<div class="emp"><div class="emp-a">!</div><p>Could not load analysis: ' + (e.message || e) + '</p></div>';
   }
@@ -7422,7 +7395,7 @@ function renderHist() {
           var beyondTxt = (h[rh+'Tp2Hit'] && beyond != null && isFinite(beyond) && beyond > 0.05)
             ? '<div style="font-size:8px;color:var(--m1)">+' + Number(beyond).toFixed(1) + '% beyond</div>' : '';
           return tp2v && tp2v !== 'unavailable'
-            ? '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--m2)" title="TP2 is a REFERENCE level only — never an automatic exit. Hit = price reached TP2 while the runner was live.">'+tp2v+hit+'</span>'+beyondTxt
+            ? '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--m2)" title="TP2 is the live exit for remaining shares after TP1. TSL is the backup.">'+tp2v+hit+'</span>'+beyondTxt
             : '<span style="color:var(--m1)">—</span>';
         })())
         +td((function(){
@@ -7468,8 +7441,8 @@ function renderHist() {
           if (stt==='time_limit') return mk('TIME','#aaa','Horizon time limit exit — neither TP1 nor SL was reached');
           if (effectiveIsSignalExit) return mk('REVERSAL','#7aaaff', storedReason || 'Closed by an opposite-side entry-grade signal (reversal-only exit policy)');
           if (stt==='tp1_hit') return mk('TP1 exit','#F5C842','Re-decided under partial+TSL on the next History refresh — all trades bank the partial at TP1 and trail the rest.');
-          if (stt==='tp2_hit') return mk('TP2 exit','var(--buy)','Re-decided under partial+TSL on the next History refresh — TP2 is reference-only, never an exit.');
-          if (effectiveIsRunner) return mk('TP1 ✓ runner live','var(--buy)','TP1 partial banked; runner riding the ratchet TSL');
+          if (stt==='tp2_hit') return mk('TP2 exit','var(--buy)','Runner closed at TP2. TP1 was banked; remaining shares exited at the second target.');
+          if (effectiveIsRunner) return mk('TP1 ✓ runner live','var(--buy)','TP1 banked; remaining shares exit at TP2 (TSL is the backup)');
           if (storedReason) return mk(String(storedReason).slice(0,18), 'var(--m2)', storedReason);
           return '<span style="color:var(--m1)">—</span>';
         })())

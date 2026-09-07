@@ -6,6 +6,8 @@ const {
   tp1OrderQty,
   isFullQtyTp1,
   synthesizeTp1Px,
+  synthesizeTp2Px,
+  resolveRunnerTp2Px,
   maybeTwoLotTotal,
   openIfAboveSpec,
   passiveCloseLimit,
@@ -51,6 +53,21 @@ test('synthesize TP1 uses horizon percentages', () => {
   assert.equal(+synthesizeTp1Px(23.19, 'medium', false).toFixed(4), 24.8133);
   assert.ok(synthesizeTp1Px(29.34, 'short', false) > 29.34);
   assert.ok(synthesizeTp1Px(18760, 'short', false) > 18760);
+});
+
+test('runner TP2 is further than TP1 and prefers the stored model level', () => {
+  const longTp2 = synthesizeTp2Px(100, 'short', false);
+  const longTp1 = synthesizeTp1Px(100, 'short', false);
+  assert.ok(longTp2 > longTp1);
+  const shortTp2 = synthesizeTp2Px(123.8, 'short', true);
+  assert.ok(shortTp2 < 123.8);
+  assert.equal(resolveRunnerTp2Px({
+    side: 'sell', tp2Px: 109.87, tp1Px: 115, ibAvgFill: 123.8
+  }), 109.87);
+  const inferred = resolveRunnerTp2Px({
+    side: 'sell', tp1Px: 115, ibAvgFill: 123.8
+  });
+  assert.ok(inferred > 0 && inferred < 115);
 });
 
 test('1-lot names bump to 2 lots when notional cap allows', () => {

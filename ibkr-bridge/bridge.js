@@ -33,13 +33,13 @@
  *                    If the parent was sent standalone (HK/JP/LSE) or a child was
  *                    rejected, the fill handler parks TP1+SL immediately — it
  *                    does not wait for the 60s / 15-min sweep.
- *                    TP2 on the live book is the runner TSL, not a second limit.
+ *                    After TP1, the runner parks a LMT at TP2 plus the TSL.
  *     TP1 fill     → IB orderStatus on the TP1 child only. Stop resized to the
- *                    runner and raised to breakeven. Server `tp1_partial` is ignored.
+ *                    runner TSL; TP2 LMT parked for remaining shares.
  *     tsl_update   → paper History may emit this; live authority is the bridge
  *                    daily catch-up after a real IB TP1 print (tp1Done).
  *                    Never loosen. Never apply if TP1 has not
- *                    actually been banked. TP2 is a History reference only.
+ *                    actually been banked. Runner still exits at TP2 if it prints.
  *     exit         → flatten only on a live Buy↔Sell flip or an operational
  *                    close (unauthorized / abandon / IB-flat). Paper `tp1_then_sl`
  *                    / time-limit / simulated SL are ignored.
@@ -100,10 +100,13 @@ const {
   tp1OrderQty,
   isFullQtyTp1,
   synthesizeTp1Px,
+  synthesizeTp2Px,
+  resolveRunnerTp2Px,
   openIfAboveSpec,
   passiveCloseLimit,
   maybeTwoLotTotal,
   isLimitTp1Fill,
+  isLimitTp2Fill,
   reconcileTp1LatchFromPosition,
   protectiveStopQty
 } = require('../lib/ibkr/tp1-policy');
@@ -1649,6 +1652,11 @@ async function main() {
             row.tp1RoutingFailed = true;
             logOnce('tick110-tp1-' + key, 'IB error 110 — TP1 tick rejected, backing off', key);
           }
+          if (row.tp2Id === oid) {
+            row.tp2Id = null;
+            row.tp2RoutingFailed = true;
+            logOnce('tick110-tp2-' + key, 'IB error 110 — TP2 tick rejected, backing off', key);
+          }
           if (row.stopId === oid) {
             row.stopId = null;
             row.stopRoutingFailed = true;
@@ -1662,7 +1670,7 @@ async function main() {
       if (Number(code) === 10289) {
         for (const [key, row] of Object.entries(state.byKey || {})) {
           if (!row || row.closed) continue;
-          if (row.parentId !== Number(reqId) && row.stopId !== Number(reqId) && row.tp1Id !== Number(reqId)) continue;
+          if (row.parentId !== Number(reqId) && row.stopId !== Number(reqId) && row.tp1Id !== Number(reqId) && row.tp2Id !== Number(reqId)) continue;
           row.contractRejected = true;
           row.cryptoCashQtyRejected = true;
           row.updated = new Date().toISOString();
@@ -1682,7 +1690,7 @@ async function main() {
         for (const [key, row] of Object.entries(state.byKey || {})) {
           if (!row || row.closed) continue;
           const closeHit = (row.closeIds || []).includes(reqId);
-          if (row.parentId !== reqId && row.stopId !== reqId && row.tp1Id !== reqId && !closeHit) continue;
+          if (row.parentId !== reqId && row.stopId !== reqId && row.tp1Id !== reqId && row.tp2Id !== reqId && !closeHit) continue;
           if (!row.entryFilled && row.parentId === reqId) {
             row.contractRejected = true;
             row.updated = new Date().toISOString();
@@ -1723,6 +1731,7 @@ async function main() {
         for (const row of Object.values(state.byKey || {})) {
           if (!row) continue;
           if (row.tp1Id === Number(orderId)) row.tp1RoutingFailed = false;
+          if (row.tp2Id === Number(orderId)) row.tp2RoutingFailed = false;
           if (row.stopId === Number(orderId)) row.stopRoutingFailed = false;
         }
       }
@@ -1758,6 +1767,13 @@ async function main() {
           else if (row.rollInId != null && Number(row.rollInId) === orderId) role = 'entry';
           else if (row.stopId === orderId) role = 'stop';
           else if ((row.closeIds || []).includes(orderId)) role = 'flatten';
+          else if (row.tp2Id === orderId) {
+            const tp2Px = runnerTp2Px(row) || Number(row.tp2Px);
+            role = isLimitTp2Fill({
+              fillPx: px, tp1Px: tp2Px, isSellPosition: row.side === 'sell',
+              orderType: fillOrderType, isFlattenOrder
+            }) ? 'tp2' : 'flatten';
+          }
           else if (row.tp1Id === orderId) {
             const spec = openIfAboveSpec(row.ticker);
             const tp1Px = Number(row.tp1Px) > 0
@@ -1811,6 +1827,7 @@ async function main() {
           }
           if (!role) continue;
           if (role === 'tp1') onTp1Filled(key, row);
+          if (role === 'tp2') onTp2Filled(key, row);
           if (role === 'entry') {
             row.entryFilled = true;
             if (row.rollInId != null && Number(row.rollInId) === orderId) {
@@ -2895,6 +2912,7 @@ async function main() {
       if (row.parentId === oldId) row.parentId = newId;
       if (row.stopId === oldId) row.stopId = newId;
       if (row.tp1Id === oldId) row.tp1Id = newId;
+      if (row.tp2Id === oldId) row.tp2Id = newId;
       if (row.rollInId === oldId) row.rollInId = newId;
       if (Array.isArray(row.closeIds)) {
         row.closeIds = row.closeIds.map(id => id === oldId ? newId : id);
@@ -2913,6 +2931,13 @@ async function main() {
         row.tp1RoutingFailed = true;
         changed = true;
         log('IB reject — TP1 not parked', key, reason || '');
+      }
+      if (row.tp2Id === oid && !row.tp2Done) {
+        row.tp2Id = null;
+        row.tp2AttachAttemptAt = null;
+        row.tp2RoutingFailed = true;
+        changed = true;
+        log('IB reject — TP2 not parked', key, reason || '');
       }
       if (row.stopId === oid && row.entryFilled) {
         row.stopId = null;
@@ -2944,6 +2969,11 @@ async function main() {
           row.tp1ThroughMarket = true;
           log('IB short-sale reject — will park a resting TP1', key, 'code=' + code);
         }
+        if (row.tp2Id === oid) {
+          row.tp2Id = null;
+          row.tp2RoutingFailed = true;
+          log('IB short-sale reject — will park a resting TP2', key, 'code=' + code);
+        }
         if (row.stopId === oid) {
           row.stopId = null;
           row.stopRoutingFailed = true;
@@ -2961,6 +2991,11 @@ async function main() {
           row.tp1Id = null;
           row.tp1SessionBlocked = true;
           log('IB session reject — TP1 deferred to cash RTH', key, 'code=' + code);
+        }
+        if (row.tp2Id === oid) {
+          row.tp2Id = null;
+          row.tp2SessionBlocked = true;
+          log('IB session reject — TP2 deferred to cash RTH', key, 'code=' + code);
         }
         if (row.stopId === oid) {
           row.stopId = null;
@@ -3395,6 +3430,9 @@ async function main() {
     let rawTp1 = Number(evt.tp1);
     if (!(rawTp1 > 0)) rawTp1 = synthesizeTp1Px(Number(evt.entry), evt.hz || 'short', isSell);
     const tp1Px = roundPx(rawTp1, contract, isSell ? 'down' : 'up');
+    let rawTp2 = Number(evt.tp2);
+    if (!(rawTp2 > 0)) rawTp2 = synthesizeTp2Px(Number(evt.entry), evt.hz || 'short', isSell);
+    const tp2Px = rawTp2 > 0 ? roundPx(rawTp2, contract, isSell ? 'down' : 'up') : 0;
     if (!(stopPx > 0)) { log('skip entry — no stop level for', evt.ticker); return null; }
     if (!DRY && contract.secType === 'STK' && !(Number(contract.conId) > 0)) {
       // Never manufacture order IDs for a contract IB could not qualify. This
@@ -3402,9 +3440,9 @@ async function main() {
       // or order-not-found cancellations are produced.
       log('defer entry — IB stock contract unresolved:', evt.ticker);
       return {
-        parentId: null, stopId: null, tp1Id: null,
+        parentId: null, stopId: null, tp1Id: null, tp2Id: null,
         ticker: evt.ticker, hz: evt.hz, side: evt.side,
-        entry: evt.entry, stopPx, originalSl: stopPx, tp1Px, entryStyle: 'CONTRACT-RETRY',
+        entry: evt.entry, stopPx, originalSl: stopPx, tp1Px, tp2Px, modelTp2: tp2Px, entryStyle: 'CONTRACT-RETRY',
         extLmt: null, qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
         contract, tp1Done: false, closed: false, deferred: true,
         contractRejected: true, entryFilled: false,
@@ -3472,9 +3510,9 @@ async function main() {
       // Keep a stub so lunch/closed names re-arm at the next session instead of
       // vanishing (0669.HK 17 Aug: DEFER-LUNCH returned null → no row → no 13:00 fire).
       return {
-        parentId: null, stopId: null, tp1Id: null,
+        parentId: null, stopId: null, tp1Id: null, tp2Id: null,
         ticker: evt.ticker, hz: evt.hz, side: evt.side,
-        entry: evt.entry, stopPx, originalSl: stopPx, tp1Px, entryStyle: parentSpec.entryStyle,
+        entry: evt.entry, stopPx, originalSl: stopPx, tp1Px, tp2Px, modelTp2: tp2Px, entryStyle: parentSpec.entryStyle,
         extLmt: null, qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
         contract, tp1Done: false, closed: false, deferred: true,
         entryFilled: false, decisionId: evt.decisionId || null,
@@ -3536,9 +3574,9 @@ async function main() {
         `exch=${(oc && oc.exchange) || contract.primaryExch || contract.market || ''} style=${entryStyle} phase=${sessionPhase(contract)} qty=${split.total} sizePx=${roundPx(evt.entry, contract)} stop=${stopPx}(full) tp1=${tp1Px}x${split.sold} runner=${split.runner}${sizeNote}${gateNote}${jpNote}`);
     }
     return {
-      parentId, stopId, tp1Id,
+      parentId, stopId, tp1Id, tp2Id: null,
       ticker: evt.ticker, hz: evt.hz, side: evt.side,
-      entry: evt.entry, stopPx, originalSl: stopPx, tp1Px, entryStyle,
+      entry: evt.entry, stopPx, originalSl: stopPx, tp1Px, tp2Px, modelTp2: tp2Px, entryStyle,
       extLmt: parent.lmtPrice != null ? Number(parent.lmtPrice) : null,
       qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
       contract, tp1Done: false, closed: false,
@@ -3736,6 +3774,7 @@ async function main() {
     row.tp1FilledAt = row.tp1FilledAt || new Date().toISOString();
     log('TP1 filled', key, '— stop resized to runner', row.qtyRunner, '@ TSL', runnerStop);
     cancelExtraStopsAfterTp1(key, row).catch(e => log('extra-stop cancel failed', key, e.message));
+    if (row.qtyRunner > 0) parkRunnerTp2(key, row);
     if (!DRY && telegramConfigured()) {
       const side = isSell ? 'SHORT' : 'LONG';
       const msg = '🟢 <b>TP1 hit</b>\n'
@@ -3745,6 +3784,67 @@ async function main() {
       sendTelegramAlert(msg, { html: true })
         .then(() => log('TELEGRAM: TP1 hit sent', key))
         .catch(e => log('TELEGRAM: TP1 hit failed', e.message));
+    }
+  }
+
+  function runnerTp2Px(row) {
+    const isSell = row.side === 'sell';
+    const raw = resolveRunnerTp2Px(row);
+    if (!(raw > 0) || !row.contract) return 0;
+    return roundPx(raw, row.contract, isSell ? 'down' : 'up');
+  }
+
+  function parkRunnerTp2(key, row) {
+    if (!row || row.closed || row.tp2Done || !(Number(row.qtyRunner) > 0)) return false;
+    if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK' && row.contract.secType !== 'FUT')) return false;
+    const tp2Px = runnerTp2Px(row);
+    if (!(tp2Px > 0)) {
+      log('TP2 skip (no price)', key);
+      return false;
+    }
+    row.tp2Px = tp2Px;
+    if (!(Number(row.modelTp2) > 0)) row.modelTp2 = tp2Px;
+    const y = normalizeYahooTicker(row.ticker);
+    const lastPx = Number(portfolioMarks.get(y) && portfolioMarks.get(y).price)
+      || Number(portfolioMarks.get(row.ticker) && portfolioMarks.get(row.ticker).price)
+      || 0;
+    const isSell = row.side === 'sell';
+    let lmt = passiveCloseLimit(tp2Px, lastPx, isSell) || tp2Px;
+    lmt = roundPx(lmt, row.contract, isSell ? 'down' : 'up');
+    if (row.tp2Id != null) cancelOrder(row.tp2Id, 'TP2 replace ' + key);
+    const oid = nidForRow(row);
+    row.tp2Id = oid;
+    row.tp2ClientId = state.orderClients[oid] || row.placeClientId || row.stopClientId;
+    row.tp2AttachAttemptAt = new Date().toISOString();
+    row.tp2RoutingFailed = false;
+    const closeAction = isSell ? 'BUY' : 'SELL';
+    transmitOrder(oid, row.contract, baseOrder({
+      orderId: oid, action: closeAction, orderType: 'LMT',
+      lmtPrice: lmt, totalQuantity: row.qtyRunner,
+      tif: 'GTC', outsideRth: ORDER_OUTSIDE_RTH, transmit: true
+    }), 'tp2 runner ' + key);
+    log('TP2 parked', key, closeAction, 'LMT', lmt, 'x' + row.qtyRunner,
+      lastPx > 0 ? ('last=' + lastPx) : '');
+    return true;
+  }
+
+  function onTp2Filled(key, row) {
+    if (!row || row.closed || row.tp2Done) return;
+    row.tp2Done = true;
+    row.tp2FilledAt = row.tp2FilledAt || new Date().toISOString();
+    if (row.stopId != null) cancelOrder(row.stopId, 'stop after TP2 ' + key);
+    row.stopId = null;
+    row.qtyRunner = 0;
+    row.closed = true;
+    log('TP2 filled', key, '— runner closed');
+    if (!DRY && telegramConfigured()) {
+      const side = row.side === 'sell' ? 'SHORT' : 'LONG';
+      sendTelegramAlert(
+        '🟢 <b>TP2 hit</b>\n' + String(row.ticker || key) + ' · ' + (row.hz || 'short') + ' ' + side + '\n'
+        + 'Runner closed at TP2 ' + (row.tp2Px || ''),
+        { html: true }
+      ).then(() => log('TELEGRAM: TP2 hit sent', key))
+        .catch(e => log('TELEGRAM: TP2 hit failed', e.message));
     }
   }
 
@@ -3960,9 +4060,14 @@ async function main() {
           saveState(state);
         }
       }
+      if (row.tp2Id === orderId && (status === 'Filled' || filled >= (Number(row.qtyRunner) || 0)) && filled > 0) {
+        onTp2Filled(key, row);
+        saveState(state);
+      }
       if (row.stopId === orderId && status === 'Filled') {
-        // Stop filled → position flat; cancel a still-open TP1 (no orphan limit).
+        // Stop filled → position flat; cancel a still-open TP1 / TP2 (no orphan limit).
         if (row.tp1Id != null && !row.tp1Done) cancelOrder(row.tp1Id, 'tp1 after stop-out ' + key);
+        if (row.tp2Id != null && !row.tp2Done) cancelOrder(row.tp2Id, 'tp2 after stop-out ' + key);
         row.closed = true;
         log('Stop filled — trade closed at IB', key);
         saveState(state);
@@ -3975,6 +4080,7 @@ async function main() {
     if (!row || row.closed) return;
     cancelOrder(row.stopId, 'stop @exit ' + key);
     if (row.tp1Id != null && !row.tp1Done) cancelOrder(row.tp1Id, 'tp1 @exit ' + key);
+    if (row.tp2Id != null && !row.tp2Done) cancelOrder(row.tp2Id, 'tp2 @exit ' + key);
     // Flatten whatever is still held. Prefer the LIVE IB position (survives
     // bridge restarts); orderFills is only a fallback for the first seconds
     // before the position snapshot arrives. The old fills-only math flattened
@@ -4253,12 +4359,13 @@ async function main() {
           if (!row.closed) continue;
           const liveClaim = (oid) => Object.values(state.byKey || {}).some(other =>
             other && other !== row && !other.closed
-            && (other.stopId === oid || other.tp1Id === oid || other.parentId === oid));
-          for (const [label, oid] of [['stop', row.stopId], ['tp1', row.tp1Id], ['parent', row.parentId]]) {
+            && (other.stopId === oid || other.tp1Id === oid || other.tp2Id === oid || other.parentId === oid));
+          for (const [label, oid] of [['stop', row.stopId], ['tp1', row.tp1Id], ['tp2', row.tp2Id], ['parent', row.parentId]]) {
             if (oid == null) continue;
             const dropPtr = () => {
               if (label === 'stop') row.stopId = null;
               else if (label === 'tp1') row.tp1Id = null;
+              else if (label === 'tp2') row.tp2Id = null;
               else row.parentId = null;
               dirty = true;
             };
@@ -5618,6 +5725,48 @@ async function main() {
     return n;
   }
 
+  /** After TP1, park a live TP2 LMT for remaining shares. TSL stays as backup. */
+  async function ensureWorkingTp2Children(workingOrders, opts = {}) {
+    if (DRY || !ib) return 0;
+    const onlyKey = opts && opts.onlyKey;
+    const working = workingOrders || await listWorkingOrders();
+    let n = 0;
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (onlyKey && key !== onlyKey) continue;
+      if (!row || row.closed || row.errorTrade || !row.entryFilled || row.tp1Done !== true || row.tp2Done) continue;
+      if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK' && row.contract.secType !== 'FUT')) continue;
+      if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
+      const held = heldForContract(row.contract);
+      const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+      if (!(posInDir > 0)) continue;
+      row.qtyRunner = posInDir;
+      const closeAction = row.side === 'sell' ? 'BUY' : 'SELL';
+      const want = runnerTp2Px(row);
+      if (!(want > 0)) continue;
+      row.tp2Px = want;
+      const lmts = working.filter(o =>
+        o.type === 'LMT' && o.action === closeAction && rowMatchesWorking(row, o)
+      );
+      const existing = (row.tp2Id != null ? lmts.find(o => o.orderId === row.tp2Id) : null)
+        || lmts.find(o => Math.abs(o.qty - posInDir) < 1e-6 && Math.abs((o.lmt || 0) - want) < Math.max(Math.abs(want) * 0.002, 0.01))
+        || null;
+      if (existing) {
+        if (row.tp2Id !== existing.orderId) {
+          row.tp2Id = existing.orderId;
+          row.tp2RoutingFailed = false;
+          n++;
+          log('RECONCILE: adopted working TP2', key, 'orderId=' + existing.orderId, 'lmt=' + existing.lmt);
+        }
+        continue;
+      }
+      const lastAttempt = row.tp2AttachAttemptAt ? Date.parse(row.tp2AttachAttemptAt) : NaN;
+      if (Number.isFinite(lastAttempt) && Date.now() - lastAttempt < 2 * 60 * 1000 && !row.tp2RoutingFailed) continue;
+      if (parkRunnerTp2(key, row)) n++;
+    }
+    if (n) saveState(state);
+    return n;
+  }
+
   /** After a parent fill, park TP1+SL now if they were not sent with the bag. */
   function scheduleProtectiveBracket(key) {
     if (!key || DRY || !ib) return;
@@ -6025,6 +6174,7 @@ async function main() {
     if (!(Number(row.modelSl) > 0)) row.modelSl = Number(row.originalSl || row.stopPx);
     if (row.stopId != null) { cancelOrder(row.stopId, 'roll cancel stop ' + key); row.stopId = null; }
     if (row.tp1Id != null) { cancelOrder(row.tp1Id, 'roll cancel tp1 ' + key); row.tp1Id = null; }
+    if (row.tp2Id != null) { cancelOrder(row.tp2Id, 'roll cancel tp2 ' + key); row.tp2Id = null; }
     const oldCid = Number(row.contract && row.contract.conId);
     const held = heldForConId(oldCid);
     const posInDir = held
@@ -6147,6 +6297,7 @@ async function main() {
         cancelOrder(row.parentId, 'stale parent ' + key);
         cancelOrder(row.stopId, 'stale stop ' + key);
         if (row.tp1Id != null) cancelOrder(row.tp1Id, 'stale tp1 ' + key);
+        if (row.tp2Id != null) cancelOrder(row.tp2Id, 'stale tp2 ' + key);
         row.closed = true;
         row.staleCancelled = true;
         row.updated = new Date().toISOString();
@@ -6259,6 +6410,7 @@ async function main() {
           if (row.parentId != null) cancelOrder(row.parentId, 'hold-cancel parent ' + key);
           if (row.stopId != null) cancelOrder(row.stopId, 'hold-cancel stop ' + key);
           if (row.tp1Id != null) cancelOrder(row.tp1Id, 'hold-cancel tp1 ' + key);
+          if (row.tp2Id != null) cancelOrder(row.tp2Id, 'hold-cancel tp2 ' + key);
           row.closed = true;
           row.holdCancelledUnfilled = true;
           row.updated = new Date().toISOString();
@@ -6280,6 +6432,7 @@ async function main() {
         if (row.parentId != null) cancelOrder(row.parentId, 'pre-release-cancel parent ' + key);
         if (row.stopId != null) cancelOrder(row.stopId, 'pre-release-cancel stop ' + key);
         if (row.tp1Id != null) cancelOrder(row.tp1Id, 'pre-release-cancel tp1 ' + key);
+        if (row.tp2Id != null) cancelOrder(row.tp2Id, 'pre-release-cancel tp2 ' + key);
         row.closed = true;
         row.preReleaseCancelled = true;
         row.updated = new Date().toISOString();
@@ -6667,6 +6820,7 @@ async function main() {
             if (row.parentId != null) cancelOrder(row.parentId, 'stale-unfilled parent ' + key);
             if (row.stopId != null) cancelOrder(row.stopId, 'stale-unfilled stop ' + key);
             if (row.tp1Id != null) cancelOrder(row.tp1Id, 'stale-unfilled tp1 ' + key);
+            if (row.tp2Id != null) cancelOrder(row.tp2Id, 'stale-unfilled tp2 ' + key);
             row.closed = true;
             row.staleUnfilledAbandoned = true;
             row.updated = new Date().toISOString();
@@ -6790,9 +6944,11 @@ async function main() {
               cancelOrder(row.parentId, 'US overnight wait-for-pre parent ' + key);
               if (row.stopId != null) cancelOrder(row.stopId, 'US overnight wait-for-pre stop ' + key);
               if (row.tp1Id != null) cancelOrder(row.tp1Id, 'US overnight wait-for-pre tp1 ' + key);
+              if (row.tp2Id != null) cancelOrder(row.tp2Id, 'US overnight wait-for-pre tp2 ' + key);
               row.parentId = null;
               row.stopId = null;
               row.tp1Id = null;
+              row.tp2Id = null;
               row.deferred = true;
               row.entryStyle = 'DEFER-US-UNTIL-PRE';
               row.updated = new Date().toISOString();
@@ -7123,6 +7279,7 @@ async function main() {
             // cancel the live sibling's stop/TP1 (2914 long vs short-horizon).
             row.stopId = null;
             row.tp1Id = null;
+            row.tp2Id = null;
             row.parentId = null;
           } else {
             const siblingNeedsStop = Object.values(state.byKey || {}).some(other =>
@@ -7205,6 +7362,7 @@ async function main() {
         const working = await listWorkingOrders();
         await ensureWorkingStops(working);
         await ensureWorkingTp1Children(working);
+        await ensureWorkingTp2Children(working);
         await applyLiveRunnerTsl();
         const findings = collectRiskFindings(keyState, lastIbReconResp);
         await maybeSendRiskAlert(findings);
@@ -7316,6 +7474,7 @@ async function main() {
         const working = await listWorkingOrders();
         await ensureWorkingStops(working);
         await ensureWorkingTp1Children(working);
+        await ensureWorkingTp2Children(working);
         await applyLiveRunnerTsl();
       })().catch(e => log('ensure-exits error', e.message));
     }

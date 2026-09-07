@@ -6,7 +6,11 @@ const {
   slimBook,
   attributeMove,
   currentAttribution,
-  shouldRecordSnapshot
+  shouldRecordSnapshot,
+  moverSentence,
+  writePeriodNote,
+  buildMoveNotes,
+  periodStarts
 } = require('../lib/ibkr/move-analysis');
 
 function name(ticker, unreal, extra) {
@@ -67,4 +71,41 @@ test('snapshot throttle skips tiny moves inside a minute', () => {
   assert.equal(shouldRecordSnapshot(a, b, 60000), false);
   const c = slimBook([name('X', 200)], { unrealizedUsd: 200, realizedUsd: 0 }, { at: '2026-09-07T01:02:00.000Z' });
   assert.equal(shouldRecordSnapshot(a, c, 60000), true);
+});
+
+test('period note names the names that moved PnL', () => {
+  assert.match(moverSentence({
+    ticker: '4062.T', reason: 'closed', dRealUsd: 1623, dUnrealUsd: 0
+  }), /4062\.T closed and booked/);
+  const prev = slimBook([name('BA.L', -200)], {
+    unrealizedUsd: -200, realizedUsd: 8000, openCount: 1
+  }, { at: '2026-09-07T00:10:00.000Z' });
+  const curr = slimBook(
+    [name('BA.L', -1210), name('4062.T', 0, {
+      key: '4062.T|short|Mon Aug 24 2026', openQty: 0, realizedUsd: 1623
+    })],
+    { unrealizedUsd: -3537, realizedUsd: 9623, openCount: 1 },
+    { at: '2026-09-07T05:11:00.000Z' }
+  );
+  const note = writePeriodNote(attributeMove(prev, curr), { label: 'Today' });
+  assert.match(note.summary, /Today the book moved/);
+  assert.match(note.summary, /4062\.T/);
+  assert.match(note.summary, /BA\.L/);
+  assert.ok(note.movers.length >= 2);
+});
+
+test('buildMoveNotes uses SGT day/week/month baselines', () => {
+  const starts = periodStarts(Date.parse('2026-09-07T05:00:00.000Z'));
+  assert.equal(starts.day.fromMs, Date.parse('2026-09-07T00:00:00+08:00'));
+  assert.equal(starts.week.fromMs, starts.day.fromMs);
+  const before = slimBook([name('BA.L', -200)], {
+    unrealizedUsd: -200, realizedUsd: 8000, openCount: 1
+  }, { at: '2026-09-06T15:00:00.000Z' });
+  const curr = slimBook([name('BA.L', -1210)], {
+    unrealizedUsd: -1210, realizedUsd: 8000, openCount: 1
+  }, { at: '2026-09-07T05:11:00.000Z' });
+  const notes = buildMoveNotes([before, curr], Date.parse('2026-09-07T05:15:00.000Z'));
+  assert.match(notes.summary, /BA\.L/);
+  assert.equal(notes.day.partial, false);
+  assert.ok(notes.day.dUnrealUsd < -900);
 });

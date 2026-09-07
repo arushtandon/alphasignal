@@ -67,7 +67,8 @@ const {
   slimBook: slimIbkrPnlBook,
   attributeMove,
   currentAttribution,
-  shouldRecordSnapshot
+  shouldRecordSnapshot,
+  buildMoveNotes
 } = require('./lib/ibkr/move-analysis');
 
 const app = express();
@@ -1434,12 +1435,11 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
   const lv = computeMeanReversionLevels(eTech, entry, isSell) || {};
   const target = lv.target;
   let trailingSl = lv.stop;
-  // CANONICAL EXIT SPEC: TP1 books the PARTIAL; remainder rides the ratchet TSL.
-  // TP2 = ATR+momentum REFERENCE only (never an exit / never 2×TP1 invent).
+  // CANONICAL EXIT SPEC: TP1 books the PARTIAL; remainder exits at TP2 (TSL is backup).
   const PARTIAL = (Number.isFinite(partialFrac) && partialFrac >= 0 && partialFrac < 1) ? partialFrac : 0.5;
   let tp2 = computeSecondTargetFromTech(eTech, entry, 'short', isSell, target);
   let tp1Hit = false, realized = 0, remaining = 1.0, _yc = 0;
-  let tp2AltRet = null; // hypothetical full exit at TP2 — ANALYSIS ONLY, never an exit
+  let tp2AltRet = null;
   const longRet  = px => (px - entry) / entry;
   const shortRet = px => (entry - px) / entry;
   const ret = px => isSell ? shortRet(px) : longRet(px);
@@ -1466,10 +1466,19 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
         if (!liveMark && isSell && bar.c < entry && ((r2 != null && r2 < 30) || rr <= 42)) return finish('signal_exit', j, bar.c);
       }
     } else {
-      // TP2 reference print → freeze the hypothetical full-exit outcome (analysis only)
-      if (tp2 != null && tp2AltRet == null) {
-        if (!isSell && bar.h >= tp2) tp2AltRet = realized + remaining * longRet(tp2);
-        else if (isSell && bar.l <= tp2) tp2AltRet = realized + remaining * shortRet(tp2);
+      if (tp2 != null) {
+        if (!isSell && bar.h >= tp2) {
+          realized += remaining * longRet(tp2);
+          remaining = 0;
+          tp2AltRet = realized;
+          return finish('tp2_hit', j, tp2);
+        }
+        if (isSell && bar.l <= tp2) {
+          realized += remaining * shortRet(tp2);
+          remaining = 0;
+          tp2AltRet = realized;
+          return finish('tp2_hit', j, tp2);
+        }
       }
       // POST-TP1: at each cash open, favorable open vs prior close moves TSL
       // the same %. Adverse opens leave it unchanged. Never loosen.
@@ -1511,13 +1520,13 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
   const atrEntry = entryTech.atr || entry * 0.02;
   let trailingSl = computeTrailingStopFromTech(entryTech, entry, hz, isSell, fund);
   const tp1 = computeFirstTargetFromTech(entryTech, entry, hz, isSell, trailingSl);
-  // TP2 reference = ATR + momentum + structure (same as displayed levels).
+  // TP2 = live runner take-profit (TSL is the backup).
   let tp2 = computeSecondTargetFromTech(entryTech, entry, hz, isSell, tp1);
   const PARTIAL = (Number.isFinite(partialFrac) && partialFrac >= 0 && partialFrac < 1) ? partialFrac : 0.5; // whole-share TP1 fraction (default fractional 50%)
   // Chandelier multiple for the post-TP1 runner — wide so winners can actually run.
   const runK = hz === 'short' ? 3.0 : hz === 'medium' ? 4.0 : 5.5;
   let tp1Hit = false, realized = 0, remaining = 1.0, _yc = 0;
-  let tp2AltRet = null; // hypothetical 'full exit at TP2' outcome — ANALYSIS ONLY, never an exit
+  let tp2AltRet = null;
   let peak = isSell ? entry : entry; // best favorable price since entry
 
   const longRet  = px => (px - entry) / entry;
@@ -1560,14 +1569,19 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
         if (signalFlipped(barSig, isSell, hz)) return finish('signal_exit', j, bar.c);
       }
     } else {
-      // TP2 is a REFERENCE level only — NEVER an actual exit. The first time it
-      // prints we freeze the hypothetical "closed the runner at TP2" outcome so
-      // History can compare it against what the ratchet actually delivered
-      // (exit-quality analysis for smarter exits). The position keeps riding
-      // the trailing stop regardless.
-      if (tp2 != null && tp2AltRet == null) {
-        if (!isSell && bar.h >= tp2) tp2AltRet = realized + remaining * longRet(tp2);
-        else if (isSell && bar.l <= tp2) tp2AltRet = realized + remaining * shortRet(tp2);
+      if (tp2 != null) {
+        if (!isSell && bar.h >= tp2) {
+          realized += remaining * longRet(tp2);
+          remaining = 0;
+          tp2AltRet = realized;
+          return finish('tp2_hit', j, tp2);
+        }
+        if (isSell && bar.l <= tp2) {
+          realized += remaining * shortRet(tp2);
+          remaining = 0;
+          tp2AltRet = realized;
+          return finish('tp2_hit', j, tp2);
+        }
       }
       // ── POST-TP1: at each cash open, favorable open vs prior close moves
       //    TSL the same %. Adverse opens leave it unchanged. Never loosen.
@@ -11459,7 +11473,7 @@ function migrateLegacyTightStops() {
     const tp2 = parseFloat(h[hz + 'Target2'] || h.target2 || 0) || null;
     const fixed = applyHorizonMinPctFloors(entry, tp1, tp2, sl, isSell, hz);
     h[hz + 'Target1'] = fixed.tp1;
-    h[hz + 'Target2'] = fixed.tp2; // TP2 = REFERENCE level only (exit-quality analysis) — never an exit
+    h[hz + 'Target2'] = fixed.tp2; // TP2 = live runner take-profit
     h[hz + 'StopLoss'] = fixed.sl;
     if (h.hz === hz || !h.hz) {
       h.target1 = fixed.tp1;
@@ -15267,7 +15281,7 @@ app.post('/api/ibkr/report', (req, res) => {
       execId: String(r.execId), key: String(r.key),
       ticker, hz: String(r.hz || 'short'),
       side: r.side === 'sell' ? 'sell' : 'buy',
-      role: ['entry', 'tp1', 'stop', 'flatten'].includes(r.role) ? r.role : 'other',
+      role: ['entry', 'tp1', 'tp2', 'stop', 'flatten'].includes(r.role) ? r.role : 'other',
       qty: Number(r.qty), price: Number(r.price),
       currency: String(r.currency || 'USD'), ccyScale: Number(r.ccyScale) || 1,
       orderId: r.orderId ?? null,
@@ -18242,18 +18256,23 @@ app.get('/api/ibkr/move-analysis', (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     const book = String(req.query.book || '').toLowerCase() === 'live' ? 'live' : 'paper';
-    const snaps = readIbkrPnlSnaps(book, 40);
+    const snaps = readIbkrPnlSnaps(book, 2000);
     const curr = snaps[snaps.length - 1] || null;
     const prev = snaps.length > 1 ? snaps[snaps.length - 2] : null;
     const sessionStart = snaps.find((s) => s && s.at && String(s.at).slice(0, 10) === (curr && String(curr.at).slice(0, 10)))
       || snaps[0] || null;
+    const notes = buildMoveNotes(snaps);
     res.json({
       ok: true,
       book,
       at: curr && curr.at,
       totals: curr && curr.totals,
       ibUnrealizedUsd: curr && curr.ibUnrealizedUsd,
-      current: curr ? currentAttribution(curr) : { headline: 'No IBKR book snapshot yet.', totalUnrealUsd: 0, drags: [], lifts: [] },
+      current: notes.lifetime,
+      summary: notes.summary,
+      day: notes.day,
+      week: notes.week,
+      month: notes.month,
       lastMove: (prev && curr) ? attributeMove(prev, curr) : null,
       sessionMove: (sessionStart && curr && sessionStart.at !== curr.at) ? attributeMove(sessionStart, curr) : null,
       snapCount: snaps.length
@@ -18486,15 +18505,11 @@ app.post('/api/risk-status/reset', express.json(), (req, res) => {
   }
 });
 
-/** tp1_hit / tp2_hit are EXTINCT statuses — the engine can no longer produce
- *  them (ALL trades live under the partial+TSL regime). Any appearance means
- *  STALE data: typically a browser re-uploading pre-fold-in localStorage rows
- *  via /api/history/add after a deploy. A one-time disk flag CANNOT hold this
- *  invariant (the stale rows arrive AFTER the flag burns and then stick — they
- *  showed in Realised with a live runner missing from Live, and were wrongly
- *  counted as closed wins). So the fold-in is enforced at EVERY boundary:
- *  ingest, update-pnl and each refresh pass. Legitimate closed rows are never
- *  touched — the sim simply cannot emit these two statuses anymore. */
+/** tp1_hit is extinct as a *full close* — TP1 only banks the partial.
+ *  tp2_hit is a real runner exit again (remaining shares at TP2; TSL is backup).
+ *  Fold both back to open on ingest so a stale browser localStorage row cannot
+ *  mark Realised while the live runner is still open. Refresh then re-sims:
+ *  a true TP2 print becomes tp2_hit; a TP1-only print stays open on the TSL. */
 function normalizeExtinctStatuses(rows, source) {
   let n = 0;
   for (const h of rows || []) {
@@ -18619,7 +18634,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         const tp2Cur = parseFloat(h[hz + 'Target2'] || h.target2 || 0) || null;
         const fixed = applyHorizonMinPctFloors(entry, tp1, tp2Cur, sl, isSell, hz);
         h[hz + 'Target1'] = fixed.tp1;
-        h[hz + 'Target2'] = fixed.tp2; // TP2 = REFERENCE level for exit-quality analysis — NEVER an exit, never blanked
+        h[hz + 'Target2'] = fixed.tp2; // TP2 = live runner take-profit
         h[hz + 'StopLoss'] = fixed.sl;
         if (isPrimary) { h.target1 = fixed.tp1; h.target2 = fixed.tp2; h.stopLoss = fixed.sl; }
         if (isSell) { h.sellTarget1 = fixed.tp1; h.sellTarget2 = fixed.tp2; h.sellStopLoss = fixed.sl; }
@@ -18857,8 +18872,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
           // recalibrate-levels pass; this keeps RR sane in the meantime).
           if (prevEntry && Math.abs(fixed - prevEntry) / prevEntry > 0.0005) {
             const k = fixed / prevEntry;
-            // Target2 included: it is reference-only (exit-quality analytics),
-            // but leaving it unscaled corrupted TP2-reached stats (audit F2).
+            // Target2 is the live runner take-profit — keep it scaled with entry.
             for (const lf of [hz + 'Target1', hz + 'Target2', hz + 'StopLoss']) {
               const v = parseFloat(h[lf] || 0);
               if (v > 0) h[lf] = roundPrice(v * k);
