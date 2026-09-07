@@ -15557,7 +15557,7 @@ function isPhantomIbkrKey(key, fillTime, row) {
   }
   if (hasOpenEmittedEntryForKey(key)) return false;
   const role = String((row && row.role) || '');
-  if (['tp1', 'stop', 'flatten'].includes(role) && isGenuineIbExecFill(row)) return false;
+  if (['tp1', 'tp2', 'stop', 'flatten'].includes(role) && isGenuineIbExecFill(row)) return false;
   const dayPart = String(key || '').split('|')[2];
   const keyTs = Date.parse(dayPart || 0);
   const fillTs = Date.parse(fillTime || 0) || Date.now();

@@ -78,6 +78,14 @@ function ok(name, cond, detail) {
     time: '2026-08-25T06:17:47.773Z'
   };
   ok('T2b live GTC TP1 not phantom', !S.isPhantomIbkrKey(tp1.key, tp1.time, tp1));
+  const tp2 = Object.assign({}, tp1, {
+    execId: '0000f0e6.6a9de9b2.01.01',
+    role: 'tp2',
+    qty: 300,
+    price: 109.7,
+    time: '2026-09-07T05:55:51.712Z'
+  });
+  ok('T2b live GTC TP2 runner exit not phantom', !S.isPhantomIbkrKey(tp2.key, tp2.time, tp2));
   const stale = {
     execId: '0000dead.beef.01.01',
     key: 'DEAD.HK|short|Mon Jan 01 2024',
