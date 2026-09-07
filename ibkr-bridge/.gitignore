@@ -3,6 +3,10 @@ bridge-state.json
 bridge-state.sqlite
 bridge-state.sqlite-shm
 bridge-state.sqlite-wal
+bridge-state-live.json
+bridge-state-live.sqlite
+bridge-state-live.sqlite-shm
+bridge-state-live.sqlite-wal
 .env
 local-secrets.ps1
 *.log

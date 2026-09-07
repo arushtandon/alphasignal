@@ -169,7 +169,9 @@ const {
   runWithConcurrency
 } = require('../lib/ibkr/exec-client-pool');
 
-const DRY = process.env.IBKR_DRY_RUN !== '0';
+const LIVE_ROLE = process.argv.includes('live') || process.env.IBKR_BRIDGE_ROLE === 'live';
+const LIVE_GOAHEAD = process.env.IBKR_LIVE_GOAHEAD === '1';
+const LIVE_ARM = process.env.IBKR_LIVE_ARM === '1';
 const BASE = String(process.env.ALPHASIGNAL_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
 const TOKEN = process.env.IBKR_EVENTS_TOKEN || '';
 const HOST = process.env.IBKR_HOST || '127.0.0.1';
@@ -191,6 +193,37 @@ const EXEC_POOL_SIZE = Math.max(1, Math.min(25, parseInt(process.env.IBKR_EXEC_P
 const EXEC_POOL_START = Math.max(1, parseInt(process.env.IBKR_EXEC_POOL_START || '30', 10) || 30);
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, 'bridge-state.json');
 const STATE_DB_FILE = process.env.STATE_DB_FILE || path.join(__dirname, 'bridge-state.sqlite');
+const PAPER_API_PORTS = new Set([4002, 7497]);
+function liveOrdersAllowed() {
+  return LIVE_ROLE && LIVE_GOAHEAD && LIVE_ARM && process.env.IBKR_DRY_RUN === '0'
+    && !PAPER_API_PORTS.has(PORT)
+    && !/^D[UF]/i.test(String(ACCOUNT || ''))
+    && /live/i.test(path.basename(STATE_FILE || ''));
+}
+const DRY = LIVE_ROLE ? !liveOrdersAllowed() : process.env.IBKR_DRY_RUN !== '0';
+if (LIVE_ROLE) {
+  const base = path.basename(STATE_FILE || '');
+  const dbBase = path.basename(STATE_DB_FILE || '');
+  if (base === 'bridge-state.json' || dbBase === 'bridge-state.sqlite') {
+    console.error('LIVE REFUSE: paper state file', STATE_FILE);
+    process.exit(2);
+  }
+  if (PAPER_API_PORTS.has(PORT)) {
+    console.error('LIVE REFUSE: paper port', PORT);
+    process.exit(2);
+  }
+  if (!ACCOUNT) {
+    console.error('LIVE REFUSE: IBKR_ACCOUNT required for live role');
+    process.exit(2);
+  }
+  if (/^D[UF]/i.test(String(ACCOUNT || ''))) {
+    console.error('LIVE REFUSE: paper account', ACCOUNT);
+    process.exit(2);
+  }
+  if (!LIVE_GOAHEAD) {
+    console.error('LIVE LOCK: no go-ahead — dry-run only, no live orders.');
+  }
+}
 /** Full reconcile + risk-alert cadence (default 15 min). */
 const SWEEP_MS = Math.max(
   60 * 1000,
@@ -313,7 +346,8 @@ function log(...a) {
     const day = new Date().toISOString().slice(0, 10);
     const dir = path.join(__dirname, 'logs');
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(path.join(dir, `bridge-${day}.log`), line + '\n');
+    const liveLog = process.argv.includes('live') || process.env.IBKR_BRIDGE_ROLE === 'live';
+    fs.appendFileSync(path.join(dir, liveLog ? `bridge-live-${day}.log` : `bridge-${day}.log`), line + '\n');
   } catch (_) {}
   if (process.stdout.isTTY) {
     try { process.stdout.write(line + '\n'); } catch (_) {}
@@ -342,13 +376,24 @@ function loadState() {
   try {
     const store = getBridgeStore();
     const persisted = store && store.loadState();
-    if (persisted) return persisted;
+    if (persisted) return applySinceFloor(persisted);
   } catch (error) { console.error('Bridge SQLite load failed:', error.message); }
   let legacy;
   try { legacy = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); }
   catch (_) { legacy = { since: 0, byKey: {} }; }
+  legacy = applySinceFloor(legacy);
   try { const store = getBridgeStore(); if (store) store.saveState(legacy); } catch (_) {}
   return legacy;
+}
+
+function applySinceFloor(st) {
+  if (!st || typeof st !== 'object') return st;
+  const floor = parseInt(process.env.IBKR_SINCE_SEQ || '', 10);
+  const empty = !st.byKey || Object.keys(st.byKey).length === 0;
+  if (Number.isFinite(floor) && floor > 0 && empty && !(Number(st.since) > 0)) {
+    st.since = floor;
+  }
+  return st;
 }
 function saveState(st) {
   const payload = JSON.stringify(st);
@@ -1393,13 +1438,14 @@ async function main() {
       || (signHint === 'income');
     state.pendingCharges = state.pendingCharges || [];
     state.pendingCharges.push({
-      id: type + '-' + Date.now() + '-' + Math.abs(delta).toFixed(4),
+      id: (ACCOUNT || 'acct') + '-' + type + '-' + Date.now() + '-' + Math.abs(delta).toFixed(4),
       type,
       label: label + ' (Δ)',
       amount: delta,
       currency: currency || 'USD',
       income: !!isIncome,
       accountLevel: false,
+      account: ACCOUNT || '',
       time: new Date().toISOString()
     });
     saveState(state);
@@ -1945,7 +1991,9 @@ async function main() {
       inflight: 0,
       manager: true
     });
-    log('Connected to IB paper. manager clientId=', activeClientId, 'starting orderId=', nextOrderId);
+    log('Connected to IB', (process.argv.includes('live') || process.env.IBKR_BRIDGE_ROLE === 'live') ? 'LIVE' : 'paper',
+      'account=' + (ACCOUNT || '(default)'),
+      'manager clientId=', activeClientId, 'starting orderId=', nextOrderId);
 
     const poolIds = buildExecPoolIds(activeClientId, EXEC_POOL_SIZE, EXEC_POOL_START);
     for (const cid of poolIds) {
@@ -2970,6 +3018,10 @@ async function main() {
 
   /** Place / replace an order. Always venue-routes the contract (SEHK vs SMART). */
   function transmitOrder(orderId, contract, order, label) {
+    if (LIVE_ROLE && !liveOrdersAllowed()) {
+      log('LIVE LOCK refuse order', label, JSON.stringify({ orderId, contract: contract && contract.symbol, ...order }));
+      return;
+    }
     if (DRY || !ib) { log('DRY order', label, JSON.stringify({ orderId, contract: contract && contract.symbol, ...order })); return; }
     const oc = placeableContract(contract);
     const clientId = clientForOrder(orderId, {
@@ -7209,7 +7261,10 @@ async function main() {
     const reports = pending.concat(extra);
     if (!reports.length) return;
     try {
-      const resp = await postJson('/api/ibkr/report', { reports });
+      for (const r of reports) {
+        if (r && ACCOUNT && !r.account) r.account = ACCOUNT;
+      }
+      const resp = await postJson('/api/ibkr/report', { reports, account: ACCOUNT || '' });
       if (resp && resp.ok) {
         const accepted = new Set(resp.acceptedExecIds || []);
         const dups = new Set(resp.dupExecIds || []);

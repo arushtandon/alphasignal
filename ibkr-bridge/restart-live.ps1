@@ -5,8 +5,8 @@ $Root = $PSScriptRoot
 # Administrator. Stop every supervisor first so two bridges cannot trade.
 $targets = Get-CimInstance Win32_Process | Where-Object {
   $_.CommandLine -and (
-    ($_.Name -match '^(node|nodejs)\.exe$' -and $_.CommandLine -match '[\\/]ibkr-bridge[\\/]bridge\.js') -or
-    ($_.Name -match '^(powershell|pwsh)\.exe$' -and $_.CommandLine -match '[\\/]ibkr-bridge[\\/]run-forever\.ps1')
+    ($_.Name -match '^(node|nodejs)\.exe$' -and $_.CommandLine -match '[\\/]ibkr-bridge[\\/]bridge\.js' -and $_.CommandLine -notmatch 'bridge\.js["\s]+live') -or
+    ($_.Name -match '^(powershell|pwsh)\.exe$' -and $_.CommandLine -match '[\\/]ibkr-bridge[\\/]run-forever\.ps1' -and $_.CommandLine -notmatch 'run-forever-live')
   )
 }
 

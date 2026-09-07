@@ -165,3 +165,11 @@ and enable automatic Windows login if you want it to survive reboots unattended.
 3. Only then set `IBKR_DRY_RUN=0`.
 
 Connecting a negative-expectancy book to even a paper account just automates the drawdown.
+
+## 9. Paper + live (two bridges)
+
+Paper stays on Gateway **4002** / `DU1764495`. Live is a second Gateway on **4001** and `run-forever-live.ps1`. See [LIVE-CUTOVER.md](LIVE-CUTOVER.md).
+
+- Do not reuse `bridge-state.json` on the live account.
+- Live stays blank until an explicit go-ahead (`IBKR_LIVE_GOAHEAD=1` and `IBKR_LIVE_ARM=1`).
+- Admin restart live only: `restart-live-account.ps1` (does not kill paper).

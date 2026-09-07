@@ -418,7 +418,8 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
     <button class="nb" id="nav-history" onclick="switchTab('history')">History</button>
     <button class="nb" id="nav-performance" onclick="switchTab('performance')">Performance</button>
     <button class="nb" id="nav-ibkr" onclick="switchTab('ibkr')">IBKR</button>
-    <button class="nb" id="nav-watchlist" onclick="switchTab('watchlist')">Watchlist</button>
+    <button class="nb" id="nav-moveinfo" onclick="switchTab('moveinfo')">Analysis Info</button>
+    <button class="nb" id="nav-live" onclick="switchTab('live')">Live trades</button>
     <div class="key-indicator" id="keyIndicator" style="margin-left:6px;cursor:pointer" title="AI status · click for optional client key" onclick="openQuickStartModal()">
       <span class="key-dot" id="keyDot"></span><span id="keyLabel">Checking...</span>
     </div>
@@ -652,18 +653,37 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
       <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div>
           <div class="pt">IBKR executions</div>
-          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Paper account book · read-only fill ledger · MTM every 5s (FMP live → IB → Yahoo)</div>
+          <div id="ibkrPaneSub" style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Paper account book · DU1764495 · read-only fill ledger · MTM every 5s</div>
           <div id="ibkrMtmStamp" style="font-size:9px;color:var(--m2);font-family:'DM Mono',monospace;margin-top:3px">MTM: —</div>
         </div>
-        <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderIbkr(true)">↻ Refresh</button>
+        <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderIbkr(true,'paper')">↻ Refresh</button>
       </div>
       <div id="ibkrContent"><div class="emp"><div class="emp-a">α</div><p>Loading IBKR executions…</p></div></div>
     </div>
 
-    <!-- WATCHLIST -->
-    <div id="pane-watchlist" class="pane">
-      <div class="ph"><div class="pt">My watchlist</div></div>
-      <div id="wlContent"></div>
+    <!-- ANALYSIS INFO — why realised / unrealised jumped -->
+    <div id="pane-moveinfo" class="pane">
+      <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div>
+          <div class="pt">Analysis Info</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Lifetime MTM is mark vs entry. Session swing is the change since the last snapshot.</div>
+        </div>
+        <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderMoveInfo(true)">↻ Refresh</button>
+      </div>
+      <div id="moveinfoContent"><div class="emp"><div class="emp-a">α</div><p>Loading move analysis…</p></div>
+    </div>
+
+    <!-- LIVE TRADES (same analysis as IBKR tab, live account only; blank until go-ahead) -->
+    <div id="pane-live" class="pane">
+      <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div>
+          <div class="pt">Live trades</div>
+          <div id="livePaneSub" style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Live account book · blank until go-ahead · same analysis as IBKR</div>
+          <div id="liveMtmStamp" style="font-size:9px;color:var(--m2);font-family:'DM Mono',monospace;margin-top:3px">MTM: —</div>
+        </div>
+        <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderIbkr(true,'live')">↻ Refresh</button>
+      </div>
+      <div id="liveContent"><div class="emp"><div class="emp-a">α</div><p>Live book is empty. No live orders will be placed until you give a go-ahead.</p></div></div>
     </div>
 
   </div>
@@ -1699,9 +1719,11 @@ function closeMobileSidebar(){
 // ══════════════════════════════════════════════
 function switchTab(t){
   closeMobileSidebar();
-  ['dashboard','analysis','history','performance','ibkr','watchlist'].forEach(id=>{
-    document.getElementById('nav-'+id).classList.toggle('act',id===t);
-    document.getElementById('pane-'+id).classList.toggle('vis',id===t);
+  ['dashboard','analysis','history','performance','ibkr','moveinfo','live'].forEach(id=>{
+    const nav = document.getElementById('nav-'+id);
+    const pane = document.getElementById('pane-'+id);
+    if (nav) nav.classList.toggle('act',id===t);
+    if (pane) pane.classList.toggle('vis',id===t);
   });
   if(t==='history') {
     renderHist();
@@ -1729,9 +1751,10 @@ function switchTab(t){
       return refreshHistoryPnl().catch(function(){});
     }).then(renderPerf).catch(function(e){ console.warn(e); renderPerf(); });
   }
-  if(t==='ibkr') { startIbkrMtm(); }
+  if(t==='ibkr') startIbkrMtm('paper');
+  else if(t==='live') startIbkrMtm('live');
   else stopIbkrMtm();
-  if(t==='watchlist') renderWl();
+  if(t==='moveinfo') renderMoveInfo();
 }
 
 // ══════════════════════════════════════════════
@@ -1743,22 +1766,53 @@ let _ibkrMtmTimer = null;
 let _ibkrMtmBusy = false;
 let _ibkrMtmQueued = false;
 let _ibkrLastPayload = null;
+let _liveLastPayload = null;
+let _ibkrMtmBook = 'paper';
+function ibkrBookKind(kind) {
+  return kind === 'live' ? 'live' : 'paper';
+}
+function ibkrBookPfx(kind) {
+  return ibkrBookKind(kind) === 'live' ? 'live' : 'ibkr';
+}
+function ibkrBookPayload(kind) {
+  return ibkrBookKind(kind) === 'live' ? _liveLastPayload : _ibkrLastPayload;
+}
+function ibkrTradesUrl(kind) {
+  return '/api/ibkr/trades?book=' + ibkrBookKind(kind) + '&t=' + Date.now();
+}
+function syncIbkrBookChrome(d, kind) {
+  kind = ibkrBookKind(kind || (d && d.book));
+  const pfx = ibkrBookPfx(kind);
+  const paper = (d && d.paperAccount) || 'DU1764495';
+  const cur = (d && d.accountId) || (kind === 'live' ? 'LIVE' : paper);
+  const sub = document.getElementById(pfx + 'PaneSub');
+  if (sub) {
+    if (kind === 'live') {
+      sub.textContent = (d && d.liveReady)
+        ? ('Live account book · ' + cur + ' · same analysis as IBKR · MTM every 5s')
+        : 'Live account book · blank until go-ahead · no live orders';
+    } else {
+      sub.textContent = 'Paper account book · ' + cur + ' · read-only fill ledger · MTM every 5s';
+    }
+  }
+}
 
-function startIbkrMtm(){
+function startIbkrMtm(kind){
+  _ibkrMtmBook = ibkrBookKind(kind);
   stopIbkrMtm();
-  renderIbkr(true);
+  renderIbkr(true, _ibkrMtmBook);
   _ibkrMtmTimer = setInterval(function(){
-    const pane = document.getElementById('pane-ibkr');
+    const pane = document.getElementById(_ibkrMtmBook === 'live' ? 'pane-live' : 'pane-ibkr');
     if (!(pane && pane.classList.contains('vis'))) { stopIbkrMtm(); return; }
     if (document.hidden) return;
-    tickIbkrMtm();
+    tickIbkrMtm(_ibkrMtmBook);
   }, 5000);
 }
 function stopIbkrMtm(){
   if (_ibkrMtmTimer) { clearInterval(_ibkrMtmTimer); _ibkrMtmTimer = null; }
 }
-function setIbkrMtmStamp(msg){
-  const stamp = document.getElementById('ibkrMtmStamp');
+function setIbkrMtmStamp(msg, kind){
+  const stamp = document.getElementById(ibkrBookPfx(kind || _ibkrMtmBook) + 'MtmStamp');
   if (!stamp) return;
   const now = new Date();
   const hh = String(now.getHours()).padStart(2,'0');
@@ -1826,7 +1880,8 @@ function ibkrSharpeSub(p) {
     + (n != null ? ' · n=' + n + ' weekdays (noisy)' : ' · need 2+ days')
     + (since ? ' · ' + since : '');
 }
-function ibkrPerfTiles(d) {
+function ibkrPerfTiles(d, pfx) {
+  pfx = pfx || 'ibkr';
   const p = (d && d.performance) || {};
   const tile = (id,l,v,sub,c) =>
     '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-height:80px;flex:1;min-width:130px;display:flex;flex-direction:column;justify-content:center;gap:5px">'
@@ -1857,12 +1912,13 @@ function ibkrPerfTiles(d) {
   const riskSub = p.riskOff
     ? ('entries paused · guard ' + (p.pausePct || 15) + '% DD')
     : ('max DD ' + (p.drawdownPct != null ? p.drawdownPct + '%' : '—') + ' of peak IBKR equity');
-  return tile('ibkrCardMove','IBKR move', move, moveSub, ibkrPc(p.fromStartUsd))
-    + tile('ibkrCardDD','Max drawdown', dd, ddSub, p.drawdownUsd > 0 ? 'var(--sell)' : 'var(--m1)')
-    + tile('ibkrCardSharpe','Sharpe', sh, shSub, shC)
-    + tile('ibkrCardRisk','Risk', risk, riskSub, ibkrPerfColor(p.riskLevel));
+  return tile(pfx+'CardMove','IBKR move', move, moveSub, ibkrPc(p.fromStartUsd))
+    + tile(pfx+'CardDD','Max drawdown', dd, ddSub, p.drawdownUsd > 0 ? 'var(--sell)' : 'var(--m1)')
+    + tile(pfx+'CardSharpe','Sharpe', sh, shSub, shC)
+    + tile(pfx+'CardRisk','Risk', risk, riskSub, ibkrPerfColor(p.riskLevel));
 }
-function ibkrPatchPerfTiles(d) {
+function ibkrPatchPerfTiles(d, pfx) {
+  pfx = pfx || 'ibkr';
   const p = (d && d.performance) || {};
   const set = (id, txt, col) => {
     const el = document.getElementById(id);
@@ -1871,21 +1927,21 @@ function ibkrPatchPerfTiles(d) {
     if (col) el.style.color = col;
   };
   if (p.fromStartUsd != null) {
-    set('ibkrCardMove', ibkrFp(p.fromStartUsd) + (p.fromStartPct != null ? ' / ' + (p.fromStartPct>=0?'+':'') + p.fromStartPct + '%' : ''), ibkrPc(p.fromStartUsd));
+    set(pfx+'CardMove', ibkrFp(p.fromStartUsd) + (p.fromStartPct != null ? ' / ' + (p.fromStartPct>=0?'+':'') + p.fromStartPct + '%' : ''), ibkrPc(p.fromStartUsd));
   }
   if (p.drawdownUsd != null) {
-    set('ibkrCardDD', ibkrFp(-Math.abs(p.drawdownUsd)) + (p.drawdownPct != null ? ' / −' + p.drawdownPct + '%' : ''), p.drawdownUsd > 0 ? 'var(--sell)' : 'var(--m1)');
+    set(pfx+'CardDD', ibkrFp(-Math.abs(p.drawdownUsd)) + (p.drawdownPct != null ? ' / −' + p.drawdownPct + '%' : ''), p.drawdownUsd > 0 ? 'var(--sell)' : 'var(--m1)');
   }
-  if (document.getElementById('ibkrCardSharpe')) {
-    set('ibkrCardSharpe', p.sharpe != null ? String(p.sharpe) : '—',
+  if (document.getElementById(pfx+'CardSharpe')) {
+    set(pfx+'CardSharpe', p.sharpe != null ? String(p.sharpe) : '—',
       p.sharpe == null ? 'var(--m1)' : p.sharpe >= 1 ? 'var(--buy)' : p.sharpe >= 0 ? '#F5C842' : 'var(--sell)');
-    const sub = document.getElementById('ibkrCardSharpeSub');
+    const sub = document.getElementById(pfx+'CardSharpeSub');
     if (sub) {
       sub.textContent = ibkrSharpeSub(p);
     }
   }
-  if (document.getElementById('ibkrCardRisk')) {
-    set('ibkrCardRisk', p.riskLevel || '—', ibkrPerfColor(p.riskLevel));
+  if (document.getElementById(pfx+'CardRisk')) {
+    set(pfx+'CardRisk', p.riskLevel || '—', ibkrPerfColor(p.riskLevel));
   }
 }
 function ibkrBookStats(trades) {
@@ -2164,18 +2220,100 @@ function renderIbkrHistoryLedger(d, hzKey, view) {
     +'</tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'<div style="font-size:11px;color:var(--m1);font-family:DM Mono,monospace;padding:8px 10px 4px;line-height:1.45">TP1 / TP2 are fill dollars. Net is after closed commission. Oldest exit first.</div></div>';
 }
-function rememberIbkrBook(d) {
-  _ibkrLastPayload = d;
-  window._ibkrHistAllow = ibkrHistAllowFromPayload(d);
-  window._ibkrHistAllowAt = Date.now();
-  window._ibkrHistAllowP = Promise.resolve(window._ibkrHistAllow);
+function rememberIbkrBook(d, kind) {
+  kind = ibkrBookKind(kind || (d && d.book));
+  if (kind === 'live') _liveLastPayload = d;
+  else {
+    _ibkrLastPayload = d;
+    window._ibkrHistAllow = ibkrHistAllowFromPayload(d);
+    window._ibkrHistAllowAt = Date.now();
+    window._ibkrHistAllowP = Promise.resolve(window._ibkrHistAllow);
+  }
+  syncIbkrBookChrome(d, kind);
   return d;
 }
 async function fetchIbkrBook() {
-  const r = await fetch('/api/ibkr/trades?t=' + Date.now(), { cache: 'no-store' });
+  const r = await fetch(ibkrTradesUrl('paper'), { cache: 'no-store' });
   const d = await r.json();
   if (!d.ok) throw new Error(d.error || 'bad response');
-  return rememberIbkrBook(d);
+  return rememberIbkrBook(d, 'paper');
+}
+function moveInfoRowHtml(r, usdKey) {
+  const usd = Number(r[usdKey] != null ? r[usdKey] : r.unrealizedUsd) || 0;
+  const why = r.reason === 'new' ? 'new position'
+    : r.reason === 'closed' ? 'closed / flatten'
+      : r.reason === 'qty' ? 'size change'
+        : (r.prevMark != null && r.mark != null ? ('mark ' + r.prevMark + ' → ' + r.mark) : 'mark');
+  return '<div class="lr" style="align-items:flex-start">'
+    + '<div><div class="lt2">' + (r.ticker || '') + '</div>'
+    + '<div style="font-size:10px;color:var(--m1);font-family:DM Mono,monospace">'
+    + (r.openQty > 0 ? (r.openQty + ' open') : 'flat')
+    + (r.avgEntry != null ? ' · avg ' + r.avgEntry : '')
+    + (r.mark != null ? ' · mark ' + r.mark : '')
+    + (r.notionalUsd ? ' · notional ' + ibkrFp(r.notionalUsd).replace('+','') : '')
+    + (r.reason ? ' · ' + why : '')
+    + '</div></div>'
+    + '<div style="font-family:DM Mono,monospace;font-size:13px;color:' + ibkrPc(usd) + '">' + ibkrFp(usd) + '</div>'
+    + '</div>';
+}
+async function renderMoveInfo(){
+  const el = document.getElementById('moveinfoContent');
+  if (!el) return;
+  el.innerHTML = '<div class="emp"><div class="emp-a">α</div><p>Loading move analysis…</p></div>';
+  try {
+    const book = await fetchIbkrBook();
+    const tt = (book && book.totals) || {};
+    const open = (book.trades || []).filter(function (t) { return t && !t.errorTrade && t.openQty > 0; });
+    const byT = {};
+    open.forEach(function (t) {
+      const k = String(t.ticker || '').toUpperCase();
+      if (!byT[k]) byT[k] = { ticker: k, unrealizedUsd: 0, realizedUsd: 0, openQty: 0, mark: t.mark, avgEntry: t.avgEntry, notionalUsd: 0 };
+      byT[k].unrealizedUsd += Number(t.unrealizedUsd) || 0;
+      byT[k].realizedUsd += Number(t.realizedUsd) || 0;
+      byT[k].openQty += Number(t.openQty) || 0;
+      byT[k].notionalUsd += Number(t.notionalUsd) || 0;
+      if (t.mark != null) byT[k].mark = t.mark;
+    });
+    const ranked = Object.values(byT).sort(function (a, b) { return a.unrealizedUsd - b.unrealizedUsd; });
+    const drags = ranked.filter(function (r) { return r.unrealizedUsd < 0; }).slice(0, 8);
+    const lifts = ranked.filter(function (r) { return r.unrealizedUsd > 0; }).sort(function (a, b) { return b.unrealizedUsd - a.unrealizedUsd; }).slice(0, 5);
+    const hole = Number(tt.unrealizedUsd) || 0;
+    const top = drags[0];
+    const share = top && hole < 0 ? Math.round(Math.abs(top.unrealizedUsd) / Math.abs(hole) * 100) : 0;
+    let head = 'Open book unrealised ' + ibkrFp(hole) + ' is mark vs entry on open lots (lifetime MTM), not a 1-day move.';
+    if (top && top.unrealizedUsd < -50) {
+      head += ' Largest lifetime drag: ' + top.ticker + ' ' + ibkrFp(top.unrealizedUsd);
+      if (share >= 15) head += ' (' + share + '% of the open hole)';
+      head += '.';
+    }
+    let lastHtml = '';
+    try {
+      const mr = await fetch('/api/ibkr/move-analysis?book=paper&t=' + Date.now(), { cache: 'no-store' });
+      const md = await mr.json();
+      if (md && md.ok && md.lastMove && md.lastMove.large && md.lastMove.rows && md.lastMove.rows.length) {
+        lastHtml = '<div class="lcard" style="margin-bottom:12px"><div style="padding:10px 12px 4px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1)">Last large move (since prior snapshot — this is the 1-day / session swing)'
+          + (md.lastMove.fromAt ? ' · ' + String(md.lastMove.fromAt).slice(11, 16) + ' → ' + String(md.lastMove.toAt || '').slice(11, 16) : '')
+          + '</div>'
+          + '<div style="padding:0 12px 8px;font-size:13px;font-family:DM Mono,monospace">' + md.lastMove.headline + '</div>'
+          + md.lastMove.rows.slice(0, 8).map(function (r) { return moveInfoRowHtml(r, 'dUnrealUsd'); }).join('')
+          + '</div>';
+      }
+    } catch (_) {}
+    el.innerHTML = '<div style="padding:10px 12px;margin-bottom:12px;background:var(--s1);border:1px solid var(--b1);border-radius:8px;font-size:13px;line-height:1.45">'
+      + head
+      + '<div style="margin-top:6px;font-size:11px;color:var(--m1);font-family:DM Mono,monospace">Realised ' + ibkrFp(tt.realizedUsd)
+      + ' · IB unrealised ' + (book.account && book.account.ibUnrealizedPnl != null ? ibkrFp(book.account.ibUnrealizedPnl) : '—')
+      + ' · ' + (tt.openCount || open.length) + ' open</div></div>'
+      + lastHtml
+      + '<div class="lcard" style="margin-bottom:12px"><div style="padding:10px 12px 4px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1)">Largest lifetime drags — mark vs entry, not today</div>'
+      + (drags.length ? drags.map(function (r) { return moveInfoRowHtml(r, 'unrealizedUsd'); }).join('') : '<div style="padding:12px;color:var(--m2)">No open losers</div>')
+      + '</div>'
+      + '<div class="lcard"><div style="padding:10px 12px 4px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1)">Largest lifetime lifts — mark vs entry, not today</div>'
+      + (lifts.length ? lifts.map(function (r) { return moveInfoRowHtml(r, 'unrealizedUsd'); }).join('') : '<div style="padding:12px;color:var(--m2)">No open winners</div>')
+      + '</div>';
+  } catch (e) {
+    el.innerHTML = '<div class="emp"><div class="emp-a">!</div><p>Could not load analysis: ' + (e.message || e) + '</p></div>';
+  }
 }
 function ibkrFillForPick(ticker, hz) {
   const trades = (_ibkrLastPayload && _ibkrLastPayload.trades) || [];
@@ -2201,9 +2339,10 @@ function ibkrOpenKeySet(d) {
     return t && !t.errorTrade && t.openQty > 0;
   }).map(function (t) { return t.key; }).sort().join('|');
 }
-function ibkrDomOpenKeySet() {
+function ibkrDomOpenKeySet(kind) {
+  const pfx = ibkrBookPfx(kind);
   return Array.prototype.map.call(
-    document.querySelectorAll('#ibkrContent tr[data-ibkr-open="1"]'),
+    document.querySelectorAll('#' + pfx + 'Content tr[data-ibkr-open="1"]'),
     function (el) { return el.getAttribute('data-ibkr-key'); }
   ).sort().join('|');
 }
@@ -2471,27 +2610,30 @@ function renderIbkrPerformanceExtras() {
 }
 
 /** Wall-clock style: fetch fresh marks and patch DOM cells without rebuild. */
-async function tickIbkrMtm(){
+async function tickIbkrMtm(kind){
+  kind = ibkrBookKind(kind || _ibkrMtmBook);
+  const pfx = ibkrBookPfx(kind);
+  const scope = document.getElementById(kind === 'live' ? 'pane-live' : 'pane-ibkr') || document;
   if (_ibkrMtmBusy) { _ibkrMtmQueued = true; return; }
-  const root = document.getElementById('ibkrLiveRoot');
-  if (!root) { renderIbkr(true); return; }
+  const root = document.getElementById(pfx + 'LiveRoot');
+  if (!root) { renderIbkr(true, kind); return; }
   _ibkrMtmBusy = true;
   try {
-    const r = await fetch('/api/ibkr/trades?t=' + Date.now(), { cache: 'no-store' });
+    const r = await fetch(ibkrTradesUrl(kind), { cache: 'no-store' });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || 'bad response');
-    rememberIbkrBook(d);
-    if (ibkrOpenKeySet(d) !== ibkrDomOpenKeySet()) {
+    rememberIbkrBook(d, kind);
+    if (ibkrOpenKeySet(d) !== ibkrDomOpenKeySet(kind)) {
       _ibkrMtmBusy = false;
-      await renderIbkr(true);
+      await renderIbkr(true, kind);
       return;
     }
     const openN = (d.trades || []).filter(t => t.openQty > 0).length;
-    setIbkrMtmStamp('MTM live · ' + openN + ' open · auto every 5s');
-    const uEl = document.getElementById('ibkrCardUnreal');
-    const nEl = document.getElementById('ibkrCardNet');
-    const rEl = document.getElementById('ibkrCardReal');
-    const cEl = document.getElementById('ibkrCardComm');
+    setIbkrMtmStamp('MTM live · ' + openN + ' open · auto every 5s', kind);
+    const uEl = document.getElementById(pfx+'CardUnreal');
+    const nEl = document.getElementById(pfx+'CardNet');
+    const rEl = document.getElementById(pfx+'CardReal');
+    const cEl = document.getElementById(pfx+'CardComm');
     const a = d.account || {};
     const setTxt = (id, txt, col) => {
       const el = document.getElementById(id);
@@ -2509,7 +2651,7 @@ async function tickIbkrMtm(){
     if (nEl) {
       const net = ibkrNetPnl(d.totals);
       nEl.textContent = ibkrFp(net); nEl.style.color = ibkrPc(net);
-      const nSub = document.getElementById('ibkrCardNetSub');
+      const nSub = document.getElementById(pfx+'CardNetSub');
       if (nSub) {
         const openC = Number(d.totals.openCommissionUsd) || 0;
         nSub.textContent = ibkrFp(d.totals.realizedUsd) + ' realised + '
@@ -2517,17 +2659,17 @@ async function tickIbkrMtm(){
           + ibkrMoney2(-Math.abs(openC)) + ' open comm · closed comm already in realised';
       }
     }
-    ibkrPatchPerfTiles(d);
-    setTxt('ibkrCardBalance', ibkrBal(a.currentBalance), 'var(--t1)');
-    setTxt('ibkrCardLiq', ibkrBal(a.netLiquidityAvailable), 'var(--t1)');
-    setTxt('ibkrCardMargin', ibkrBal(a.marginsUsed), a.marginsUsed > 0 ? 'var(--sell)' : 'var(--t1)');
-    const marSub = document.getElementById('ibkrCardMarginSub');
+    ibkrPatchPerfTiles(d, pfx);
+    setTxt(pfx+'CardBalance', ibkrBal(a.currentBalance), 'var(--t1)');
+    setTxt(pfx+'CardLiq', ibkrBal(a.netLiquidityAvailable), 'var(--t1)');
+    setTxt(pfx+'CardMargin', ibkrBal(a.marginsUsed), a.marginsUsed > 0 ? 'var(--sell)' : 'var(--t1)');
+    const marSub = document.getElementById(pfx+'CardMarginSub');
     if (marSub) {
       marSub.textContent = a.maintMarginReq != null
         ? ('init · maint ' + ibkrBal(a.maintMarginReq))
         : 'IB initial margin req';
     }
-    const liqEl = document.getElementById('ibkrCardLiqSub');
+    const liqEl = document.getElementById(pfx+'CardLiqSub');
     if (liqEl && a.liquidityPct != null) {
       liqEl.textContent = a.liquidityPct.toFixed(1) + '% of balance'
         + (a.liquidityRiskOff ? ' · NEW ENTRIES PAUSED' : '');
@@ -2535,8 +2677,8 @@ async function tickIbkrMtm(){
     }
     for (const t of (d.trades || [])) {
       if (!(t.openQty > 0)) continue;
-      const markEl = document.querySelector('[data-ibkr-mark="'+CSS.escape(t.key)+'"]');
-      const unEl = document.querySelector('[data-ibkr-unreal="'+CSS.escape(t.key)+'"]');
+      const markEl = scope.querySelector('[data-ibkr-mark="'+CSS.escape(t.key)+'"]');
+      const unEl = scope.querySelector('[data-ibkr-unreal="'+CSS.escape(t.key)+'"]');
       if (markEl) {
         const src = String(t.markSrc || '');
         const tag = src === 'ibkr' ? ' <span style="font-size:8px;color:var(--ac)">IB</span>'
@@ -2550,15 +2692,17 @@ async function tickIbkrMtm(){
       }
     }
   } catch (e) {
-    setIbkrMtmStamp('MTM error: ' + e.message + ' · retrying…');
+    setIbkrMtmStamp('MTM error: ' + e.message + ' · retrying…', kind);
   } finally {
     _ibkrMtmBusy = false;
-    if (_ibkrMtmQueued) { _ibkrMtmQueued = false; setTimeout(tickIbkrMtm, 200); }
+    if (_ibkrMtmQueued) { _ibkrMtmQueued = false; setTimeout(function(){ tickIbkrMtm(kind); }, 200); }
   }
 }
 
-async function renderIbkr(force){
-  const el = document.getElementById('ibkrContent');
+async function renderIbkr(force, kind){
+  kind = ibkrBookKind(kind || _ibkrMtmBook);
+  const pfx = ibkrBookPfx(kind);
+  const el = document.getElementById(pfx + 'Content');
   if (!el) return;
   if (_ibkrMtmBusy) { _ibkrMtmQueued = true; return; }
   _ibkrMtmBusy = true;
@@ -2566,22 +2710,23 @@ async function renderIbkr(force){
   let keepRealisedOpen = false;
   let keepErrorOpen = false;
   try {
-    const openEl = document.getElementById('ibkrOpenDetails');
+    const openEl = document.getElementById(pfx + 'OpenDetails');
     keepOpenOpen = openEl ? !!openEl.open : true;
-    keepRealisedOpen = !!(document.getElementById('ibkrRealisedDetails') || {}).open;
-    keepErrorOpen = !!(document.getElementById('ibkrErrorDetails') || {}).open;
+    keepRealisedOpen = !!(document.getElementById(pfx + 'RealisedDetails') || {}).open;
+    keepErrorOpen = !!(document.getElementById(pfx + 'ErrorDetails') || {}).open;
   } catch (_) {}
   try {
-    setIbkrMtmStamp('MTM loading…');
-    const r = await fetch('/api/ibkr/trades?t=' + Date.now(), { cache: 'no-store' });
+    setIbkrMtmStamp('MTM loading…', kind);
+    const r = await fetch(ibkrTradesUrl(kind), { cache: 'no-store' });
     const d = await r.json();
     if (!d.ok) throw new Error(d.error || 'bad response');
-    rememberIbkrBook(d);
-    setIbkrMtmStamp('MTM live · auto every 5s');
+    rememberIbkrBook(d, kind);
+    setIbkrMtmStamp('MTM live · auto every 5s', kind);
     if (!d.trades.length) {
-      el.innerHTML = '<div class="emp"><div class="emp-a">α</div><p>No IBKR executions reported yet.<br>'
-        + 'Fills appear here once the local bridge (ibkr-bridge) is running next to TWS/IB Gateway<br>'
-        + 'and orders start executing in the paper account.</p></div>';
+      el.innerHTML = kind === 'live'
+        ? '<div class="emp"><div class="emp-a">α</div><p>Live book is empty.<br>No live orders will be placed until you give a go-ahead.<br>Paper fills stay on the IBKR tab.</p></div>'
+        : '<div class="emp"><div class="emp-a">α</div><p>No IBKR executions reported yet.<br>'
+          + 'Fills appear here once the local paper bridge is running next to IB Gateway.</p></div>';
       return;
     }
     const fp = ibkrFp;
@@ -2677,29 +2822,29 @@ async function renderIbkr(force){
         + '. Open positions still manage exits.'
         + '</div>'
       : '';
-    const cards = '<div id="ibkrLiveRoot" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
-      + tile('ibkrCardBalance','Current balance', ibkrBal(acct.currentBalance), balSub, 'var(--t1)')
-      + tile('ibkrCardLiq','Net liquidity available', ibkrBal(acct.netLiquidityAvailable), liqSub,
+    const cards = '<div id="'+pfx+'LiveRoot" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
+      + tile(pfx+'CardBalance','Current balance', ibkrBal(acct.currentBalance), balSub, 'var(--t1)')
+      + tile(pfx+'CardLiq','Net liquidity available', ibkrBal(acct.netLiquidityAvailable), liqSub,
           acct.liquidityRiskOff ? 'var(--sell)' : 'var(--t1)')
-      + tile('ibkrCardMargin','Margin used', ibkrBal(acct.marginsUsed), marginSub,
+      + tile(pfx+'CardMargin','Margin used', ibkrBal(acct.marginsUsed), marginSub,
           (acct.marginsUsed > 0) ? 'var(--sell)' : 'var(--t1)')
-      + tile('ibkrCardToday','Today realised', fp(todayReal), 'fills · '+todayKey, pc(todayReal))
-      + tile('ibkrCardReal','Total realised (net)', fp(tt.realizedUsd),
+      + tile(pfx+'CardToday','Today realised', fp(todayReal), 'fills · '+todayKey, pc(todayReal))
+      + tile(pfx+'CardReal','Total realised (net)', fp(tt.realizedUsd),
           'already after closed comm · '+tt.closedCount+' closed', pc(tt.realizedUsd))
-      + tileClick('ibkrCardComm','Brokerage, dividends & charges',
+      + tileClick(pfx+'CardComm','Brokerage, dividends & charges',
           expTotal?ibkrMoney2(-Math.abs(expTotal)):'—',
           expSub + ' · not subtracted again in Net',
           expTotal?'var(--sell)':'var(--m1)',
-          'showIbkrExpenses()')
-      + tile('ibkrCardUnreal','Unrealised', fp(tt.unrealizedUsd), tt.openCount+' open', pc(tt.unrealizedUsd))
-      + tile('ibkrCardNet','Net PnL', fp(net),
+          'showIbkrExpenses(\''+kind+'\')')
+      + tile(pfx+'CardUnreal','Unrealised', fp(tt.unrealizedUsd), tt.openCount+' open', pc(tt.unrealizedUsd))
+      + tile(pfx+'CardNet','Net PnL', fp(net),
           fp(tt.realizedUsd)+' realised + '+fp(tt.unrealizedUsd)+' unrealised − '
             +ibkrMoney2(-Math.abs(tt.openCommissionUsd||0))+' open comm'
             +(tt.closedCommissionUsd ? ' · closed comm already in realised' : ''),
           pc(net))
-      + tile('ibkrCardWR','Win rate', tt.winRate!=null?tt.winRate+'%':'—', tt.wins+'W / '+tt.losses+'L', wrColor)
-      + tile('ibkrCardRecon','IB ↔ Site', rcLabel, rcOk ? 'all matched' : 'see differences below', rcColor)
-      + ibkrPerfTiles(d)
+      + tile(pfx+'CardWR','Win rate', tt.winRate!=null?tt.winRate+'%':'—', tt.wins+'W / '+tt.losses+'L', wrColor)
+      + tile(pfx+'CardRecon','IB ↔ Site', rcLabel, rcOk ? 'all matched' : 'see differences below', rcColor)
+      + ibkrPerfTiles(d, pfx)
       + '</div>'
       + riskBanner
       + rcBanner;
@@ -2880,19 +3025,19 @@ async function renderIbkr(force){
     const realPnl = realisedTrades.reduce((s,t)=>s+(Number(t.realizedUsd)||0),0);
     const openHeadCol = openPnl >= 0 ? 'var(--buy)' : 'var(--sell)';
     const realHeadCol = realPnl >= 0 ? 'var(--buy)' : 'var(--sell)';
-    const openHtml = '<details id="ibkrOpenDetails" class="ibkr-book" style="background:var(--s1);border:1px solid '+openHeadCol+';border-radius:8px;padding:8px 4px;margin-bottom:10px">'
+    const openHtml = '<details id="'+pfx+'OpenDetails" class="ibkr-book" style="background:var(--s1);border:1px solid '+openHeadCol+';border-radius:8px;padding:8px 4px;margin-bottom:10px">'
       +'<summary style="color:'+openHeadCol+'">Open trades · '+openTrades.length+(fillN?' · '+fillN+' fills':'')+' · '+fp(openPnl)+'</summary>'
       + (openTrades.length
         ? ('<div style="overflow-x:auto;margin-top:6px">' + tradeTableHead + openRows + '</tbody></table></div>')
         : '<div style="padding:10px 12px;font-size:9px;color:var(--m2);font-family:DM Sans,sans-serif">No open model trades</div>')
       + '</details>';
-    const realisedHtml = '<details id="ibkrRealisedDetails" class="ibkr-book" style="background:var(--s1);border:1px solid '+realHeadCol+';border-radius:8px;padding:8px 4px;margin-bottom:10px">'
+    const realisedHtml = '<details id="'+pfx+'RealisedDetails" class="ibkr-book" style="background:var(--s1);border:1px solid '+realHeadCol+';border-radius:8px;padding:8px 4px;margin-bottom:10px">'
       +'<summary style="color:'+realHeadCol+'">Realised trades · '+realisedTrades.length+' closed · '+fp(realPnl)+'</summary>'
       + (realisedTrades.length
         ? ('<div style="overflow-x:auto;margin-top:6px">' + tradeTableHead + realRows + '</tbody></table></div>')
         : '<div style="padding:10px 12px;font-size:9px;color:var(--m2);font-family:DM Sans,sans-serif">No realised model trades yet</div>')
       + '</details>';
-    const errHtml = '<details id="ibkrErrorDetails" class="ibkr-book" style="background:var(--s1);border:1px solid rgba(245,200,66,0.55);border-radius:8px;padding:8px 4px;margin-bottom:14px">'
+    const errHtml = '<details id="'+pfx+'ErrorDetails" class="ibkr-book" style="background:var(--s1);border:1px solid rgba(245,200,66,0.55);border-radius:8px;padding:8px 4px;margin-bottom:14px">'
       +'<summary style="color:#F5C842">Error trades · '+errorTrades.length
       +' · PnL '+fp(errNet)
       +' (real '+fp(tt.errorRealizedUsd||0)+' · open '+(tt.errorOpenCount||0)+' · today '+fp(todayErrReal)+')'
@@ -2903,31 +3048,31 @@ async function renderIbkr(force){
       + '</details>';
 
     el.innerHTML = cards + analysisHtml + dailyHtml + openHtml + realisedHtml + errHtml;
-    const openBox = document.getElementById('ibkrOpenDetails');
+    const openBox = document.getElementById(pfx+'OpenDetails');
     if (openBox) openBox.open = keepOpenOpen;
     if (keepRealisedOpen) {
-      const d = document.getElementById('ibkrRealisedDetails');
-      if (d) d.open = true;
+      const det = document.getElementById(pfx+'RealisedDetails');
+      if (det) det.open = true;
     }
     if (keepErrorOpen) {
-      const d = document.getElementById('ibkrErrorDetails');
-      if (d) d.open = true;
+      const det = document.getElementById(pfx+'ErrorDetails');
+      if (det) det.open = true;
     }
   } catch (e) {
-    setIbkrMtmStamp('MTM error: '+e.message+' · retrying every 5s');
+    setIbkrMtmStamp('MTM error: '+e.message+' · retrying every 5s', kind);
     el.innerHTML = '<div class="emp"><div class="emp-a">!</div><p>Could not load IBKR trades: '+e.message+'</p></div>';
   } finally {
     _ibkrMtmBusy = false;
     if (_ibkrMtmQueued) {
       _ibkrMtmQueued = false;
-      setTimeout(tickIbkrMtm, 200);
+      setTimeout(function(){ tickIbkrMtm(kind); }, 200);
     }
   }
 }
 
 /** Interactive brokerage / dividends / charges breakdown. */
-function showIbkrExpenses(){
-  const d = _ibkrLastPayload;
+function showIbkrExpenses(kind){
+  const d = ibkrBookPayload(kind);
   if (!d) { alert('IBKR data not loaded yet'); return; }
   const exp = d.expenses || {};
   const rows = exp.rows || [];
@@ -6673,7 +6818,6 @@ function renderCard(s){
     +'<div class="sub">'+(s.sector||'')+'</div></div></div>'
     +'<div style="display:flex;align-items:center;gap:8px">'
     +'<span style="font-family:DM Mono,monospace;font-size:13px" data-price-sym="'+s.ticker+'">—</span>'
-    +'<button class="btn" style="font-size:10px;padding:3px 9px" onclick=\'addWl('+JSON.stringify(s).replace(/'/g,"&#39;")+')\'> + Watch</button>'
     +'</div></div>'
 
     // Timeframe tabs

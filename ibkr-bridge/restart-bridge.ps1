@@ -18,8 +18,8 @@ function Stop-BridgeProcs {
   Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
     Where-Object {
       $_.CommandLine -and (
-        ($_.Name -match '^(node|nodejs)\.exe$' -and $_.CommandLine -match 'bridge\.js') -or
-        ($_.CommandLine -match 'run-forever\.ps1')
+        ($_.Name -match '^(node|nodejs)\.exe$' -and $_.CommandLine -match 'bridge\.js' -and $_.CommandLine -notmatch 'bridge\.js["\s]+live') -or
+        ($_.CommandLine -match 'run-forever\.ps1' -and $_.CommandLine -notmatch 'run-forever-live')
       )
     } |
     ForEach-Object {

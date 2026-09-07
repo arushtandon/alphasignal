@@ -50,6 +50,25 @@ const {
 const { dedupeIbkrFillsByExecId } = require('./lib/ibkr/fill-dedupe');
 const { isMarketLikeExit } = require('./lib/ibkr/tp1-policy');
 const { tslAfterTp1, ratchetTslFromDailyBar } = require('./lib/ibkr/tsl-policy');
+const {
+  PAPER_ACCOUNT,
+  resolveAccountId,
+  isLiveAccountId,
+  fillAccountOf,
+  filterRowsForAccount,
+  wrapAccountStore,
+  snapshotForAccount,
+  putSnapshotForAccount,
+  listKnownAccounts,
+  postedAccountFromBody,
+  resolveBookAccount
+} = require('./lib/ibkr/account-scope');
+const {
+  slimBook: slimIbkrPnlBook,
+  attributeMove,
+  currentAttribution,
+  shouldRecordSnapshot
+} = require('./lib/ibkr/move-analysis');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13764,7 +13783,8 @@ app.get('/api/ibkr/status', (req, res) => {
     latestSeq: _tradeEventSeq,
     eventsEnabled: process.env.IBKR_EVENTS_ENABLED !== '0',
     tokenRequired: !!process.env.IBKR_EVENTS_TOKEN,
-    paperPorts: { tws: 7497, gateway: 4002 }
+    paperPorts: { tws: 7497, gateway: 4002 },
+    livePorts: { tws: 7496, gateway: 4001 }
   });
 });
 
@@ -15240,6 +15260,7 @@ app.post('/api/ibkr/report', (req, res) => {
     }
     const fillTime = r.time || new Date().toISOString();
     const ticker = String(r.ticker || '');
+    const fillAccount = resolveAccountId(r.account || req.body.account, PAPER_ACCOUNT);
     const phase = ibkrFillSession(r, ticker, fillTime);
     // C1: quarantineFillForLedger (via mutateFillLedger) re-keys error/recon fills.
     let row = {
@@ -15272,7 +15293,8 @@ app.post('/api/ibkr/report', (req, res) => {
       userReentry: r.userReentry === true || undefined,
       synthetic: r.synthetic === true || undefined,
       recon: r.recon ? String(r.recon) : undefined,
-      markSrc: r.markSrc ? String(r.markSrc) : undefined
+      markSrc: r.markSrc ? String(r.markSrc) : undefined,
+      account: fillAccount
     };
     if (row.role === 'tp1' && (isMarketLikeExit(r.fillOrderType) || row.synthetic
       || String(row.recon || '').includes('flat') || String(row.execId || '').startsWith('ibhist-flat-'))) {
@@ -15883,14 +15905,21 @@ const IBKR_STARTING_CAPITAL = 1000000;
 /** History + Performance only include IBKR fills from this UTC date onward. */
 const IBKR_BOOK_START = '2026-08-06';
 
-function loadIbkrAccountSnapshot() {
-  try { return JSON.parse(fs.readFileSync(IBKR_ACCOUNT_FILE, 'utf8')); }
-  catch (_) { return null; }
+function loadIbkrAccountStore() {
+  try { return wrapAccountStore(JSON.parse(fs.readFileSync(IBKR_ACCOUNT_FILE, 'utf8'))); }
+  catch (_) { return wrapAccountStore(null); }
 }
-function saveIbkrAccountSnapshot(snap) {
+function loadIbkrAccountSnapshot(acct) {
+  const store = loadIbkrAccountStore();
+  const id = resolveAccountId(acct, store.defaultAccount);
+  return snapshotForAccount(store, id);
+}
+function saveIbkrAccountSnapshot(snap, acct) {
   if (!snap || typeof snap !== 'object') return;
   try {
-    const payload = { ...snap, savedAt: new Date().toISOString() };
+    const store = loadIbkrAccountStore();
+    const id = resolveAccountId(acct || snap.account, store.defaultAccount);
+    const payload = putSnapshotForAccount(store, id, { ...snap, savedAt: new Date().toISOString() });
     atomicWriteJsonSync(IBKR_ACCOUNT_FILE, payload, 2);
     durableStore.saveSnapshot('ibkr-account', payload, 1);
   } catch (_) {}
@@ -16003,6 +16032,7 @@ function appendIbkrCharges(rows) {
       currency: String(r.currency || 'USD'),
       income: !!r.income,
       accountLevel: !!r.accountLevel,
+      account: resolveAccountId(r.account, PAPER_ACCOUNT),
       time: r.time || new Date().toISOString()
     };
     if (!Number.isFinite(row.amount) || row.amount === 0) continue;
@@ -16092,7 +16122,11 @@ function updateIbkrAccruedAlloc(trades, accruedCash) {
 
 function ingestIbkrChargesFromBody(body) {
   try {
-    const charges = body && Array.isArray(body.charges) ? body.charges : [];
+    const acct = postedAccountFromBody(body, PAPER_ACCOUNT);
+    const charges = (body && Array.isArray(body.charges) ? body.charges : []).map((c) => ({
+      ...c,
+      account: resolveAccountId(c && c.account, acct)
+    }));
     return appendIbkrCharges(charges);
   } catch (_) { return 0; }
 }
@@ -16111,21 +16145,46 @@ function normalizeIbkrYahooTicker(t) {
   if (m) return m[1].padStart(4, '0') + '.HK';
   return s;
 }
-function loadIbkrReconPending() {
-  try { return JSON.parse(fs.readFileSync(IBKR_RECON_PENDING_FILE, 'utf8')) || {}; }
-  catch (_) { return {}; }
-}
-function saveIbkrReconPending(p) {
-  try { fs.writeFileSync(IBKR_RECON_PENDING_FILE, JSON.stringify(p)); } catch (_) {}
-}
-function loadIbkrReconReport() {
-  try { return JSON.parse(fs.readFileSync(IBKR_RECON_FILE, 'utf8')); }
-  catch (_) { return null; }
-}
-function saveIbkrReconReport(r) {
+function loadIbkrReconPendingStore() {
   try {
-    atomicWriteJsonSync(IBKR_RECON_FILE, r, 2);
-    durableStore.saveSnapshot('ibkr-reconciliation', r, 1);
+    const raw = JSON.parse(fs.readFileSync(IBKR_RECON_PENDING_FILE, 'utf8')) || {};
+    if (raw && raw.byAccount && typeof raw.byAccount === 'object') return wrapAccountStore(raw);
+    return wrapAccountStore({ byAccount: { [PAPER_ACCOUNT]: raw }, defaultAccount: PAPER_ACCOUNT });
+  } catch (_) { return wrapAccountStore(null); }
+}
+function loadIbkrReconPending(acct) {
+  const store = loadIbkrReconPendingStore();
+  const snap = snapshotForAccount(store, resolveAccountId(acct, store.defaultAccount)) || {};
+  const out = { ...snap };
+  delete out.account;
+  delete out.savedAt;
+  return out;
+}
+function saveIbkrReconPending(p, acct) {
+  try {
+    const store = loadIbkrReconPendingStore();
+    const id = resolveAccountId(acct, store.defaultAccount);
+    const clean = { ...(p || {}) };
+    delete clean.account;
+    delete clean.savedAt;
+    fs.writeFileSync(IBKR_RECON_PENDING_FILE, JSON.stringify(putSnapshotForAccount(store, id, clean)));
+  } catch (_) {}
+}
+function loadIbkrReconStore() {
+  try { return wrapAccountStore(JSON.parse(fs.readFileSync(IBKR_RECON_FILE, 'utf8'))); }
+  catch (_) { return wrapAccountStore(null); }
+}
+function loadIbkrReconReport(acct) {
+  const store = loadIbkrReconStore();
+  return snapshotForAccount(store, resolveAccountId(acct, store.defaultAccount));
+}
+function saveIbkrReconReport(r, acct) {
+  try {
+    const store = loadIbkrReconStore();
+    const id = resolveAccountId(acct || (r && r.account), store.defaultAccount);
+    const payload = putSnapshotForAccount(store, id, r);
+    atomicWriteJsonSync(IBKR_RECON_FILE, payload, 2);
+    durableStore.saveSnapshot('ibkr-reconciliation', payload, 1);
   } catch (_) {}
 }
 try { quarantineExcessModelEntriesVsIb(); } catch (e) {
@@ -16292,6 +16351,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         if (r && r.execId) _ibkrExecIds.add(String(r.execId));
       }
     } catch (_) {}
+    const reconAccount = postedAccountFromBody(req.body, PAPER_ACCOUNT);
     const liveStopsIn = Array.isArray(req.body && req.body.liveStops) ? req.body.liveStops : [];
     const positions = Array.isArray(req.body && req.body.positions) ? req.body.positions : [];
     const marksIn = (req.body && req.body.marks && typeof req.body.marks === 'object') ? req.body.marks : {};
@@ -16299,11 +16359,11 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     try {
       const snap = req.body && req.body.accountSnapshot;
       if (snap && typeof snap === 'object') {
-        const prev = loadIbkrAccountSnapshot() || {};
+        const prev = loadIbkrAccountSnapshot(reconAccount) || {};
         const merged = finalizeIbkrAccountSnapshot({
           ...prev,
           ...snap,
-          account: snap.account || req.body.account || prev.account || null,
+          account: reconAccount,
           at: snap.at || new Date().toISOString(),
           peakNlv: prev.peakNlv,
           peakNlvAt: prev.peakNlvAt,
@@ -16317,8 +16377,10 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           troughBookEquityAt: prev.troughBookEquityAt,
           bookEquity: prev.bookEquity
         });
-        saveIbkrAccountSnapshot(merged);
-        try { updateLiquidityRiskGate(merged); } catch (_) { /* best-effort */ }
+        saveIbkrAccountSnapshot(merged, reconAccount);
+        if (!isLiveAccountId(reconAccount)) {
+          try { updateLiquidityRiskGate(merged); } catch (_) { /* best-effort */ }
+        }
       }
       ingestIbkrChargesFromBody(req.body);
     } catch (_) { /* best-effort */ }
@@ -16358,11 +16420,13 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       }
     }
 
-    try { restoreOpenModelFillsFromCursorErr(positions); } catch (_) {}
-    try { repairFuturesRollLedger(); } catch (_) {}
-    try { bookAflStopLossFromIbPrint(); } catch (_) {}
-    try { bookRestoredFuturesPostRollExits(); } catch (_) {}
-    try { quarantineExcessModelEntriesVsIb(positions); } catch (_) {}
+    if (!isLiveAccountId(reconAccount)) {
+      try { restoreOpenModelFillsFromCursorErr(positions); } catch (_) {}
+      try { repairFuturesRollLedger(); } catch (_) {}
+      try { bookAflStopLossFromIbPrint(); } catch (_) {}
+      try { bookRestoredFuturesPostRollExits(); } catch (_) {}
+      try { quarantineExcessModelEntriesVsIb(positions); } catch (_) {}
+    }
     try {
       _ibkrExecIds.clear();
       for (const r of readIbkrFillRows()) {
@@ -16373,7 +16437,8 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     // SINGLE reconcile writer: drop stale phantoms here (never on GET /trades).
     {
       const beforePurge = readIbkrFillRows();
-      const afterPurge = beforePurge.filter(r => !isPhantomIbkrKey(r.key, r.time, r));
+      const afterPurge = beforePurge.filter(r =>
+        fillAccountOf(r) !== reconAccount || !isPhantomIbkrKey(r.key, r.time, r));
       if (afterPurge.length !== beforePurge.length) {
         mutateFillLedger('recon_phantom_purge', () => afterPurge);
       }
@@ -16383,7 +16448,9 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     {
       const beforeVoid = readIbkrFillRows();
       const dropIds = new Set(
-        beforeVoid.filter(r => isZeroEdgeGhostFlatFill(r, beforeVoid)).map(ibkrFillRowId)
+        beforeVoid
+          .filter(r => fillAccountOf(r) === reconAccount && isZeroEdgeGhostFlatFill(r, beforeVoid))
+          .map(ibkrFillRowId)
       );
       if (dropIds.size) {
         mutateFillLedger(
@@ -16394,14 +16461,16 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         console.log('IBKR recon: voided', dropIds.size, 'zero-edge ghost-flat fill(s)');
       }
     }
-    try { repairErroneousGhostFlats(); } catch (_) {}
-    try { stampGhostFlatFillsAsErrorTrade(); } catch (_) {}
+    if (!isLiveAccountId(reconAccount)) {
+      try { repairErroneousGhostFlats(); } catch (_) {}
+      try { stampGhostFlatFillsAsErrorTrade(); } catch (_) {}
+    }
 
-    const rows = readIbkrFillRows();
+    const rows = filterRowsForAccount(readIbkrFillRows(), reconAccount);
     const opens = aggregateIbkrOpenFromFills(rows, { forRecon: true });
     const errorOpens = aggregateIbkrOpenFromFills(rows)
       .filter(o => o && Number(o.openQty) > 0 && isIbkrOverlayErrorLot(o));
-    const pending = loadIbkrReconPending();
+    const pending = loadIbkrReconPending(reconAccount);
     const matched = [];
     const adjusted = [];
     const issues = [];
@@ -16809,23 +16878,27 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         delete pending[k];
       }
     }
-    saveIbkrReconPending(pending);
+    saveIbkrReconPending(pending, reconAccount);
 
     // Persist new fills + avg corrections through the single ledger writer.
     let stored = 0;
     let avgFixed = 0;
     if (newFills.length || avgCorrections.size) {
+      for (const row of newFills) {
+        if (row && !row.account) row.account = reconAccount;
+      }
       mutateFillLedger('recon_sync', (all) => {
         let out = all.slice();
         for (const row of newFills) {
           if (!row || !row.execId) continue;
-          if (out.some(r => r.execId === row.execId)) continue;
+          if (out.some(r => r.execId === row.execId && fillAccountOf(r) === fillAccountOf(row))) continue;
           out.push(row);
           stored++;
         }
         if (avgCorrections.size) {
           out = out.map(r => {
             if (!r || r.role !== 'entry') return r;
+            if (fillAccountOf(r) !== reconAccount) return r;
             const avg = avgCorrections.get(r.key);
             if (!(avg > 0)) return r;
             const prev = Number(r.price);
@@ -16878,21 +16951,23 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       liveStops: liveStopsIn.filter(s => s && Number(s.aux) > 0).map(s => ({
         ticker: s.ticker, aux: Number(s.aux), qty: Number(s.qty) || null,
         orderId: s.orderId || null, clientId: s.clientId || null
-      }))
+      })),
+      account: reconAccount
     };
-    saveIbkrReconReport(report);
-    if (!inSync) {
+    saveIbkrReconReport(report, reconAccount);
+    if (!inSync && !isLiveAccountId(reconAccount)) {
       const reason = report.errors > 0 ? 'reconciliation-error'
         : report.untrackedIb > 0 ? 'untracked-position'
           : report.pendingIssues > 0 ? 'reconciliation-pending' : 'fill-adjustment';
       revertCapitalStage(reason);
     }
-    // After IB snapshot lands, drop History Live ghosts not held / not on board.
-    try { pruneStaleOpenHistoryRows(); } catch (ePrune) {
-      console.warn('History prune after recon:', ePrune.message);
+    if (!isLiveAccountId(reconAccount)) {
+      try { pruneStaleOpenHistoryRows(); } catch (ePrune) {
+        console.warn('History prune after recon:', ePrune.message);
+      }
+      try { repairFuturesRollLedger(); } catch (_) {}
+      try { bookRestoredFuturesPostRollExits(); } catch (_) {}
     }
-    try { repairFuturesRollLedger(); } catch (_) {}
-    try { bookRestoredFuturesPostRollExits(); } catch (_) {}
     res.json({
       ok: true,
       inSync,
@@ -16918,13 +16993,43 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
 
 app.get('/api/ibkr/recon', (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
-  const report = loadIbkrReconReport();
-  res.json({ ok: true, report: report || null });
+  const report = loadIbkrReconReport(req.query.account);
+  res.json({ ok: true, report: report || null, account: resolveAccountId(req.query.account) });
 });
 
 // Live marks from the local IBKR bridge (TWS/Gateway market data) — preferred for MTM.
 const IBKR_MARKS_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_marks.json');
 const IBKR_EOD_PERF_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_daily_performance.jsonl');
+const IBKR_PNL_SNAP_FILE = path.join(path.dirname(HISTORY_FILE), 'ibkr_pnl_snaps.jsonl');
+function readIbkrPnlSnaps(book, limit) {
+  try {
+    if (!fs.existsSync(IBKR_PNL_SNAP_FILE)) return [];
+    const want = String(book || 'paper').toLowerCase() === 'live' ? 'live' : 'paper';
+    const out = [];
+    const lines = fs.readFileSync(IBKR_PNL_SNAP_FILE, 'utf8').split(/\r?\n/).filter(Boolean);
+    for (const line of lines) {
+      try {
+        const j = JSON.parse(line);
+        if (j && (j.book || 'paper') === want) out.push(j);
+      } catch (_) { /* skip */ }
+    }
+    return out.slice(-Math.max(1, limit || 40));
+  } catch (_) { return []; }
+}
+function recordIbkrPnlSnapshot(book, accountId, trades, totals, accountSnap) {
+  const curr = slimIbkrPnlBook(trades, totals, {
+    book,
+    accountId,
+    ibUnrealizedUsd: accountSnap && accountSnap.ibUnrealizedPnl
+  });
+  const prevs = readIbkrPnlSnaps(book, 2);
+  const prev = prevs[prevs.length - 1] || null;
+  if (!shouldRecordSnapshot(prev, curr, 60000)) return false;
+  try {
+    fs.appendFileSync(IBKR_PNL_SNAP_FILE, JSON.stringify(curr) + '\n');
+  } catch (_) { return false; }
+  return true;
+}
 let _ibkrLiveMarks = {}; // ticker -> { price, bid, ask, last, at, src }
 try {
   if (fs.existsSync(IBKR_MARKS_FILE)) {
@@ -17009,12 +17114,13 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
   const marks = Array.isArray(req.body && req.body.marks) ? req.body.marks : [];
   try {
     const snap = req.body && req.body.accountSnapshot;
+    const marksAccount = postedAccountFromBody(req.body, PAPER_ACCOUNT);
     if (snap && typeof snap === 'object') {
-      const prev = loadIbkrAccountSnapshot() || {};
+      const prev = loadIbkrAccountSnapshot(marksAccount) || {};
       const merged = finalizeIbkrAccountSnapshot({
         ...prev,
         ...snap,
-        account: snap.account || prev.account || null,
+        account: marksAccount,
         at: snap.at || new Date().toISOString(),
         peakNlv: prev.peakNlv,
         peakNlvAt: prev.peakNlvAt,
@@ -17028,8 +17134,10 @@ app.post('/api/ibkr/marks', express.json({ limit: '256kb' }), (req, res) => {
         troughBookEquityAt: prev.troughBookEquityAt,
         bookEquity: prev.bookEquity
       });
-      saveIbkrAccountSnapshot(merged);
-      try { updateLiquidityRiskGate(merged); } catch (_) { /* best-effort */ }
+      saveIbkrAccountSnapshot(merged, marksAccount);
+      if (!isLiveAccountId(marksAccount)) {
+        try { updateLiquidityRiskGate(merged); } catch (_) { /* best-effort */ }
+      }
     }
     ingestIbkrChargesFromBody(req.body);
   } catch (_) { /* best-effort */ }
@@ -17226,7 +17334,12 @@ function isIbkrSyntheticFillRow(f) {
 app.get('/api/ibkr/trades', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
-    const allRows = rebuildFuturesRollFills(dedupeIbkrFillsByExecId(readIbkrFillRows()), {
+    const allFillRows = readIbkrFillRows();
+    const accountStore = loadIbkrAccountStore();
+    const accounts = listKnownAccounts(accountStore, allFillRows, [PAPER_ACCOUNT]);
+    const selectedAccount = resolveBookAccount(req.query.book, accounts, req.query.account);
+    const scopedFills = filterRowsForAccount(allFillRows, selectedAccount);
+    const allRows = rebuildFuturesRollFills(dedupeIbkrFillsByExecId(scopedFills), {
       officialSettlePx: (ticker) => officialFuturesSettlePx(ticker, ''),
       restoreMissingExits: true
     }).rows;
@@ -17439,7 +17552,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
     }
     // Overlay last IB paper snapshot so the tab matches account qty/avg even if
     // recon fill rows were delayed or purged. IB is source of truth for opens.
-    const reconSnap = loadIbkrReconReport();
+    const reconSnap = loadIbkrReconReport(selectedAccount);
     const ibPosByY = new Map();
     const ibPosByConId = new Map();
     if (reconSnap && Array.isArray(reconSnap.positions)) {
@@ -17752,11 +17865,11 @@ app.get('/api/ibkr/trades', async (req, res) => {
       .map(([date, pnl]) => ({ date, realizedUsd: +pnl.toFixed(2) }));
     trades.sort((a, b) => (a.entryTime < b.entryTime ? 1 : -1));
 
-    const reconReport = loadIbkrReconReport();
-    const accountSnapRaw = loadIbkrAccountSnapshot();
+    const reconReport = loadIbkrReconReport(selectedAccount);
+    const accountSnapRaw = loadIbkrAccountSnapshot(selectedAccount);
     const accountSnap = finalizeIbkrAccountSnapshot({ ...(accountSnapRaw || {}) });
     applyBookEquityExtremes(accountSnap, totRealUsd + totUnrealUsd - totOpenCommissionUsd);
-    try { saveIbkrAccountSnapshot(accountSnap); } catch (_) {}
+    try { saveIbkrAccountSnapshot(accountSnap, selectedAccount); } catch (_) {}
     const currentBalance = accountSnap
       ? Number(accountSnap.currentBalance != null ? accountSnap.currentBalance : accountSnap.netLiquidation)
       : null;
@@ -17790,7 +17903,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
         accountSnap.expiredFuturesMarkBiasUsd = markBias.usd;
         accountSnap.expiredFuturesMarkBiasFrom = markBias.fromDate;
       }
-      try { saveIbkrAccountSnapshot(accountSnap); } catch (_) {}
+      try { saveIbkrAccountSnapshot(accountSnap, selectedAccount); } catch (_) {}
     }
     const netLiqAvail = accountSnap
       ? Number(accountSnap.netLiquidityAvailable != null
@@ -17809,7 +17922,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
     const expenses = [];
     let commissionExpenseUsd = 0;
     let errorCommissionExpenseUsd = 0;
-    const chargeLedger = readIbkrChargeRows();
+    const chargeLedger = filterRowsForAccount(readIbkrChargeRows(), selectedAccount);
     const roleFeeLabel = (role) => {
       const r = String(role || '').toLowerCase();
       if (r === 'entry') return 'IB commission on entry fill';
@@ -18048,8 +18161,21 @@ app.get('/api/ibkr/trades', async (req, res) => {
       ibRealizedPnl: accountSnap.realizedPnl != null ? Number(accountSnap.realizedPnl) : null,
       ibUnrealizedPnl: accountSnap.unrealizedPnl != null ? Number(accountSnap.unrealizedPnl) : null
     } : null;
+    const bookKind = String(req.query.book || '').toLowerCase() === 'live' ? 'live' : 'paper';
+    try {
+      recordIbkrPnlSnapshot(bookKind, selectedAccount, trades, {
+        unrealizedUsd: +totUnrealUsd.toFixed(2),
+        realizedUsd: +totRealUsd.toFixed(2),
+        openCount
+      }, account);
+    } catch (_) {}
     res.json({
       ok: true,
+      book: bookKind,
+      accountId: selectedAccount,
+      accounts,
+      liveReady: accounts.some((id) => isLiveAccountId(id)),
+      paperAccount: PAPER_ACCOUNT,
       trades,
       daily: dailyArr,
       eodPerformance: readIbkrEodPerformance(60),
@@ -18106,6 +18232,31 @@ app.get('/api/ibkr/trades', async (req, res) => {
         correctivePendingRows: (reconReport.correctivePendingRows || []).slice(0, 20),
         adjustedRows: (reconReport.adjustedRows || []).slice(0, 20)
       } : null
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/ibkr/move-analysis', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const book = String(req.query.book || '').toLowerCase() === 'live' ? 'live' : 'paper';
+    const snaps = readIbkrPnlSnaps(book, 40);
+    const curr = snaps[snaps.length - 1] || null;
+    const prev = snaps.length > 1 ? snaps[snaps.length - 2] : null;
+    const sessionStart = snaps.find((s) => s && s.at && String(s.at).slice(0, 10) === (curr && String(curr.at).slice(0, 10)))
+      || snaps[0] || null;
+    res.json({
+      ok: true,
+      book,
+      at: curr && curr.at,
+      totals: curr && curr.totals,
+      ibUnrealizedUsd: curr && curr.ibUnrealizedUsd,
+      current: curr ? currentAttribution(curr) : { headline: 'No IBKR book snapshot yet.', totalUnrealUsd: 0, drags: [], lifts: [] },
+      lastMove: (prev && curr) ? attributeMove(prev, curr) : null,
+      sessionMove: (sessionStart && curr && sessionStart.at !== curr.at) ? attributeMove(sessionStart, curr) : null,
+      snapCount: snaps.length
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
