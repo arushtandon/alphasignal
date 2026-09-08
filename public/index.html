@@ -3090,10 +3090,10 @@ async function renderIbkr(force, kind){
       +'<summary style="color:#F5C842">Error trades · '+errorTrades.length
       +' · PnL '+fp(errNet)
       +' (real '+fp(tt.errorRealizedUsd||0)+' · open '+(tt.errorOpenCount||0)+' · today '+fp(todayErrReal)+')'
-      +' — excluded from model PnL</summary>'
+      +' — excluded from model PnL · since '+(d.errorPanelStart||'2026-09-08')+'</summary>'
       + (errorTrades.length
         ? ('<div style="overflow-x:auto;margin-top:6px">' + tradeTableHead + eRows + '</tbody></table></div>')
-        : '<div style="padding:10px 12px;font-size:9px;color:var(--m2);font-family:DM Sans,sans-serif">No error trades</div>')
+        : '<div style="padding:10px 12px;font-size:9px;color:var(--m2);font-family:DM Sans,sans-serif">No error trades since '+(d.errorPanelStart||'2026-09-08')+'. Older Error rows are archived. New unauthorized fills still land here.</div>')
       + '</details>';
 
     el.innerHTML = cards + analysisHtml + dailyHtml + openHtml + realisedHtml + errHtml;

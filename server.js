@@ -41,6 +41,7 @@ const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/
 const { ibkrExitQualityType, summarizeExitQuality, bookedExitPnlUsd, fillExitPnlUsd } = require('./lib/ibkr/exit-quality');
 const { ibkrAvgToFillUnit, futuresMultiplierFor } = require('./lib/ibkr/avg-cost');
 const { fifoLotEconomics } = require('./lib/ibkr/fifo-lots');
+const { IBKR_ERROR_PANEL_START, dropArchivedErrorPanelLots } = require('./lib/ibkr/error-panel');
 const { officialFuturesSettlePx, officialFuturesSettleDate, futuresStillTradable } = require('./lib/ibkr/commodity-futures');
 const { isFuturesRollFill, liveIbkrKey, rebuildFuturesRollFills, futuresRollCalendarBias, RESTORED_POST_ROLL_EXITS } = require('./lib/ibkr/futures-roll');
 const {
@@ -17766,6 +17767,15 @@ app.get('/api/ibkr/trades', async (req, res) => {
       }
     }
 
+    // Error-trades panel reset: keep pre-2026-09-08 Error lots on the ledger
+    // (still excluded from model PnL) but drop them from the panel / error totals.
+    // New unauthorized fills from that date onward still appear.
+    {
+      const pruned = dropArchivedErrorPanelLots(trades, IBKR_ERROR_PANEL_START);
+      trades.length = 0;
+      trades.push(...pruned.trades);
+    }
+
     const daily = new Map();
     const dailyError = new Map();
     let totRealUsd = 0, totRealGrossUsd = 0, totCommissionUsd = 0, totOpenCommissionUsd = 0;
@@ -18206,6 +18216,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       liveReady: accounts.some((id) => isLiveAccountId(id)),
       paperAccount: PAPER_ACCOUNT,
       trades,
+      errorPanelStart: IBKR_ERROR_PANEL_START,
       daily: dailyArr,
       eodPerformance: readIbkrEodPerformance(60),
       dailyError: dailyErrorArr,
