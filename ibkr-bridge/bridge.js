@@ -902,7 +902,27 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
         };
       }
     }
-    // Late board after the cash open — take market now (HK/EU/UK)
+    // LSE native MKT is converted to a limit at last. Delayed last (SHEL.L
+    // stuck at 3482.5 on 8 Sep) leaves the buy unfilled all morning. Same
+    // through-limit as TSE.
+    if (contract.market === 'LSE') {
+      const ref = quotePx > 0 ? quotePx : entryPx;
+      if (ref > 0) {
+        const sell = side === 'sell';
+        const thru = Number(opts.throughPct) > 0 ? Number(opts.throughPct) : 0.02;
+        let raw = sell ? ref * (1 - thru) : ref * (1 + thru);
+        const prev = Number(opts.prevExtLmt) || 0;
+        if (prev > 0) {
+          raw = sell ? Math.min(raw, prev * (1 - thru)) : Math.max(raw, prev * (1 + thru));
+        }
+        return {
+          orderType: 'LMT', action, totalQuantity: qty,
+          lmtPrice: roundPx(raw, contract, sell ? 'down' : 'up'),
+          tif: 'DAY', outsideRth: ORDER_OUTSIDE_RTH, transmit: true, entryStyle: 'LMT-THROUGH'
+        };
+      }
+    }
+    // Late board after the cash open — take market now (HK/EU)
     return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'MKT' };
   }
   if (phase === 'lunch') {
@@ -3466,6 +3486,7 @@ async function main() {
     let quoteSrc = null;
     const usPhase = contract.usRth ? sessionPhase(contract) : null;
     const jpPhase = contract.market === 'JP' ? sessionPhase(contract) : null;
+    const lsePhase = contract.market === 'LSE' ? sessionPhase(contract) : null;
     if (contract.usRth && (usPhase === 'pre' || usPhase === 'post' || usPhase === 'rth')) {
       ensureMktData(evt.ticker, contract);
       const q = await fetchEntryQuote(evt.ticker, usPhase, evt.side);
@@ -3481,7 +3502,7 @@ async function main() {
           : entryCap;
         if (quotePx > 0) quoteSrc = mark > 0 ? 'portfolio-cap' : 'recommendation-cap';
       }
-    } else if (jpPhase === 'rth') {
+    } else if (jpPhase === 'rth' || lsePhase === 'rth') {
       ensureMktData(evt.ticker, contract);
       const q = await fetchEntryQuote(evt.ticker, 'rth', evt.side);
       quotePx = q.px;
@@ -6653,7 +6674,8 @@ async function main() {
       // 0. Re-arm unfilled parents still open on the model.
       //   • HK / JP: OPG before open; hold through the auction; then one
       //     LMT-THROUGH / MKT that sits until fill (do not 2-min cancel-loop).
-      //   • EU / UK: OPG before open; hold through the auction; then MKT
+      //   • EU / UK: LMT-OPEN before open; hold through the auction; then
+      //     LMT-THROUGH (LSE native MKT sits at last and never prints)
       //   • US: OPG overnight; in pre/extended upgrade to LMT-EXT immediately
       //     when the live quote is at/better than the AlphaSignal entry; else
       //     stay OPG through 09:30. Never MKT-EXT (IB queues those until RTH).
@@ -6689,7 +6711,8 @@ async function main() {
             const replaceDeadAsiaBag = reason === 'asia-rth' || reason === 'asia-rth-retry'
               || reason === 'asia-rth-reprice'
               || reason === 'asia-to-opg' || reason === 'asia-missing-style'
-              || reason === 'asia-opg-refresh';
+              || reason === 'asia-opg-refresh'
+              || reason === 'eu-rth-after-opg' || reason === 'eu-rth-mkt-unfilled';
             if (!replaceDeadAsiaBag) {
               row.lastRearmAt = new Date().toISOString();
               row.rearmBlocked = 'cancel-timeout';
@@ -6728,7 +6751,8 @@ async function main() {
             skipChase: !!(row.userReentry || src.userReentry)
               || reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg',
             carryUnfilled: (asia && !row.entryFilled) || forceCashOpenActive(row),
-            throughPct: (reason === 'asia-rth-reprice' || reason === 'asia-rth-retry') ? 0.02 : undefined,
+            throughPct: (reason === 'asia-rth-reprice' || reason === 'asia-rth-retry'
+              || reason === 'eu-rth-after-opg' || reason === 'eu-rth-mkt-unfilled') ? 0.02 : undefined,
             prevExtLmt: (reason === 'asia-rth-reprice' || reason === 'asia-rth-retry')
               ? (Number(row.extLmt) || 0) : undefined
           });
@@ -6882,6 +6906,8 @@ async function main() {
           } else {
             reason = 'eu-rth-after-opg';
           }
+        } else if (eu && phase === 'rth' && row.entryStyle === 'MKT' && !row.entryFilled) {
+          reason = 'eu-rth-mkt-unfilled';
         } else if (eu && phase === 'rth' && row.contractRejected) {
           reason = 'contract-retry';
         } else if (us) {
@@ -6980,7 +7006,8 @@ async function main() {
         );
         const minGap = reason === 'contract-retry'
           ? contractRetryGap
-          : ((reason === 'asia-rth-retry' || reason === 'asia-rth-reprice' || auctionNow)
+          : ((reason === 'asia-rth-retry' || reason === 'asia-rth-reprice'
+            || reason === 'eu-rth-mkt-unfilled' || auctionNow)
             ? (auctionNow ? 0 : 2 * 60 * 1000)
             : 15 * 60 * 1000);
         if (last && Date.now() - last < minGap) continue;

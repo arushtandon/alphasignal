@@ -34,7 +34,10 @@ assert.strictEqual(isAuctionEntryStyle('LMT-OPEN'), true);
 const baeRth = parentEntrySpec(bae, 'BUY', 330, {
   side: 'buy', entryPx: 2230, quotePx: 2231, phaseOverride: 'rth'
 });
-assert.strictEqual(baeRth.entryStyle, 'MKT', 'LSE unfilled open orders convert to RTH MKT');
+assert.strictEqual(baeRth.entryStyle, 'LMT-THROUGH', 'LSE RTH uses a through-limit, not native MKT');
+assert.strictEqual(baeRth.orderType, 'LMT');
+assert.ok(baeRth.lmtPrice > 2231, 'buy through-limit is above last');
+assert.strictEqual(baeRth.transmit, true);
 assert.strictEqual(baeRth.outsideRth, true);
 
 assert.strictEqual(scheduledEntryReleaseAllowed({
