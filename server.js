@@ -17750,17 +17750,18 @@ app.get('/api/ibkr/trades', async (req, res) => {
 
     // recover-entry copies quarantined to |cursor-err look like closed Error
     // "unauthorized" rows when the model lot claimed the IB shares. Drop them
-    // unless they actually flattened.
+    // unless they actually flattened. Match open OR closed model lots — 2914
+    // long|cursor-err stayed in Error after the real lots closed.
     {
-      const modelOpenTickers = new Set(
-        trades.filter(t => t && !t.errorTrade && t.openQty > 0)
+      const modelTickers = new Set(
+        trades.filter(t => t && !t.errorTrade)
           .map(t => normalizeIbkrYahooTicker(t.ticker))
       );
       for (let i = trades.length - 1; i >= 0; i--) {
         const t = trades[i];
         if (!t || !t.errorTrade) continue;
         const starved = t.status === 'closed' && !(t.exitQty > 0) && !t.hasFlatten
-          && modelOpenTickers.has(normalizeIbkrYahooTicker(t.ticker));
+          && modelTickers.has(normalizeIbkrYahooTicker(t.ticker));
         if (starved) trades.splice(i, 1);
       }
     }
