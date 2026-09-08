@@ -62,10 +62,10 @@ header{position:sticky;top:0;z-index:300;background:rgba(7,8,11,0.88);backdrop-f
 .nb.act{background:var(--acd);color:var(--ac)}
 
 /* LAYOUT */
-.wrap{position:relative;z-index:1;display:grid;grid-template-columns:240px 1fr;min-height:calc(100vh - 56px);max-width:1500px;margin:0 auto}
+.wrap{position:relative;z-index:1;display:grid;grid-template-columns:240px 1fr;grid-template-rows:1fr auto;min-height:calc(100vh - 56px);max-width:1500px;margin:0 auto}
 
 /* SIDEBAR */
-.sb{border-right:1px solid var(--b1);overflow-y:auto;height:calc(100vh - 56px);position:sticky;top:56px;background:var(--s1)}
+.sb{grid-column:1;grid-row:1/-1;border-right:1px solid var(--b1);overflow-y:auto;height:calc(100vh - 56px);position:sticky;top:56px;background:var(--s1);z-index:2}
 .sb-srch{padding:8px 10px;position:sticky;top:0;background:var(--s1);z-index:10;border-bottom:1px solid var(--b1)}
 .sb-srch input{width:100%;background:var(--s2);border:1px solid var(--b2);border-radius:7px;padding:6px 10px;font-size:11px;color:var(--tx);font-family:'DM Mono',monospace;outline:none;transition:border-color .15s}
 .sb-srch input:focus{border-color:var(--ac)}
@@ -85,7 +85,7 @@ header{position:sticky;top:0;z-index:300;background:rgba(7,8,11,0.88);backdrop-f
 .sell-label{color:var(--sell)}
 
 /* MAIN */
-.mc{padding:1.25rem 1.5rem;overflow-y:auto}
+.mc{grid-column:2;grid-row:1;padding:1.25rem 1.5rem;overflow-y:auto}
 .pane{display:none}
 .pane.vis{display:block}
 
@@ -277,9 +277,11 @@ button.hz-card-tab span,.hz-card-tab span{color:inherit}
 
 .hist-summary-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,172px),1fr));gap:12px;width:100%;margin-bottom:0}
 
-footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var(--m1);font-size:10px;font-family:'DM Mono',monospace;line-height:1.9;position:relative;z-index:1;margin-top:2rem}
+footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;border-top:1px solid var(--b1);color:var(--m1);font-size:10px;font-family:'DM Mono',monospace;line-height:1.9;position:relative;z-index:0;margin-top:2rem;background:var(--bg)}
 @media(max-width:900px){
-  .wrap{grid-template-columns:1fr}
+  .wrap{grid-template-columns:1fr;grid-template-rows:auto}
+  .mc{grid-column:1;grid-row:auto}
+  footer{grid-column:1;grid-row:auto}
   .menu-btn{display:flex}
   .sb{
     display:block;
@@ -687,12 +689,12 @@ footer{text-align:center;padding:1.5rem;border-top:1px solid var(--b1);color:var
     </div>
 
   </div>
-</div>
 
 <footer>
   AlphaSignal · Live quotes: Yahoo Finance · AI scans: Claude (optional) · Not financial advice
   Universe (full index members, re-ranked daily): S&P 500 · NASDAQ 100 · FTSE 100 · Hang Seng · Nikkei 225 · DAX · CAC 40 · Nifty 50 · Gold · Silver · Brent Oil · WTI Oil · Copper · Bitcoin · Ethereum
 </footer>
+</div>
 
 <script>
 
