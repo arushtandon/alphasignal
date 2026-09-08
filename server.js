@@ -16861,11 +16861,25 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
             const tick = primary.ccyScale === 100 ? 0.1
               : (avg >= 1000 ? 1 : avg >= 100 ? 0.05 : 0.01);
             if (Math.abs(primary.avgEntry - avg) > tick) {
-              for (const o of group) avgCorrections.set(o.key, avg);
-              adjusted.push({
-                ticker: y, key: primary.key, action: 'avg-correct',
-                from: +primary.avgEntry.toFixed(6), to: avg
-              });
+              // Only rewrite OPEN keys. A closed sibling (2914 short @ 6722)
+              // must not inherit the shared IB average from a later add.
+              let nOpen = 0;
+              for (const o of group) {
+                if (!(Number(o.openQty) > 0)) continue;
+                avgCorrections.set(o.key, avg);
+                nOpen++;
+              }
+              if (nOpen) {
+                adjusted.push({
+                  ticker: y, key: primary.key, action: 'avg-correct',
+                  from: +primary.avgEntry.toFixed(6), to: avg
+                });
+              } else {
+                matched.push({
+                  ticker: y, openQty: asAbs, avgEntry: +primary.avgEntry.toFixed(6),
+                  ibQty: ibQty, ibAvg: avg, closedKeptLotEntry: true
+                });
+              }
             } else {
               matched.push({
                 ticker: y, openQty: asAbs, avgEntry: +primary.avgEntry.toFixed(6),
