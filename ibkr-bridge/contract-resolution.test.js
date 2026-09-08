@@ -37,6 +37,7 @@ const baeRth = parentEntrySpec(bae, 'BUY', 330, {
 assert.strictEqual(baeRth.entryStyle, 'LMT-THROUGH', 'LSE RTH uses a through-limit, not native MKT');
 assert.strictEqual(baeRth.orderType, 'LMT');
 assert.ok(baeRth.lmtPrice > 2231, 'buy through-limit is above last');
+assert.ok(baeRth.lmtPrice <= Math.ceil(2231 * 1.01), 'LSE through-limit stays ~0.5% of last, not a 2% walk');
 assert.strictEqual(baeRth.transmit, true);
 assert.strictEqual(baeRth.outsideRth, true);
 

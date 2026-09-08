@@ -40,6 +40,12 @@ const {
 const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/account-performance');
 const { ibkrExitQualityType, summarizeExitQuality, bookedExitPnlUsd, fillExitPnlUsd } = require('./lib/ibkr/exit-quality');
 const { ibkrAvgToFillUnit, futuresMultiplierFor } = require('./lib/ibkr/avg-cost');
+const {
+  isUkStampDutyFill,
+  stampDutyLocal,
+  shouldSkipStampInflatedAvgCorrect,
+  isStampInflatedCorrectedFill
+} = require('./lib/ibkr/stamp-duty');
 const { fifoLotEconomics } = require('./lib/ibkr/fifo-lots');
 const { IBKR_ERROR_PANEL_START, dropArchivedErrorPanelLots } = require('./lib/ibkr/error-panel');
 const { officialFuturesSettlePx, officialFuturesSettleDate, futuresStillTradable } = require('./lib/ibkr/commodity-futures');
@@ -49,6 +55,7 @@ const {
   fillNeedsEstimatedCommission
 } = require('./lib/ibkr/ib-commission');
 const { dedupeIbkrFillsByExecId } = require('./lib/ibkr/fill-dedupe');
+const { overlayPublishedBoardOnAnalyzeRow } = require('./lib/analysis/overlay-published-board');
 const { isMarketLikeExit } = require('./lib/ibkr/tp1-policy');
 const { tslAfterTp1, ratchetTslFromDailyBar } = require('./lib/ibkr/tsl-policy');
 const {
@@ -12253,6 +12260,15 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
   return row;
 }
 
+function overlayBoardOnAnalyzeRow(row, dashHint) {
+  if (!row) return row;
+  row = overlayPublishedBoardOnAnalyzeRow(row, dashboardPicksCache && dashboardPicksCache.dashData, PICKS_MIN_CONF);
+  if (dashHint && String(dashHint.ticker || '').toUpperCase() === String(row.ticker || '').toUpperCase()) {
+    row = overlayPublishedBoardOnAnalyzeRow(row, dashHint, PICKS_MIN_CONF);
+  }
+  return row;
+}
+
 const ANALYSIS_SCHEMA_HINT = `{"ticker":"AAPL","name":"Apple Inc","sector":"Technology","price":"","change":"","action":"Buy",
 "shortRating":"Strong Buy","mediumRating":"Buy","longRating":"Hold","shortConf":82,"mediumConf":75,"longConf":68,
 "shortAction":"Buy","mediumAction":"Buy","longAction":"Hold",
@@ -12441,6 +12457,7 @@ app.post('/api/analyze', async (req, res) => {
         row.danelfinSentiment = sig.danelfin.sentiment;
       }
       row = applyServerPriceLevels(row, +pq.price, tech || null, fund || null);
+      row = overlayBoardOnAnalyzeRow(row, dashHint);
       mergeFundamentalsForUi(row, fund || null);
       injectAnalyzeRowFromServerTech(row, tech || null);
       // Always attach a levels-specific reason so recommended/export views never blank.
@@ -12615,7 +12632,10 @@ Output ONLY the JSON array. No markdown.`;
         row.analystTarget = fund?.targetMeanPrice || null;
       }
 
-      const mergedRow = applyServerPriceLevels(row, +pq.price, tech || null, fund || null);
+      const mergedRow = overlayBoardOnAnalyzeRow(
+        applyServerPriceLevels(row, +pq.price, tech || null, fund || null),
+        dashHint
+      );
       mergeFundamentalsForUi(mergedRow, fund || null);
       injectAnalyzeRowFromServerTech(mergedRow, tech || null);
 
@@ -14106,7 +14126,7 @@ function missingIbPosMeansFlat(ibp, ibPosByY) {
 
 /** Ledger rewrites that already match IB — do not flash the Differences banner. */
 function isBenignReconAdjustment(action) {
-  return action === 'avg-correct' || action === 'drop-qty-pad-ib-flat';
+  return action === 'avg-correct' || action === 'drop-qty-pad-ib-flat' || action === 'stamp-restore';
 }
 
 /**
@@ -16222,6 +16242,32 @@ function backfillMissingIbkrCommissions() {
   if (n) console.log('Backfilled IBKR commissions on', n, 'pad/recover fill(s)');
   return n;
 }
+
+/** Undo LSE avg-correct that baked 0.5% UK stamp into the tape print (SHEL 3523→3542). */
+function restoreStampInflatedAvgFills() {
+  let n = 0;
+  mutateFillLedger('stamp_restore', (rows) => {
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!isStampInflatedCorrectedFill(r)) continue;
+      const from = Number(r.priceCorrectedFrom);
+      rows[i] = {
+        ...r,
+        price: from,
+        recon: 'stamp-restore',
+        stampRestoredFrom: Number(r.price),
+        stampRestoredAt: new Date().toISOString()
+      };
+      n++;
+    }
+    return rows;
+  });
+  if (n) console.log('Restored', n, 'LSE fill(s) off stamp-inflated IB averageCost');
+  return n;
+}
+try { restoreStampInflatedAvgFills(); } catch (e) {
+  console.warn('boot stamp-restore failed:', e.message);
+}
 try { restoreOpenModelFillsFromCursorErr(); } catch (e) {
   console.warn('boot restore open-model fills failed:', e.message);
 }
@@ -16480,6 +16526,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       try { repairErroneousGhostFlats(); } catch (_) {}
       try { stampGhostFlatFillsAsErrorTrade(); } catch (_) {}
     }
+    try { restoreStampInflatedAvgFills(); } catch (_) {}
 
     const rows = filterRowsForAccount(readIbkrFillRows(), reconAccount);
     const opens = aggregateIbkrOpenFromFills(rows, { forRecon: true });
@@ -16797,6 +16844,8 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           const avg = ibkrAvgToFillUnit(ib && ib.avgCost, primary.ccyScale, primary.avgEntry, {
             ticker: primary.rawTicker || y, multiplier: ib && ib.multiplier
           }) || primary.avgEntry;
+          const padPx = shouldSkipStampInflatedAvgCorrect(primary.avgEntry, avg, primary.ccyScale)
+            ? primary.avgEntry : avg;
           if (!(avg > 0) || !(delta > 0)) continue;
           const fillAt = ibkrRecDayIsoFromKey(primary.key) || new Date().toISOString();
           const phase = ibkrSessionPhase(primary.rawTicker || y, fillAt);
@@ -16804,14 +16853,16 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           if (!_ibkrExecIds.has(execId)) {
             newFills.push(applyEstimatedCommission({
               execId, key: primary.key, ticker: primary.rawTicker || y, hz: primary.hz || 'short',
-              side: primary.side, role: 'entry', qty: delta, price: avg,
+              side: primary.side, role: 'entry', qty: delta, price: padPx,
               currency: primary.currency, ccyScale: primary.ccyScale, orderId: null,
               time: fillAt, session: phase, sessionLabel: ibkrSessionLabel(phase),
               errorTrade: !!primary.errorTrade, synthetic: true, recon: 'qty-pad'
             }));
-            adjusted.push({ ticker: y, key: primary.key, action: 'qty-pad', qty: delta, price: avg });
+            adjusted.push({ ticker: y, key: primary.key, action: 'qty-pad', qty: delta, price: padPx });
           }
-          avgCorrections.set(primary.key, avg);
+          if (!shouldSkipStampInflatedAvgCorrect(primary.avgEntry, avg, primary.ccyScale)) {
+            avgCorrections.set(primary.key, avg);
+          }
         } else if (ibAbs < asAbs && ibAbs > 0 && primary) {
           const delta = asAbs - ibAbs;
           const px = primary.mark > 0 ? primary.mark : 0;
@@ -16862,6 +16913,12 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
             const tick = primary.ccyScale === 100 ? 0.1
               : (avg >= 1000 ? 1 : avg >= 100 ? 0.05 : 0.01);
             if (Math.abs(primary.avgEntry - avg) > tick) {
+              if (shouldSkipStampInflatedAvgCorrect(primary.avgEntry, avg, primary.ccyScale)) {
+                matched.push({
+                  ticker: y, openQty: asAbs, avgEntry: +primary.avgEntry.toFixed(6),
+                  ibQty: ibQty, ibAvg: avg, stampDutyKeptTape: true
+                });
+              } else {
               // Only rewrite OPEN keys. A closed sibling (2914 short @ 6722)
               // must not inherit the shared IB average from a later add.
               let nOpen = 0;
@@ -16880,6 +16937,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
                   ticker: y, openQty: asAbs, avgEntry: +primary.avgEntry.toFixed(6),
                   ibQty: ibQty, ibAvg: avg, closedKeptLotEntry: true
                 });
+              }
               }
             } else {
               matched.push({
@@ -17720,7 +17778,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
             });
             if (avg > 0) {
               const tick = t.ccyScale === 100 ? 0.1 : (avg >= 1000 ? 1 : avg >= 100 ? 0.05 : 0.01);
-              if (Math.abs(t.avgEntry - avg) > tick) {
+              if (Math.abs(t.avgEntry - avg) > tick
+                && !shouldSkipStampInflatedAvgCorrect(t.avgEntry, avg, t.ccyScale)) {
                 t.avgEntry = avg;
                 t.ibReconciled = (t.ibReconciled ? t.ibReconciled + '+avg' : 'avg');
               }
@@ -17780,6 +17839,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
     const dailyError = new Map();
     let totRealUsd = 0, totRealGrossUsd = 0, totCommissionUsd = 0, totOpenCommissionUsd = 0;
     let totUnrealUsd = 0, wins = 0, losses = 0, openCount = 0, closedCount = 0;
+    let totStampDutyUsd = 0, totOpenStampDutyUsd = 0;
     let errRealUsd = 0, errUnrealUsd = 0, errOpen = 0, errClosed = 0, errCommissionUsd = 0;
     let errOpenCommissionUsd = 0;
     for (const t of trades) {
@@ -17795,6 +17855,16 @@ app.get('/api/ibkr/trades', async (req, res) => {
         commissionUsd += Math.abs(c) * cFx;
       }
       t.commissionUsd = +commissionUsd.toFixed(2);
+      let stampDutyGbp = 0;
+      for (const f of t.fills) {
+        if (!f || !isUkStampDutyFill(f)) continue;
+        const tape = Number(f.priceCorrectedFrom) > 0 && String(f.recon || '') === 'avg-correct'
+          ? Number(f.priceCorrectedFrom) : Number(f.price);
+        stampDutyGbp += stampDutyLocal({ ...f, price: tape || f.price });
+      }
+      const gbpFx = await ibkrUsdPerCcy(t.currency || 'GBP');
+      t.stampDutyGbp = +stampDutyGbp.toFixed(4);
+      t.stampDutyUsd = +(stampDutyGbp * gbpFx).toFixed(2);
       const realizedGrossUsd = +(t.realizedLocal * fx).toFixed(2);
       t.realizedUsdGross = realizedGrossUsd;
       // Commission stays in Brokerage while the lot is open. Realised becomes
@@ -17802,7 +17872,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       const lotClosed = !(t.openQty > 0);
       t.commissionInRealized = lotClosed;
       t.realizedUsd = lotClosed
-        ? +(realizedGrossUsd - commissionUsd).toFixed(2)
+        ? +(realizedGrossUsd - commissionUsd - (t.stampDutyUsd || 0)).toFixed(2)
         : +realizedGrossUsd.toFixed(2);
       const booked = bookedExitPnlUsd(t, fx);
       t.tp1RealizedUsd = booked.tp1Usd;
@@ -17847,7 +17917,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
         totRealUsd += t.realizedUsd;
         totRealGrossUsd += t.realizedUsdGross;
         totCommissionUsd += t.commissionUsd;
+        totStampDutyUsd += Number(t.stampDutyUsd) || 0;
         if (!lotClosed) totOpenCommissionUsd += t.commissionUsd;
+        if (!lotClosed) totOpenStampDutyUsd += Number(t.stampDutyUsd) || 0;
         if (t.unrealizedUsd != null) totUnrealUsd += t.unrealizedUsd;
         if (t.status === 'closed') {
           closedCount++;
@@ -18019,7 +18091,47 @@ app.get('/api/ibkr/trades', async (req, res) => {
         excluded: isErr
       });
     }
-    // Durable IB dividend (and other) events posted by the bridge.
+    let stampDutyGbpTotal = 0;
+    let stampDutyUsdTotal = 0;
+    const stampDutyRows = [];
+    for (const r of rows) {
+      if (!isUkStampDutyFill(r)) continue;
+      const isErr = !!r.errorTrade || isCursorErrIbkrKey(r.key);
+      const tape = Number(r.priceCorrectedFrom) > 0 && String(r.recon || '') === 'avg-correct'
+        ? Number(r.priceCorrectedFrom) : Number(r.price);
+      const gbp = stampDutyLocal({ ...r, price: tape || r.price });
+      if (!(gbp > 0)) continue;
+      const cFx = await ibkrUsdPerCcy(r.currency || 'GBP');
+      const usd = +(gbp * cFx).toFixed(2);
+      if (!isErr) {
+        stampDutyGbpTotal += gbp;
+        stampDutyUsdTotal += usd;
+      }
+      const ticker = r.ticker || '?';
+      stampDutyRows.push({
+        type: 'stamp-duty',
+        section: isErr ? 'error-stamp-duty' : 'stamp-duty',
+        feeType: 'UK SDRT 0.5% on purchase',
+        label: ticker + ' · BUY ' + (Number(r.qty) || '?') + ' @ ' + pxLabel(tape || r.price, r.ccyScale)
+          + ' · UK stamp 0.5%'
+          + (isErr ? ' · ERROR (excluded)' : ''),
+        ticker,
+        side: 'buy',
+        qty: Number(r.qty) || null,
+        price: tape || Number(r.price) || null,
+        role: r.role || 'entry',
+        key: r.key || null,
+        execId: r.execId || null,
+        amount: +gbp.toFixed(4),
+        currency: r.currency || 'GBP',
+        amountUsd: usd,
+        income: false,
+        time: r.time || null,
+        errorTrade: isErr,
+        excluded: isErr
+      });
+      expenses.push(stampDutyRows[stampDutyRows.length - 1]);
+    }
     // Never replay AccruedCash Δ rows — reconnect BASE vs USD created fake ±$300 pairs.
     for (const ch of chargeLedger) {
       const amt = Number(ch.amount);
@@ -18225,10 +18337,20 @@ app.get('/api/ibkr/trades', async (req, res) => {
         totalUsd: +expenseTotalUsd.toFixed(2),
         commissionUsd: +commissionExpenseUsd.toFixed(2),
         errorCommissionUsd: +errorCommissionExpenseUsd.toFixed(2),
+        stampDutyUsd: +stampDutyUsdTotal.toFixed(2),
+        stampDutyGbp: +stampDutyGbpTotal.toFixed(2),
         otherUsd: +accruedUsd.toFixed(2),
         dividendUsd: +dividendUsd.toFixed(2),
         netUsd: +(expenseTotalUsd - dividendUsd).toFixed(2),
         rows: expenses.slice(0, 400)
+      },
+      stampDuty: {
+        totalUsd: +stampDutyUsdTotal.toFixed(2),
+        totalGbp: +stampDutyGbpTotal.toFixed(2),
+        openUsd: +totOpenStampDutyUsd.toFixed(2),
+        ratePct: 0.5,
+        note: 'UK SDRT 0.5% on purchases. Tape fill is kept; stamp is this tab and final PnL — not the print.',
+        rows: stampDutyRows.filter(r => !r.excluded).slice(0, 400)
       },
       risk: {
         riskOff: !!riskState.riskOff,
@@ -18246,6 +18368,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
         realizedUsdGross: +totRealGrossUsd.toFixed(2),
         commissionUsd: +totCommissionUsd.toFixed(2),
         openCommissionUsd: +totOpenCommissionUsd.toFixed(2),
+        stampDutyUsd: +totStampDutyUsd.toFixed(2),
+        openStampDutyUsd: +totOpenStampDutyUsd.toFixed(2),
         unrealizedUsd: +totUnrealUsd.toFixed(2),
         openCount, closedCount, wins, losses,
         winRate: (wins + losses) ? Math.round(wins / (wins + losses) * 100) : null,
@@ -19497,6 +19621,7 @@ module.exports = {
   isExecutableRecommendRating,
   deriveActionRating,
   applyServerPriceLevels,
+  overlayPublishedBoardOnAnalyzeRow,
   stripPriorDayOpenPicksFromDashData,
   mutateFillLedger,
   isPhantomIbkrKey,

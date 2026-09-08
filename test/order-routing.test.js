@@ -5,6 +5,9 @@ const {
   preferredExchange,
   fallbackExchange,
   listingVenue,
+  nextLseVenue,
+  lseVenueChain,
+  LSE_THROUGH_PCT,
   parentStandalone,
   isRoutingError,
   isSessionBlockedError,
@@ -53,6 +56,28 @@ test('LSE parents transmit standalone so a child 110 cannot kill the entry', () 
   assert.equal(parentStandalone(lse), true);
   assert.equal(parentStandalone(jp), true);
   assert.equal(parentStandalone(us), false);
+});
+
+test('LSE names route SMART first (LSE direct dropped SHEL.L on 8 Sep)', () => {
+  const c = { symbol: 'SHEL', market: 'LSE', currency: 'GBP', primaryExch: 'LSE', conId: 542125742 };
+  assert.equal(preferredExchange(c), 'SMART');
+  assert.equal(placeableStkContract(c).exchange, 'SMART');
+  assert.equal(fallbackExchange('SMART', c), 'CHIXUK');
+  assert.equal(nextLseVenue('CHIXUK', c), 'TRQXUK');
+  assert.equal(nextLseVenue('TRQXUK', c), 'BATEUK');
+  assert.equal(nextLseVenue('BATEUK', c), 'LSE');
+  assert.equal(nextLseVenue('LSE', c), 'SMART');
+  assert.equal(LSE_THROUGH_PCT, 0.005);
+});
+
+test('LSE venue chain respects contract validExchanges', () => {
+  const c = {
+    symbol: 'SHEL', market: 'LSE', currency: 'GBP', primaryExch: 'LSE',
+    validExchanges: 'SMART,LSE,CHIXUK'
+  };
+  assert.deepEqual(lseVenueChain(c), ['SMART', 'CHIXUK', 'LSE']);
+  assert.equal(nextLseVenue('SMART', c), 'CHIXUK');
+  assert.equal(nextLseVenue('CHIXUK', c), 'LSE');
 });
 
 test('US names stay on SMART and fall back to the listing venue', () => {

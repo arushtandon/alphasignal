@@ -420,6 +420,7 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
     <button class="nb" id="nav-history" onclick="switchTab('history')">History</button>
     <button class="nb" id="nav-performance" onclick="switchTab('performance')">Performance</button>
     <button class="nb" id="nav-ibkr" onclick="switchTab('ibkr')">IBKR</button>
+    <button class="nb" id="nav-stampduty" onclick="switchTab('stampduty')">Stamp duty</button>
     <button class="nb" id="nav-moveinfo" onclick="switchTab('moveinfo')">Analysis Info</button>
     <button class="nb" id="nav-live" onclick="switchTab('live')">Live trades</button>
     <div class="key-indicator" id="keyIndicator" style="margin-left:6px;cursor:pointer" title="AI status · click for optional client key" onclick="openQuickStartModal()">
@@ -661,6 +662,18 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
         <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderIbkr(true,'paper')">↻ Refresh</button>
       </div>
       <div id="ibkrContent"><div class="emp"><div class="emp-a">α</div><p>Loading IBKR executions…</p></div></div>
+    </div>
+
+    <!-- UK STAMP DUTY (SDRT) — not baked into the fill print -->
+    <div id="pane-stampduty" class="pane">
+      <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div>
+          <div class="pt">UK stamp duty</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">0.5% SDRT on UK share purchases · tape fill stays on the print · this cost hits final PnL</div>
+        </div>
+        <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderStampDuty(true)">↻ Refresh</button>
+      </div>
+      <div id="stampDutyContent"><div class="emp"><div class="emp-a">£</div><p>Loading stamp duty…</p></div>
     </div>
 
     <!-- ANALYSIS INFO — why realised / unrealised jumped -->
@@ -1721,7 +1734,7 @@ function closeMobileSidebar(){
 // ══════════════════════════════════════════════
 function switchTab(t){
   closeMobileSidebar();
-  ['dashboard','analysis','history','performance','ibkr','moveinfo','live'].forEach(id=>{
+  ['dashboard','analysis','history','performance','ibkr','stampduty','moveinfo','live'].forEach(id=>{
     const nav = document.getElementById('nav-'+id);
     const pane = document.getElementById('pane-'+id);
     if (nav) nav.classList.toggle('act',id===t);
@@ -1757,6 +1770,7 @@ function switchTab(t){
   else if(t==='live') startIbkrMtm('live');
   else stopIbkrMtm();
   if(t==='moveinfo') renderMoveInfo();
+  if(t==='stampduty') renderStampDuty();
 }
 
 // ══════════════════════════════════════════════
@@ -1864,7 +1878,8 @@ function ibkrOpenCommission(tt) {
 function ibkrNetPnl(tt) {
   return (Number(tt && tt.realizedUsd) || 0)
     + (Number(tt && tt.unrealizedUsd) || 0)
-    - ibkrOpenCommission(tt);
+    - ibkrOpenCommission(tt)
+    - (Number(tt && tt.openStampDutyUsd) || 0);
 }
 function ibkrPerfColor(level) {
   const l = String(level || '').toLowerCase();
@@ -2705,7 +2720,9 @@ async function tickIbkrMtm(kind){
         const openC = Number(d.totals.openCommissionUsd) || 0;
         nSub.textContent = ibkrFp(d.totals.realizedUsd) + ' realised + '
           + ibkrFp(d.totals.unrealizedUsd) + ' unrealised − '
-          + ibkrMoney2(-Math.abs(openC)) + ' open comm · closed comm already in realised';
+          + ibkrMoney2(-Math.abs(openC)) + ' open comm'
+          + ((Number(d.totals.openStampDutyUsd)||0) ? (' − ' + ibkrMoney2(-Math.abs(d.totals.openStampDutyUsd)) + ' open stamp') : '')
+          + ' · closed comm + stamp already in realised';
       }
     }
     ibkrPatchPerfTiles(d, pfx);
@@ -2889,7 +2906,8 @@ async function renderIbkr(force, kind){
       + tile(pfx+'CardNet','Net PnL', fp(net),
           fp(tt.realizedUsd)+' realised + '+fp(tt.unrealizedUsd)+' unrealised − '
             +ibkrMoney2(-Math.abs(tt.openCommissionUsd||0))+' open comm'
-            +(tt.closedCommissionUsd ? ' · closed comm already in realised' : ''),
+            +((tt.openStampDutyUsd) ? (' − '+ibkrMoney2(-Math.abs(tt.openStampDutyUsd))+' open stamp') : '')
+            +(tt.closedCommissionUsd ? ' · closed comm+stamp already in realised' : ''),
           pc(net))
       + tile(pfx+'CardWR','Win rate', tt.winRate!=null?tt.winRate+'%':'—', tt.wins+'W / '+tt.losses+'L', wrColor)
       + tile(pfx+'CardRecon','IB ↔ Site', rcLabel, rcOk ? 'all matched' : 'see differences below', rcColor)
@@ -3138,20 +3156,24 @@ function showIbkrExpenses(kind){
     if (income || signed) return (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
     return '-$' + Math.abs(v).toFixed(2);
   };
-  const sectionOrder = ['commission', 'accrued', 'dividend', 'other', 'error-commission'];
+  const sectionOrder = ['commission', 'stamp-duty', 'accrued', 'dividend', 'other', 'error-commission', 'error-stamp-duty'];
   const sectionTitle = {
     commission: 'Brokerage commissions — per equity fill',
+    'stamp-duty': 'UK stamp duty (SDRT 0.5%) — purchases only',
     accrued: 'Interest & stock-borrow (allocated to equities)',
     dividend: 'Dividends',
     other: 'Other charges',
-    'error-commission': 'Error-trade commissions — excluded from the total'
+    'error-commission': 'Error-trade commissions — excluded from the total',
+    'error-stamp-duty': 'Error-trade stamp duty — excluded from the total'
   };
   const sectionNote = {
     commission: 'Each row is IB commissionReport on a specific fill: ticker, side, quantity, price, and whether it was an entry, TP1, stop, or flatten. Forced error trades (AIR dual-list, unauthorised lots) are listed separately and are not in the tile total.',
+    'stamp-duty': 'UK SDRT is 0.5% of consideration on buys. It is not part of the tape print. Final PnL subtracts it (open lots via Net, closed lots inside realised).',
     accrued: 'IB sends one AccruedCash total. Negative amounts (stock-borrow) are allocated to open shorts by USD notional. When a short is closed, that share is locked onto the equity. Positive AccruedCash is credit interest on cash (account-level). Allocations are a breakdown of the live total, not extra charges.',
     dividend: 'Accrued / receivable dividends from IB account tags.',
     other: '',
-    'error-commission': 'Commissions on |cursor-err| / error-trade lots. Shown for audit only — they do not add to Brokerage or Net PnL.'
+    'error-commission': 'Commissions on |cursor-err| / error-trade lots. Shown for audit only — they do not add to Brokerage or Net PnL.',
+    'error-stamp-duty': 'Stamp on error-trade UK buys. Audit only.'
   };
   const bySec = {};
   for (const r of rows) {
@@ -3204,6 +3226,7 @@ function showIbkrExpenses(kind){
     + (exp.commissionUsd != null ? ' · comm $'+Math.abs(exp.commissionUsd).toFixed(2) : '')
     + (exp.otherUsd ? ' · accrued $'+Math.abs(exp.otherUsd).toFixed(2) : '')
     + (exp.dividendUsd ? ' · dividends +$'+Math.abs(exp.dividendUsd).toFixed(2) : '')
+    + (exp.stampDutyUsd ? ' · stamp $'+Math.abs(exp.stampDutyUsd).toFixed(2) : '')
     + (exp.errorCommissionUsd ? ' · error $'+Math.abs(exp.errorCommissionUsd).toFixed(2)+' excluded' : '');
   modal.innerHTML = '<div style="background:var(--s0,#111);border:1px solid var(--b1);border-radius:12px;max-width:980px;width:100%;max-height:80vh;overflow:auto;padding:18px 16px">'
     + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
@@ -3213,6 +3236,65 @@ function showIbkrExpenses(kind){
     + '</div>'
     + bodyHtml + '</div>';
   document.body.appendChild(modal);
+}
+
+async function renderStampDuty(force){
+  const el = document.getElementById('stampDutyContent');
+  if (!el) return;
+  try {
+    if (force || !window._ibkrBookPaper) {
+      const r = await fetch(ibkrTradesUrl('paper'), { cache: 'no-store' });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'bad response');
+      rememberIbkrBook(d, 'paper');
+    }
+    const d = ibkrBookPayload('paper') || {};
+    const sd = d.stampDuty || {};
+    const rows = sd.rows || [];
+    const totUsd = Number(sd.totalUsd) || 0;
+    const totGbp = Number(sd.totalGbp) || 0;
+    const head = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'
+      + '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-width:160px">'
+      + '<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace">UK stamp (USD)</div>'
+      + '<div style="font-size:21px;font-weight:600;font-family:DM Mono,monospace;color:var(--sell)">-$'+Math.abs(totUsd).toFixed(2)+'</div>'
+      + '<div style="font-size:10px;color:var(--m2)">included in final PnL</div></div>'
+      + '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-width:160px">'
+      + '<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace">UK stamp (GBP)</div>'
+      + '<div style="font-size:21px;font-weight:600;font-family:DM Mono,monospace;color:var(--t1)">£'+Math.abs(totGbp).toFixed(2)+'</div>'
+      + '<div style="font-size:10px;color:var(--m2)">0.5% of buy consideration</div></div>'
+      + '</div>'
+      + '<div style="font-size:11px;color:var(--m2);font-family:DM Sans,sans-serif;margin-bottom:12px;line-height:1.45">'
+      + (sd.note || 'UK SDRT 0.5% on purchases. The fill print stays on the tape; this cost is booked here and in Net PnL.')
+      + '</div>';
+    if (!rows.length) {
+      el.innerHTML = head + '<div class="emp"><div class="emp-a">£</div><p>No UK purchase stamp yet.</p></div>';
+      return;
+    }
+    const tr = rows.map(function (r) {
+      const px = r.price != null ? (Number(r.price) >= 50 ? Number(r.price).toFixed(1) : Number(r.price).toFixed(2)) : '—';
+      const when = r.time ? ibkrFmtWhenSgt(r.time) : '—';
+      return '<tr>'
+        + '<td style="padding:6px 8px;font-family:DM Mono,monospace">'+ (r.ticker || '') +'</td>'
+        + '<td style="padding:6px 8px;text-align:right">'+ (r.qty != null ? r.qty : '—') +'</td>'
+        + '<td style="padding:6px 8px;text-align:right;font-family:DM Mono,monospace">'+ px +'</td>'
+        + '<td style="padding:6px 8px;text-align:right;color:var(--sell)">£'+ Math.abs(Number(r.amount)||0).toFixed(2) +'</td>'
+        + '<td style="padding:6px 8px;text-align:right;color:var(--sell)">-$'+ Math.abs(Number(r.amountUsd)||0).toFixed(2) +'</td>'
+        + '<td style="padding:6px 8px;color:var(--m2);font-size:11px">'+ when +'</td>'
+        + '</tr>';
+    }).join('');
+    el.innerHTML = head
+      + '<div class="ibkr-book" style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;overflow:auto">'
+      + '<table style="width:100%;border-collapse:collapse"><thead><tr>'
+      + '<th style="text-align:left;padding:8px;font-size:10px;color:var(--m1)">Ticker</th>'
+      + '<th style="text-align:right;padding:8px;font-size:10px;color:var(--m1)">Qty</th>'
+      + '<th style="text-align:right;padding:8px;font-size:10px;color:var(--m1)">Tape (p)</th>'
+      + '<th style="text-align:right;padding:8px;font-size:10px;color:var(--m1)">Stamp £</th>'
+      + '<th style="text-align:right;padding:8px;font-size:10px;color:var(--m1)">Stamp $</th>'
+      + '<th style="text-align:left;padding:8px;font-size:10px;color:var(--m1)">Time (SGT)</th>'
+      + '</tr></thead><tbody>'+ tr +'</tbody></table></div>';
+  } catch (e) {
+    el.innerHTML = '<div class="emp"><div class="emp-a">!</div><p>Could not load stamp duty: '+(e.message||e)+'</p></div>';
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -3293,6 +3375,64 @@ function filterBoardPicksForUi(picks, hz, side) {
     }
     return action === 'Buy' && (s[hz + 'Score'] || 0) >= 62;
   });
+}
+
+function mergeDashPicksForTicker(ticker) {
+  if (!ST.dashData || !ticker) return null;
+  var panes = ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell'];
+  var hzOf = { short: 'short', medium: 'medium', long: 'long', shortSell: 'short', medSell: 'medium', longSell: 'long' };
+  var merged = { ticker: ticker };
+  var found = false;
+  panes.forEach(function (pane) {
+    var p = (ST.dashData[pane] || []).find(function (x) { return x && x.ticker === ticker; });
+    if (!p) return;
+    found = true;
+    var hz = hzOf[pane];
+    ['Action', 'Rating', 'Conf', 'Entry', 'Target1', 'Target2', 'StopLoss', 'Score'].forEach(function (k) {
+      var key = hz + k;
+      if (p[key] != null && p[key] !== '' && merged[key] == null) merged[key] = p[key];
+    });
+    if (p.entry != null && merged.entry == null) merged.entry = p.entry;
+    if (p.target1 != null && merged.target1 == null) merged.target1 = p.target1;
+    if (p.target2 != null && merged.target2 == null) merged.target2 = p.target2;
+    if (p.stopLoss != null && merged.stopLoss == null) merged.stopLoss = p.stopLoss;
+    if (p.conf != null && merged.conf == null) merged.conf = p.conf;
+    if (p.action && !merged.action) merged.action = p.action;
+    if (p.rating && !merged.rating) merged.rating = p.rating;
+  });
+  return found ? merged : null;
+}
+
+function overlayDashPickOntoAnalyze(row, dashPick) {
+  if (!row || !dashPick) return row;
+  ['short', 'medium', 'long'].forEach(function (hz) {
+    var act = dashPick[hz + 'Action'] || (dashPick.hz === hz ? dashPick.action : null);
+    if (act !== 'Buy' && act !== 'Sell') return;
+    var conf = Number(dashPick[hz + 'Conf'] || dashPick.conf || 0);
+    var entry = dashPick[hz + 'Entry'] != null && dashPick[hz + 'Entry'] !== '' ? dashPick[hz + 'Entry'] : (dashPick.hz === hz ? dashPick.entry : null);
+    var sl = dashPick[hz + 'StopLoss'] != null && dashPick[hz + 'StopLoss'] !== '' ? dashPick[hz + 'StopLoss'] : (dashPick.hz === hz ? dashPick.stopLoss : null);
+    if (!(conf >= PICKS_MIN_CONF) || !(parseFloat(entry) > 0) || !(parseFloat(sl) > 0)) return;
+    row[hz + 'Action'] = act;
+    row[hz + 'Rating'] = dashPick[hz + 'Rating'] || dashPick.rating || act;
+    row[hz + 'Conf'] = Math.round(conf);
+    row[hz + 'Entry'] = String(entry);
+    var tp1 = dashPick[hz + 'Target1'] != null ? dashPick[hz + 'Target1'] : dashPick.target1;
+    var tp2 = dashPick[hz + 'Target2'] != null ? dashPick[hz + 'Target2'] : dashPick.target2;
+    row[hz + 'Target1'] = tp1 != null && tp1 !== '' ? String(tp1) : (row[hz + 'Target1'] || '');
+    row[hz + 'Target2'] = tp2 != null && tp2 !== '' ? String(tp2) : (row[hz + 'Target2'] || '');
+    row[hz + 'StopLoss'] = String(sl);
+    if (dashPick[hz + 'Score'] != null) row[hz + 'Score'] = dashPick[hz + 'Score'];
+  });
+  return row;
+}
+
+function publishedBoardHasHz(ticker, hz) {
+  var pick = mergeDashPicksForTicker(ticker);
+  if (!pick) return false;
+  var act = pick[hz + 'Action'];
+  var conf = Number(pick[hz + 'Conf'] || 0);
+  var entry = parseFloat(pick[hz + 'Entry']);
+  return (act === 'Buy' || act === 'Sell') && conf >= PICKS_MIN_CONF && entry > 0;
 }
 
 function rewardRiskRatioDash(entry, tp1, sl, isSell) {
@@ -5853,25 +5993,26 @@ async function loadPickDetail(ticker,hz){
   const detailEl=document.getElementById('pickDetail');
   detailEl.innerHTML=`<div class="ld"><div class="sp"></div><span>Loading full analysis for ${ticker}...</span></div>`;
   detailEl.scrollIntoView({behavior:'smooth',block:'start'});
-  // Pass dashboard pick data as hint so analysis stays consistent
-  const dashPick = ST.dashData
-    ? [...(ST.dashData.short||[]),...(ST.dashData.medium||[]),...(ST.dashData.long||[]),
-       ...(ST.dashData.shortSell||[]),...(ST.dashData.medSell||[]),...(ST.dashData.longSell||[])]
-      .find(p=>p.ticker===ticker)
-    : null;
+  // Pass ALL dashboard panes for this ticker so analysis cannot contradict the board
+  // (old code used .find across short/medium/long — first pane won, often short Hold).
+  const dashPick = mergeDashPicksForTicker(ticker);
   const res=await runAnalysis([ticker],true,dashPick);
   if(res&&res.length){
+    res.forEach(s=>overlayDashPickOntoAnalyze(s, dashPick, hz));
     detailEl.innerHTML=`<div style="font-family:'DM Sans',sans-serif;font-size:18px;font-style:italic;margin-bottom:1rem;padding-top:1rem;border-top:1px solid var(--b1)">Full analysis — ${ticker}</div>`+res.map(renderCard).join('');
-    res.forEach(s=>initCardTabs(s.ticker));
+    res.forEach(s=>initCardTabs(s.ticker, hz));
     setTimeout(()=>{
       res.forEach(s=>{
-        const isSC=(s.action||'').toLowerCase()==='sell'||(s.shortRating||'').toLowerCase().includes('sell');
-        const entry=isSC?(s.sellEntry||s.entry):s.entry;
-        const tp1=isSC?(s.sellTarget1||s.target1):s.target1;
-        const tp2=isSC?(s.sellTarget2||s.target2):s.target2;
-        const sl=isSC?(s.sellStopLoss||s.stopLoss):s.stopLoss;
+        const h = hz || 'short';
+        const isSC = String(s[h + 'Action'] || s.action || '').toLowerCase() === 'sell';
+        const entry = isSC ? (s[h + 'Entry'] || s.sellEntry || s.entry) : (s[h + 'Entry'] || s.entry);
+        const tp1 = isSC ? (s[h + 'Target1'] || s.sellTarget1 || s.target1) : (s[h + 'Target1'] || s.target1);
+        const tp2 = isSC ? (s[h + 'Target2'] || s.sellTarget2 || s.target2) : (s[h + 'Target2'] || s.target2);
+        const sl = isSC ? (s[h + 'StopLoss'] || s.sellStopLoss || s.stopLoss) : (s[h + 'StopLoss'] || s.stopLoss);
         const cid='chart_'+s.ticker.replace(/[^a-z0-9]/gi,'_');
-        loadChart(s.ticker, cid, CHART_RANGES['1H'].range, CHART_RANGES['1H'].interval, entry, tp1, tp2, sl, s.action||'Buy', '1H');
+        const defRange = CHART_DEFAULT_BY_HZ[h] || '1H';
+        const cfg = CHART_RANGES[defRange] || CHART_RANGES['1H'];
+        loadChart(s.ticker, cid, cfg.range, cfg.interval, entry, tp1, tp2, sl, s[h + 'Action'] || s.action || 'Buy', defRange);
       });
       fetchLivePrices(res.map(s=>s.ticker)).then(updatePrices);
     },200);
@@ -6666,6 +6807,7 @@ function renderCard(s){
   // on TP1 vs SL — never invent a higher TP1 just to recommend the trade.
   horizons.forEach(function (h) {
     if (h.action !== 'Buy' && h.action !== 'Sell') return;
+    if (publishedBoardHasHz(s.ticker, h.key)) return;
     var isS = h.action === 'Sell';
     var e = parseFloat(isS ? (h.sellEntry || h.entry) : h.entry);
     if (!e || !isFinite(e)) return;
@@ -7091,10 +7233,9 @@ function switchHzTab(tickerId, hzKey) {
   );
 }
 
-function initCardTabs(ticker) {
+function initCardTabs(ticker, hz) {
   const tid = ticker.replace(/[^a-z0-9]/gi,'_');
-  // Activate short tab by default
-  switchHzTab(tid, 'short');
+  switchHzTab(tid, hz || 'short');
 }
 function addWl(s){
   if(ST.watchlist.find(w=>w.ticker===s.ticker)){alert(s.ticker+' already in watchlist.');return;}

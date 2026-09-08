@@ -141,3 +141,69 @@ test('marketable JP through-limit that has not filled in 10 minutes is retried',
   });
   assert.equal(reason, 'asia-rth-retry');
 });
+
+test('marketable LSE through-limit uses the same 10-minute retry', () => {
+  const reason = asiaUnfilledRearmReason({
+    phase: 'rth',
+    entryStyle: 'LMT-THROUGH',
+    side: 'buy',
+    quotePx: 3515.5,
+    extLmt: 3586,
+    parentId: 57924340,
+    parentWorking: true,
+    lastRearmAt: new Date(NOW - 12 * 60 * 1000).toISOString(),
+    now: NOW,
+    minutesSinceRth: 90
+  });
+  assert.equal(reason, 'asia-rth-retry');
+});
+
+test('marketable LSE through-limit retries after 45s when sitMs is set', () => {
+  const { LSE_THROUGH_SIT_MS } = require('../lib/ibkr/asia-entry-rearm');
+  const reason = asiaUnfilledRearmReason({
+    phase: 'rth',
+    entryStyle: 'LMT-THROUGH',
+    side: 'buy',
+    quotePx: 3523,
+    extLmt: 3658,
+    parentId: 56167726,
+    parentWorking: true,
+    lastRearmAt: new Date(NOW - 60 * 1000).toISOString(),
+    now: NOW,
+    minutesSinceRth: 90,
+    sitMs: LSE_THROUGH_SIT_MS
+  });
+  assert.equal(reason, 'asia-rth-retry');
+});
+
+test('LSE forceSitRetry rotates even when last has not crossed the limit', () => {
+  const { LSE_THROUGH_SIT_MS } = require('../lib/ibkr/asia-entry-rearm');
+  const hold = asiaUnfilledRearmReason({
+    phase: 'rth',
+    entryStyle: 'LMT-THROUGH',
+    side: 'buy',
+    quotePx: 3510,
+    extLmt: 3483,
+    parentId: 1,
+    parentWorking: true,
+    lastRearmAt: new Date(NOW - 10 * 1000).toISOString(),
+    now: NOW,
+    sitMs: LSE_THROUGH_SIT_MS,
+    forceSitRetry: true
+  });
+  assert.equal(hold, null);
+  const rotate = asiaUnfilledRearmReason({
+    phase: 'rth',
+    entryStyle: 'LMT-THROUGH',
+    side: 'buy',
+    quotePx: 3510,
+    extLmt: 3483,
+    parentId: 1,
+    parentWorking: true,
+    lastRearmAt: new Date(NOW - 30 * 1000).toISOString(),
+    now: NOW,
+    sitMs: LSE_THROUGH_SIT_MS,
+    forceSitRetry: true
+  });
+  assert.equal(rotate, 'asia-rth-retry');
+});

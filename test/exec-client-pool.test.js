@@ -46,6 +46,17 @@ test('least-busy then round-robin among ties', () => {
   assert.equal(pickLeastBusy([], 0), null);
 });
 
+test('workersOnly skips the manager when a worker is ready', () => {
+  const slots = [
+    { clientId: 27, ready: true, api: {}, inflight: 0, manager: true },
+    { clientId: 30, ready: true, api: {}, inflight: 0 },
+    { clientId: 31, ready: true, api: {}, inflight: 0 }
+  ];
+  assert.equal(pickLeastBusy(slots, 0, { workersOnly: true }).clientId, 30);
+  assert.equal(pickLeastBusy(slots, 1, { workersOnly: true }).clientId, 31);
+  assert.equal(pickLeastBusy(slots.filter(s => s.manager), 0, { workersOnly: true }).clientId, 27);
+});
+
 test('clientForOrder prefers map, then row, then manager', () => {
   const orderClients = rememberOrderClient({}, 100, 30);
   assert.equal(clientForOrder(100, { orderClients, managerId: 27 }), 30);
