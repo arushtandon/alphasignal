@@ -89,8 +89,9 @@ test('period note names the names that moved PnL', () => {
     { unrealizedUsd: -3537, realizedUsd: 9623, openCount: 1 },
     { at: '2026-09-07T05:11:00.000Z' }
   );
-  const note = writePeriodNote(attributeMove(prev, curr), { label: 'Today' });
-  assert.match(note.summary, /Today the book moved/);
+  const note = writePeriodNote(attributeMove(prev, curr), { label: 'Today', key: 'day' });
+  assert.match(note.summary, /Today/);
+  assert.match(note.reason, /BA\.L|4062\.T/);
   assert.ok(note.realisedHelped.some((m) => m.ticker === '4062.T'));
   assert.ok(note.unrealisedHurt.some((m) => m.ticker === 'BA.L'));
   assert.ok(note.movers.length >= 2);
@@ -183,6 +184,10 @@ test('buildMoveNotes uses SGT day/week/month baselines', () => {
   }, { at: '2026-09-07T05:11:00.000Z' });
   const notes = buildMoveNotes([before, curr], Date.parse('2026-09-07T05:15:00.000Z'));
   assert.match(notes.summary, /BA\.L/);
+  assert.match(notes.summary, /Daily/);
   assert.equal(notes.day.partial, false);
   assert.ok(notes.day.dUnrealUsd < -900);
+  assert.equal(notes.day.unrealStartUsd, -200);
+  assert.equal(notes.day.unrealNowUsd, -1210);
+  assert.match(notes.day.reason, /BA\.L/);
 });
