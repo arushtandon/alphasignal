@@ -4,7 +4,8 @@ const test = require('node:test');
 const {
   estimateIbkrCommission,
   applyEstimatedCommission,
-  fillNeedsEstimatedCommission
+  fillNeedsEstimatedCommission,
+  stripEstimatedHkStamp
 } = require('../lib/ibkr/ib-commission');
 
 test('US small lot hits the $0.35 IBKR Pro minimum', () => {
@@ -42,4 +43,26 @@ test('genuine IB exec without commission is left for commissionReport', () => {
   const out = applyEstimatedCommission(row);
   assert.equal(out.commission, undefined);
   assert.equal(out.price, 175.97);
+});
+
+test('HK estimate is IB + levies only — stamp is booked separately', () => {
+  const hk = estimateIbkrCommission({
+    ticker: '0700.HK', qty: 100, price: 400, currency: 'HKD'
+  });
+  const n = 100 * 400;
+  const ib = Math.max(18, 0.0008 * n);
+  const levies = 0.0001365 * n;
+  assert.ok(Math.abs(hk.commission - (ib + levies)) < 1e-4);
+  assert.ok(hk.commission < 0.001 * n);
+});
+
+test('older HK estimates that baked in stamp are stripped', () => {
+  const n = 100 * 400;
+  const baked = Math.max(18, 0.0008 * n) + 0.001 * n + 0.0001365 * n;
+  const out = stripEstimatedHkStamp({
+    ticker: '0700.HK', qty: 100, price: 400, currency: 'HKD',
+    commission: baked, commissionSrc: 'ibkr-pro-schedule'
+  });
+  assert.ok(out.commission < baked);
+  assert.ok(Math.abs(out.commission - (Math.max(18, 0.0008 * n) + 0.0001365 * n)) < 1e-4);
 });

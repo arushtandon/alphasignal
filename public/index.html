@@ -420,7 +420,6 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
     <button class="nb" id="nav-history" onclick="switchTab('history')">History</button>
     <button class="nb" id="nav-performance" onclick="switchTab('performance')">Performance</button>
     <button class="nb" id="nav-ibkr" onclick="switchTab('ibkr')">IBKR</button>
-    <button class="nb" id="nav-stampduty" onclick="switchTab('stampduty')">Stamp duty</button>
     <button class="nb" id="nav-moveinfo" onclick="switchTab('moveinfo')">Analysis Info</button>
     <button class="nb" id="nav-live" onclick="switchTab('live')">Live trades</button>
     <div class="key-indicator" id="keyIndicator" style="margin-left:6px;cursor:pointer" title="AI status · click for optional client key" onclick="openQuickStartModal()">
@@ -662,18 +661,6 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
         <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderIbkr(true,'paper')">↻ Refresh</button>
       </div>
       <div id="ibkrContent"><div class="emp"><div class="emp-a">α</div><p>Loading IBKR executions…</p></div></div>
-    </div>
-
-    <!-- UK STAMP DUTY (SDRT) — not baked into the fill print -->
-    <div id="pane-stampduty" class="pane">
-      <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-        <div>
-          <div class="pt">UK stamp duty</div>
-          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">0.5% SDRT on UK share purchases · tape fill stays on the print · this cost hits final PnL</div>
-        </div>
-        <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderStampDuty(true)">↻ Refresh</button>
-      </div>
-      <div id="stampDutyContent"><div class="emp"><div class="emp-a">£</div><p>Loading stamp duty…</p></div>
     </div>
 
     <!-- ANALYSIS INFO — why realised / unrealised jumped -->
@@ -1734,7 +1721,7 @@ function closeMobileSidebar(){
 // ══════════════════════════════════════════════
 function switchTab(t){
   closeMobileSidebar();
-  ['dashboard','analysis','history','performance','ibkr','stampduty','moveinfo','live'].forEach(id=>{
+  ['dashboard','analysis','history','performance','ibkr','moveinfo','live'].forEach(id=>{
     const nav = document.getElementById('nav-'+id);
     const pane = document.getElementById('pane-'+id);
     if (nav) nav.classList.toggle('act',id===t);
@@ -1770,7 +1757,6 @@ function switchTab(t){
   else if(t==='live') startIbkrMtm('live');
   else stopIbkrMtm();
   if(t==='moveinfo') renderMoveInfo();
-  if(t==='stampduty') renderStampDuty();
 }
 
 // ══════════════════════════════════════════════
@@ -2358,13 +2344,17 @@ async function renderMoveInfo(){
   if (!el) return;
   el.innerHTML = '<div class="emp"><div class="emp-a">α</div><p>Loading move analysis…</p></div>';
   try {
-    const book = await fetchIbkrBook();
+    const bookP = fetchIbkrBook().catch(function (e) { return { _err: e, totals: {}, account: null }; });
+    const moveP = fetch('/api/ibkr/move-analysis?book=paper&t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.json(); });
+    const book = await bookP;
+    const md = await moveP;
+    if (!md || md.ok === false) {
+      throw new Error((md && md.error) || 'move-analysis failed');
+    }
     const tt = (book && book.totals) || {};
-    const mr = await fetch('/api/ibkr/move-analysis?book=paper&t=' + Date.now(), { cache: 'no-store' });
-    const md = await mr.json();
-    const summary = (md && md.ok && md.summary)
-      ? md.summary
-      : 'No move snapshots yet. Refresh after the paper book has been up for a minute.';
+    const summary = md.summary
+      || 'No move snapshots yet. Refresh after the paper book has been up for a minute.';
     el.innerHTML = '<div style="padding:14px 16px;margin-bottom:14px;background:var(--s1);border:1px solid var(--b1);border-radius:8px">'
       + '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1);margin-bottom:8px">What moved the market — daily, then weekly, then monthly</div>'
       + '<div style="font-size:15px;line-height:1.6">' + summary + '</div>'
@@ -2372,9 +2362,9 @@ async function renderMoveInfo(){
       + ibkrFp(tt.realizedUsd)
       + ' · IB unrealised ' + (book.account && book.account.ibUnrealizedPnl != null ? ibkrFp(book.account.ibUnrealizedPnl) : '—')
       + ' · ' + (tt.openCount || 0) + ' open</div></div>'
-      + moveInfoNoteCard(md && md.day)
-      + moveInfoNoteCard(md && md.week)
-      + moveInfoNoteCard(md && md.month);
+      + moveInfoNoteCard(md.day)
+      + moveInfoNoteCard(md.week)
+      + moveInfoNoteCard(md.month);
   } catch (e) {
     el.innerHTML = '<div class="emp"><div class="emp-a">!</div><p>Could not load analysis: ' + (e.message || e) + '</p></div>';
   }
@@ -2711,6 +2701,17 @@ async function tickIbkrMtm(kind){
       const comm = (d.expenses && d.expenses.totalUsd != null) ? d.expenses.totalUsd : d.totals.commissionUsd;
       cEl.textContent = comm == null ? '—' : '-$'+Math.abs(comm).toFixed(2);
       cEl.style.color = (comm > 0) ? 'var(--sell)' : 'var(--m1)';
+      const cSub = document.getElementById(pfx+'CardCommSub');
+      const exp = d.expenses || {};
+      if (cSub) {
+        const bits = [
+          exp.commissionUsd != null ? ('comm $' + Math.abs(exp.commissionUsd).toFixed(2)) : null,
+          exp.stampDutyUsd ? ('stamp $' + Math.abs(exp.stampDutyUsd).toFixed(2)) : null,
+          exp.otherUsd ? ('accrued $' + Math.abs(exp.otherUsd).toFixed(2)) : null,
+          exp.dividendUsd ? ('div +$' + Math.abs(exp.dividendUsd).toFixed(2)) : null
+        ].filter(Boolean);
+        if (bits.length) cSub.textContent = bits.join(' · ') + ' · not subtracted again in Net';
+      }
     }
     if (nEl) {
       const net = ibkrNetPnl(d.totals);
@@ -2859,6 +2860,7 @@ async function renderIbkr(force, kind){
     const expTotal = exp.totalUsd != null ? exp.totalUsd : (tt.commissionUsd || 0);
     const expSub = [
       exp.commissionUsd != null ? ('comm $' + Math.abs(exp.commissionUsd).toFixed(2)) : null,
+      exp.stampDutyUsd ? ('stamp $' + Math.abs(exp.stampDutyUsd).toFixed(2)) : null,
       exp.otherUsd ? ('accrued $' + Math.abs(exp.otherUsd).toFixed(2)) : null,
       exp.dividendUsd ? ('div +$' + Math.abs(exp.dividendUsd).toFixed(2)) : null,
       exp.errorCommissionUsd ? ('error $' + Math.abs(exp.errorCommissionUsd).toFixed(2) + ' excluded') : null
@@ -3159,7 +3161,7 @@ function showIbkrExpenses(kind){
   const sectionOrder = ['commission', 'stamp-duty', 'accrued', 'dividend', 'other', 'error-commission', 'error-stamp-duty'];
   const sectionTitle = {
     commission: 'Brokerage commissions — per equity fill',
-    'stamp-duty': 'UK stamp duty (SDRT 0.5%) — purchases only',
+    'stamp-duty': 'Stamp duty / FTT / STT — by market',
     accrued: 'Interest & stock-borrow (allocated to equities)',
     dividend: 'Dividends',
     other: 'Other charges',
@@ -3168,12 +3170,12 @@ function showIbkrExpenses(kind){
   };
   const sectionNote = {
     commission: 'Each row is IB commissionReport on a specific fill: ticker, side, quantity, price, and whether it was an entry, TP1, stop, or flatten. Forced error trades (AIR dual-list, unauthorised lots) are listed separately and are not in the tile total.',
-    'stamp-duty': 'UK SDRT is 0.5% of consideration on buys. It is not part of the tape print. Final PnL subtracts it (open lots via Net, closed lots inside realised).',
+    'stamp-duty': 'UK SDRT 0.5% on buys. HK stamp 0.1% on buys and sells. France FTT 0.4% on buys. Italy / Spain FTT 0.2% on buys. India STT 0.1% on buys and sells. US, Japan, Germany and the Netherlands have no material stamp on this book. Tax is not part of the tape print. Final PnL subtracts it (open lots via Net, closed lots inside realised).',
     accrued: 'IB sends one AccruedCash total. Negative amounts (stock-borrow) are allocated to open shorts by USD notional. When a short is closed, that share is locked onto the equity. Positive AccruedCash is credit interest on cash (account-level). Allocations are a breakdown of the live total, not extra charges.',
     dividend: 'Accrued / receivable dividends from IB account tags.',
     other: '',
     'error-commission': 'Commissions on |cursor-err| / error-trade lots. Shown for audit only — they do not add to Brokerage or Net PnL.',
-    'error-stamp-duty': 'Stamp on error-trade UK buys. Audit only.'
+    'error-stamp-duty': 'Stamp / FTT / STT on error-trade fills. Audit only.'
   };
   const bySec = {};
   for (const r of rows) {
@@ -3236,65 +3238,6 @@ function showIbkrExpenses(kind){
     + '</div>'
     + bodyHtml + '</div>';
   document.body.appendChild(modal);
-}
-
-async function renderStampDuty(force){
-  const el = document.getElementById('stampDutyContent');
-  if (!el) return;
-  try {
-    if (force || !window._ibkrBookPaper) {
-      const r = await fetch(ibkrTradesUrl('paper'), { cache: 'no-store' });
-      const d = await r.json();
-      if (!d.ok) throw new Error(d.error || 'bad response');
-      rememberIbkrBook(d, 'paper');
-    }
-    const d = ibkrBookPayload('paper') || {};
-    const sd = d.stampDuty || {};
-    const rows = sd.rows || [];
-    const totUsd = Number(sd.totalUsd) || 0;
-    const totGbp = Number(sd.totalGbp) || 0;
-    const head = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">'
-      + '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-width:160px">'
-      + '<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace">UK stamp (USD)</div>'
-      + '<div style="font-size:21px;font-weight:600;font-family:DM Mono,monospace;color:var(--sell)">-$'+Math.abs(totUsd).toFixed(2)+'</div>'
-      + '<div style="font-size:10px;color:var(--m2)">included in final PnL</div></div>'
-      + '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:12px;padding:16px 18px;min-width:160px">'
-      + '<div style="font-size:10px;color:var(--m1);text-transform:uppercase;letter-spacing:.09em;font-family:DM Mono,monospace">UK stamp (GBP)</div>'
-      + '<div style="font-size:21px;font-weight:600;font-family:DM Mono,monospace;color:var(--t1)">£'+Math.abs(totGbp).toFixed(2)+'</div>'
-      + '<div style="font-size:10px;color:var(--m2)">0.5% of buy consideration</div></div>'
-      + '</div>'
-      + '<div style="font-size:11px;color:var(--m2);font-family:DM Sans,sans-serif;margin-bottom:12px;line-height:1.45">'
-      + (sd.note || 'UK SDRT 0.5% on purchases. The fill print stays on the tape; this cost is booked here and in Net PnL.')
-      + '</div>';
-    if (!rows.length) {
-      el.innerHTML = head + '<div class="emp"><div class="emp-a">£</div><p>No UK purchase stamp yet.</p></div>';
-      return;
-    }
-    const tr = rows.map(function (r) {
-      const px = r.price != null ? (Number(r.price) >= 50 ? Number(r.price).toFixed(1) : Number(r.price).toFixed(2)) : '—';
-      const when = r.time ? ibkrFmtWhenSgt(r.time) : '—';
-      return '<tr>'
-        + '<td style="padding:6px 8px;font-family:DM Mono,monospace">'+ (r.ticker || '') +'</td>'
-        + '<td style="padding:6px 8px;text-align:right">'+ (r.qty != null ? r.qty : '—') +'</td>'
-        + '<td style="padding:6px 8px;text-align:right;font-family:DM Mono,monospace">'+ px +'</td>'
-        + '<td style="padding:6px 8px;text-align:right;color:var(--sell)">£'+ Math.abs(Number(r.amount)||0).toFixed(2) +'</td>'
-        + '<td style="padding:6px 8px;text-align:right;color:var(--sell)">-$'+ Math.abs(Number(r.amountUsd)||0).toFixed(2) +'</td>'
-        + '<td style="padding:6px 8px;color:var(--m2);font-size:11px">'+ when +'</td>'
-        + '</tr>';
-    }).join('');
-    el.innerHTML = head
-      + '<div class="ibkr-book" style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;overflow:auto">'
-      + '<table style="width:100%;border-collapse:collapse"><thead><tr>'
-      + '<th style="text-align:left;padding:8px;font-size:10px;color:var(--m1)">Ticker</th>'
-      + '<th style="text-align:right;padding:8px;font-size:10px;color:var(--m1)">Qty</th>'
-      + '<th style="text-align:right;padding:8px;font-size:10px;color:var(--m1)">Tape (p)</th>'
-      + '<th style="text-align:right;padding:8px;font-size:10px;color:var(--m1)">Stamp £</th>'
-      + '<th style="text-align:right;padding:8px;font-size:10px;color:var(--m1)">Stamp $</th>'
-      + '<th style="text-align:left;padding:8px;font-size:10px;color:var(--m1)">Time (SGT)</th>'
-      + '</tr></thead><tbody>'+ tr +'</tbody></table></div>';
-  } catch (e) {
-    el.innerHTML = '<div class="emp"><div class="emp-a">!</div><p>Could not load stamp duty: '+(e.message||e)+'</p></div>';
-  }
 }
 
 // ══════════════════════════════════════════════

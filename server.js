@@ -41,8 +41,7 @@ const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/
 const { ibkrExitQualityType, summarizeExitQuality, bookedExitPnlUsd, fillExitPnlUsd } = require('./lib/ibkr/exit-quality');
 const { ibkrAvgToFillUnit, futuresMultiplierFor } = require('./lib/ibkr/avg-cost');
 const {
-  isUkStampDutyFill,
-  stampDutyLocal,
+  fillTax,
   shouldSkipStampInflatedAvgCorrect,
   isStampInflatedCorrectedFill
 } = require('./lib/ibkr/stamp-duty');
@@ -52,7 +51,8 @@ const { officialFuturesSettlePx, officialFuturesSettleDate, futuresStillTradable
 const { isFuturesRollFill, liveIbkrKey, rebuildFuturesRollFills, futuresRollCalendarBias, RESTORED_POST_ROLL_EXITS } = require('./lib/ibkr/futures-roll');
 const {
   applyEstimatedCommission,
-  fillNeedsEstimatedCommission
+  fillNeedsEstimatedCommission,
+  stripEstimatedHkStamp
 } = require('./lib/ibkr/ib-commission');
 const { dedupeIbkrFillsByExecId } = require('./lib/ibkr/fill-dedupe');
 const { overlayPublishedBoardOnAnalyzeRow } = require('./lib/analysis/overlay-published-board');
@@ -16243,6 +16243,22 @@ function backfillMissingIbkrCommissions() {
   return n;
 }
 
+function stripEstimatedHkStampFromLedger() {
+  let n = 0;
+  mutateFillLedger('hk_stamp_split', (rows) => {
+    for (let i = 0; i < rows.length; i++) {
+      const next = stripEstimatedHkStamp(rows[i]);
+      if (next && Number(next.commission) !== Number(rows[i].commission)) {
+        rows[i] = next;
+        n++;
+      }
+    }
+    return rows;
+  });
+  if (n) console.log('Split HK stamp out of', n, 'estimated commission(s)');
+  return n;
+}
+
 /** Undo LSE avg-correct that baked 0.5% UK stamp into the tape print (SHEL 3523→3542). */
 function restoreStampInflatedAvgFills() {
   let n = 0;
@@ -16286,6 +16302,9 @@ try {
 }
 try { backfillMissingIbkrCommissions(); } catch (e) {
   console.warn('boot backfill missing commissions failed:', e.message);
+}
+try { stripEstimatedHkStampFromLedger(); } catch (e) {
+  console.warn('boot HK stamp split failed:', e.message);
 }
 /** Qty matches IB — do not rewrite the expired-month fill to the new-month avgCost. */
 function ibkrKeyHasFuturesRoll(key) {
@@ -17474,6 +17493,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
           role: f.role, qty: f.qty, price: unitPx(f.price), time: f.time,
           ticker: f.ticker || f0.ticker,
           side: f.side || f0.side,
+          currency: f.currency || f0.currency || null,
+          ccyScale: Number(f.ccyScale) || scale,
+          priceCorrectedFrom: f.priceCorrectedFrom != null ? Number(f.priceCorrectedFrom) : null,
           execId: f.execId || null,
           errorTrade: !!f.errorTrade,
           commission: f.commission != null ? Number(f.commission) : null,
@@ -17855,16 +17877,20 @@ app.get('/api/ibkr/trades', async (req, res) => {
         commissionUsd += Math.abs(c) * cFx;
       }
       t.commissionUsd = +commissionUsd.toFixed(2);
+      let stampDutyLocalAmt = 0;
+      let stampDutyUsd = 0;
       let stampDutyGbp = 0;
       for (const f of t.fills) {
-        if (!f || !isUkStampDutyFill(f)) continue;
-        const tape = Number(f.priceCorrectedFrom) > 0 && String(f.recon || '') === 'avg-correct'
-          ? Number(f.priceCorrectedFrom) : Number(f.price);
-        stampDutyGbp += stampDutyLocal({ ...f, price: tape || f.price });
+        const tax = fillTax(f);
+        if (!tax || !(tax.amount > 0)) continue;
+        stampDutyLocalAmt += tax.amount;
+        const cFx = await ibkrUsdPerCcy(tax.currency);
+        stampDutyUsd += tax.amount * cFx;
+        if (tax.id === 'uk-sdrt' || tax.currency === 'GBP') stampDutyGbp += tax.amount;
       }
-      const gbpFx = await ibkrUsdPerCcy(t.currency || 'GBP');
+      t.stampDutyLocal = +stampDutyLocalAmt.toFixed(4);
       t.stampDutyGbp = +stampDutyGbp.toFixed(4);
-      t.stampDutyUsd = +(stampDutyGbp * gbpFx).toFixed(2);
+      t.stampDutyUsd = +stampDutyUsd.toFixed(2);
       const realizedGrossUsd = +(t.realizedLocal * fx).toFixed(2);
       t.realizedUsdGross = realizedGrossUsd;
       // Commission stays in Brokerage while the lot is open. Realised becomes
@@ -18095,35 +18121,33 @@ app.get('/api/ibkr/trades', async (req, res) => {
     let stampDutyUsdTotal = 0;
     const stampDutyRows = [];
     for (const r of rows) {
-      if (!isUkStampDutyFill(r)) continue;
+      const tax = fillTax(r);
+      if (!tax || !(tax.amount > 0)) continue;
       const isErr = !!r.errorTrade || isCursorErrIbkrKey(r.key);
-      const tape = Number(r.priceCorrectedFrom) > 0 && String(r.recon || '') === 'avg-correct'
-        ? Number(r.priceCorrectedFrom) : Number(r.price);
-      const gbp = stampDutyLocal({ ...r, price: tape || r.price });
-      if (!(gbp > 0)) continue;
-      const cFx = await ibkrUsdPerCcy(r.currency || 'GBP');
-      const usd = +(gbp * cFx).toFixed(2);
+      const cFx = await ibkrUsdPerCcy(tax.currency);
+      const usd = +(tax.amount * cFx).toFixed(2);
       if (!isErr) {
-        stampDutyGbpTotal += gbp;
+        if (tax.id === 'uk-sdrt' || tax.currency === 'GBP') stampDutyGbpTotal += tax.amount;
         stampDutyUsdTotal += usd;
       }
       const ticker = r.ticker || '?';
+      const side = String(r.side || 'buy').toUpperCase();
       stampDutyRows.push({
         type: 'stamp-duty',
         section: isErr ? 'error-stamp-duty' : 'stamp-duty',
-        feeType: 'UK SDRT 0.5% on purchase',
-        label: ticker + ' · BUY ' + (Number(r.qty) || '?') + ' @ ' + pxLabel(tape || r.price, r.ccyScale)
-          + ' · UK stamp 0.5%'
+        feeType: tax.feeType,
+        label: ticker + ' · ' + side + ' ' + (Number(r.qty) || '?') + ' @ ' + pxLabel(r.price, r.ccyScale)
+          + ' · ' + tax.label
           + (isErr ? ' · ERROR (excluded)' : ''),
         ticker,
-        side: 'buy',
+        side: String(r.side || 'buy').toLowerCase(),
         qty: Number(r.qty) || null,
-        price: tape || Number(r.price) || null,
+        price: Number(r.price) || null,
         role: r.role || 'entry',
         key: r.key || null,
         execId: r.execId || null,
-        amount: +gbp.toFixed(4),
-        currency: r.currency || 'GBP',
+        amount: +tax.amount.toFixed(4),
+        currency: tax.currency,
         amountUsd: usd,
         income: false,
         time: r.time || null,
@@ -18258,7 +18282,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
         time: accountSnap.at || null
       });
     }
-    const expenseTotalUsd = commissionExpenseUsd + accruedUsd;
+    const expenseTotalUsd = commissionExpenseUsd + accruedUsd + stampDutyUsdTotal;
     expenses.sort((a, b) => String(b.time || '').localeCompare(String(a.time || '')));
     const initMargin = accountSnap
       ? (accountSnap.fullInitMarginReq != null ? Number(accountSnap.fullInitMarginReq)
@@ -18348,8 +18372,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
         totalUsd: +stampDutyUsdTotal.toFixed(2),
         totalGbp: +stampDutyGbpTotal.toFixed(2),
         openUsd: +totOpenStampDutyUsd.toFixed(2),
-        ratePct: 0.5,
-        note: 'UK SDRT 0.5% on purchases. Tape fill is kept; stamp is this tab and final PnL — not the print.',
+        note: 'UK SDRT 0.5% buys · HK stamp 0.1% both sides · France FTT 0.4% buys · Italy/Spain FTT 0.2% buys · India STT 0.1% both sides. Tape print stays clean; tax is in Brokerage and Net PnL.',
         rows: stampDutyRows.filter(r => !r.excluded).slice(0, 400)
       },
       risk: {
