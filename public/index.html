@@ -2954,7 +2954,7 @@ async function renderIbkr(force, kind){
         +'<table style="width:100%;border-collapse:collapse"><thead><tr>'
         + th('left')+'Date</th>'+th('right')+'Realised</th>'+th('right')+'Cumulative</th>'
         +'</tr></thead><tbody>'+rows+'</tbody></table>'
-        +'<div style="font-size:10px;color:var(--m2);padding:8px 8px 4px;line-height:1.4">Cumulative equals Total realised (net of closed commission and stamp/FTT).</div>'
+        +'<div style="font-size:10px;color:var(--m2);padding:8px 8px 4px;line-height:1.4">Each day is fills that hit that date, minus commission and stamp on lots that closed that day. Today is not a plug to force the total.</div>'
         +'</div>';
     }
 

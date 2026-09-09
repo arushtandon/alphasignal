@@ -53,7 +53,7 @@ const {
   isLiveAuthorizedServerExit
 } = require('./lib/ibkr/live-exit-authority');
 const { computeAccountPerformance, applyIbkrNlvExtremes } = require('./lib/ibkr/account-performance');
-const { ibkrExitQualityType, summarizeExitQuality, bookedExitPnlUsd, fillExitPnlUsd } = require('./lib/ibkr/exit-quality');
+const { ibkrExitQualityType, summarizeExitQuality, bookedExitPnlUsd, fillExitPnlUsd, fillDailyPnlUsd } = require('./lib/ibkr/exit-quality');
 const { ibkrAvgToFillUnit, futuresMultiplierFor } = require('./lib/ibkr/avg-cost');
 const {
   fillTax,
@@ -62,7 +62,6 @@ const {
 } = require('./lib/ibkr/stamp-duty');
 const {
   accumulateLotDaily,
-  reconcileDailyToTotal,
   toDailyArray
 } = require('./lib/ibkr/daily-realized');
 const { fifoLotEconomics } = require('./lib/ibkr/fifo-lots');
@@ -17903,6 +17902,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       for (const f of t.fills) {
         if (!f || f.role === 'entry') continue;
         f.realizedUsd = +fillExitPnlUsd(t, f, fx).toFixed(2);
+        f.dailyRealizedUsd = +fillDailyPnlUsd(t, f, fx).toFixed(2);
       }
       let mark = markMap[t.ticker] && Number(markMap[t.ticker].price) > 0 ? Number(markMap[t.ticker].price) : null;
       // LSE fills are in pence (ccyScale=100); IB sometimes ticks in pounds.
@@ -17972,7 +17972,6 @@ app.get('/api/ibkr/trades', async (req, res) => {
       }
     }
 
-    reconcileDailyToTotal(daily, totRealUsd);
     const dailyArr = toDailyArray(daily);
     const dailyErrorArr = toDailyArray(dailyError);
     trades.sort((a, b) => (a.entryTime < b.entryTime ? 1 : -1));
