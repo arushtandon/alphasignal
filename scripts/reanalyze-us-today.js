@@ -56,6 +56,15 @@ async function scoreSymbol(sym) {
   const fmp = await fetchFmpScore(sym, { batchMode: true }).catch(() => null);
   await applyMarketTierOverlays(sym, tech, { batchMode: true, fundPre: fund, fmpPre: fmp });
   const row = { ticker: sym };
+  for (const hz of ['short', 'medium', 'long']) {
+    const sig = tech.quantSignal[hz] || {};
+    row[hz + 'Score'] = sig.buyScore || 0;
+    row[hz + 'SellScore'] = sig.sellScore || 0;
+    row[hz + 'Action'] = sig.action || 'Hold';
+    row[hz + 'Rating'] = sig.rating || 'Hold';
+    row[hz + 'Conf'] = sig.winRateHint || Math.max(sig.buyScore || 0, sig.sellScore || 0);
+  }
+  row.action = row.shortAction;
   applyServerPriceLevels(row, tech.currentPrice, tech, fund);
   const verdicts = [];
   for (const hz of ['short', 'medium', 'long']) {
@@ -67,10 +76,7 @@ async function scoreSymbol(sym) {
     const entry = parseFloat(row[hz + 'Entry'] || row.entry);
     const tp1 = parseFloat(row[hz + 'Target1'] || row.target1);
     const sl = parseFloat(row[hz + 'StopLoss'] || row.stopLoss);
-    const sellEntry = parseFloat(row.sellEntry || entry);
-    const sellTp1 = parseFloat(row.sellTarget1 || row[hz + 'Target1']);
-    const sellSl = parseFloat(row.sellStopLoss || sl);
-    const conf = Number(sig.winRateHint) || Math.max(buy, sell);
+    const conf = Number(row[hz + 'Conf']) || Number(sig.winRateHint) || Math.max(buy, sell);
     const minRR = minRrForSymbol(sym, 1.1);
 
     function evalSide(side, actionOk, rating, score, e, t, s) {
@@ -99,7 +105,7 @@ async function scoreSymbol(sym) {
       verdicts.push(evalSide('buy', buyAction, sig.rating, buy, entry, tp1, sl));
     }
     if (sellAction || sell >= 62) {
-      verdicts.push(evalSide('sell', sellAction, sig.rating, sell, sellEntry, sellTp1, sellSl));
+      verdicts.push(evalSide('sell', sellAction, sig.rating, sell, entry, tp1, sl));
     }
     if (!buyAction && !sellAction && buy < 62 && sell < 62) {
       verdicts.push({
