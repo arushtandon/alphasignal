@@ -41,3 +41,19 @@ test('US/UK short buys are blocked; Strong medium buys need 1.4 RR', () => {
   assert.equal(minRrForSymbol('AAPL', 1.1), ANGLO_MIN_RR);
   assert.equal(minRrForSymbol('SIE.DE', 1.1), 1.1);
 });
+
+test('US/UK Hold when FMP snapshot is missing', () => {
+  const { fmpSnapshotUsable, applyMissingFmpHold, angloNeedsFmp } = require('../lib/strategy/market-tier');
+  assert.equal(angloNeedsFmp('AAPL'), true);
+  assert.equal(angloNeedsFmp('SHEL.L'), true);
+  assert.equal(angloNeedsFmp('0700.HK'), false);
+  assert.equal(fmpSnapshotUsable(null), false);
+  assert.equal(fmpSnapshotUsable({ piotroski: 7 }), true);
+  const qs = {
+    short: { buyScore: 80, sellScore: 10, action: 'Buy', rating: 'Strong Buy', conditions: [] },
+    medium: { buyScore: 80, sellScore: 10, action: 'Buy', rating: 'Strong Buy', conditions: [] }
+  };
+  assert.equal(applyMissingFmpHold('AAPL', qs), true);
+  assert.equal(qs.medium.action, 'Hold');
+  assert.ok(qs.medium.buyScore <= 61);
+});

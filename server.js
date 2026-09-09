@@ -15,14 +15,17 @@ const {
 const {
   classifyMarket,
   angloPickAllowed,
-  minRrForSymbol
+  minRrForSymbol,
+  isAngloSymbol,
+  fmpSnapshotUsable,
+  applyMissingFmpHold
 } = require('./lib/strategy/market-tier');
 const {
   HORIZON_WEIGHTING_LABELS,
   applyYahooFundGates,
   applyHorizonQualityBlend,
   buildPreciseTradeThesis,
-  looksGenericReason
+  harvestConditionsFromWhy
 } = require('./lib/strategy/horizon-blend');
 const {
   EXIT_POLICY_VERSION,
@@ -5960,7 +5963,7 @@ function computeCompositeAlpha(dan, tech, newsScore, hz) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// FMP QUALITY SCORE — Asian equities (Piotroski + Altman Z + analyst consensus; all from FMP APIs, not Bloomberg)
+// FMP QUALITY SCORE — all equities (US/UK/EU/Asia): Piotroski + Altman Z + quality.
 // ══════════════════════════════════════════════════════════════════════════════
 const _fmpCache = new Map(),
   _FMP_TTL = 6 * 60 * 60 * 1000,
@@ -6552,6 +6555,11 @@ async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
     } catch (e) {
       console.warn('FMP overlay', sym, e.message);
     }
+  }
+
+  if (isAngloSymbol(sym) && !fmpSnapshotUsable(dataShell.fmpScore)) {
+    applyMissingFmpHold(sym, dataShell.quantSignal);
+    console.warn('US/UK listing returned no FMP quality numbers — recommendation blocked:', sym);
   }
 
   ['short', 'medium', 'long'].forEach(hz => {
@@ -7835,7 +7843,8 @@ async function generateServerPicksFromShortlist(opts = {}) {
           && (Number(r[hz + 'Conf']) || 0) >= PICKS_MIN_CONF
           && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r, hz);
         if (buyBase && !alreadyLong
-          && angloPickAllowed(r.ticker, { hz, side: 'buy', rating: r[hz + 'Rating'] }).ok) {
+          && angloPickAllowed(r.ticker, { hz, side: 'buy', rating: r[hz + 'Rating'] }).ok
+          && angloFmpOk(r.ticker, r.fmpScore)) {
           const buyRank = (r[hz + 'Score'] || 0)
             + (isStrongRecommendableRating(r[hz + 'Rating']) ? 1000 : 0);
           if (buyRank > bBuyScore) { bBuyScore = buyRank; bBuyHz = hz; }
@@ -7847,7 +7856,8 @@ async function generateServerPicksFromShortlist(opts = {}) {
           && (Number(r[hz + 'Conf']) || 0) >= PICKS_MIN_CONF
           && hasPx(r, hz);
         if (sellBase && !alreadyShort
-          && angloPickAllowed(r.ticker, { hz, side: 'sell', rating: r[hz + 'Rating'] }).ok) {
+          && angloPickAllowed(r.ticker, { hz, side: 'sell', rating: r[hz + 'Rating'] }).ok
+          && angloFmpOk(r.ticker, r.fmpScore)) {
           const sellRank = (r[hz + 'SellScore'] || 0)
             + (isStrongRecommendableRating(r[hz + 'Rating']) ? 1000 : 0);
           if (sellRank > bSellScore) { bSellScore = sellRank; bSellHz = hz; }
@@ -8506,6 +8516,11 @@ async function addTradesToHistory(trades) {
       if (!angloHist.ok) {
         console.log('History add skipped (US/UK policy):', trade.ticker, hz, angloHist.reason);
         auditLog('entry_blocked_anglo_policy', { ticker: trade.ticker, hz, reason: angloHist.reason });
+        continue;
+      }
+      if (!angloFmpOk(trade.ticker, trade.fmpScore)) {
+        console.log('History add skipped (US/UK FMP missing):', trade.ticker, hz);
+        auditLog('entry_blocked_anglo_fmp', { ticker: trade.ticker, hz });
         continue;
       }
       const histMinRr = minRrForSymbol(trade.ticker, PICKS_MIN_RR);
@@ -11236,6 +11251,10 @@ const DASH_PANE_MAP = {
   longSell: { hz: 'long', side: 'sell' }
 };
 
+function angloFmpOk(ticker, fmp) {
+  return !isAngloSymbol(ticker) || fmpSnapshotUsable(fmp);
+}
+
 function filterDashDataBySLCooldown(dashData) {
   if (!dashData || typeof dashData !== 'object') return dashData;
   const out = {};
@@ -11261,6 +11280,7 @@ function filterDashDataBySLCooldown(dashData) {
       const tp1 = parseFloat(pick[hz + 'Target1'] || pick.target1);
       const sl = parseFloat(pick[hz + 'StopLoss'] || pick.stopLoss);
       if (!angloPickAllowed(pick.ticker, { hz, side, rating }).ok) return false;
+      if (!angloFmpOk(pick.ticker, pick.fmpScore)) return false;
       return levelsMeetMinRR(entry, tp1, sl, isSell, minRrForSymbol(pick.ticker, PICKS_MIN_RR));
     });
   }
@@ -11284,6 +11304,10 @@ function filterDashDataByMinRR(dashData, minRR = PICKS_MIN_RR) {
         return false;
       }
       if (!angloPickAllowed(pick.ticker, { hz, side, rating: pick[hz + 'Rating'] || pick.rating }).ok) {
+        dropped++;
+        return false;
+      }
+      if (!angloFmpOk(pick.ticker, pick.fmpScore)) {
         dropped++;
         return false;
       }
@@ -11315,6 +11339,7 @@ function filterDashDataByQuantTechMap(dashData, techMap, paneMap = DASH_PANE_MAP
       // a US-only dashboard. A pick is only removed when fresh data ACTIVELY
       // contradicts it (action flipped or score fell below threshold).
       if (!angloPickAllowed(pick.ticker, { hz, side, rating: pick[hz + 'Rating'] || pick.rating }).ok) return false;
+      if (!angloFmpOk(pick.ticker, pick.fmpScore || tech?.fmpScore)) return false;
       if (!sig) return true; // no fresh data → trust the existing pick
       pick[hz + 'Score'] = sig.buyScore ?? pick[hz + 'Score'];
       pick[hz + 'SellScore'] = sig.sellScore ?? pick[hz + 'SellScore'];
@@ -11322,9 +11347,11 @@ function filterDashDataByQuantTechMap(dashData, techMap, paneMap = DASH_PANE_MAP
       pick[hz + 'Action'] = sig.action ?? pick[hz + 'Action'];
       if (side === 'buy') {
         if (!angloPickAllowed(pick.ticker, { hz, side: 'buy', rating: sig.rating }).ok) return false;
+        if (!angloFmpOk(pick.ticker, pick.fmpScore || tech?.fmpScore)) return false;
         return sig.action === 'Buy' && (sig.buyScore || 0) >= 62 && !/SL cooldown/i.test(sig.tierLabel || '');
       }
       if (!angloPickAllowed(pick.ticker, { hz, side: 'sell', rating: sig.rating }).ok) return false;
+      if (!angloFmpOk(pick.ticker, pick.fmpScore || tech?.fmpScore)) return false;
       return sig.action === 'Sell' && (sig.sellScore || 0) >= 62;
     });
   }
@@ -11867,7 +11894,7 @@ function buildTradeSpecificReason(row, hz, isSell) {
     ? (row[hz + 'SellAnalysis'] || row.sellReason || row[hz + 'Analysis'] || row.reason || '')
     : (row[hz + 'Analysis'] || row.reason || row.shortAnalysis || row.mediumAnalysis || row.longAnalysis || '');
   const why = String(whyRaw || '').trim();
-  if (why && /Setup:/.test(why) && /Invalid if/.test(why)) return why;
+  if (why && /Why (buy|sell):/i.test(why)) return why;
 
   const condKey = hz === 'short' ? '_shortConditions'
     : hz === 'medium' ? '_mediumConditions' : '_longConditions';
@@ -11875,9 +11902,9 @@ function buildTradeSpecificReason(row, hz, isSell) {
   if (!conds.length && Array.isArray(row.quantConditions) && hz === 'short') {
     conds = row.quantConditions.slice();
   }
-  if (!conds.length && why && !looksGenericReason(why) && !/Setup:/.test(why)) {
-    conds = why.split(';').map(s => s.trim()).filter(Boolean);
-  }
+  harvestConditionsFromWhy(why).forEach((c) => {
+    if (c && !conds.includes(c)) conds.push(c);
+  });
   const regimeKey = hz === 'medium' ? '_medRegime' : `_${hz}Regime`;
   return buildPreciseTradeThesis({
     hz,
@@ -11887,12 +11914,17 @@ function buildTradeSpecificReason(row, hz, isSell) {
     regime: row[regimeKey] || row._regime || '',
     conditions: conds,
     fmp: row.fmpScore,
+    fund: {
+      earningsGrowth: row.earningsGrowth,
+      revenueGrowth: row.revenueGrowth,
+      pegRatio: row.peg || row.pegRatio
+    },
     row,
+    sourceWhy: why,
     entry,
     tp1,
     tp2,
-    sl,
-    levelsText: formatLevelsReasonClause(isSell ? 'Sell' : 'Buy', entry, tp1, tp2, sl)
+    sl
   });
 }
 
@@ -13462,6 +13494,10 @@ function shouldEmitIbkrEntry(trade, hz) {
   const anglo = angloPickAllowed(trade.ticker, { hz: z, side: snap.side, rating });
   if (!anglo.ok) {
     console.log('IBKR entry skipped (US/UK policy):', snap.key, anglo.reason);
+    return false;
+  }
+  if (!angloFmpOk(trade.ticker, trade.fmpScore)) {
+    console.log('IBKR entry skipped (US/UK FMP missing):', snap.key);
     return false;
   }
   // Require min RR when TP1 exists; reject null-TP1 entries (not recommendable).

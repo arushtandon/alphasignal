@@ -48,7 +48,7 @@ test('weak FMP cuts a short buy without a track-record flag', () => {
   assert.ok(sig.conditions.some((c) => /Piotroski 2\/9/.test(c)));
 });
 
-test('thesis names the gates, FMP, fundamentals, and invalidation', () => {
+test('thesis is layman: why buy, company check, mix, levels, walk away', () => {
   const text = buildPreciseTradeThesis({
     hz: 'medium',
     isSell: false,
@@ -60,12 +60,38 @@ test('thesis names the gates, FMP, fundamentals, and invalidation', () => {
     fund: { earningsGrowth: 12, revenueGrowth: 8, pegRatio: 1.2 },
     entry: 100, tp1: 114, tp2: 122, sl: 90
   });
-  assert.match(text, /50% technical · 30% FMP · 20% fundamentals/);
-  assert.match(text, /Golden Cross/);
-  assert.match(text, /Piotroski 7\/9/);
-  assert.match(text, /EPS \+12%/);
-  assert.match(text, /R:R 1\.4x/);
-  assert.match(text, /Invalid if weekly trend flips down/);
+  assert.match(text, /Why buy:/);
+  assert.match(text, /50-day average is above the 200-day/);
+  assert.match(text, /pullback inside an uptrend/);
+  assert.match(text, /company quality from FMP \(30%\)/);
+  assert.match(text, /company finances look healthy \(7\/9/);
+  assert.match(text, /earnings grew 12%/);
+  assert.match(text, /Levels:/);
+  assert.match(text, /you stand to make about 1\.4×/);
+  assert.match(text, /Walk away if the weekly trend turns down/);
+  assert.equal(/Setup:/.test(text), false);
+  assert.equal(/Invalid if/.test(text), false);
   assert.equal(looksGenericReason(text), false);
   assert.equal(looksGenericReason('Buy @ 100 · TP1 110 · SL 90 | Strong Buy (80/100) — levels locked at signal.'), true);
+});
+
+test('old dashboard jargon is rebuilt into a why-buy thesis', () => {
+  const old = 'Buy @ 2260.5 - TP1 2368.53 (+3.7%) - TP2 2392.8 (+4.9%) - SL 2208.25 (-3.1%) - RR 1.2:1. Piotroski 8/9; SD channel: below lower band (statistical discount); At MA50 support; RSI(2) 9.7 washed out';
+  assert.equal(looksGenericReason(old), true);
+  const rebuilt = buildPreciseTradeThesis({
+    hz: 'short',
+    isSell: false,
+    rating: 'Strong Buy',
+    score: 88,
+    conditions: [],
+    sourceWhy: old,
+    fmp: { piotroski: 8 },
+    entry: 2260.5, tp1: 2368.53, tp2: 2392.8, sl: 2208.25
+  });
+  assert.match(rebuilt, /Why buy:/);
+  assert.match(rebuilt, /discount/i);
+  assert.match(rebuilt, /50-day average/);
+  assert.match(rebuilt, /oversold reading 9\.7/);
+  assert.match(rebuilt, /healthy \(8\/9/);
+  assert.match(rebuilt, /Walk away if/);
 });

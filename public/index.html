@@ -3327,6 +3327,10 @@ function filterBoardPicksForUi(picks, hz, side) {
     const rating = String(s[hz + 'Rating'] || s.rating || '');
     if (/^hold$/i.test(rating.trim()) || /SL cooldown/i.test(rating)) return false;
     if (!angloPickAllowedUi(s.ticker, hz, side, rating)) return false;
+    if (isAngloTicker(s.ticker)) {
+      var fm = s.fmpScore;
+      if (!fm || (fm.piotroski == null && fm.qualityScore == null && fm.altmanZ == null)) return false;
+    }
     if (isSell) {
       return action === 'Sell' && (s[hz + 'SellScore'] || 0) >= 62;
     }
@@ -5090,84 +5094,189 @@ const _HZ_MIX = {
 function _looksGenericReason(text) {
   var t = String(text || '').trim();
   if (!t) return true;
+  if (/Why (buy|sell):/i.test(t)) return false;
   if (/^quant signal$/i.test(t) || /^setup note$/i.test(t)) return true;
   if (/levels locked at signal/i.test(t)) return true;
   if (/^Buy @ .+ \| (Strong )?Buy \(\d+\/100\)/i.test(t)) return true;
   if (/^Sell @ .+ \| (Strong )?Sell \(\d+\/100\)/i.test(t)) return true;
+  if (/Setup:/.test(t) && /Invalid if/.test(t)) return true;
+  if (/TP1 /.test(t) && /SL /.test(t) && !/Why (buy|sell):/i.test(t)) return true;
   return false;
 }
 
-function buildClientTradeThesis(s, hz, isSell, levelsTxt) {
+function _plainEnglishCondition(raw) {
+  var t = String(raw || '').trim();
+  if (!t) return '';
+  var m;
+  if (/SD channel: below lower band/i.test(t)) return 'the share price has dropped below its usual recent range (a discount)';
+  if (/SD channel: near lower band/i.test(t)) return 'the share price is near the cheap end of its recent range';
+  if (/SD channel: above upper band/i.test(t) || /SD top/i.test(t)) return 'the share price has stretched above its usual recent range';
+  if (/SD channel pullback in uptrend/i.test(t) || /SD channel VCP/i.test(t)) return 'this is a pullback inside an uptrend, not a breakdown';
+  if (/At MA50 support/i.test(t)) return 'it is holding at the 50-day average (a common bounce level)';
+  if (/At MA20 support/i.test(t)) return 'it is holding at the 20-day average';
+  m = t.match(/At support\s+\$?([\d.]+)/i);
+  if (m) return 'it is sitting on a known floor around ' + m[1];
+  m = t.match(/At resistance\s+\$?([\d.]+)/i);
+  if (m) return 'it is hitting a known ceiling around ' + m[1];
+  m = t.match(/RSI\(2\)\s*([\d.]+)\s*washed/i);
+  if (m) return 'very short-term selling looks exhausted (oversold reading ' + m[1] + ')';
+  m = t.match(/RSI\(2\)\s*([\d.]+)\s*(oversold|overbought)/i);
+  if (m) return 'very short-term ' + (m[2].toLowerCase() === 'overbought' ? 'buying' : 'selling') + ' is stretched (' + m[2].toLowerCase() + ' reading ' + m[1] + ')';
+  m = t.match(/RSI\s+([\d.]+)\s*(oversold|overbought)/i);
+  if (m) return 'the stock looks ' + m[2].toLowerCase() + ' on the usual 14-day reading (' + m[1] + ')';
+  if (/Stochastic/i.test(t) && /oversold/i.test(t)) return 'another short-term oscillator also says the dip is stretched';
+  if (/Stochastic/i.test(t) && /overbought/i.test(t)) return 'another short-term oscillator also says the rally is stretched';
+  if (/MACD turning up/i.test(t)) return 'momentum has just started to turn up';
+  if (/MACD bearish/i.test(t)) return 'momentum is still pointing down';
+  if (/Golden Cross/i.test(t) || /MA200 bull regime/i.test(t)) return 'the 50-day average is above the 200-day average (an uptrend)';
+  if (/Above MA200/i.test(t) || /primary uptrend/i.test(t)) return 'price is still above the 200-day average (longer-term uptrend intact)';
+  if (/Below MA200/i.test(t) || /bear regime/i.test(t) || /BEAR BREAKDOWN/i.test(t)) return 'price has broken below the 200-day average (longer-term downtrend)';
+  if (/Death Cross/i.test(t)) return 'the 50-day average has crossed below the 200-day (downtrend)';
+  if (/Weekly uptrend/i.test(t)) return 'the weekly chart is still rising';
+  if (/Weekly downtrend/i.test(t)) return 'the weekly chart is falling';
+  if (/Supertrend .+ Strong Buy/i.test(t) || /fresh bull flip/i.test(t)) return 'the trend filter has just flipped up';
+  if (/Supertrend .+ Strong Sell/i.test(t) || /fresh bear flip/i.test(t)) return 'the trend filter has just flipped down';
+  if (/Supertrend .+ bullish/i.test(t)) return 'the trend filter is pointing up';
+  if (/Supertrend .+ bearish/i.test(t)) return 'the trend filter is pointing down';
+  m = t.match(/Piotroski\s+(\d+)\/9/i);
+  if (m) {
+    var n = Number(m[1]);
+    return n >= 7 ? 'company financial health is strong (' + n + '/9)' : n >= 5 ? 'company financial health is average (' + n + '/9)' : 'company financial health is weak (' + n + '/9)';
+  }
+  if (/Fade short/i.test(t)) return 'this is a fade of an overbought spike back toward average, not a long-term short';
+  if (/Strict short/i.test(t)) return 'this is a breakdown short (trend already down, not a guess at a top)';
+  if (/FMP required/i.test(t) || /no company-quality numbers/i.test(t)) return 'this listing returned no company-quality numbers from FMP, so we will not recommend it';
+  return t;
+}
+
+function _harvestConditionsFromWhy(why) {
+  var t = String(why || '');
+  if (!t) return [];
+  var out = [];
+  function push(s) {
+    var x = String(s || '').trim().replace(/[.;]+$/, '');
+    if (x && out.indexOf(x) < 0) out.push(x);
+  }
+  var pats = [
+    /Piotroski\s+\d+\/9/i,
+    /FMP quality\s+[\d.]+\/10/i,
+    /Altman Z\s+[\d.]+(?:\s*\([^)]+\))?/i,
+    /SD channel:[^;.]+/i,
+    /SD channel pullback in uptrend/i,
+    /At MA\d+ support/i,
+    /At support\s+\$?[\d.]+/i,
+    /At resistance\s+\$?[\d.]+/i,
+    /RSI\(2\)\s*[\d.]+\s*(?:washed out|oversold|overbought)/i,
+    /RSI\s+[\d.]+\s*(?:oversold|overbought)/i,
+    /Golden Cross/i,
+    /Death Cross/i,
+    /Above MA200[^;.]*/i,
+    /Below MA200[^;.]*/i,
+    /Weekly (?:uptrend|downtrend)/i,
+    /Supertrend[^;.]*/i,
+    /MACD turning up/i,
+    /MACD bearish[^;.]*/i,
+    /EPS [+\-]?\d+%/i,
+    /Revenue [+\-]?\d+%/i
+  ];
+  pats.forEach(function (p) { var m = t.match(p); if (m) push(m[0]); });
+  t.split(';').forEach(function (chunk) {
+    var c = chunk.trim();
+    if (!c || /^(Buy|Sell) @/i.test(c) || /TP1 |^SL |RR |R:R /.test(c)) return;
+    if (c.length > 6 && c.length < 140) push(c);
+  });
+  return out;
+}
+
+function _companyHealthLine(s) {
+  var bits = [];
+  var fmp = (s && s.fmpScore && typeof s.fmpScore === 'object') ? s.fmpScore : {};
+  var pio = fmp.piotroski != null ? Number(fmp.piotroski) : null;
+  var qs = fmp.qualityScore != null ? Number(fmp.qualityScore) : null;
+  var az = fmp.altmanZ != null ? Number(fmp.altmanZ) : null;
+  if (pio != null && isFinite(pio)) {
+    bits.push(pio >= 7 ? 'company finances look healthy (' + pio + '/9 on the standard 9-point score)' : pio >= 5 ? 'company finances are average (' + pio + '/9)' : 'company finances look weak (' + pio + '/9)');
+  } else if (qs != null && isFinite(qs)) {
+    bits.push(qs >= 7 ? 'overall quality score is strong (' + qs + '/10)' : qs <= 4 ? 'overall quality score is weak (' + qs + '/10)' : 'overall quality score is moderate (' + qs + '/10)');
+  }
+  if (az != null && isFinite(az)) {
+    bits.push(az > 2.99 ? 'low bankruptcy-risk reading (' + az.toFixed(1) + ')' : az > 1.81 ? 'mixed bankruptcy-risk reading (' + az.toFixed(1) + ')' : 'high bankruptcy-risk reading (' + az.toFixed(1) + ')');
+  }
+  var eps = parseFloat(s && s.earningsGrowth);
+  var rev = parseFloat(s && s.revenueGrowth);
+  if (isFinite(eps)) bits.push('earnings ' + (eps >= 0 ? 'grew' : 'fell') + ' ' + Math.abs(eps) + '% vs last year');
+  if (isFinite(rev)) bits.push('sales ' + (rev >= 0 ? 'grew' : 'fell') + ' ' + Math.abs(rev) + '% vs last year');
+  return bits;
+}
+
+function _laymanLevels(isSell, entry, tp1, tp2, sl) {
+  var e = parseFloat(entry), t1 = parseFloat(tp1), t2 = parseFloat(tp2), stop = parseFloat(sl);
+  if (!(e > 0)) return '';
+  var pct = function (from, to) {
+    if (!(from > 0) || !(to > 0)) return '';
+    var p = ((to - from) / from) * 100;
+    return ' (' + (p >= 0 ? '+' : '−') + Math.abs(p).toFixed(1) + '%)';
+  };
+  var parts = [(isSell ? 'Sell' : 'Buy') + ' at ' + roundDashPrice(e)];
+  if (t1 > 0) parts.push('first profit at ' + roundDashPrice(t1) + pct(e, t1));
+  if (t2 > 0) parts.push('runner profit at ' + roundDashPrice(t2) + pct(e, t2));
+  if (stop > 0) {
+    parts.push('cut the trade at ' + roundDashPrice(stop) + pct(e, stop));
+    var risk = Math.abs(e - stop);
+    var reward = t1 > 0 ? Math.abs(t1 - e) : 0;
+    if (risk > 0 && reward > 0) parts.push('you stand to make about ' + (reward / risk).toFixed(1) + '× what you risk');
+  }
+  return parts.join('. ') + '.';
+}
+
+function _walkAwayLine(hz, isSell, regime) {
+  if (isSell) {
+    return hz === 'short'
+      ? 'Walk away if buying comes back (momentum turns up) or the spike just dies without follow-through.'
+      : 'Walk away if the stock closes back above the 50-day average on a weekly basis, or momentum and buying turn up together.';
+  }
+  if (hz === 'short') return 'Walk away if the 20-day and 50-day averages both break, or the stock prints four more lower closes — that is a fall, not a dip.';
+  if (hz === 'long') return 'Walk away if price closes back below the 200-day average, or yearly earnings growth turns negative.';
+  if (regime === 'bull') return 'Walk away if the weekly trend turns down or price closes below the 50-day average.';
+  return 'Walk away if it loses the 200-day average or the middle of its recent range on rising volume.';
+}
+
+function buildClientTradeThesis(s, hz, isSell, entry, tp1, tp2, sl, sourceWhy) {
   var condKey = hz === 'short' ? '_shortConditions' : hz === 'medium' ? '_mediumConditions' : '_longConditions';
-  var conds = (s[condKey] || (hz === 'short' ? s.quantConditions : []) || []).slice(0, 8);
+  var conds = (s[condKey] || (hz === 'short' ? s.quantConditions : []) || []).slice();
+  _harvestConditionsFromWhy(sourceWhy).forEach(function (c) { if (c && conds.indexOf(c) < 0) conds.push(c); });
   var rating = s[hz + 'Rating'] || s.rating || (isSell ? 'Sell' : 'Buy');
   var score = isSell ? (s[hz + 'SellScore'] || s.sellScore) : (s[hz + 'Score'] || s.buyScore);
   var regime = s[(hz === 'medium' ? '_medRegime' : '_' + hz + 'Regime')] || s._regime || '';
-  var mix = s[hz + 'Weighting'] || _HZ_MIX[hz];
-  var hzLabel = hz.charAt(0).toUpperCase() + hz.slice(1);
   var period = hz === 'short' ? '1 day–1 month' : hz === 'medium' ? '1–3 months' : '4–12 months';
-  var fmp = (s.fmpScore && typeof s.fmpScore === 'object') ? s.fmpScore : {};
-  var fmpBits = [];
-  if (fmp.piotroski != null) fmpBits.push('Piotroski ' + fmp.piotroski + '/9');
-  if (fmp.qualityScore != null) fmpBits.push('quality ' + fmp.qualityScore + '/10');
-  if (fmp.altmanZ != null) {
-    var az = Number(fmp.altmanZ);
-    fmpBits.push('Altman Z ' + az.toFixed(1) + (az > 2.99 ? ' (safe)' : az > 1.81 ? ' (grey)' : ' (distress)'));
-  }
-  var fundBits = [];
-  if (s.earningsGrowth) fundBits.push('EPS ' + s.earningsGrowth + (String(s.earningsGrowth).indexOf('%') >= 0 ? '' : '%') + ' YoY');
-  if (s.revenueGrowth) fundBits.push('rev ' + s.revenueGrowth + (String(s.revenueGrowth).indexOf('%') >= 0 ? '' : '%') + ' YoY');
-  if (s.peg) fundBits.push('PEG ' + s.peg);
-  var setup = [];
-  if (regime && regime !== 'neutral') setup.push(regime + ' regime');
-  conds.forEach(function (c) { if (c) setup.push(c); });
-  var inv = isSell
-    ? (hz === 'short'
-      ? 'Invalid if RSI turns up with MACD, or the extension collapses back through the channel mean without follow-through.'
-      : 'Invalid if price reclaims MA50 on a weekly close, or RSI/MACD turn up together (bear-rally / squeeze).')
-    : (hz === 'short'
-      ? 'Invalid if MA20 and MA50 both fail, or four more lower closes print (knife, not a dip).'
-      : hz === 'long'
-        ? 'Invalid if price closes back below MA200, or earnings growth turns negative.'
-        : regime === 'bull'
-          ? 'Invalid if weekly trend flips down or price closes below MA50.'
-          : 'Invalid if the name loses MA200 or the SD-channel mean with rising volume.');
-  return hzLabel + ' (' + period + ') ' + rating + (score != null ? ' (' + score + '/100)' : '')
-    + ' — ' + mix + '. Setup: ' + (setup.length ? setup.join('; ') : (isSell ? 'sell gates met' : 'buy gates met'))
-    + (fmpBits.length ? '. FMP: ' + fmpBits.join(', ') : '')
-    + (fundBits.length ? '. Fundamentals: ' + fundBits.join(', ') : '')
-    + '. ' + (levelsTxt ? 'Trade: ' + levelsTxt + '. ' : '') + inv;
+  var mix = hz === 'short' ? { t: 75, f: 15, u: 10 } : hz === 'medium' ? { t: 50, f: 30, u: 20 } : { t: 35, f: 30, u: 35 };
+  var health = _companyHealthLine(s);
+  var chartBits = [];
+  if (regime === 'bull') chartBits.push('the broader trend on this name is still up');
+  if (regime === 'bear') chartBits.push('the broader trend on this name is down');
+  conds.forEach(function (c) {
+    if (/Piotroski|FMP quality|Altman|EPS |Revenue /i.test(String(c || '')) && health.length) return;
+    var p = _plainEnglishCondition(c);
+    if (p && chartBits.indexOf(p) < 0 && health.indexOf(p) < 0) chartBits.push(p);
+  });
+  var why = (isSell ? 'Why sell: ' : 'Why buy: ') + (chartBits.length
+    ? chartBits.slice(0, 5).join('; ') + '.'
+    : (isSell ? 'The chart and company checks line up for a short on this timeframe.' : 'The chart and company checks line up for a dip-buy on this timeframe.'));
+  var based = 'Based on: the price chart (' + mix.t + '%), company quality from FMP (' + mix.f + '%), and earnings/sales (' + mix.u + '%) — ' + period + ' view' + (score != null && score !== '' ? ', conviction ' + score + '/100 (' + rating + ')' : ' (' + rating + ')') + '.';
+  var company = health.length ? ('Company check: ' + health.join('; ') + '.') : '';
+  var levels = _laymanLevels(isSell, entry, tp1, tp2, sl);
+  var trade = levels ? ('Levels: ' + levels) : '';
+  return [why, based, company, trade, _walkAwayLine(hz, isSell, regime)].filter(Boolean).join(' ');
 }
 
-/** Trade-specific buy/sell reason: mix, gates that fired, FMP/fund numbers, levels, invalidation. */
+/** Trade-specific buy/sell reason in plain English. Rebuilds old jargon cards. */
 function formatRecommendedReason(s, hz, isSell, entry, tp1, tp2, sl) {
-  const e = parseFloat(entry), t1 = parseFloat(tp1), t2 = parseFloat(tp2), stop = parseFloat(sl);
-  const pct = function(from, to) {
-    if (!(from > 0) || !(to > 0)) return '';
-    const p = ((to - from) / from) * 100;
-    return ' (' + (p >= 0 ? '+' : '−') + Math.abs(p).toFixed(1) + '%)';
-  };
-  const levels = [];
-  if (e > 0) levels.push((isSell ? 'Sell' : 'Buy') + ' @ ' + roundDashPrice(e));
-  if (t1 > 0) levels.push('TP1 ' + roundDashPrice(t1) + pct(e, t1));
-  if (t2 > 0) levels.push('TP2 ' + roundDashPrice(t2) + pct(e, t2));
-  if (stop > 0) {
-    levels.push('SL ' + roundDashPrice(stop) + pct(e, stop));
-    const risk = Math.abs(e - stop);
-    const reward = t1 > 0 ? Math.abs(t1 - e) : 0;
-    if (risk > 0 && reward > 0) levels.push('R:R ' + (reward / risk).toFixed(1) + 'x');
-  }
-  const levelsTxt = levels.join(' · ');
   let why = isSell
     ? (s[hz + 'SellAnalysis'] || s.sellReason || s[hz + 'Analysis'] || s.reason || '')
     : (s[hz + 'Analysis'] || s.reason || s.shortAnalysis || s.mediumAnalysis || s.longAnalysis || '');
   why = String(why || '').trim();
-  if (why && /Setup:/.test(why) && /Invalid if/.test(why)) return why;
-  if (_looksGenericReason(why) || !why || /levels locked at signal/i.test(why)) {
-    return buildClientTradeThesis(s, hz, isSell, levelsTxt);
-  }
-  if (levelsTxt && why.indexOf('TP1 ') >= 0 && why.indexOf('SL ') >= 0) return why;
-  return buildClientTradeThesis(s, hz, isSell, levelsTxt);
+  if (why && /Why (buy|sell):/i.test(why)) return why;
+  return buildClientTradeThesis(s, hz, isSell, entry, tp1, tp2, sl, why);
 }
 
 function exportRecommendedTrades() {
@@ -6173,7 +6282,7 @@ const CHART_DEFAULT_BY_HZ = { short: '1H', medium: '3M', long: '1Y' };
 
 function buildChartHtml(ticker, entry, tp1, tp2, sl, action, hz, conditions) {
   hz = hz || 'short';
-  conditions = conditions || [];
+  conditions = (conditions || []).map(_plainEnglishCondition).filter(Boolean);
   const tid = ticker.replace(/[^a-z0-9]/gi,'_');
   const e2 = (entry||'').replace(/"/g,'');
   const t1 = (tp1||'').replace(/"/g,'');
@@ -6205,7 +6314,7 @@ function buildChartHtml(ticker, entry, tp1, tp2, sl, action, hz, conditions) {
         return '<div style="display:flex;align-items:flex-start;gap:5px;font-size:9px;color:rgba(200,210,220,0.85);margin-bottom:2px">'
           + '<span style="color:var(--buy);flex-shrink:0">▸</span><span>'+c+'</span></div>';
       }).join('')
-    + '<div style="font-size:7px;color:rgba(120,130,150,0.55);margin-top:6px">Gates from the technical engine + FMP + fundamentals for this timeframe</div>'
+    + '<div style="font-size:7px;color:rgba(120,130,150,0.55);margin-top:6px">Chart, company quality (FMP), and earnings/sales for this timeframe</div>'
     + '</div>'
   ) : '<div id="chartwhy_'+tid+'"></div>';
   return '<div class="chart-tabs" id="ctabs_'+tid+'">'+tabs+'</div>'
@@ -6411,7 +6520,7 @@ async function fetchEarningsForTicker(ticker) {
           +'<div style="font-size:10px;color:var(--m2);margin-top:4px">Last calendar date from data: '+new Date(data.nextEarningsDate+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})+' · '+srcTag+'</div>';
       } else {
         nextEl.innerHTML='<div style="font-size:12px;color:var(--tx)">Next date not yet announced</div>'
-          +'<div style="font-size:9px;color:var(--m2);margin-top:2px">Merged Finnhub · FMP · Yahoo — check API keys on host if blank.</div>';
+          +'<div style="font-size:9px;color:var(--m2);margin-top:2px">Merged Finnhub · FMP · Yahoo — this listing has no dated print yet.</div>';
       }
     }
     if(histEl) {
@@ -6684,8 +6793,8 @@ function renderCard(s){
     } else {
       _fmpCard =
         '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(0,200,120,0.15);border-radius:8px;padding:9px 11px;margin-bottom:4px">'
-        + '<div style="font-size:9px;font-weight:600;color:rgba(0,200,120,0.75);font-family:DM Mono,monospace;margin-bottom:4px">FMP SCORE UNAVAILABLE</div>'
-        + '<div style="font-size:8px;color:rgba(180,180,180,0.55);font-family:DM Mono,monospace;line-height:1.5">If the server key is already set: FMP sometimes returns no score for this listing—try HK pad variants (<code>09988.HK</code> vs <code>9988.HK</code>) or verify on <code>/api/health</code> (<code>fmp.key_resolved</code>). Otherwise add <strong>FMP_API_KEY</strong> or <strong>FINANCIAL_MODELING_PREP_API_KEY</strong> on Render.</div></div>';
+        + '<div style="font-size:9px;font-weight:600;color:rgba(0,200,120,0.75);font-family:DM Mono,monospace;margin-bottom:4px">FMP SCORE UNAVAILABLE FOR THIS LISTING</div>'
+        + '<div style="font-size:8px;color:rgba(180,180,180,0.55);font-family:DM Mono,monospace;line-height:1.5">The FMP key is already on the server. This ticker simply returned no quality / Piotroski / Altman numbers (common for some HK pad variants such as <code>09988.HK</code> vs <code>9988.HK</code>). US/UK names without a score are held, not recommended.</div></div>';
     }
   }
   const ac=aCls(s.action);
@@ -6835,6 +6944,23 @@ function renderCard(s){
       return hz;
     });
   }
+
+  horizons.forEach(function (h) {
+    var isS = String(h.action || '').toLowerCase() === 'sell';
+    var e = isS ? (h.sellEntry || h.entry) : h.entry;
+    var t1 = isS ? (h.sellTp1 || h.tp1) : h.tp1;
+    var t2 = isS ? (h.sellTp2 || h.tp2) : h.tp2;
+    var sv = isS ? (h.sellSl || h.sl) : h.sl;
+    if (h.action === 'Buy' || h.action === 'Sell') {
+      h.analysis = formatRecommendedReason(s, h.key, isS, e, t1, t2, sv);
+    }
+    var seen = {};
+    h.conditions = (h.conditions || []).map(_plainEnglishCondition).filter(function (c) {
+      if (!c || seen[c]) return false;
+      seen[c] = true;
+      return true;
+    });
+  });
 
   const cid = 'chart_'+s.ticker.replace(/[^a-z0-9]/gi,'_');
 
@@ -7160,7 +7286,7 @@ function switchHzTab(tickerId, hzKey) {
   });
   const whyEl = document.getElementById('chartwhy_' + tickerId);
   if (whyEl) {
-    const conds = hz.conditions || [];
+    const conds = (hz.conditions || []).map(_plainEnglishCondition).filter(Boolean);
     if (conds.length) {
       whyEl.innerHTML = '<div style="font-size:9px;color:rgba(140,150,170,0.8);letter-spacing:0.06em;margin-bottom:5px;text-transform:uppercase">'
         + (isSell ? 'Why Short / Sell' : 'Why Long / Buy') + '</div>'
@@ -7168,7 +7294,7 @@ function switchHzTab(tickerId, hzKey) {
             return '<div style="display:flex;align-items:flex-start;gap:5px;font-size:9px;color:rgba(200,210,220,0.85);margin-bottom:2px">'
               + '<span style="color:var(--buy);flex-shrink:0">▸</span><span>'+c+'</span></div>';
           }).join('')
-        + '<div style="font-size:7px;color:rgba(120,130,150,0.55);margin-top:6px">Gates from the technical engine + FMP + fundamentals for this timeframe</div>';
+        + '<div style="font-size:7px;color:rgba(120,130,150,0.55);margin-top:6px">Chart, company quality (FMP), and earnings/sales for this timeframe</div>';
       whyEl.style.display = 'block';
     } else {
       whyEl.innerHTML = '';
