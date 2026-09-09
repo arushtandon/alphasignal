@@ -2698,19 +2698,31 @@ async function tickIbkrMtm(kind){
     if (uEl) { uEl.textContent = ibkrFp(d.totals.unrealizedUsd); uEl.style.color = ibkrPc(d.totals.unrealizedUsd); }
     if (rEl) { rEl.textContent = ibkrFp(d.totals.realizedUsd); rEl.style.color = ibkrPc(d.totals.realizedUsd); }
     if (cEl) {
-      const comm = (d.expenses && d.expenses.totalUsd != null) ? d.expenses.totalUsd : d.totals.commissionUsd;
-      cEl.textContent = comm == null ? '—' : '-$'+Math.abs(comm).toFixed(2);
-      cEl.style.color = (comm > 0) ? 'var(--sell)' : 'var(--m1)';
-      const cSub = document.getElementById(pfx+'CardCommSub');
       const exp = d.expenses || {};
+      const commOnly = (Number(exp.commissionUsd) || 0) + (Number(exp.otherUsd) || 0);
+      cEl.textContent = commOnly ? '-$'+Math.abs(commOnly).toFixed(2) : '—';
+      cEl.style.color = commOnly > 0 ? 'var(--sell)' : 'var(--m1)';
+      const cSub = document.getElementById(pfx+'CardCommSub');
       if (cSub) {
         const bits = [
           exp.commissionUsd != null ? ('comm $' + Math.abs(exp.commissionUsd).toFixed(2)) : null,
-          exp.stampDutyUsd ? ('stamp $' + Math.abs(exp.stampDutyUsd).toFixed(2)) : null,
           exp.otherUsd ? ('accrued $' + Math.abs(exp.otherUsd).toFixed(2)) : null,
           exp.dividendUsd ? ('div +$' + Math.abs(exp.dividendUsd).toFixed(2)) : null
         ].filter(Boolean);
         if (bits.length) cSub.textContent = bits.join(' · ') + ' · not subtracted again in Net';
+      }
+    }
+    const sEl = document.getElementById(pfx+'CardStamp');
+    if (sEl) {
+      const stamp = Number((d.expenses && d.expenses.stampDutyUsd) || d.totals.stampDutyUsd) || 0;
+      sEl.textContent = stamp ? '-$'+Math.abs(stamp).toFixed(2) : '—';
+      sEl.style.color = stamp > 0 ? 'var(--sell)' : 'var(--m1)';
+      const sSub = document.getElementById(pfx+'CardStampSub');
+      if (sSub) {
+        const openS = Number(d.totals.openStampDutyUsd) || 0;
+        sSub.textContent = (d.stampDuty && d.stampDuty.totalGbp ? ('£'+Math.abs(d.stampDuty.totalGbp).toFixed(0)+' UK · ') : '')
+          + (openS ? ('open $'+openS.toFixed(2)+' · ') : '')
+          + 'closed stamp already in realised';
       }
     }
     if (nEl) {
@@ -2857,14 +2869,19 @@ async function renderIbkr(force, kind){
     const acct = d.account || {};
     const balSub = acct.account ? ('IB '+acct.account+(acct.at ? ' · '+String(acct.at).slice(11,19)+'Z' : '')) : 'from TWS account window';
     const exp = d.expenses || {};
-    const expTotal = exp.totalUsd != null ? exp.totalUsd : (tt.commissionUsd || 0);
+    const stampUsd = Number(exp.stampDutyUsd != null ? exp.stampDutyUsd : tt.stampDutyUsd) || 0;
+    const commTileUsd = (Number(exp.commissionUsd) || 0) + (Number(exp.otherUsd) || 0);
     const expSub = [
       exp.commissionUsd != null ? ('comm $' + Math.abs(exp.commissionUsd).toFixed(2)) : null,
-      exp.stampDutyUsd ? ('stamp $' + Math.abs(exp.stampDutyUsd).toFixed(2)) : null,
       exp.otherUsd ? ('accrued $' + Math.abs(exp.otherUsd).toFixed(2)) : null,
       exp.dividendUsd ? ('div +$' + Math.abs(exp.dividendUsd).toFixed(2)) : null,
       exp.errorCommissionUsd ? ('error $' + Math.abs(exp.errorCommissionUsd).toFixed(2) + ' excluded') : null
-    ].filter(Boolean).join(' · ') || 'click for full detail';
+    ].filter(Boolean).join(' · ') || 'click for fill-level commissions';
+    const stampSub = [
+      exp.stampDutyGbp ? ('£' + Math.abs(exp.stampDutyGbp).toFixed(2) + ' UK SDRT') : null,
+      (tt.openStampDutyUsd) ? ('open $' + Math.abs(tt.openStampDutyUsd).toFixed(2)) : null,
+      'UK · HK · FR/IT/ES FTT · IN STT · click for lots'
+    ].filter(Boolean).join(' · ');
     const liqPct = acct.liquidityPct;
     const liqSub = liqPct != null
       ? (liqPct.toFixed(1) + '% of balance · cash − margins'
@@ -2899,11 +2916,16 @@ async function renderIbkr(force, kind){
       + tile(pfx+'CardToday','Today realised', fp(todayReal), 'fills · '+todayKey, pc(todayReal))
       + tile(pfx+'CardReal','Total realised (net)', fp(tt.realizedUsd),
           'already after closed comm · '+tt.closedCount+' closed', pc(tt.realizedUsd))
-      + tileClick(pfx+'CardComm','Brokerage, dividends & charges',
-          expTotal?ibkrMoney2(-Math.abs(expTotal)):'—',
+      + tileClick(pfx+'CardComm','Commissions & charges',
+          commTileUsd?ibkrMoney2(-Math.abs(commTileUsd)):'—',
           expSub + ' · not subtracted again in Net',
-          expTotal?'var(--sell)':'var(--m1)',
+          commTileUsd?'var(--sell)':'var(--m1)',
           'showIbkrExpenses(\''+kind+'\')')
+      + tileClick(pfx+'CardStamp','Stamp duty / FTT',
+          stampUsd?ibkrMoney2(-Math.abs(stampUsd)):'—',
+          stampSub,
+          stampUsd?'var(--sell)':'var(--m1)',
+          'showIbkrStampDuty(\''+kind+'\')')
       + tile(pfx+'CardUnreal','Unrealised', fp(tt.unrealizedUsd), tt.openCount+' open', pc(tt.unrealizedUsd))
       + tile(pfx+'CardNet','Net PnL', fp(net),
           fp(tt.realizedUsd)+' realised + '+fp(tt.unrealizedUsd)+' unrealised − '
@@ -2931,7 +2953,9 @@ async function renderIbkr(force, kind){
         +'<div style="font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--m2);font-family:DM Sans,sans-serif;font-weight:600;padding:0 8px 5px">Daily realised PnL (USD)</div>'
         +'<table style="width:100%;border-collapse:collapse"><thead><tr>'
         + th('left')+'Date</th>'+th('right')+'Realised</th>'+th('right')+'Cumulative</th>'
-        +'</tr></thead><tbody>'+rows+'</tbody></table></div>';
+        +'</tr></thead><tbody>'+rows+'</tbody></table>'
+        +'<div style="font-size:10px;color:var(--m2);padding:8px 8px 4px;line-height:1.4">Cumulative equals Total realised (net of closed commission and stamp/FTT).</div>'
+        +'</div>';
     }
 
     const modelTrades = d.trades.filter(t => !t.errorTrade);
@@ -3012,7 +3036,7 @@ async function renderIbkr(force, kind){
       closedBucketUsd = exitTypes.reduce((s,x)=>s+exitPnlUnits(x).reduce((a,t)=>a+(t.realizedUsd||0),0),0);
       openTp1Usd = exitPnlUnits('tp1 banked — runner live').reduce((s,t)=>s+(t.realizedUsd||0),0);
     }
-    const hzRows = ['short','medium','long'].map(h => statRow(h.toUpperCase(), closed.filter(t=>t.hz===h)));
+    const hzRows = ['short','medium','long'].map(h => statRow(h.toUpperCase(), closed.filter(t => (t.hz || 'short') === h)));
     const sideRows = ['buy','sell'].map(s => statRow(s.toUpperCase(), closed.filter(t=>t.side===s)));
     const slips = modelTrades.filter(t=>t.rec && t.rec.entry>0 && t.avgEntry>0)
       .map(t => Math.abs(t.avgEntry - t.rec.entry)/t.rec.entry*10000);
@@ -3237,6 +3261,59 @@ function showIbkrExpenses(kind){
     + '<button onclick="document.getElementById(\'ibkrExpenseModal\').remove()" style="background:transparent;border:1px solid var(--b1);color:var(--m1);border-radius:6px;padding:4px 10px;cursor:pointer">Close</button>'
     + '</div>'
     + bodyHtml + '</div>';
+  document.body.appendChild(modal);
+}
+
+/** Dedicated stamp / FTT / STT box — same rows as the brokerage stamp section. */
+function showIbkrStampDuty(kind){
+  const d = ibkrBookPayload(kind);
+  if (!d) { alert('IBKR data not loaded yet'); return; }
+  const sd = d.stampDuty || {};
+  const rows = (sd.rows && sd.rows.length) ? sd.rows : ((d.expenses && d.expenses.rows) || []).filter(function(r){
+    return r && (r.section === 'stamp-duty' || r.section === 'error-stamp-duty' || String(r.type||'').indexOf('stamp')>=0);
+  });
+  const total = Number(sd.totalUsd != null ? sd.totalUsd : (d.expenses && d.expenses.stampDutyUsd)) || 0;
+  const existing = document.getElementById('ibkrStampModal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'ibkrStampModal';
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.onclick = function(ev){ if (ev.target === modal) modal.remove(); };
+  const body = rows.length
+    ? '<table style="width:100%;border-collapse:collapse"><thead><tr>'
+      + '<th style="text-align:left;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Time</th>'
+      + '<th style="text-align:left;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Equity</th>'
+      + '<th style="text-align:left;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Fill</th>'
+      + '<th style="text-align:left;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Tax</th>'
+      + '<th style="text-align:right;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">Native</th>'
+      + '<th style="text-align:right;padding:4px 8px;font-size:8px;color:var(--m1);text-transform:uppercase">USD</th>'
+      + '</tr></thead><tbody>'
+      + rows.map(function(r){
+          const amt = r.amountUsd != null ? r.amountUsd : r.amount;
+          const fillTxt = (r.side || r.qty != null || r.price != null)
+            ? (String(r.side||'').toUpperCase() + (r.qty!=null?(' '+r.qty):'') + (r.price!=null?(' @ '+r.price):'') + (r.role?(' · '+r.role):''))
+            : '—';
+          return '<tr>'
+            + '<td style="padding:6px 8px;font-size:10px;color:var(--m2);font-family:DM Mono,monospace">'+(r.time?String(r.time).slice(0,19):'—')+'</td>'
+            + '<td style="padding:6px 8px;font-size:11px;color:var(--t1);font-weight:600">'+(r.ticker||'—')+'</td>'
+            + '<td style="padding:6px 8px;font-size:10px;color:var(--m2);font-family:DM Mono,monospace">'+fillTxt+'</td>'
+            + '<td style="padding:6px 8px;font-size:10px;color:var(--t1)">'+(r.feeType||r.label||r.type||'stamp')+'</td>'
+            + '<td style="padding:6px 8px;font-size:10px;color:var(--m2);text-align:right;font-family:DM Mono,monospace">'+(r.currency||'')+' '+(r.amount!=null?Number(r.amount).toFixed(2):'—')+'</td>'
+            + '<td style="padding:6px 8px;font-size:11px;color:var(--sell);text-align:right;font-family:DM Mono,monospace;font-weight:600">-$'+Math.abs(Number(amt)||0).toFixed(2)+'</td>'
+            + '</tr>';
+        }).join('')
+      + '</tbody></table>'
+    : '<div style="padding:16px;color:var(--m2);font-size:12px">No stamp / FTT / STT lots yet. UK buys, HK both sides, France/Italy/Spain buys, and India delivery trades populate this box.</div>';
+  modal.innerHTML = '<div style="background:var(--s0,#111);border:1px solid var(--b1);border-radius:12px;max-width:980px;width:100%;max-height:80vh;overflow:auto;padding:18px 16px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+    + '<div><div style="font-size:13px;font-weight:600;color:var(--t1)">Stamp duty / FTT / STT</div>'
+    + '<div style="font-size:10px;color:var(--m2);font-family:DM Mono,monospace;margin-top:4px">Total -$'+Math.abs(total).toFixed(2)
+    + (sd.totalGbp ? ' · UK SDRT £'+Math.abs(sd.totalGbp).toFixed(2) : '')
+    + ' · closed lots sit inside Total realised; open-lot tax is taken out of Net PnL</div></div>'
+    + '<button onclick="document.getElementById(\'ibkrStampModal\').remove()" style="background:transparent;border:1px solid var(--b1);color:var(--m1);border-radius:6px;padding:4px 10px;cursor:pointer">Close</button>'
+    + '</div>'
+    + '<div style="font-size:10px;color:var(--m2);line-height:1.45;margin-bottom:10px">UK SDRT 0.5% on buys · HK stamp 0.1% both sides · France FTT 0.4% on buys · Italy/Spain FTT 0.2% on buys · India STT 0.1% both sides. Tape print stays clean.</div>'
+    + body + '</div>';
   document.body.appendChild(modal);
 }
 

@@ -60,6 +60,11 @@ const {
   shouldSkipStampInflatedAvgCorrect,
   isStampInflatedCorrectedFill
 } = require('./lib/ibkr/stamp-duty');
+const {
+  accumulateLotDaily,
+  reconcileDailyToTotal,
+  toDailyArray
+} = require('./lib/ibkr/daily-realized');
 const { fifoLotEconomics } = require('./lib/ibkr/fifo-lots');
 const { IBKR_ERROR_PANEL_START, dropArchivedErrorPanelLots } = require('./lib/ibkr/error-panel');
 const { officialFuturesSettlePx, officialFuturesSettleDate, futuresStillTradable } = require('./lib/ibkr/commodity-futures');
@@ -4609,14 +4614,16 @@ function mergeFundSnapshots(y, f) {
   return out;
 }
 
-/** FMP stable financial health scores (Piotroski + Altman) — fills gaps when legacy /score is empty for some intl names. */
-async function fetchFmpStableFinancialScores(symbol, key, tHttp) {
+/** FMP stable financial health scores (Piotroski + Altman). Hit the ticker as-is first — no exchange-search fan-out. */
+async function fetchFmpStableFinancialScores(symbol, key, tHttp, opts = {}) {
   if (!symbol || !key) return null;
   const q = `?apikey=${encodeURIComponent(key)}`;
   const H = { Accept: 'application/json' };
   const t = Number(tHttp) || 12000;
-
-  const symVariants = [...new Set([...(await fmpAllSymbolVariants(symbol, key).catch(() => [])), ...intlVendorSymbolVariants(symbol)])].slice(0, 18);
+  const exact = !!(opts && opts.exact);
+  const symVariants = exact
+    ? [String(symbol)]
+    : [...new Set([String(symbol), ...intlVendorSymbolVariants(symbol)])].slice(0, 6);
 
   for (const sym of symVariants) {
     const enc = encodeURIComponent(sym);
@@ -5999,19 +6006,32 @@ async function fetchFmpScore(symbol, opts = {}) {
     if (prev.data === null && now - prev.ts < _FMP_MISS_SUPPRESS_MS) return null;
   }
 
-  let candidates = [
-    ...new Set([
-      ...(await fmpAllSymbolVariants(symbol, key).catch(() => [])),
-      ...intlVendorSymbolVariants(symbol)
-    ])
-  ];
-  if (batchMode) candidates = candidates.slice(0, 16);
-  else if (isIntlEquitySymbol(symbol)) candidates = candidates.slice(0, 22);
+  const rawSym = String(symbol || '').trim();
+  const staticV = intlVendorSymbolVariants(symbol);
+  const anglo = isAngloSymbol(rawSym);
+  let candidates;
+  if (batchMode || anglo) {
+    candidates = [...new Set([rawSym, rawSym.replace(/\./g, '-'), ...staticV])].filter(Boolean).slice(0, 6);
+  } else {
+    candidates = [
+      ...new Set([
+        rawSym,
+        ...staticV,
+        ...(await fmpAllSymbolVariants(symbol, key).catch(() => []))
+      ])
+    ].filter(Boolean);
+    if (isIntlEquitySymbol(symbol)) candidates = candidates.slice(0, 12);
+  }
   if (!batchMode) {
     console.log(`FMP fetchFmpScore variants for ${symbol}:`, candidates.slice(0, 12).join(' | '));
   }
 
   const tHttp = batchMode ? 9000 : 14000;
+  let scoresSeed = await fetchFmpStableFinancialScores(rawSym, key, tHttp, { exact: true });
+  if (!scoresSeed && rawSym.includes('.')) {
+    scoresSeed = await fetchFmpStableFinancialScores(rawSym.replace(/\./g, '-'), key, tHttp, { exact: true });
+  }
+  let fallbackHit = null;
 
   for (const sym of candidates) {
     try {
@@ -6050,7 +6070,7 @@ async function fetchFmpScore(symbol, opts = {}) {
       const gR = batchMode ? settled[2] : settled[3];
 
       let rating = null;
-      let scores = null;
+      let scores = scoresSeed ? { ...scoresSeed } : null;
       let grades = null;
 
       if (rR.status === 'fulfilled' && rR.value.ok) {
@@ -6167,27 +6187,19 @@ async function fetchFmpScore(symbol, opts = {}) {
       }
 
       if (key && (scores == null || scores.piotroski == null || scores.altmanZ == null)) {
-        const fsPlus = await fetchFmpStableFinancialScores(sym, key, Math.min(tHttp + 5000, 22000));
+        const fsPlus = await fetchFmpStableFinancialScores(sym, key, Math.min(tHttp + 4000, 16000), { exact: true });
         if (fsPlus) {
           scores = {
             piotroski: scores?.piotroski ?? fsPlus.piotroski ?? null,
             altmanZ: scores?.altmanZ ?? fsPlus.altmanZ ?? null
           };
-        }
-      }
-
-      if (key && (scores?.piotroski == null || scores?.altmanZ == null)) {
-        const fsAll = await fetchFmpStableFinancialScores(symbol, key, Math.min(tHttp + 8000, 24000));
-        if (fsAll) {
-          scores = {
-            piotroski: scores?.piotroski ?? fsAll.piotroski ?? null,
-            altmanZ: scores?.altmanZ ?? fsAll.altmanZ ?? null
-          };
+          scoresSeed = scoresSeed || fsPlus;
         }
       }
 
       const hasNums = !!(scores?.piotroski != null || scores?.altmanZ != null);
-      if (!rating?.overall && !hasNums && !grades) continue;
+      const gradesUsable = !!(grades && Number(grades.total) > 0);
+      if (!rating?.overall && !hasNums && !gradesUsable) continue;
 
       const oS = fmpLetterBucketToTen(rating?.overall);
 
@@ -6221,6 +6233,12 @@ async function fetchFmpScore(symbol, opts = {}) {
         analystCounts: grades,
         buy_track_record: qs != null && qs >= 7
       };
+      const usable = result.piotroski != null || result.altmanZ != null || result.qualityScore != null;
+      if (!usable) continue;
+      if (anglo && result.piotroski == null && result.altmanZ == null) {
+        fallbackHit = result;
+        continue;
+      }
       if (
         isIntlEquitySymbol(symbol) &&
         fmpPlanTier() === 'starter' &&
@@ -6249,6 +6267,17 @@ async function fetchFmpScore(symbol, opts = {}) {
     } catch (e) {
       console.warn('FMP score', sym, e.message);
     }
+  }
+
+  if (fallbackHit) {
+    const fsLast = await fetchFmpStableFinancialScores(rawSym, key, 16000, { exact: false });
+    if (fsLast) {
+      fallbackHit.piotroski = fallbackHit.piotroski ?? fsLast.piotroski ?? null;
+      fallbackHit.altmanZ = fallbackHit.altmanZ ?? fsLast.altmanZ ?? null;
+    }
+    _fmpCache.set(cacheKey, { ts: Date.now(), data: fallbackHit });
+    console.log(`FMP fetchFmpScore fallback ${symbol} qs=${fallbackHit.qualityScore} pio=${fallbackHit.piotroski ?? 'n'} az=${fallbackHit.altmanZ ?? 'n'}`);
+    return fallbackHit;
   }
 
   _fmpCache.set(cacheKey, { ts: Date.now(), data: null });
@@ -17919,27 +17948,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
           if (t.realizedUsd > 0) wins++; else if (t.realizedUsd < 0) losses++;
         } else openCount++;
       }
-      // Daily realised: exit-fill price PnL only. All commissions hit realised
-      // on the close day (last exit, or last fill if the lot is gone with no sale).
-      for (const f of t.fills) {
-        if (f.role === 'entry') continue;
-        const day = String(f.time).slice(0, 10);
-        const pnlUsd = (f.realizedLocal != null && Number.isFinite(Number(f.realizedLocal)))
-          ? Number(f.realizedLocal) * fx
-          : ((f.price - t.avgEntry) * f.qty * dir * futuresMultiplierFor(t.ticker, f.multiplier || t.multiplier) / (t.ccyScale || 1)) * fx;
-        if (t.errorTrade) dailyError.set(day, (dailyError.get(day) || 0) + pnlUsd);
-        else daily.set(day, (daily.get(day) || 0) + pnlUsd);
-      }
-      if (lotClosed && commissionUsd) {
-        const lastExit = t.fills.filter(f => f.role !== 'entry').slice(-1)[0]
-          || t.fills.slice(-1)[0];
-        const day = String((lastExit && lastExit.time) || t.lastTime || t.entryTime || '').slice(0, 10);
-        if (day) {
-          const cost = -commissionUsd;
-          if (t.errorTrade) dailyError.set(day, (dailyError.get(day) || 0) + cost);
-          else daily.set(day, (daily.get(day) || 0) + cost);
-        }
-      }
+      // Daily realised uses the same net as Total realised: exit-fill price PnL
+      // on the fill day, closed-lot commission AND stamp/FTT on the close day.
+      accumulateLotDaily(t, daily, dailyError);
     }
 
     // Flatten / exit reporting: include ALL realised on the same ticker that
@@ -17961,12 +17972,9 @@ app.get('/api/ibkr/trades', async (req, res) => {
       }
     }
 
-    const dailyArr = [...daily.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1)
-      .map(([date, pnl]) => ({ date, realizedUsd: +pnl.toFixed(2) }));
-    let cum = 0;
-    for (const d of dailyArr) { cum += d.realizedUsd; d.cumUsd = +cum.toFixed(2); }
-    const dailyErrorArr = [...dailyError.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1)
-      .map(([date, pnl]) => ({ date, realizedUsd: +pnl.toFixed(2) }));
+    reconcileDailyToTotal(daily, totRealUsd);
+    const dailyArr = toDailyArray(daily);
+    const dailyErrorArr = toDailyArray(dailyError);
     trades.sort((a, b) => (a.entryTime < b.entryTime ? 1 : -1));
 
     const reconReport = loadIbkrReconReport(selectedAccount);
