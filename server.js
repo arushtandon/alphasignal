@@ -19549,6 +19549,11 @@ app.listen(PORT, () => {
 module.exports = {
   backtestSignal,
   computeQuantSignal,
+  buildFullTechResult,
+  applyMarketTierOverlays,
+  getTechnicalsMapForSymbols,
+  levelsMeetMinRR,
+  rewardRiskRatio,
   computeTrailingStopFromTech,
   signalFlipped,
   horizonHoldDaysServer,
