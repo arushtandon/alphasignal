@@ -8028,6 +8028,68 @@ function calcPeriodPerformance() {
   return { monthly: fmt(months, 12), weekly: fmt(weeks, 8) };
 }
 
+/** Extra analysis: live 50% TP1 / 50% TP2 vs 50% TP1 / 50% TSL. Does not change exits. */
+function emptyTslOnlyBracket() {
+  return {
+    peakTp2Sum:0, peakTp2N:0, peakTslSum:0, peakTslN:0,
+    earlySum:0, earlyN:0, tslOnlyPnl:0, tslOnlyN:0,
+    tp2MethodPnl:0, tp2MethodN:0, tp2Better:0, tslBetter:0
+  };
+}
+function accumTslOnlyAnalytics(b, t, hz, snap) {
+  const p2 = t[hz+'PeakToTp2DonPct'];
+  if (p2 != null && isFinite(p2)) { b.peakTp2Sum += Number(p2); b.peakTp2N++; }
+  const pt = t[hz+'PeakToTslDonPct'];
+  if (pt != null && isFinite(pt)) { b.peakTslSum += Number(pt); b.peakTslN++; }
+  const early = t[hz+'Tp2EarlyDays'];
+  if (early != null && isFinite(early) && t[hz+'Tp2Hit']) { b.earlySum += Number(early); b.earlyN++; }
+  if (snap && snap.isClosed) {
+    const tslP = t[hz+'TslOnlyPnlDollar'];
+    if (tslP != null && isFinite(tslP)) { b.tslOnlyPnl += Number(tslP); b.tslOnlyN++; }
+    const tp2P = t[hz+'Tp2ExitPnlDollar'];
+    if (tp2P != null && isFinite(tp2P)) { b.tp2MethodPnl += Number(tp2P); b.tp2MethodN++; }
+  }
+  const dlt = t[hz+'Tp2VsTslDeltaPct'];
+  if (dlt != null && isFinite(dlt) && t[hz+'Tp2Hit']) {
+    if (Number(dlt) > 0.05) b.tslBetter++;
+    else if (Number(dlt) < -0.05) b.tp2Better++;
+  }
+}
+function tslOnlyAnalysisCaption() {
+  return '<div style="font-size:8px;color:var(--m2);font-family:DM Mono,monospace;padding:0 8px 6px;line-height:1.45">Live trades still exit <b style="color:var(--t1);font-weight:600">50% at TP1 and 50% at TP2</b> (TSL is backup). Extra columns are analysis only — same 50% TP1 bank, then either take the recommended TP2 or ride TSL — to check if those TP2 levels are right, or which method paid more.</div>';
+}
+function tslOnlyAnalysisTh(th) {
+  return ''
+    +'<th style="text-align:right;'+th+'" title="Giveback from the runner high down to the recommended TP2 — were TP2 levels too early?">Peak→TP2</th>'
+    +'<th style="text-align:right;'+th+'" title="What-if giveback if the 50% runner skipped TP2 and rode TSL to the hit">TSL don</th>'
+    +'<th style="text-align:right;'+th+'" title="Sessions between TP2 print and TSL hit — how early the 50% TP2 exit left">Days early</th>'
+    +'<th style="text-align:right;'+th+'" title="Analysis: 50% banked at TP1 + 50% exited at TP2 ($10k). Live methodology.">50% TP2 $</th>'
+    +'<th style="text-align:right;'+th+'" title="Analysis: 50% banked at TP1 + 50% rode TSL until hit ($10k). Alternative methodology.">50% TSL $</th>'
+    +'<th style="text-align:right;'+th+'" title="On trades that printed TP2: which 50% runner made more — taking TP2 or riding TSL">Which method</th>';
+}
+function tslOnlyCellsHtml(r, fp) {
+  const avgP2 = r.peakTp2N ? (r.peakTp2Sum/r.peakTp2N) : null;
+  const avgTsl = r.peakTslN ? (r.peakTslSum/r.peakTslN) : null;
+  const avgEarly = r.earlyN ? (r.earlySum/r.earlyN) : null;
+  const donCol = function(v){ return v!=null&&v>=5?'var(--sell)':v!=null&&v>=2?'#F5C842':'var(--m2)'; };
+  const callN = (r.tslBetter||0)+(r.tp2Better||0);
+  let callHtml = '<span style="color:var(--m1)">—</span>';
+  if (callN) {
+    const tslWins = r.tslBetter > r.tp2Better;
+    const tp2Wins = r.tp2Better > r.tslBetter;
+    const col = tslWins ? 'var(--sell)' : tp2Wins ? 'var(--buy)' : '#F5C842';
+    callHtml = '<span style="color:'+col+'" title="TP2 = live method (50% TP1 + 50% TP2) made more. TSL = alternative (50% TP1 + 50% TSL) made more. Use this to decide which methodology to follow — live exits stay 50/50 TP1/TP2.">TP2 '+r.tp2Better+' · TSL '+r.tslBetter+'</span>';
+  }
+  const td = 'padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px';
+  return ''
+    +'<td style="'+td+';color:'+donCol(avgP2)+'" title="Giveback from the runner high down to TP2. Large number → recommended TP2 was early vs the high.">'+(avgP2!=null?'↓'+avgP2.toFixed(1)+'%':'—')+'</td>'
+    +'<td style="'+td+';color:'+donCol(avgTsl)+'" title="What-if donation if the 50% runner skipped TP2 and rode TSL (high → TSL exit).">'+(avgTsl!=null?'↓'+avgTsl.toFixed(1)+'%':'—')+'</td>'
+    +'<td style="'+td+';color:'+(avgEarly!=null&&avgEarly>=3?'var(--sell)':avgEarly!=null&&avgEarly>=1?'#F5C842':'var(--m2)')+'" title="Average sessions the 50% TP2 exit left before TSL would have hit.">'+(avgEarly!=null?avgEarly.toFixed(1)+'d':'—')+'</td>'
+    +'<td style="'+td+';color:'+(r.tp2MethodPnl>=0?'var(--buy)':'var(--sell)')+'" title="50% TP1 + 50% TP2 — live methodology, $10k notional.">'+(r.tp2MethodN?fp(r.tp2MethodPnl):'—')+'</td>'
+    +'<td style="'+td+';color:'+(r.tslOnlyPnl>=0?'var(--buy)':'var(--sell)')+'" title="50% TP1 + 50% TSL — alternative methodology, $10k notional.">'+(r.tslOnlyN?fp(r.tslOnlyPnl):'—')+'</td>'
+    +'<td style="'+td+'">'+callHtml+'</td>';
+}
+
 /** Trade-bracket analysis: Buy/Sell × short/medium/long. Per bracket: trade
  *  counts, realised + unrealised PnL, win rate, TP1 hits, live runners (TSL),
  *  average donation (giveback), and exhaustion flags — the full parameter set. */
@@ -8035,7 +8097,7 @@ function calcBracketPerformance() {
   const FULL_EXITS = ['tp1_hit','tp2_hit','sl_hit','time_limit','signal_exit','tp1_then_sl','tp1_then_time'];
   const out = {};
   ['Buy','Sell'].forEach(function(act){ ['short','medium','long'].forEach(function(hz){
-    out[act+'|'+hz] = { act:act, hz:hz, open:0, closed:0, realised:0, unrealised:0, wins:0, tp1:0, tp2:0, runners:0, donSum:0, donN:0, exh:0 };
+    out[act+'|'+hz] = Object.assign({ act:act, hz:hz, open:0, closed:0, realised:0, unrealised:0, wins:0, tp1:0, tp2:0, runners:0, donSum:0, donN:0, exh:0 }, emptyTslOnlyBracket());
   });});
   getDisplayHistory().forEach(function(t){
     const hz = t.hz || 'short';
@@ -8052,6 +8114,7 @@ function calcBracketPerformance() {
     const don = t[hz+'DonationPct'] != null ? t[hz+'DonationPct'] : t[hz+'DrawdownFromPeakPct'];
     if (don != null && isFinite(don) && don > 0) { b.donSum += Number(don); b.donN++; }
     if (t[hz+'Exhaustion']) b.exh++;
+    accumTslOnlyAnalytics(b, t, hz, snap);
   });
   return Object.values(out);
 }
@@ -8083,12 +8146,14 @@ function renderBracketPerformance() {
       +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.runners?'var(--buy)':'var(--m1)')+'">'+r.runners+'</td>'
       +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(avgDon!=null&&avgDon>=5?'var(--sell)':avgDon!=null&&avgDon>=2?'#F5C842':'var(--m2)')+'">'+(avgDon!=null?'↓'+avgDon.toFixed(1)+'%':'—')+'</td>'
       +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.exh?'#F5C842':'var(--m1)')+'">'+r.exh+'</td>'
+      +tslOnlyCellsHtml(r, fp)
       +'</tr>';
   }).join('');
   const th = 'padding:4px 8px;font-size:8px;color:var(--m1);font-family:DM Mono,monospace;text-transform:uppercase;letter-spacing:0.05em';
   el.innerHTML = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:10px;overflow-x:auto">'
     +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">Trade brackets — Buy / Sell × horizon</div>'
-    +'<table style="width:100%;border-collapse:collapse;min-width:820px"><thead><tr>'
+    +tslOnlyAnalysisCaption()
+    +'<table style="width:100%;border-collapse:collapse;min-width:1280px"><thead><tr>'
     +'<th style="text-align:left;'+th+'">Bracket</th>'
     +'<th style="text-align:right;'+th+'">Open</th>'
     +'<th style="text-align:right;'+th+'">Closed</th>'
@@ -8101,6 +8166,7 @@ function renderBracketPerformance() {
     +'<th style="text-align:right;'+th+'" title="TP1 banked and runner still riding the trailing stop">Runner (TSL)</th>'
     +'<th style="text-align:right;'+th+'" title="Average giveback donation % (post-TP1 fav extreme → exit/CMP; only trades where TP1 printed)">Avg Don %</th>'
     +'<th style="text-align:right;'+th+'" title="Trades currently flagged with move exhaustion">Exh</th>'
+    +tslOnlyAnalysisTh(th)
     +'</tr></thead><tbody>'+tr+'</tbody></table></div>';
 }
 
@@ -8116,11 +8182,11 @@ function calcGeoPerformance() {
     const act = String(t.action||'').toLowerCase()==='sell' ? 'Sell' : 'Buy';
     const b = map[geo] || (map[geo] = emptyHistGeo(geo));
     const bk = geo+'|'+act+'|'+hz;
-    const br = brackets[bk] || (brackets[bk] = {
+    const br = brackets[bk] || (brackets[bk] = Object.assign({
       geo: geo, act: act, hz: hz,
       open:0, closed:0, realised:0, unrealised:0, wins:0,
       tp1:0, tp2:0, runners:0, donSum:0, donN:0, exh:0
-    });
+    }, emptyTslOnlyBracket()));
     const st = t[hz+'Status'] || t.status || 'open';
     const snap = histRowPnlSnapshot(t, hz);
     const pnl = (snap.pnl != null && Number.isFinite(Number(snap.pnl))) ? Number(snap.pnl) : null;
@@ -8153,6 +8219,7 @@ function calcGeoPerformance() {
       br.donSum += Number(don); br.donN++;
     }
     if (t[hz+'Exhaustion']) { b.exh++; br.exh++; }
+    accumTslOnlyAnalytics(br, t, hz, snap);
   });
   const geos = GEO_ORDER.map(function(g){ return map[g]; }).concat(
     Object.keys(map).filter(function(g){ return GEO_ORDER.indexOf(g) < 0; }).sort().map(function(g){ return map[g]; })
@@ -8211,6 +8278,7 @@ function renderGeoPerformance() {
       +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.runners?'var(--buy)':'var(--m1)')+'">'+r.runners+'</td>'
       +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(avgDon!=null&&avgDon>=5?'var(--sell)':avgDon!=null&&avgDon>=2?'#F5C842':'var(--m2)')+'">'+(avgDon!=null?'↓'+avgDon.toFixed(1)+'%':'—')+'</td>'
       +'<td style="padding:5px 8px;text-align:right;font-family:DM Mono,monospace;font-size:9px;color:'+(r.exh?'#F5C842':'var(--m1)')+'">'+r.exh+'</td>'
+      +tslOnlyCellsHtml(r, fp)
       +'</tr>';
   }).join('');
   el.innerHTML = '<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:10px;overflow-x:auto">'
@@ -8234,7 +8302,8 @@ function renderGeoPerformance() {
     +'</tr></thead><tbody>'+geoTr+'</tbody></table></div>'
     +'<div style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:10px;overflow-x:auto">'
     +'<div style="font-size:8px;letter-spacing:0.08em;text-transform:uppercase;color:var(--m1);font-family:DM Mono,monospace;padding:0 8px 5px">Geography × Buy / Sell × horizon — same lines as trade brackets</div>'
-    +'<table style="width:100%;border-collapse:collapse;min-width:900px"><thead><tr>'
+    +tslOnlyAnalysisCaption()
+    +'<table style="width:100%;border-collapse:collapse;min-width:1360px"><thead><tr>'
     +'<th style="text-align:left;'+th+'">Geography</th>'
     +'<th style="text-align:left;'+th+'">Bracket</th>'
     +'<th style="text-align:right;'+th+'">Open</th>'
@@ -8248,6 +8317,7 @@ function renderGeoPerformance() {
     +'<th style="text-align:right;'+th+'">Runner (TSL)</th>'
     +'<th style="text-align:right;'+th+'">Avg Don %</th>'
     +'<th style="text-align:right;'+th+'">Exh</th>'
+    +tslOnlyAnalysisTh(th)
     +'</tr></thead><tbody>'+lineTr+'</tbody></table></div>';
 }
 

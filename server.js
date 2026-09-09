@@ -77,6 +77,7 @@ const { dedupeIbkrFillsByExecId } = require('./lib/ibkr/fill-dedupe');
 const { overlayPublishedBoardOnAnalyzeRow } = require('./lib/analysis/overlay-published-board');
 const { isMarketLikeExit } = require('./lib/ibkr/tp1-policy');
 const { tslAfterTp1, ratchetTslFromDailyBar } = require('./lib/ibkr/tsl-policy');
+const { tslOnlyFieldsForTrade, TSL_ONLY_ANALYTICS_V } = require('./lib/ibkr/tsl-only-sim');
 const {
   PAPER_ACCOUNT,
   resolveAccountId,
@@ -18803,6 +18804,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
     const s = h[hz + 'Status'] || h.status;
     if (!['tp1_hit', 'tp2_hit', 'sl_hit', 'signal_exit', 'time_limit', 'tp1_then_sl', 'tp1_then_time'].includes(s)) return false;
     return h[hz + 'DonationV'] !== 2 // v145 TP1-clock donation not yet stamped
+      || h[hz + 'TslOnlyV'] !== TSL_ONLY_ANALYTICS_V // skip-TP2 / TSL-until-hit scenario
       || h[hz + 'Tp2Hit'] == null
       || h[hz + 'SharesTotal'] == null
       || !h[hz + 'SectorTrend'];
@@ -18962,6 +18964,17 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
             h[hz + 'FavExtreme'] = gvC ? gvC.fav : null;
             h[hz + 'DonationV'] = 2;
             rowChanged = true;
+          }
+          // Analysis only: 50% TP1 is already banked; compare 50% at TP2 vs 50% riding TSL.
+          // Does not rewrite closed PnL / status / live 50/50 TP1+TP2 exits.
+          if (h[hz + 'TslOnlyV'] !== TSL_ONLY_ANALYTICS_V) {
+            const tslFields = tslOnlyFieldsForTrade(h, hz, bars, entryMs, isSell);
+            for (const [suffix, val] of Object.entries(tslFields)) {
+              if (h[hz + suffix] !== val) {
+                h[hz + suffix] = val;
+                rowChanged = true;
+              }
+            }
           }
         }
         // Sector trend for closed rows (was only computed on open path).
