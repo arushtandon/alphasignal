@@ -13,6 +13,18 @@ const {
   sellRecommendationAllowed
 } = require('./lib/strategy/decision-engine');
 const {
+  classifyMarket,
+  angloPickAllowed,
+  minRrForSymbol
+} = require('./lib/strategy/market-tier');
+const {
+  HORIZON_WEIGHTING_LABELS,
+  applyYahooFundGates,
+  applyHorizonQualityBlend,
+  buildPreciseTradeThesis,
+  looksGenericReason
+} = require('./lib/strategy/horizon-blend');
+const {
   EXIT_POLICY_VERSION,
   horizonHoldDays,
   normalizePartialFraction
@@ -2613,6 +2625,14 @@ function computeQuantSignal(tech, fund, hz, market = null) {
     if (rsi > 66)  buyGates = Math.min(buyGates, 1.5); // not a discount anymore
     if (atSDTop)   buyGates *= 0.40;                   // extended — bad MR buy
 
+    // Light fundamental veto/confirm (~10% of the short mix). Collapsing EPS is
+    // a value trap, not a mean-reversion dip.
+    const _fundS = applyYahooFundGates('short', fund);
+    buyGates += _fundS.buyDelta; sellGates += _fundS.sellDelta;
+    buyGates *= _fundS.buyMult;
+    _fundS.condBuy.forEach(c => condBuy.push(c));
+    _fundS.condSell.forEach(c => condSell.push(c));
+
     buyGates = Math.max(0, buyGates);
     buy = buyGates>=5.5?90:buyGates>=4.5?80:buyGates>=3.5?68:buyGates>=2.8?58:buyGates>=2?44:Math.min(24,Math.round(buyGates*16));
 
@@ -2631,7 +2651,7 @@ function computeQuantSignal(tech, fund, hz, market = null) {
     sell = sellGates>=5?86:sellGates>=4?72:sellGates>=3?60:sellGates>=2?46:Math.min(22,Math.round(sellGates*11));
 
   // ════════════════════════════════════════════════════════════════════════════
-  // MEDIUM (90 days = Danelfin 3M): Trend regime + Danelfin AI Score.
+  // MEDIUM (1–3 months): Trend regime + FMP quality + earnings/revenue.
   // Entry via SD channel buys into established uptrend at a discount.
   // ════════════════════════════════════════════════════════════════════════════
   } else if (hz === 'medium') {
@@ -2641,11 +2661,11 @@ function computeQuantSignal(tech, fund, hz, market = null) {
     else if (aboveMa200)          { buyGates++;  condBuy.push('Above MA200 — primary uptrend'); }
     else if (goldenCross)         { buyGates++;  condBuy.push('Golden Cross: MA50 > MA200'); }
 
-    // Gate 2: Weekly trend (Danelfin weights weekly momentum heavily for 3M)
+    // Gate 2: Weekly trend
     if (weeklyTrend==='uptrend')                       { buyGates++; condBuy.push('Weekly uptrend confirmed'); }
     else if (weeklyTrend!=='downtrend'&&aboveMa200)    buyGates+=0.5;
 
-    // Gate 3: ADX trend strength (trending regime = Danelfin's best environment)
+    // Gate 3: ADX trend strength
     if (adx>=28&&aboveMa200)                           { buyGates++; condBuy.push(`ADX ${adx} — strong trending regime`); }
     else if (adx>=22&&aboveMa50)                       buyGates+=0.5;
 
@@ -2666,6 +2686,13 @@ function computeQuantSignal(tech, fund, hz, market = null) {
     if (rsi>74)                    buyGates=Math.round(buyGates*0.50); // very overbought
     if (!aboveMa200&&!goldenCross) buyGates=Math.round(buyGates*0.20); // bear regime = no 3M buy
     if (deathCross)                buyGates=Math.round(buyGates*0.30);
+
+    // Fundamentals (~20% of the medium mix): EPS/rev/PEG must not contradict a 1–3mo hold.
+    const _fundM = applyYahooFundGates('medium', fund);
+    buyGates += _fundM.buyDelta; sellGates += _fundM.sellDelta;
+    buyGates *= _fundM.buyMult;
+    _fundM.condBuy.forEach(c => condBuy.push(c));
+    _fundM.condSell.forEach(c => condSell.push(c));
 
     // Regime-scaled medium buy — BEAR prevents false medium-term longs
     buyGates *= _buyMult; buyGates = Math.max(0, buyGates);
@@ -2713,9 +2740,8 @@ function computeQuantSignal(tech, fund, hz, market = null) {
     sell = sellGates>=5.5?88:sellGates>=4.5?75:sellGates>=3.5?62:sellGates>=2.5?50:Math.min(24,Math.round(sellGates*11));
 
   // ════════════════════════════════════════════════════════════════════════════
-  // LONG (1–6 months): Structural bull regime + fundamental quality.
-  // Danelfin Fundamental subscore confirms earnings/revenue durability.
-  // SD channel entry gives favorable risk/reward over multi-month hold.
+  // LONG (4–12 months): Structural bull regime + fundamental quality (CANSLIM)
+  // + FMP Piotroski/Altman overlay after this function. SD channel for entry.
   // ════════════════════════════════════════════════════════════════════════════
   } else { // long (4–12 months) — SEPA + CANSLIM
 
@@ -2990,7 +3016,7 @@ function computeQuantSignal(tech, fund, hz, market = null) {
 
   return {
     buyScore:buy, sellScore:sell, action, rating,
-    conditions:(buy>=sell?condBuy:condSell).slice(0,5),
+    conditions:(buy>=sell?condBuy:condSell).slice(0,10),
     winRateHint,
     gatesMet: Math.floor(buy>=sell?buyGates:sellGates),
     regime,        // 'bull' | 'bear' | 'neutral' — for UI display and history filtering
@@ -5907,22 +5933,7 @@ Output ONLY the JSON object. No markdown.`;
 // ══════════════════════════════════════════════════════════════════════════════
 // MARKET COVERAGE CLASSIFIER
 // ══════════════════════════════════════════════════════════════════════════════
-function classifyMarket(symbol) {
-  const sym=(symbol||'').toUpperCase().trim();
-  if (sym.includes('=F')||sym.endsWith('-USD')||sym.endsWith('-EUR'))
-    return {tier:'technical_only',label:'Technical Only',region:'commodity',danelfin:false,fmp:false,
-            note:'No fundamental scoring for commodities — pure SD channel + momentum'};
-  const eu=['.L','.DE','.PA','.AS','.AMS','.BR','.MI','.MC','.ST','.CO','.OL','.HE','.VI'];
-  if (eu.some(sfx=>sym.endsWith(sfx)))
-    return {tier:'danelfin_eu',label:'Danelfin AI (EU)',region:'europe',danelfin:true,fmp:true,
-            note:'Danelfin European ML (since 2022) + FMP quality'};
-  const asia=['.T','.HK','.NS','.BO','.KS','.KQ','.TW','.SI','.AX','.NZ','.BK'];
-  if (asia.some(sfx=>sym.endsWith(sfx)))
-    return {tier:'fmp_quality',label:'FMP Quality Score',region:'asia',danelfin:false,fmp:true,
-            note:'FMP Piotroski F-Score + Altman Z + analyst consensus (no ML for Asian markets)'};
-  return {tier:'danelfin_us',label:'Danelfin AI (US)',region:'us',danelfin:true,fmp:true,
-          note:'Danelfin ML trained since 2017 on 10K features — highest quality signal'};
-}
+// classifyMarket lives in lib/strategy/market-tier.js (Danelfin retired; FMP + technical).
 
 // ══════════════════════════════════════════════════════════════════════════════
 // HORIZON-AWARE COMPOSITE ALPHA  (SHORT=Technical driven, MEDIUM=AI Score, LONG=Fundamental)
@@ -6395,68 +6406,14 @@ function applyFmpTierOverlay(dataShell, sym, fmp) {
   const quantSignal = dataShell?.quantSignal;
   if (!fmp || !quantSignal) return;
   dataShell.fmpScore = fmp;
-  const _qs = fmp.qualityScore ?? 5;
-  const _pio = fmp.piotroski ?? 0;
-  const _az = fmp.altmanZ ?? 0;
-  const _ast = fmp.analystScore ?? 5;
-  const _hasBT = !!fmp.buy_track_record;
-  const _sdBQ = dataShell?.channelPos?.buyQuality ?? 'fair';
-  const _sdGd = _sdBQ === 'good' || _sdBQ === 'excellent';
-  const _sdEx = _sdBQ === 'excellent';
-  if (_pio >= 7 && _sdGd && _hasBT) {
-    quantSignal.short.buyScore = Math.min(
-      92,
-      Math.max(quantSignal.short.buyScore || 0, 76) + Math.round((_pio - 6) * 2)
-    );
-    quantSignal.short.tier = 1;
-    quantSignal.short.tierLabel = `Piotroski ${_pio}/9+SD`;
-    quantSignal.short.winRateHint = 70;
-  } else if (_pio >= 5 && _hasBT) {
-    quantSignal.short.buyScore = Math.min(
-      92,
-      (quantSignal.short.buyScore || 0) + Math.round((_pio - 4) * 1.5)
-    );
-  } else if (_pio <= 3 || _qs <= 3) {
-    quantSignal.short.buyScore = Math.min(40, Math.round((quantSignal.short.buyScore || 0) * 0.5));
-  }
-  if ((_qs >= 8 && _sdGd) || (_qs >= 7 && _sdEx)) {
-    if (_hasBT) {
-      quantSignal.medium.buyScore = Math.min(
-        92,
-        Math.max(quantSignal.medium.buyScore || 0, 78) + Math.round((_qs - 7) * 2)
-      );
-      quantSignal.medium.tier = 1;
-      quantSignal.medium.tierLabel = `FMP Quality ${_qs}/10+SD`;
-      quantSignal.medium.winRateHint = 71;
-    }
-  } else if (_qs >= 6 && _hasBT) {
-    quantSignal.medium.buyScore = Math.min(
-      92,
-      (quantSignal.medium.buyScore || 0) + Math.round((_qs - 5) * 2.5)
-    );
-  } else if (_qs <= 4) {
-    quantSignal.medium.buyScore = Math.min(38, Math.round((quantSignal.medium.buyScore || 0) * 0.4));
-  }
-  const _fmpLQ = _qs * 0.45 + _pio * 0.35 + _ast * 0.2;
-  if (_fmpLQ >= 7 && _az > 2.99 && _sdGd && _hasBT) {
-    quantSignal.long.buyScore = Math.min(
-      92,
-      Math.max(quantSignal.long.buyScore || 0, 76) + Math.round((_fmpLQ - 6) * 2)
-    );
-    quantSignal.long.tier = 1;
-    quantSignal.long.tierLabel = `FMP ${_fmpLQ.toFixed(1)}/10+AltmanZ`;
-    quantSignal.long.winRateHint = 70;
-  } else if (_fmpLQ >= 5 && _hasBT) {
-    quantSignal.long.buyScore = Math.min(
-      92,
-      (quantSignal.long.buyScore || 0) + Math.round((_fmpLQ - 5) * 2)
-    );
-  } else if (_fmpLQ <= 4 || _az <= 1.81) {
-    quantSignal.long.buyScore = Math.min(35, Math.round((quantSignal.long.buyScore || 0) * 0.4));
-  }
+  ['short', 'medium', 'long'].forEach(hz => {
+    if (quantSignal[hz]) applyHorizonQualityBlend(quantSignal[hz], { hz, fmp, symbol: sym });
+  });
 }
 
 function applyDanelfinTierOverlay(dataShell, ds) {
+  // Retired — Danelfin must not change scores. Kept so old call sites are no-ops.
+  return;
   const quantSignal = dataShell?.quantSignal;
   if (!ds || ds.aiscore == null || !quantSignal) return;
   dataShell.danelfin = ds;
@@ -6582,101 +6539,28 @@ async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
     });
   }
 
-  if (_mkt.tier === 'fmp_quality' || (_mkt.tier === 'danelfin_eu' && _mkt.fmp)) {
+  if (_mkt.fmp) {
     try {
       const _fk = fmpEnvKeyFund();
       if (_fk) {
         const _fmp = opts.fmpPre || (await fetchFmpScore(sym, { batchMode }));
-        if (_fmp) applyFmpTierOverlay(dataShell, sym, _fmp);
+        if (_fmp) {
+          applyFmpTierOverlay(dataShell, sym, _fmp);
+          dataShell.qualitySource = 'fmp';
+        }
       }
     } catch (e) {
       console.warn('FMP overlay', sym, e.message);
     }
   }
 
-  if (_mkt.danelfin) {
-    let _danApplied = false;
-    try {
-      const _dkey = (process.env.DANELFIN_API_KEY || '').trim();
-      if (_dkey) {
-        const _ds = opts.danelfinPre || (await cachedDanelfinRow(_dkey, sym));
-        if (_ds && _ds.aiscore != null) { applyDanelfinTierOverlay(dataShell, _ds); _danApplied = true; }
-      }
-    } catch (e) {
-      console.warn('Danelfin overlay', sym, e.message);
-    }
-    // FMP QUALITY FALLBACK: when Danelfin is unavailable (daily budget spent,
-    // monthly limit hit, key missing, or API error) US names previously got NO
-    // quality overlay at all — the FMP fetch only ran for non-US tiers. Fall back
-    // to FMP financial scores so buys/sells stay quality-aware either way.
-    if (!_danApplied) {
-      try {
-        const _fk2 = fmpEnvKeyFund();
-        if (_fk2) {
-          const _fmp2 = opts.fmpPre || dataShell.fmpScore || (await fetchFmpScore(sym, { batchMode }));
-          if (_fmp2) {
-            applyFmpTierOverlay(dataShell, sym, _fmp2);
-            dataShell.qualitySource = 'fmp_fallback'; // visible in payloads for verification
-          }
-        }
-      } catch (e) {
-        console.warn('FMP fallback overlay', sym, e.message);
-      }
-    } else {
-      dataShell.qualitySource = 'danelfin';
-    }
-  }
-
-  // Piotroski / Altman Z — direct score boosts after FMP fetch (independent of tier/SD gates)
-  const _fmpQS = dataShell.fmpScore || opts.fmpPre || null;
-  if (_fmpQS) {
-    ['short', 'medium', 'long'].forEach(hz => {
-      const q = dataShell.quantSignal?.[hz];
-      if (!q) return;
-      const _pio = _fmpQS.piotroski;
-      const _az = _fmpQS.altmanZ;
-      const _qs = _fmpQS.qualityScore;
-
-      if (_pio != null && Number.isFinite(_pio)) {
-        if (_pio >= 7) {
-          if (q.buyScore > 0) q.buyScore = Math.min(92, Math.round(q.buyScore * 1.12));
-          if (q.sellScore > 0) q.sellScore = Math.round(q.sellScore * 0.88);
-          (q.conditions = q.conditions || []).unshift(`Piotroski ${_pio}/9 ✓`);
-        } else if (_pio >= 5) {
-          if (q.buyScore > 0) q.buyScore = Math.min(92, Math.round(q.buyScore * 1.05));
-        } else if (_pio <= 3) {
-          if (q.buyScore > 0) q.buyScore = Math.round(q.buyScore * 0.72);
-          if (q.sellScore > 0) q.sellScore = Math.min(88, Math.round(q.sellScore * 1.15));
-          (q.conditions = q.conditions || []).push(`Pio ${_pio}/9 weak`);
-        }
-      }
-
-      if (_az != null && Number.isFinite(_az) && hz !== 'short') {
-        if (_az > 2.99) {
-          if (q.buyScore > 0) q.buyScore = Math.min(92, Math.round(q.buyScore * 1.08));
-        } else if (_az < 1.81) {
-          if (q.buyScore > 0) q.buyScore = Math.round(q.buyScore * 0.65);
-          if (q.sellScore > 0) q.sellScore = Math.min(88, Math.round(q.sellScore * 1.20));
-          (q.conditions = q.conditions || []).push(`AltmanZ ${_az.toFixed(1)} distress`);
-        }
-      }
-
-      if (_qs != null && (_mkt.tier === 'fmp_quality' || _mkt.tier === 'danelfin_eu')) {
-        if (_qs >= 8 && q.buyScore > 0) q.buyScore = Math.min(92, Math.round(q.buyScore * 1.10));
-        if (_qs <= 4 && q.buyScore > 0) q.buyScore = Math.round(q.buyScore * 0.75);
-      }
-
-      const bs = q.buyScore || 0;
-      const ss = q.sellScore || 0;
-      if (bs >= ss) {
-        q.action = bs >= 84 ? 'Buy' : bs >= 62 ? 'Buy' : 'Hold';
-        q.rating = bs >= 84 ? 'Strong Buy' : bs >= 62 ? 'Buy' : 'Hold';
-      } else {
-        q.action = ss >= 80 ? 'Sell' : ss >= 62 ? 'Sell' : 'Hold';
-        q.rating = ss >= 80 ? 'Strong Sell' : ss >= 62 ? 'Sell' : 'Hold';
-      }
-    });
-  }
+  ['short', 'medium', 'long'].forEach(hz => {
+    const q = dataShell.quantSignal?.[hz];
+    if (!q) return;
+    q.weighting = _mkt.tier === 'technical_only'
+      ? '100% technical'
+      : HORIZON_WEIGHTING_LABELS[hz];
+  });
 
   applyTierScoreCaps(dataShell.quantSignal);
   rerateQuantSignals(dataShell.quantSignal);
@@ -7208,6 +7092,8 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
 
 // POST /api/danelfin/batch — equities only; returns map ticker -> scores (omit if no AI score)
 app.post('/api/danelfin/batch', async (req, res) => {
+  // Danelfin is retired from scoring — do not fetch or return ML scores.
+  return res.json({});
   const apiKey = (process.env.DANELFIN_API_KEY || '').trim();
   if (!apiKey) return res.json({});
 
@@ -7858,12 +7744,31 @@ async function generateServerPicksFromShortlist(opts = {}) {
         // Prefer Strong on the board (see assignment below). Do NOT demote plain
         // Buy/Sell to Hold here — that emptied every pane and forced clients to
         // rescan the universe on each refresh. History/IBKR still require Strong.
-        const condTxt = (sig.conditions || []).slice(0, 4).join('; ');
+        row[hz + 'Weighting'] = sig.weighting || HORIZON_WEIGHTING_LABELS[hz];
+        row['_' + (hz === 'medium' ? 'med' : hz) + 'Regime'] = sig.regime || 'neutral';
+        row['_' + (hz === 'medium' ? 'medium' : hz) + 'Conditions'] = (sig.conditions || []).slice();
+        const condTxt = (sig.conditions || []).slice(0, 8).join('; ');
         row[hz + 'Analysis'] = condTxt;
         row[hz + 'SellAnalysis'] = condTxt;
-        if (hz === 'short') row.reason = condTxt;
+        if (hz === 'short') {
+          row.reason = condTxt;
+          row.quantConditions = (sig.conditions || []).slice();
+          row._shortConditions = (sig.conditions || []).slice();
+        }
         if (sell >= buy && sell >= 62) row.sellReason = condTxt;
       }
+      row._regime = [row._shortRegime, row._medRegime, row._longRegime]
+        .filter(x => x === 'bear').length >= 2 ? 'bear'
+        : [row._shortRegime, row._medRegime, row._longRegime]
+          .filter(x => x === 'bull').length >= 2 ? 'bull' : 'neutral';
+      if (tech.fmpScore) row.fmpScore = tech.fmpScore;
+      if (tech.marketTier) row.marketTier = tech.marketTier;
+      if (tech.marketLabel) row.marketLabel = tech.marketLabel;
+      if (tech.marketRegion) row.marketRegion = tech.marketRegion;
+      mergeFundamentalsForUi(row, fund);
+      row.shortWeighting = row.shortWeighting || HORIZON_WEIGHTING_LABELS.short;
+      row.mediumWeighting = row.mediumWeighting || HORIZON_WEIGHTING_LABELS.medium;
+      row.longWeighting = row.longWeighting || HORIZON_WEIGHTING_LABELS.long;
       row.action = row.shortAction;
       applyServerPriceLevels(row, tech.currentPrice, tech, fund);
       row.decisionSnapshots = {};
@@ -7929,7 +7834,8 @@ async function generateServerPicksFromShortlist(opts = {}) {
           && (r[hz + 'Score'] || 0) >= 62
           && (Number(r[hz + 'Conf']) || 0) >= PICKS_MIN_CONF
           && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r, hz);
-        if (buyBase && !alreadyLong) {
+        if (buyBase && !alreadyLong
+          && angloPickAllowed(r.ticker, { hz, side: 'buy', rating: r[hz + 'Rating'] }).ok) {
           const buyRank = (r[hz + 'Score'] || 0)
             + (isStrongRecommendableRating(r[hz + 'Rating']) ? 1000 : 0);
           if (buyRank > bBuyScore) { bBuyScore = buyRank; bBuyHz = hz; }
@@ -7940,7 +7846,8 @@ async function generateServerPicksFromShortlist(opts = {}) {
           && (r[hz + 'SellScore'] || 0) >= 62
           && (Number(r[hz + 'Conf']) || 0) >= PICKS_MIN_CONF
           && hasPx(r, hz);
-        if (sellBase && !alreadyShort) {
+        if (sellBase && !alreadyShort
+          && angloPickAllowed(r.ticker, { hz, side: 'sell', rating: r[hz + 'Rating'] }).ok) {
           const sellRank = (r[hz + 'SellScore'] || 0)
             + (isStrongRecommendableRating(r[hz + 'Rating']) ? 1000 : 0);
           if (sellRank > bSellScore) { bSellScore = sellRank; bSellHz = hz; }
@@ -8592,9 +8499,19 @@ async function addTradesToHistory(trades) {
       const e = parseFloat(trade[hz + 'Entry'] || trade.entry);
       const tp1 = parseFloat(trade[hz + 'Target1'] || trade.target1);
       const sl = parseFloat(trade[hz + 'StopLoss'] || trade.stopLoss);
-      if (!levelsMeetMinRR(e, tp1, sl, isSell, PICKS_MIN_RR)) {
+      const angloHist = angloPickAllowed(trade.ticker, {
+        hz, side: isSell ? 'sell' : 'buy',
+        rating: trade[hz + 'Rating'] || trade.rating || ''
+      });
+      if (!angloHist.ok) {
+        console.log('History add skipped (US/UK policy):', trade.ticker, hz, angloHist.reason);
+        auditLog('entry_blocked_anglo_policy', { ticker: trade.ticker, hz, reason: angloHist.reason });
+        continue;
+      }
+      const histMinRr = minRrForSymbol(trade.ticker, PICKS_MIN_RR);
+      if (!levelsMeetMinRR(e, tp1, sl, isSell, histMinRr)) {
         const rr = rewardRiskRatio(e, tp1, sl, isSell);
-        console.log('History add skipped (RR <', PICKS_MIN_RR + '):', trade.ticker, hz, 'RR=', rr != null ? rr.toFixed(2) : 'n/a');
+        console.log('History add skipped (RR <', histMinRr + '):', trade.ticker, hz, 'RR=', rr != null ? rr.toFixed(2) : 'n/a');
         auditLog('entry_blocked_min_rr', { ticker: trade.ticker, hz, rr });
         continue;
       }
@@ -11343,7 +11260,8 @@ function filterDashDataBySLCooldown(dashData) {
       const entry = parseFloat(pick[hz + 'Entry'] || pick.entry);
       const tp1 = parseFloat(pick[hz + 'Target1'] || pick.target1);
       const sl = parseFloat(pick[hz + 'StopLoss'] || pick.stopLoss);
-      return levelsMeetMinRR(entry, tp1, sl, isSell, PICKS_MIN_RR);
+      if (!angloPickAllowed(pick.ticker, { hz, side, rating }).ok) return false;
+      return levelsMeetMinRR(entry, tp1, sl, isSell, minRrForSymbol(pick.ticker, PICKS_MIN_RR));
     });
   }
   return out;
@@ -11365,7 +11283,12 @@ function filterDashDataByMinRR(dashData, minRR = PICKS_MIN_RR) {
         console.log('Pick dropped (Conf <', PICKS_MIN_CONF + '%):', pick.ticker, hz, side, 'conf=', conf);
         return false;
       }
-      const ok = levelsMeetMinRR(entry, tp1, sl, isSell, minRR);
+      if (!angloPickAllowed(pick.ticker, { hz, side, rating: pick[hz + 'Rating'] || pick.rating }).ok) {
+        dropped++;
+        return false;
+      }
+      const needRr = minRrForSymbol(pick.ticker, minRR);
+      const ok = levelsMeetMinRR(entry, tp1, sl, isSell, needRr);
       if (!ok) {
         dropped++;
         const rr = rewardRiskRatio(entry, tp1, sl, isSell);
@@ -11391,14 +11314,17 @@ function filterDashDataByQuantTechMap(dashData, techMap, paneMap = DASH_PANE_MAP
       // name whenever the boot re-validation ran out of its time budget, leaving
       // a US-only dashboard. A pick is only removed when fresh data ACTIVELY
       // contradicts it (action flipped or score fell below threshold).
+      if (!angloPickAllowed(pick.ticker, { hz, side, rating: pick[hz + 'Rating'] || pick.rating }).ok) return false;
       if (!sig) return true; // no fresh data → trust the existing pick
       pick[hz + 'Score'] = sig.buyScore ?? pick[hz + 'Score'];
       pick[hz + 'SellScore'] = sig.sellScore ?? pick[hz + 'SellScore'];
       pick[hz + 'Rating'] = sig.rating ?? pick[hz + 'Rating'];
       pick[hz + 'Action'] = sig.action ?? pick[hz + 'Action'];
       if (side === 'buy') {
+        if (!angloPickAllowed(pick.ticker, { hz, side: 'buy', rating: sig.rating }).ok) return false;
         return sig.action === 'Buy' && (sig.buyScore || 0) >= 62 && !/SL cooldown/i.test(sig.tierLabel || '');
       }
+      if (!angloPickAllowed(pick.ticker, { hz, side: 'sell', rating: sig.rating }).ok) return false;
       return sig.action === 'Sell' && (sig.sellScore || 0) >= 62;
     });
   }
@@ -11937,26 +11863,37 @@ function buildTradeSpecificReason(row, hz, isSell) {
   const sl = isSell
     ? (row.sellStopLoss || row[hz + 'StopLoss'] || row.stopLoss)
     : (row[hz + 'StopLoss'] || row.stopLoss);
-  const levels = formatLevelsReasonClause(isSell ? 'Sell' : 'Buy', entry, tp1, tp2, sl);
   const whyRaw = isSell
     ? (row[hz + 'SellAnalysis'] || row.sellReason || row[hz + 'Analysis'] || row.reason || '')
     : (row[hz + 'Analysis'] || row.reason || row.shortAnalysis || row.mediumAnalysis || row.longAnalysis || '');
-  // Drop generic placeholders; keep concrete condition text.
-  let why = String(whyRaw || '').trim();
-  if (/^quant signal$/i.test(why) || /^setup note$/i.test(why)) why = '';
-  // Avoid duplicating the levels line if a prior stamp already embedded it.
-  if (levels && why && why.indexOf(levels) === 0) return why;
-  if (levels && why && why.indexOf('TP1 ') >= 0 && why.indexOf('SL ') >= 0) {
-    // Already levels-specific from a previous pass — keep as-is.
-    return why;
+  const why = String(whyRaw || '').trim();
+  if (why && /Setup:/.test(why) && /Invalid if/.test(why)) return why;
+
+  const condKey = hz === 'short' ? '_shortConditions'
+    : hz === 'medium' ? '_mediumConditions' : '_longConditions';
+  let conds = Array.isArray(row[condKey]) ? row[condKey].slice() : [];
+  if (!conds.length && Array.isArray(row.quantConditions) && hz === 'short') {
+    conds = row.quantConditions.slice();
   }
-  if (levels && why) return levels + ' | ' + why;
-  if (levels) {
-    const rating = row[hz + 'Rating'] || row.rating || (isSell ? 'Sell' : 'Buy');
-    const score = isSell ? (row[hz + 'SellScore'] || row.sellScore) : (row[hz + 'Score'] || row.buyScore);
-    return levels + ' | ' + rating + (score != null ? ` (${score}/100)` : '') + ' — levels locked at signal.';
+  if (!conds.length && why && !looksGenericReason(why) && !/Setup:/.test(why)) {
+    conds = why.split(';').map(s => s.trim()).filter(Boolean);
   }
-  return why || '';
+  const regimeKey = hz === 'medium' ? '_medRegime' : `_${hz}Regime`;
+  return buildPreciseTradeThesis({
+    hz,
+    isSell,
+    rating: row[hz + 'Rating'] || row.rating || (isSell ? 'Sell' : 'Buy'),
+    score: isSell ? (row[hz + 'SellScore'] || row.sellScore) : (row[hz + 'Score'] || row.buyScore),
+    regime: row[regimeKey] || row._regime || '',
+    conditions: conds,
+    fmp: row.fmpScore,
+    row,
+    entry,
+    tp1,
+    tp2,
+    sl,
+    levelsText: formatLevelsReasonClause(isSell ? 'Sell' : 'Buy', entry, tp1, tp2, sl)
+  });
 }
 
 function stampDashDataReasons(dashData) {
@@ -12274,7 +12211,7 @@ const ANALYSIS_SCHEMA_HINT = `{"ticker":"AAPL","name":"Apple Inc","sector":"Tech
 "shortAction":"Buy","mediumAction":"Buy","longAction":"Hold",
 "shortAnalysis":"","mediumAnalysis":"","longAnalysis":"","sellReason":"",
 "rsi":"","macd":"","trend":"","support":"","resistance":"","ma20":"above","ma50":"above","ma200":"above","volume":"","pattern":"","candlePattern":"","candleSignal":"Bullish","candleConf":75,"backtestedWinRate":62,
-"shortWeighting":"100% Technical","mediumWeighting":"70% Technical 30% News","longWeighting":"60% Technical 20% Fundamental 20% News",
+"shortWeighting":"75% technical · 15% FMP · 10% fundamentals","mediumWeighting":"50% technical · 30% FMP · 20% fundamentals","longWeighting":"35% technical · 30% FMP · 35% fundamentals",
 "newsImpact":"","momentum":"Bullish","bollingerPos":"","pe":"","peg":"","revenueGrowth":"","earningsGrowth":"","catalyst":"","financialHealth":"Strong","industryPos":"Leader",
 "risks":["","",""],"techSummary":"","fundSummary":"","nextEarningsDate":"","earningsTime":"","epsEstimate":"","epsPrior":""}`;
 
@@ -12415,21 +12352,30 @@ app.post('/api/analyze', async (req, res) => {
       const tech = techBySym[sym];
       const fund = fundBySym[sym] || null;
       const sig = signalBySym[sym];
-      const cond = (sig.short.conditions || []).slice(0, 4).join('; ') || 'Quant signal';
+      const cond = (sig.short.conditions || []).slice(0, 8).join('; ') || 'Quant signal';
       let row = {
         ticker: sym,
         name: fund?.longName || fund?.shortName || sym,
         sector: fund?.sector || fund?._fmpSector || '',
         action: sig.short.action,
         shortAnalysis: cond,
-        mediumAnalysis: (sig.medium.conditions || []).slice(0, 3).join('; ') || cond,
-        longAnalysis: (sig.long.conditions || []).slice(0, 3).join('; ') || cond,
+        mediumAnalysis: (sig.medium.conditions || []).slice(0, 8).join('; ') || cond,
+        longAnalysis: (sig.long.conditions || []).slice(0, 8).join('; ') || cond,
         sellReason: sig.short.action === 'Sell' || sig.short.action === 'Strong Sell' ? cond : '',
         risks: [],
         catalyst: '',
         momentum: tech?.macd?.trend === 'bullish' ? 'Bullish' : tech?.macd?.trend === 'bearish' ? 'Bearish' : 'Neutral',
         price: String(pq.price),
-        change: pq.change != null ? String(pq.change) : ''
+        change: pq.change != null ? String(pq.change) : '',
+        shortWeighting: sig.short.weighting || HORIZON_WEIGHTING_LABELS.short,
+        mediumWeighting: sig.medium.weighting || HORIZON_WEIGHTING_LABELS.medium,
+        longWeighting: sig.long.weighting || HORIZON_WEIGHTING_LABELS.long,
+        _shortConditions: (sig.short.conditions || []).slice(),
+        _mediumConditions: (sig.medium.conditions || []).slice(),
+        _longConditions: (sig.long.conditions || []).slice(),
+        _shortRegime: sig.short.regime || 'neutral',
+        _medRegime: sig.medium.regime || 'neutral',
+        _longRegime: sig.long.regime || 'neutral'
       };
       row.shortScore = sig.short.buyScore;
       row.mediumScore = sig.medium.buyScore;
@@ -12642,33 +12588,13 @@ Output ONLY the JSON array. No markdown.`;
       if (sig?.fmpScore) mergedRow.fmpScore = sig.fmpScore;
       else {
         const _mktAn = classifyMarket(sym);
-        if (_mktAn.tier === 'fmp_quality' || (_mktAn.tier === 'danelfin_eu' && _mktAn.fmp)) {
+        if (_mktAn.fmp) {
           try {
             const _fmpR = await fetchFmpScore(sym);
             if (_fmpR && typeof _fmpR === 'object') mergedRow.fmpScore = _fmpR;
           } catch (_) {
             /* optional */
           }
-        }
-      }
-
-      const dk = (process.env.DANELFIN_API_KEY || '').trim();
-      if (sig?.danelfin) {
-        mergedRow.danelfinAiScore = sig.danelfin.aiscore;
-        mergedRow.danelfinTechnical = sig.danelfin.technical;
-        mergedRow.danelfinFundamental = sig.danelfin.fundamental;
-        mergedRow.danelfinSentiment = sig.danelfin.sentiment;
-        mergedRow.danelfinLowRisk = sig.danelfin.low_risk;
-        mergedRow.danelfinBuyTrack = sig.danelfin.buy_track_record;
-      } else if (dk && !sym.includes('=F') && !sym.includes('-USD') && !sym.includes('-EUR')) {
-        const df = await cachedDanelfinRow(dk, sym);
-        if (df && df.aiscore != null) {
-          mergedRow.danelfinAiScore = df.aiscore;
-          mergedRow.danelfinTechnical = df.technical;
-          mergedRow.danelfinFundamental = df.fundamental;
-          mergedRow.danelfinSentiment = df.sentiment;
-          mergedRow.danelfinLowRisk = df.low_risk;
-          mergedRow.danelfinBuyTrack = df.buy_track_record;
         }
       }
 
@@ -13533,8 +13459,13 @@ function shouldEmitIbkrEntry(trade, hz) {
     console.log('IBKR entry skipped (Conf <', PICKS_MIN_CONF + '%):', snap.key, 'conf=', conf);
     return false;
   }
+  const anglo = angloPickAllowed(trade.ticker, { hz: z, side: snap.side, rating });
+  if (!anglo.ok) {
+    console.log('IBKR entry skipped (US/UK policy):', snap.key, anglo.reason);
+    return false;
+  }
   // Require min RR when TP1 exists; reject null-TP1 entries (not recommendable).
-  if (!(snap.tp1 > 0) || !levelsMeetMinRR(snap.entry, snap.tp1, snap.sl, snap.side === 'sell', PICKS_MIN_RR)) {
+  if (!(snap.tp1 > 0) || !levelsMeetMinRR(snap.entry, snap.tp1, snap.sl, snap.side === 'sell', minRrForSymbol(trade.ticker, PICKS_MIN_RR))) {
     return false;
   }
   if (ibkrHasOpenEntryFor(snap.ticker, snap.hz, snap.entryDate)) {

@@ -161,7 +161,7 @@ header{position:sticky;top:0;z-index:300;background:rgba(7,8,11,0.88);backdrop-f
 .pnl-item .pnl-label{font-size:9px;color:var(--m1);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:1px}
 .pnl-item .pnl-val{font-size:11px;font-weight:500;font-family:'DM Mono',monospace}
 .pnl-val.g{color:var(--buy)}.pnl-val.r{color:var(--sell)}.pnl-val.b{color:var(--blue)}.pnl-val.y{color:var(--hold)}
-.pc-reason{font-size:10px;color:var(--m2);line-height:1.5;margin-top:8px;border-top:1px solid var(--b1);padding-top:8px}
+.pc-reason{font-size:10px;color:var(--m2);line-height:1.55;margin-top:8px;border-top:1px solid var(--b1);padding-top:8px;white-space:normal}
 
 /* DETAIL TABLE */
 .detail-section{background:var(--s1);border:1px solid var(--b1);border-radius:var(--rl);margin-bottom:1.25rem;overflow:hidden;animation:su .3s ease}
@@ -3304,6 +3304,19 @@ function isStrongRecommendableRating(rating) {
 /** Same display gate for tab counts and pick cards (must stay in sync).
  *  Trust the server board: do NOT re-drop names for missing TP/RR on the client
  *  (that hid RCL etc. while the synced summary still listed them). */
+function isAngloTicker(symbol) {
+  var sym = String(symbol || '').toUpperCase().trim();
+  if (!sym) return false;
+  if (sym.indexOf('=F') !== -1 || sym.slice(-4) === '-USD' || sym.slice(-4) === '-EUR') return false;
+  if (sym.slice(-2) === '.L' || sym.slice(-3) === '.US') return true;
+  return sym.indexOf('.') < 0;
+}
+function angloPickAllowedUi(symbol, hz, side, rating) {
+  if (!isAngloTicker(symbol)) return true;
+  var sell = side === 'sell';
+  if (hz === 'short' && !sell) return false;
+  return sell ? /strong\s*sell/i.test(String(rating || '')) : /strong\s*buy/i.test(String(rating || ''));
+}
 function filterBoardPicksForUi(picks, hz, side) {
   const isSell = side === 'sell';
   return (picks || []).filter(function (s) {
@@ -3313,6 +3326,7 @@ function filterBoardPicksForUi(picks, hz, side) {
     if (!(conf >= PICKS_MIN_CONF)) return false;
     const rating = String(s[hz + 'Rating'] || s.rating || '');
     if (/^hold$/i.test(rating.trim()) || /SL cooldown/i.test(rating)) return false;
+    if (!angloPickAllowedUi(s.ticker, hz, side, rating)) return false;
     if (isSell) {
       return action === 'Sell' && (s[hz + 'SellScore'] || 0) >= 62;
     }
@@ -3848,7 +3862,7 @@ const SCHEMA=`{"ticker":"","name":"","sector":"","price":"","change":"","shortRa
 "longEntry":"","longTarget1":"","longTarget2":"","longStopLoss":"","longAnalysis":"1-6 month technical + fundamental + macro setup",
 "sellEntry":"","sellTarget1":"","sellTarget2":"","sellStopLoss":"",
 "entry":"","target1":"","target2":"","stopLoss":"",
-"rsi":"","macd":"","trend":"","support":"","resistance":"","ma20":"above","ma50":"above","ma200":"above","volume":"","pattern":"","candlePattern":"Bullish Engulfing","candleSignal":"Bullish","candleConf":75,"backtestedWinRate":62,"shortWeighting":"100% Technical","mediumWeighting":"70% Technical 30% News","longWeighting":"60% Technical 20% Fundamental 20% News","newsImpact":"","momentum":"Bullish","bollingerPos":"","pe":"","peg":"","revenueGrowth":"","earningsGrowth":"","catalyst":"","financialHealth":"Strong","industryPos":"Leader","risks":["","",""],"techSummary":"","fundSummary":"","nextEarningsDate":"","earningsTime":"pre-market|post-market|during-market","epsEstimate":"","epsPrior":""}`;
+"rsi":"","macd":"","trend":"","support":"","resistance":"","ma20":"above","ma50":"above","ma200":"above","volume":"","pattern":"","candlePattern":"Bullish Engulfing","candleSignal":"Bullish","candleConf":75,"backtestedWinRate":62,"shortWeighting":"75% technical · 15% FMP · 10% fundamentals","mediumWeighting":"50% technical · 30% FMP · 20% fundamentals","longWeighting":"35% technical · 30% FMP · 35% fundamentals","newsImpact":"","momentum":"Bullish","bollingerPos":"","pe":"","peg":"","revenueGrowth":"","earningsGrowth":"","catalyst":"","financialHealth":"Strong","industryPos":"Leader","risks":["","",""],"techSummary":"","fundSummary":"","nextEarningsDate":"","earningsTime":"pre-market|post-market|during-market","epsEstimate":"","epsPrior":""}`;
 
 // ══════════════════════════════════════════════
 // DASHBOARD — AUTO-LOAD ON PAGE OPEN
@@ -4253,13 +4267,13 @@ async function runDashScan(force){
       return !String(t).includes('=F') && !String(t).includes('-USD') && !String(t).includes('-EUR');
     });
     try {
-      const [bpr, techR, fundR, newsR, danR] = await Promise.all([
+      const [bpr, techR, fundR, newsR] = await Promise.all([
         fetch('/api/prices?symbols=' + encodeURIComponent(batch.join(','))),
         fetch('/api/technicals/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: batch }) }),
         fetch('/api/fundamentals/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: eqSyms }) }),
-        fetch('/api/news-sentiment/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: batch }) }),
-        fetch('/api/danelfin/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: batch }) })
+        fetch('/api/news-sentiment/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbols: batch }) })
       ]);
+      const danR = null;
       let prices = {};
       try {
         if (bpr.ok && bpr.headers.get('content-type')?.includes('application/json')) prices = await bpr.json();
@@ -4520,38 +4534,7 @@ async function runDashScan(force){
               r.newsScore = newsScore;
               r.newsSummary = news && news.summary ? news.summary : '';
               r.avoidEarnings = avoidEarnings;
-              var _danBoost = tierNow === 'danelfin_us' || tierNow === 'danelfin_eu' ? batchDan[r.ticker] : null;
-              if (_danBoost) {
-                if (_danBoost.technical >= 7 && _danBoost.aiscore >= 6 && _danBoost.buy_track_record) {
-                  var _sb = Math.round((_danBoost.technical - 5) * 2.5);
-                  r.shortScore = Math.min(92, (r.shortScore || 0) + _sb);
-                  r.backtestedWinRate = Math.min(80, (r.backtestedWinRate || 50) + Math.round((_danBoost.technical - 6) * 1.5));
-                } else if (_danBoost.technical <= 3 || (!_danBoost.buy_track_record && _danBoost.aiscore <= 4)) {
-                  r.shortScore = Math.round((r.shortScore || 0) * 0.55);
-                }
-                if (_danBoost.technical <= 3 && _danBoost.sell_track_record) {
-                  r.shortSellScore = Math.min(88, (r.shortSellScore || 0) + Math.round((5 - _danBoost.technical) * 2.5));
-                }
-                if (_danBoost.aiscore >= 7 && _danBoost.buy_track_record) {
-                  var _mb = Math.round((_danBoost.aiscore - 5) * 3.5);
-                  r.mediumScore = Math.min(92, (r.mediumScore || 0) + _mb);
-                  r.backtestedWinRate = Math.min(82, (r.backtestedWinRate || 50) + Math.round((_danBoost.aiscore - 6) * 2));
-                } else if (_danBoost.aiscore <= 4) {
-                  r.mediumScore = Math.round((r.mediumScore || 0) * 0.50);
-                }
-                if (_danBoost.aiscore <= 3 && _danBoost.sell_track_record) {
-                  r.mediumSellScore = Math.min(88, (r.mediumSellScore || 0) + Math.round((5 - _danBoost.aiscore) * 3.5));
-                }
-                var _lq = _danBoost.aiscore * 0.55 + _danBoost.fundamental * 0.45;
-                if (_lq >= 7 && _danBoost.buy_track_record) {
-                  r.longScore = Math.min(92, (r.longScore || 0) + Math.round((_lq - 5) * 3));
-                } else if (_danBoost.fundamental <= 3 || _danBoost.aiscore <= 3) {
-                  r.longScore = Math.round((r.longScore || 0) * 0.45);
-                }
-                if (_danBoost.fundamental <= 3 && _danBoost.aiscore <= 4 && _danBoost.sell_track_record) {
-                  r.longSellScore = Math.min(88, (r.longSellScore || 0) + Math.round((5 - _danBoost.aiscore) * 3));
-                }
-              }
+              var _danBoost = null;
 
               // ── TIER ASSIGNMENT (client-side, mirrors server batch logic) ──────────
               // Pull tier from batchTech data (set by server)
@@ -4617,31 +4600,7 @@ async function runDashScan(force){
               if (r.mediumScore  > 55 && r.mediumSellScore  > 55) { if (r.mediumScore > r.mediumSellScore) r.mediumSellScore = 20; else r.mediumScore = 20; }
               if (r.longScore    > 55 && r.longSellScore    > 55) { if (r.longScore > r.longSellScore) r.longSellScore = 20; else r.longScore = 20; }
             }
-            var _dan = tierNow === 'danelfin_us' || tierNow === 'danelfin_eu' ? batchDan[r.ticker] : null;
-            if (_dan) {
-              var _dn = function (x) { var v = Number(x); return isFinite(v) ? v : null; };
-              var _ai = _dn(_dan.aiscore);
-              if (_ai != null) {
-                r.danelfinAiScore = _ai;
-                r.danelfinTP = _dan.danTP != null ? Number(_dan.danTP) : null;
-                r.danelfinSL = _dan.danSL != null ? Number(_dan.danSL) : null;
-                r.danelfinEntry = _dan.danEntry != null ? Number(_dan.danEntry) : null;
-                r.danelfinTechnical = _dn(_dan.technical);
-                r.danelfinFundamental = _dn(_dan.fundamental);
-                r.danelfinSentiment = _dn(_dan.sentiment);
-                r.danelfinLowRisk = _dn(_dan.low_risk);
-                r.danelfinBuyTrack = !!(_dan.buy_track_record === true || _dan.buy_track_record === 1 || _dan.buy_track_record === '1');
-                r.danelfinSellTrack = !!(_dan.sell_track_record === true || _dan.sell_track_record === 1 || _dan.sell_track_record === '1');
-                // Composite alpha scores per horizon (mirrors server formula)
-                var _da=r.danelfinAiScore||0,_dt2=r.danelfinTechnical||0,_df2=r.danelfinFundamental||0;
-                var _ds2=r.danelfinSentiment||0,_dr2=r.danelfinLowRisk||0,_trk2=r.danelfinBuyTrack?5:-5;
-                r.compositeAlphaShort  = Math.min(100,Math.max(0,Math.round(_dt2*2.0+_dr2*1.2+_ds2*0.8+_da*1.0+50*0.45+_trk2)));
-                r.compositeAlphaMedium = Math.min(100,Math.max(0,Math.round(_da*3.0+_dt2*1.8+_ds2*1.2+_dr2*0.8+50*0.32+_trk2)));
-                r.compositeAlphaLong   = Math.min(100,Math.max(0,Math.round(_da*2.8+_df2*2.5+_dr2*1.2+_ds2*0.8+50*0.27+_trk2)));
-                r.compositeAlpha       = r.compositeAlphaMedium;
-                r.compositeGrade       = r.compositeAlphaMedium>=82?'A+':r.compositeAlphaMedium>=74?'A':r.compositeAlphaMedium>=65?'B+':r.compositeAlphaMedium>=55?'B':'C';
-              }
-            }
+            var _dan = null;
           });
           res.forEach(function(r){
             var tech = batchTech[r.ticker];
@@ -4653,6 +4612,9 @@ async function runDashScan(force){
               r.marketRegion = tech.marketRegion || _mktCls.region;
               r.marketNote   = tech.marketNote || _mktCls.note || '';
               r.fmpScore     = tech.fmpScore     || null;
+              r.shortWeighting  = (tech.quantSignal && tech.quantSignal.short && tech.quantSignal.short.weighting) || '75% technical · 15% FMP · 10% fundamentals';
+              r.mediumWeighting = (tech.quantSignal && tech.quantSignal.medium && tech.quantSignal.medium.weighting) || '50% technical · 30% FMP · 20% fundamentals';
+              r.longWeighting   = (tech.quantSignal && tech.quantSignal.long && tech.quantSignal.long.weighting) || '35% technical · 30% FMP · 35% fundamentals';
               r._atr = tech.atr || null;
               r._atrPct = tech.atrPct || null;
               r._support1 = tech.support1 || null;
@@ -4747,11 +4709,8 @@ async function runDashScan(force){
   const BUY_MIN_SCORE = 62; // rate(): sc>=62 → 'Buy'
   function danComposite(row, scoreKey) {
     var tech = row[scoreKey] || 0;
-    var dan = row.danelfinAiScore != null ? row.danelfinAiScore : 5;
-    var danBonus = dan >= 7 ? (dan - 6) * 15 : dan <= 3 ? -20 : 0;
-    if (row.danelfinBuyTrack) danBonus += 10;
     var instBonus = row.instNetShares > 0 ? 10 : row.instNetShares < 0 ? -10 : 0;
-    return tech + danBonus + instBonus;
+    return tech + instBonus;
   }
   function sellComposite(row, scoreKey) {
     var tech = row[scoreKey] || 0;
@@ -4760,7 +4719,6 @@ async function runDashScan(force){
     var az = row.fmpScore && row.fmpScore.altmanZ != null ? Number(row.fmpScore.altmanZ) : null;
     if (pio != null && pio <= 2) bonus += 20;
     if (az != null && az < 1.81) bonus += 18;
-    if (row.danelfinSellTrack) bonus += 12;
     if (row.instNetShares < 0) bonus += 8;
     return tech + bonus;
   }
@@ -5123,8 +5081,65 @@ function _num(v) {
   return Number.isFinite(n) ? n : '';
 }
 const _HZ_LABEL = { short: 'Short (1d–1mo)', medium: 'Medium (1–3mo)', long: 'Long (4–12mo)' };
+const _HZ_MIX = {
+  short: '75% technical · 15% FMP · 10% fundamentals',
+  medium: '50% technical · 30% FMP · 20% fundamentals',
+  long: '35% technical · 30% FMP · 35% fundamentals'
+};
 
-/** Trade-specific buy/sell reason with concrete Entry/TP1/TP2/SL (+% and R:R). */
+function _looksGenericReason(text) {
+  var t = String(text || '').trim();
+  if (!t) return true;
+  if (/^quant signal$/i.test(t) || /^setup note$/i.test(t)) return true;
+  if (/levels locked at signal/i.test(t)) return true;
+  if (/^Buy @ .+ \| (Strong )?Buy \(\d+\/100\)/i.test(t)) return true;
+  if (/^Sell @ .+ \| (Strong )?Sell \(\d+\/100\)/i.test(t)) return true;
+  return false;
+}
+
+function buildClientTradeThesis(s, hz, isSell, levelsTxt) {
+  var condKey = hz === 'short' ? '_shortConditions' : hz === 'medium' ? '_mediumConditions' : '_longConditions';
+  var conds = (s[condKey] || (hz === 'short' ? s.quantConditions : []) || []).slice(0, 8);
+  var rating = s[hz + 'Rating'] || s.rating || (isSell ? 'Sell' : 'Buy');
+  var score = isSell ? (s[hz + 'SellScore'] || s.sellScore) : (s[hz + 'Score'] || s.buyScore);
+  var regime = s[(hz === 'medium' ? '_medRegime' : '_' + hz + 'Regime')] || s._regime || '';
+  var mix = s[hz + 'Weighting'] || _HZ_MIX[hz];
+  var hzLabel = hz.charAt(0).toUpperCase() + hz.slice(1);
+  var period = hz === 'short' ? '1 day–1 month' : hz === 'medium' ? '1–3 months' : '4–12 months';
+  var fmp = (s.fmpScore && typeof s.fmpScore === 'object') ? s.fmpScore : {};
+  var fmpBits = [];
+  if (fmp.piotroski != null) fmpBits.push('Piotroski ' + fmp.piotroski + '/9');
+  if (fmp.qualityScore != null) fmpBits.push('quality ' + fmp.qualityScore + '/10');
+  if (fmp.altmanZ != null) {
+    var az = Number(fmp.altmanZ);
+    fmpBits.push('Altman Z ' + az.toFixed(1) + (az > 2.99 ? ' (safe)' : az > 1.81 ? ' (grey)' : ' (distress)'));
+  }
+  var fundBits = [];
+  if (s.earningsGrowth) fundBits.push('EPS ' + s.earningsGrowth + (String(s.earningsGrowth).indexOf('%') >= 0 ? '' : '%') + ' YoY');
+  if (s.revenueGrowth) fundBits.push('rev ' + s.revenueGrowth + (String(s.revenueGrowth).indexOf('%') >= 0 ? '' : '%') + ' YoY');
+  if (s.peg) fundBits.push('PEG ' + s.peg);
+  var setup = [];
+  if (regime && regime !== 'neutral') setup.push(regime + ' regime');
+  conds.forEach(function (c) { if (c) setup.push(c); });
+  var inv = isSell
+    ? (hz === 'short'
+      ? 'Invalid if RSI turns up with MACD, or the extension collapses back through the channel mean without follow-through.'
+      : 'Invalid if price reclaims MA50 on a weekly close, or RSI/MACD turn up together (bear-rally / squeeze).')
+    : (hz === 'short'
+      ? 'Invalid if MA20 and MA50 both fail, or four more lower closes print (knife, not a dip).'
+      : hz === 'long'
+        ? 'Invalid if price closes back below MA200, or earnings growth turns negative.'
+        : regime === 'bull'
+          ? 'Invalid if weekly trend flips down or price closes below MA50.'
+          : 'Invalid if the name loses MA200 or the SD-channel mean with rising volume.');
+  return hzLabel + ' (' + period + ') ' + rating + (score != null ? ' (' + score + '/100)' : '')
+    + ' — ' + mix + '. Setup: ' + (setup.length ? setup.join('; ') : (isSell ? 'sell gates met' : 'buy gates met'))
+    + (fmpBits.length ? '. FMP: ' + fmpBits.join(', ') : '')
+    + (fundBits.length ? '. Fundamentals: ' + fundBits.join(', ') : '')
+    + '. ' + (levelsTxt ? 'Trade: ' + levelsTxt + '. ' : '') + inv;
+}
+
+/** Trade-specific buy/sell reason: mix, gates that fired, FMP/fund numbers, levels, invalidation. */
 function formatRecommendedReason(s, hz, isSell, entry, tp1, tp2, sl) {
   const e = parseFloat(entry), t1 = parseFloat(tp1), t2 = parseFloat(tp2), stop = parseFloat(sl);
   const pct = function(from, to) {
@@ -5147,16 +5162,12 @@ function formatRecommendedReason(s, hz, isSell, entry, tp1, tp2, sl) {
     ? (s[hz + 'SellAnalysis'] || s.sellReason || s[hz + 'Analysis'] || s.reason || '')
     : (s[hz + 'Analysis'] || s.reason || s.shortAnalysis || s.mediumAnalysis || s.longAnalysis || '');
   why = String(why || '').trim();
-  if (/^quant signal$/i.test(why) || /^setup note$/i.test(why)) why = '';
-  // If why already contains a full levels stamp, prefer it.
-  if (why && why.indexOf('TP1 ') >= 0 && why.indexOf('SL ') >= 0) return why;
-  if (levelsTxt && why && why.indexOf(levelsTxt) !== 0) return levelsTxt + ' | ' + why;
-  if (levelsTxt) {
-    const rating = s[hz + 'Rating'] || s.rating || (isSell ? 'Sell' : 'Buy');
-    const score = isSell ? (s[hz + 'SellScore'] || s.sellScore) : (s[hz + 'Score'] || s.buyScore);
-    return levelsTxt + ' | ' + rating + (score != null ? ' (' + score + '/100)' : '') + ' — levels locked at signal.';
+  if (why && /Setup:/.test(why) && /Invalid if/.test(why)) return why;
+  if (_looksGenericReason(why) || !why || /levels locked at signal/i.test(why)) {
+    return buildClientTradeThesis(s, hz, isSell, levelsTxt);
   }
-  return why;
+  if (levelsTxt && why.indexOf('TP1 ') >= 0 && why.indexOf('SL ') >= 0) return why;
+  return buildClientTradeThesis(s, hz, isSell, levelsTxt);
 }
 
 function exportRecommendedTrades() {
@@ -6190,11 +6201,11 @@ function buildChartHtml(ticker, entry, tp1, tp2, sl, action, hz, conditions) {
     + '<div style="font-size:9px;color:rgba(140,150,170,0.8);letter-spacing:0.06em;margin-bottom:5px;text-transform:uppercase">'
     + (String(action||'').toLowerCase()==='sell' ? 'Why Short / Sell' : 'Why Long / Buy')
     + '</div>'
-    + conditions.slice(0, 6).map(function (c) {
+    + conditions.slice(0, 8).map(function (c) {
         return '<div style="display:flex;align-items:flex-start;gap:5px;font-size:9px;color:rgba(200,210,220,0.85);margin-bottom:2px">'
           + '<span style="color:var(--buy);flex-shrink:0">▸</span><span>'+c+'</span></div>';
       }).join('')
-    + '<div style="font-size:7px;color:rgba(120,130,150,0.55);margin-top:6px">Patterns: internal OHLCV engine (Yahoo data) · not third-party</div>'
+    + '<div style="font-size:7px;color:rgba(120,130,150,0.55);margin-top:6px">Gates from the technical engine + FMP + fundamentals for this timeframe</div>'
     + '</div>'
   ) : '<div id="chartwhy_'+tid+'"></div>';
   return '<div class="chart-tabs" id="ctabs_'+tid+'">'+tabs+'</div>'
@@ -6507,11 +6518,11 @@ function formatRevenueCell(v) {
   return dollars.toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
-/** Mirror server classifyMarket(symbol) — trust ticker suffix over stale/wrong merged marketTier (fixes Asian names showing Danelfin). */
+/** Mirror server classifyMarket — all equities FMP + technical; no Danelfin. */
 function classifyMarketTicker(symbol) {
   var sym = String(symbol || '').toUpperCase().trim();
   if (!sym) {
-    return { tier: 'danelfin_us', label: 'Danelfin AI (US)', region: 'us', note: '', danelfin: true };
+    return { tier: 'fmp_quality', label: 'FMP Quality Score', region: 'us', note: 'Technical + FMP + fundamentals (horizon-weighted)', danelfin: false };
   }
   if (sym.indexOf('=F') !== -1 || sym.endsWith('-USD') || sym.endsWith('-EUR')) {
     return { tier: 'technical_only', label: 'Technical Only', region: 'commodity',
@@ -6521,8 +6532,9 @@ function classifyMarketTicker(symbol) {
   var i;
   for (i = 0; i < eu.length; i++) {
     if (sym.endsWith(eu[i])) {
-      return { tier: 'danelfin_eu', label: 'Danelfin AI (EU)', region: 'europe',
-        note: 'Danelfin European ML + FMP', danelfin: true };
+      return { tier: 'fmp_quality', label: 'FMP Quality Score',
+        region: sym.endsWith('.L') ? 'uk' : 'europe',
+        note: 'Technical + FMP + fundamentals (horizon-weighted)', danelfin: false };
     }
   }
   var asia = ['.T','.HK','.NS','.BO','.KS','.KQ','.TW','.SI','.AX','.NZ','.BK'];
@@ -6530,10 +6542,10 @@ function classifyMarketTicker(symbol) {
   for (j = 0; j < asia.length; j++) {
     if (sym.endsWith(asia[j])) {
       return { tier: 'fmp_quality', label: 'FMP Quality Score', region: 'asia',
-        note: 'FMP rules-based quality (no Danelfin for Asian listings)', danelfin: false };
+        note: 'Technical + FMP + fundamentals (horizon-weighted)', danelfin: false };
     }
   }
-  return { tier: 'danelfin_us', label: 'Danelfin AI (US)', region: 'us', note: 'Danelfin ML (US)', danelfin: true };
+  return { tier: 'fmp_quality', label: 'FMP Quality Score', region: 'us', note: 'Technical + FMP + fundamentals (US, horizon-weighted)', danelfin: false };
 }
 
 /** Prefer ticker-derived tier when server/dashboard merge contradicts ticker (e.g. .HK showing US Danelfin). */
@@ -6541,7 +6553,7 @@ function resolvedMarketMeta(s) {
   var inf = classifyMarketTicker(s && s.ticker);
   var st = String((s && s.marketTier) || '').trim();
   var tier = (st && st !== inf.tier) ? inf.tier : (st || inf.tier);
-  var dan = tier === 'danelfin_us' || tier === 'danelfin_eu';
+  var dan = false;
   var label = (st && st !== inf.tier) ? inf.label : ((s && s.marketLabel) || inf.label);
   return {
     tier: tier,
@@ -6695,7 +6707,7 @@ function renderCard(s){
       tier:s.shortTier||0, tierLabel:s.shortTierLabel||'',
       winRateEst:s.shortWinRateEst||null, regime:s._shortRegime||s._regime||'neutral', danScore:s.danelfinAiScore||null, danDriver:s.danelfinTechnical||null, danDriverLabel:'Technical', compositeAlpha:s.compositeAlphaShort||null,
       rating:applyWinRateThreshold(s.shortRating, s.backtestedWinRate), conf:hzDisplayConf(s,'short'),
-      weighting:s.shortWeighting||'100% Technical',
+      weighting:s.shortWeighting||'75% technical · 15% FMP · 10% fundamentals',
       action: hzActionFromRow('short', s.shortRating, s.shortAction),
       entry:  s.shortEntry  || s.entry,
       tp1:    s.shortTarget1|| s.target1,
@@ -6713,7 +6725,7 @@ function renderCard(s){
       tier:s.mediumTier||0, tierLabel:s.mediumTierLabel||'',
       winRateEst:s.mediumWinRateEst||null, regime:s._medRegime||s._regime||'neutral', danScore:s.danelfinAiScore||null, danDriver:s.danelfinAiScore||null, danDriverLabel:'AI Score', compositeAlpha:s.compositeAlphaMedium||s.compositeAlpha||null,
       rating:applyWinRateThreshold(s.mediumRating, s.backtestMediumWinRate), conf:hzDisplayConf(s,'medium'),
-      weighting:s.mediumWeighting||'70% Technical · 30% News',
+      weighting:s.mediumWeighting||'50% technical · 30% FMP · 20% fundamentals',
       action: hzActionFromRow('medium', s.mediumRating, s.mediumAction),
       entry:  s.mediumEntry  || s.entry,
       tp1:    s.mediumTarget1|| s.target1,
@@ -6731,7 +6743,7 @@ function renderCard(s){
       tier:s.longTier||0, tierLabel:s.longTierLabel||'',
       winRateEst:s.longWinRateEst||null, regime:s._longRegime||s._regime||'neutral', danScore:s.danelfinAiScore||null, danDriver:s.danelfinFundamental||null, danDriverLabel:'Fundamental', compositeAlpha:s.compositeAlphaLong||null,
       rating:applyWinRateThreshold(s.longRating, s.backtestLongWinRate), conf:hzDisplayConf(s,'long'),
-      weighting:s.longWeighting||'60% Technical · 20% Fundamental · 20% News',
+      weighting:s.longWeighting||'35% technical · 30% FMP · 35% fundamentals',
       action: hzActionFromRow('long', s.longRating, s.longAction),
       entry:  s.longEntry  || s.entry,
       tp1:    s.longTarget1|| s.target1,
@@ -6801,7 +6813,7 @@ function renderCard(s){
           danScore: shortSc,
           danDriver: !isNaN(pioN) ? pioN : hz.danDriver,
           danDriverLabel: 'Piotroski (/9)',
-          weighting: 'FMP fundamentals + technicals'
+          weighting: hz.weighting || '75% technical · 15% FMP · 10% fundamentals'
         });
       }
       if (hz.key === 'medium') {
@@ -6809,7 +6821,7 @@ function renderCard(s){
           danScore: medSc,
           danDriver: medSc,
           danDriverLabel: 'Quality (/10)',
-          weighting: 'FMP quality + technicals'
+          weighting: hz.weighting || '50% technical · 30% FMP · 20% fundamentals'
         });
       }
       if (hz.key === 'long') {
@@ -6817,7 +6829,7 @@ function renderCard(s){
           danScore: longSc,
           danDriver: !isNaN(azN) ? fm.altmanZ : hz.danDriver,
           danDriverLabel: 'Altman Z',
-          weighting: 'FMP distress risk + technicals'
+          weighting: hz.weighting || '35% technical · 30% FMP · 35% fundamentals'
         });
       }
       return hz;
@@ -6907,7 +6919,7 @@ function renderCard(s){
           +(hz.compositeAlpha!=null?'<div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:8px;color:rgba(255,255,255,0.35);font-family:DM Mono,monospace">Composite Alpha</div><div style="font-size:12px;font-weight:700;font-family:DM Mono,monospace;color:'+(hz.compositeAlpha>=74?'#00c864':hz.compositeAlpha>=55?'#c9f14f':'rgba(180,180,180,0.5)')+' ">'+hz.compositeAlpha+'/100</div></div>':'')
           +'<div style="font-size:8px;font-family:DM Mono,monospace;margin-top:5px;color:'+(hz.danScore>=8?'#00c864':hz.danScore>=7?'rgba(170,255,170,0.8)':hz.danScore<=3?'#ff6666':'rgba(180,180,180,0.45)')+'">'
           +(_isFMP
-            ? '📊 FMP quality driver for this horizon (not Danelfin ML). Prefer server FMP_API_KEY set for full scores.'
+            ? '📊 Horizon mix: technical engine + FMP Piotroski/quality/Altman + EPS/revenue (weights change by timeframe).'
             : (hz.danScore>=8&&s.danelfinBuyTrack?'🎯 ML confirms: high probability of beating market':hz.danScore>=7?'✓ ML signal: above-average probability':hz.danScore<=3?'⚠ ML flags: underperformance risk':'→ Neutral ML signal — technicals are the primary edge'))
           +'</div></div>'
         :'')
@@ -7073,7 +7085,7 @@ function renderCard(s){
     +'<div class="mt"><div class="ml">Fin Health</div><div class="mv '+(s.financialHealth==='Strong'?'g':s.financialHealth==='Weak'?'r':'y')+'">'+(s.financialHealth||'—')+'</div></div>'
     +'<div class="mt"><div class="ml">Industry Pos</div><div class="mv">'+(s.industryPos||'—')+'</div></div>'
     +'</div>'
-    // FMP quality card — Piotroski, Altman Z, Quality Score, FMP Rating (Asian stocks only)
+    // FMP quality card — Piotroski, Altman Z, Quality Score (US/UK/EU/Asia equities)
     +(s.fmpScore
       ?'<div style="margin-top:10px;padding:10px 12px;background:linear-gradient(135deg,rgba(0,32,22,0.97),rgba(0,22,14,0.97));border:1px solid rgba(0,200,100,0.25);border-radius:8px">'
         +'<div style="font-size:8px;font-weight:700;color:#00dc82;font-family:DM Mono,monospace;letter-spacing:.12em;margin-bottom:8px">📊 FMP QUALITY — Piotroski · Altman Z · Analyst</div>'
@@ -7152,11 +7164,11 @@ function switchHzTab(tickerId, hzKey) {
     if (conds.length) {
       whyEl.innerHTML = '<div style="font-size:9px;color:rgba(140,150,170,0.8);letter-spacing:0.06em;margin-bottom:5px;text-transform:uppercase">'
         + (isSell ? 'Why Short / Sell' : 'Why Long / Buy') + '</div>'
-        + conds.slice(0, 6).map(function (c) {
+        + conds.slice(0, 8).map(function (c) {
             return '<div style="display:flex;align-items:flex-start;gap:5px;font-size:9px;color:rgba(200,210,220,0.85);margin-bottom:2px">'
               + '<span style="color:var(--buy);flex-shrink:0">▸</span><span>'+c+'</span></div>';
           }).join('')
-        + '<div style="font-size:7px;color:rgba(120,130,150,0.55);margin-top:6px">Patterns: internal OHLCV engine (Yahoo data) · not third-party</div>';
+        + '<div style="font-size:7px;color:rgba(120,130,150,0.55);margin-top:6px">Gates from the technical engine + FMP + fundamentals for this timeframe</div>';
       whyEl.style.display = 'block';
     } else {
       whyEl.innerHTML = '';
