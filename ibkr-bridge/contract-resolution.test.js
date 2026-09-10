@@ -8,6 +8,8 @@ const {
   scheduledEntryReleaseAllowed,
   boardPublishedAtRelease,
   publishedBoardHasPick,
+  shouldCancelUnfilledOffBoard,
+  isForceErrorKey,
   shouldAlertReconFailure,
   riskFindingsFingerprint,
   isAuctionEntryStyle,
@@ -97,13 +99,31 @@ assert.strictEqual(usPost.defer, true);
 const usPre = parentEntrySpec(toContract('PH'), 'BUY', 11, {
   side: 'buy', entryPx: 1001.74, quotePx: 990, phaseOverride: 'pre'
 });
-assert.strictEqual(usPre.entryStyle, 'LMT-EXT');
-assert.strictEqual(usPre.outsideRth, true);
+assert.strictEqual(usPre.entryStyle, 'OPG', 'US pre parks at the cash open — no extended MKT');
+assert.strictEqual(usPre.tif, 'OPG');
+assert.strictEqual(usPre.outsideRth, false, 'US OPG must not print in pre (FDS 288.72 vs RTH high 287.95)');
 const usRthMkt = parentEntrySpec(toContract('PH'), 'BUY', 11, {
   side: 'buy', entryPx: 1001.74, quotePx: 1001.74, phaseOverride: 'rth'
 });
 assert.strictEqual(usRthMkt.entryStyle, 'MKT');
-assert.strictEqual(usRthMkt.outsideRth, true);
+assert.strictEqual(usRthMkt.outsideRth, false, 'US RTH MKT is cash-session only');
+const usOpg = parentEntrySpec(toContract('FDS'), 'BUY', 120, {
+  side: 'buy', entryPx: 289, quotePx: 307, phaseOverride: 'pre', forceOpg: true
+});
+assert.strictEqual(usOpg.entryStyle, 'OPG');
+assert.strictEqual(usOpg.outsideRth, false);
+assert.strictEqual(shouldCancelUnfilledOffBoard({
+  ticker: 'FDS', hz: 'short', side: 'buy', closed: false, entryFilled: false
+}, { short: [{ ticker: 'NVDA' }] }, 'FDS|short|Wed Sep 09 2026'), true);
+assert.strictEqual(shouldCancelUnfilledOffBoard({
+  ticker: 'FDS', hz: 'short', side: 'buy', closed: false, entryFilled: true
+}, { short: [{ ticker: 'NVDA' }] }, 'FDS|short|Wed Sep 09 2026'), false, 'filled lots are not cancelled');
+assert.strictEqual(shouldCancelUnfilledOffBoard({
+  ticker: 'FDS', hz: 'short', side: 'buy', closed: false, entryFilled: false
+}, { short: [{ ticker: 'FDS' }] }, 'FDS|short|Wed Sep 09 2026'), false);
+assert.strictEqual(isForceErrorKey('FDS|short|Wed Sep 09 2026'), true);
+assert.strictEqual(isForceErrorKey('WDAY|short|Wed Sep 09 2026'), true);
+assert.strictEqual(isForceErrorKey('FDS|short|Thu Sep 10 2026'), false);
 const mondi = toContract('MNDI.L');
 assert.strictEqual(mondi.symbol, 'MNDI');
 assert.strictEqual(mondi.localSymbol, undefined);

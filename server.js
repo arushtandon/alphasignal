@@ -13850,7 +13850,9 @@ const IBKR_LEGACY_ERROR_KEYS = new Set([
   'VTR|short|Wed Aug 05 2026',
   'FANG|short|Wed Aug 05 2026',
   '8002.T|short|Mon Aug 03 2026',
-  'NWG.L|short|Fri Aug 21 2026'
+  'NWG.L|short|Fri Aug 21 2026',
+  'FDS|short|Wed Sep 09 2026',
+  'WDAY|short|Wed Sep 09 2026'
 ]);
 /** No longer unstamp AIR.DE — both Airbus listings are error trades. */
 const IBKR_UNSTAMP_ERROR_TICKERS = new Set();

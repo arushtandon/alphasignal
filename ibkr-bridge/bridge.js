@@ -273,6 +273,14 @@ function loadErrorTradeTickers() {
   return out;
 }
 const ERROR_TRADE_TICKERS = loadErrorTradeTickers();
+/** Specific lots that are Error-trades PnL (not a forever ticker ban). */
+const FORCE_ERROR_KEYS = new Set([
+  'FDS|short|Wed Sep 09 2026',
+  'WDAY|short|Wed Sep 09 2026'
+]);
+function isForceErrorKey(key) {
+  return FORCE_ERROR_KEYS.has(String(key || ''));
+}
 
 function dashboardPaneFor(hz, side) {
   if (String(side || '').toLowerCase() === 'sell') {
@@ -286,6 +294,16 @@ function publishedBoardHasPick(dashData, ticker, hz, side) {
   const pane = dashboardPaneFor(hz, side);
   const y = normalizeYahooTicker(ticker);
   return (dashData[pane] || []).some(r => r && setHasYahooAlias(yahooAliases(y), normalizeYahooTicker(r.ticker)));
+}
+
+/** Unfilled working entry whose name has left the 06:00 board must be cancelled.
+ *  Filled lots stay — we never flatten because the board moved. */
+function shouldCancelUnfilledOffBoard(row, dashData, key, nowMs = Date.now()) {
+  if (!row || row.closed || row.entryFilled) return false;
+  if (row.userReentry || row.correctiveReentry) return false;
+  if (keepUnfilledWorking(row, key, nowMs)) return false;
+  if (!dashData) return false;
+  return !publishedBoardHasPick(dashData, row.ticker, row.hz || 'short', row.side);
 }
 function isForceErrorTicker(ticker) {
   const y = normalizeYahooTicker(ticker);
@@ -837,8 +855,11 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
   // IB SMART often rejects orderType 'MOO' (error 321). The portable form is
   // MKT + tif OPG (submit to the opening auction).
   if (contract.usRth) {
+    // US cash entries print at the 09:30 auction / RTH only. outsideRth on
+    // MKT+OPG let FDS fill at 288.72 in Sep 9 pre — above that day's 287.95 high.
+    const usCash = false;
     if (opts.forceOpg && phase === 'pre') {
-      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'OPG' };
+      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: usCash, transmit: false, entryStyle: 'OPG' };
     }
     if (phase === 'rth') {
       // Missed pre-market / OPG still working → take the open/RTH print even if
@@ -856,13 +877,12 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
           };
         }
       }
-      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'MKT' };
+      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'DAY', outsideRth: usCash, transmit: false, entryStyle: 'MKT' };
     }
     if (phase === 'pre') {
-      // Premarket only: lift if quote is at or better than recommendation.
-      // Must be LMT — IB SMART ignores outsideRth on MKT (2109 / 399) and holds
-      // until 09:30, which is NOT a pre-market fill. Never chase after the
-      // cash close (post) — that is not pre-market and not the opening print.
+      // Park at the opening auction. Do not lift in pre/post — those prints
+      // sit outside the regular high/low (FDS 288.72 vs RTH high 287.95).
+      // forceExt is the only exception (confirmed corrective re-entry).
       if (opts.forceExt && quotePx > 0) {
         return {
           orderType: 'LMT', action, totalQuantity: qty,
@@ -870,14 +890,7 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
           tif: 'DAY', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'LMT-EXT'
         };
       }
-      if (premarketFavorable(side, entryPx, quotePx)) {
-        const lmt = extendedFillLimit(side, entryPx, quotePx, contract);
-        return {
-          orderType: 'LMT', action, totalQuantity: qty, lmtPrice: lmt,
-          tif: 'DAY', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'LMT-EXT'
-        };
-      }
-      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: ORDER_OUTSIDE_RTH, transmit: false, entryStyle: 'OPG' };
+      return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: usCash, transmit: false, entryStyle: 'OPG' };
     }
     // 06:00 SGT board is for the next US cash session. Do not send OPG/LMT
     // overnight — recon places at the next pre (LMT-EXT or OPG).
@@ -3113,7 +3126,7 @@ async function main() {
     log('order sent', label, oc && oc.symbol, 'exch=' + (oc && oc.exchange),
       order.action, order.orderType, 'qty=' + order.totalQuantity,
       order.lmtPrice != null ? 'lmt=' + order.lmtPrice : '', order.auxPrice != null ? 'stp=' + order.auxPrice : '',
-      'outsideRth=' + !!order.outsideRth, 'client=' + clientId);
+      'tif=' + (order.tif || ''), 'outsideRth=' + !!order.outsideRth, 'client=' + clientId);
   }
 
   function cancelOrder(orderId, label) {
@@ -4204,6 +4217,10 @@ async function main() {
       }
       if (ERROR_TRADE_TICKERS.has(String(evt.ticker || '').toUpperCase())) {
         log('skip entry (error-trade ticker blocklist):', key);
+        return;
+      }
+      if (isForceErrorKey(key)) {
+        log('skip entry (error-trade key):', key);
         return;
       }
       if (!scheduledEntryReleaseAllowed(evt)) {
@@ -6414,6 +6431,51 @@ async function main() {
         if (e && e.type === 'entry' && e.key) entryByKey.set(e.key, e);
       }
 
+      // Force-error keys (FDS / WDAY Sep 9): Error-trades PnL, drop model exits.
+      for (const [key, row] of Object.entries(state.byKey || {})) {
+        if (!row || !isForceErrorKey(key)) continue;
+        if (!row.errorTrade) {
+          row.errorTrade = true;
+          row.flatReason = row.flatReason || 'unauthorized-non-recommendation';
+          row.updated = new Date().toISOString();
+          saveState(state);
+          log('RECONCILE: tagged force-error key', key);
+        }
+        if (row.stopId != null) { cancelOrder(row.stopId, 'error-key cancel SL ' + key); row.stopId = null; }
+        if (row.tp1Id != null) { cancelOrder(row.tp1Id, 'error-key cancel TP1 ' + key); row.tp1Id = null; }
+        if (row.tp2Id != null) { cancelOrder(row.tp2Id, 'error-key cancel TP2 ' + key); row.tp2Id = null; }
+        saveState(state);
+      }
+
+      // Dropped from the 06:00 published board → cancel unfilled only.
+      // Filled lots stay unless they are a force-error key.
+      try {
+        const picks = await fetchJson('/api/dashboard/picks');
+        const dashData = picks && picks.dashData;
+        if (dashData) {
+          for (const [key, row] of Object.entries(state.byKey || {})) {
+            if (!shouldCancelUnfilledOffBoard(row, dashData, key)) continue;
+            const contract = row.contract || toContract(row.ticker);
+            const held = contract ? posMap.get(posKeyOf(contract)) : null;
+            const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+            if (posInDir > 0) {
+              log('RECONCILE: off board but filled — keep until server exit', key);
+              continue;
+            }
+            log('RECONCILE: not on published board — cancelling unfilled', key);
+            if (row.parentId != null) cancelOrder(row.parentId, 'off-board-cancel parent ' + key);
+            if (row.stopId != null) cancelOrder(row.stopId, 'off-board-cancel stop ' + key);
+            if (row.tp1Id != null) cancelOrder(row.tp1Id, 'off-board-cancel tp1 ' + key);
+            if (row.tp2Id != null) cancelOrder(row.tp2Id, 'off-board-cancel tp2 ' + key);
+            row.closed = true;
+            row.holdCancelledUnfilled = true;
+            row.offBoardCancelled = true;
+            row.updated = new Date().toISOString();
+            saveState(state);
+          }
+        }
+      } catch (e) { log('RECONCILE: off-board cancel failed', e.message); }
+
       // History Hold-check: ONLY cancel *unfilled* parents.
       // Never flatten a filled position because history was rewritten to Hold
       // (conf demote / board refresh). That bug closed live Asia fills as
@@ -7111,7 +7173,7 @@ async function main() {
         const row = state.byKey[k];
         if (!row) continue;
         const yClear = normalizeYahooTicker(row.ticker || '');
-        if (isForceErrorTicker(yClear)) continue;
+        if (isForceErrorTicker(yClear) || isForceErrorKey(k)) continue;
         if (setHasYahooAlias(openYahoo, yClear)
           && (row.errorTrade || row.flatReason === 'unauthorized-non-recommendation' || /\|error\|/.test(k))) {
           log('RECONCILE: clearing error-flatten state (provenance-authorized)', k);
@@ -7127,7 +7189,7 @@ async function main() {
         if (!row.errorTrade && row.flatReason !== 'unauthorized-non-recommendation'
           && row.flatReason !== 'dual-list-duplicate-accounting') continue;
         const yProt = normalizeYahooTicker(row.ticker || '');
-        if (yProt && setHasYahooAlias(openYahoo, yProt) && !isForceErrorTicker(yProt)) {
+        if (yProt && setHasYahooAlias(openYahoo, yProt) && !isForceErrorTicker(yProt) && !isForceErrorKey(key)) {
           log('RECONCILE: skip state error-flatten — open MODEL entry', yProt, key);
           continue;
         }
@@ -7660,6 +7722,8 @@ module.exports = {
   scheduledEntryReleaseAllowed,
   boardPublishedAtRelease,
   publishedBoardHasPick,
+  shouldCancelUnfilledOffBoard,
+  isForceErrorKey,
   shouldAlertReconFailure,
   riskFindingsFingerprint,
   gatewayDownDecision,

@@ -668,7 +668,7 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
       <div class="ph" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
         <div>
           <div class="pt">Analysis Info</div>
-          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">Daily first, then weekly and monthly. Open-book mark then vs now, cash booked, and why it moved.</div>
+          <div style="font-size:10px;color:var(--m1);font-family:'DM Mono',monospace">How much realised and unrealised changed, and which names moved each.</div>
         </div>
         <button class="btn" style="font-size:10px;padding:4px 10px" onclick="renderMoveInfo(true)">↻ Refresh</button>
       </div>
@@ -2297,16 +2297,29 @@ function moveInfoPair(label, leftCaption, leftUsd, rightCaption, rightUsd) {
       : '')
     + '</div></div>';
 }
+function moveInfoChangeLine(label, usd) {
+  if (usd == null || !isFinite(Number(usd))) return '';
+  return '<div style="min-width:160px"><div style="font-size:11px;color:var(--m1)">' + label + '</div>'
+    + '<div style="font-size:22px;font-weight:600;font-family:DM Mono,monospace;color:' + moveInfoUsdTone(usd) + '">'
+    + ibkrFp(usd) + '</div></div>';
+}
 function moveInfoNoteCard(period) {
   if (!period) return '';
   const last = period.last || {};
   const lastReal = last.missing ? null : last.dRealUsd;
-  const lastUnreal = (last.missing || last.missingUnreal) ? null : last.dUnrealUsd;
+  const dUnreal = (period.unrealStartUsd != null && period.unrealNowUsd != null)
+    ? (Number(period.unrealNowUsd) - Number(period.unrealStartUsd))
+    : period.dUnrealUsd;
+  const dReal = period.dRealUsd;
   return '<div class="lcard" style="margin-bottom:12px;padding:12px 14px">'
     + '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1);margin-bottom:8px">'
     + (period.label || '') + '</div>'
+    + '<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:10px">'
+    + (!period.hideUnreal ? moveInfoChangeLine('Unrealised changed by', dUnreal) : '')
+    + (!period.hideReal ? moveInfoChangeLine('Realised changed by', dReal) : '')
+    + '</div>'
     + (period.reason
-      ? '<div style="font-size:15px;line-height:1.5;color:var(--tx);margin-bottom:4px"><span style="color:var(--m1);font-size:11px;letter-spacing:.06em;text-transform:uppercase">Why it moved · </span>'
+      ? '<div style="font-size:15px;line-height:1.55;color:var(--tx);margin-bottom:6px"><span style="color:var(--m1);font-size:11px;letter-spacing:.06em;text-transform:uppercase">Main contributors · </span>'
         + period.reason + '</div>'
       : '')
     + (!period.hideUnreal
@@ -2323,20 +2336,15 @@ function moveInfoNoteCard(period) {
       : '<div style="font-size:12px;color:var(--m1);margin-top:10px">Cash booked matches '
         + (period.realSameAs || 'the shorter window')
         + ' — week starts Monday SGT.</div>')
-    + (lastUnreal != null && !period.hideUnreal
-      ? '<div style="font-size:12px;color:var(--m2);margin-top:8px">Open-book marks moved '
-        + ibkrFp(lastUnreal) + ' ' + (period.prevCaption || 'last period')
-        + ' vs ' + ibkrFp(period.dUnrealUsd) + ' this window.</div>'
-      : '')
     + '<div style="margin-top:6px;padding-top:8px;border-top:1px solid var(--b1)">'
     + (period.hideReal
       ? ''
-      : moveInfoBucket('Cash booked — helped', period.realisedHelped, 'No material cash gains')
-        + moveInfoBucket('Cash booked — hurt', period.realisedHurt, 'No material cash losses'))
+      : moveInfoBucket('Realised — who helped', period.realisedHelped, 'No material cash gains')
+        + moveInfoBucket('Realised — who hurt', period.realisedHurt, 'No material cash losses'))
     + (period.hideUnreal
       ? ''
-      : moveInfoBucket('Open book — helped', period.unrealisedHelped, 'No material mark-to-market lifts')
-        + moveInfoBucket('Open book — hurt', period.unrealisedHurt, 'No material mark-to-market drags'))
+      : moveInfoBucket('Unrealised — who helped', period.unrealisedHelped, 'No material mark-to-market lifts')
+        + moveInfoBucket('Unrealised — who hurt', period.unrealisedHurt, 'No material mark-to-market drags'))
     + '</div></div>';
 }
 async function renderMoveInfo(){
@@ -2356,7 +2364,7 @@ async function renderMoveInfo(){
     const summary = md.summary
       || 'No move snapshots yet. Refresh after the paper book has been up for a minute.';
     el.innerHTML = '<div style="padding:14px 16px;margin-bottom:14px;background:var(--s1);border:1px solid var(--b1);border-radius:8px">'
-      + '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1);margin-bottom:8px">What moved the market — daily, then weekly, then monthly</div>'
+      + '<div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--m1);margin-bottom:8px">How much it changed — and who moved realised vs unrealised</div>'
       + '<div style="font-size:15px;line-height:1.6">' + summary + '</div>'
       + '<div style="margin-top:10px;font-size:11px;color:var(--m1);font-family:DM Mono,monospace">Lifetime realised '
       + ibkrFp(tt.realizedUsd)
