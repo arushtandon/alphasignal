@@ -14314,6 +14314,17 @@ function hasGenuineCoveringExitForTicker(yahooTicker, fillRows) {
   return false;
 }
 
+/**
+ * Inventing a ghost-flatten for a live model lot (6758.T 10 Sep) booked Sony
+ * as Error after a restart when IB was already flat. Wait for a real IB exec.
+ */
+function shouldInventGhostFlattenForIbFlat(opts) {
+  const o = opts || {};
+  if (o.hasGenuineCoveringExit) return false;
+  if (o.modelStillOpen) return false;
+  return true;
+}
+
 function isModelIbSyncFill(r) {
   if (!r) return false;
   if (r.userReentry === true) return true;
@@ -16791,6 +16802,16 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           if (hasGenuineCoveringExitForTicker(y, fillRowsNow)) {
             // BZ Nov TP1 96.83 (2 Sep): roll rebuild used to drop that fill and
             // leave the lot "open", then recon wrote ghost-flatten every cycle.
+            continue;
+          }
+          if (!shouldInventGhostFlattenForIbFlat({
+            modelStillOpen: hasOpenEmittedEntryForTicker(y),
+            hasGenuineCoveringExit: false
+          })) {
+            issues.push({
+              ticker: y, severity: 'pending',
+              detail: `Site open ${asAbs} but IB flat — live model lot; waiting for IB exec, not ghost-flattening`
+            });
             continue;
           }
           let anyFlat = false;
@@ -19666,6 +19687,7 @@ module.exports = {
   missingIbPosMeansFlat,
   isBenignReconAdjustment,
   hasGenuineCoveringExitForTicker,
+  shouldInventGhostFlattenForIbFlat,
   bookAflStopLossFromIbPrint,
   bookRestoredFuturesPostRollExits,
   repairFuturesRollLedger,

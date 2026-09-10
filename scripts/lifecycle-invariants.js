@@ -575,6 +575,12 @@ function ok(name, cond, detail) {
       ok('T21d held lot is not flat', !S.missingIbPosMeansFlat({ qty: 82 }, ibMap));
       ok('T21d drop-qty-pad is benign', S.isBenignReconAdjustment('drop-qty-pad-ib-flat'));
       ok('T21d qty-pad action is not benign', !S.isBenignReconAdjustment('qty-pad'));
+      ok('T21f live model IB-flat is not ghost-flattened',
+        S.shouldInventGhostFlattenForIbFlat({ modelStillOpen: true }) === false);
+      ok('T21f genuine IB exit is not ghost-flattened',
+        S.shouldInventGhostFlattenForIbFlat({ hasGenuineCoveringExit: true }) === false);
+      ok('T21f site leftover without model entry may ghost-flatten',
+        S.shouldInventGhostFlattenForIbFlat({ modelStillOpen: false }) === true);
     })();
     // ── T21e AFL 82 IB print booked as stop-loss (full) ──────────────────────
     (function t21e() {

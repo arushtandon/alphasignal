@@ -1356,8 +1356,7 @@ async function main() {
     return null;
   }
 
-  // 3 Sep user restore: illegal TSL dumped these longs; original SL never printed.
-  // Reopen as deferred userReentry so US pre/OPG buys them back. Do not invent size.
+  // User restore: buy the lot back. Do not invent size.
   const USER_REQUESTED_RESTORES = [
     {
       key: 'SNDK|short|Tue Aug 25 2026', qty: 7,
@@ -1366,6 +1365,14 @@ async function main() {
     {
       key: 'PLTR|short|Tue Aug 25 2026', qty: 66,
       entry: 175.89, sl: 164.71, tp1: 189.72
+    },
+    {
+      // 10 Sep restart ghost-flattened Sony while IB was already flat.
+      // Remaining live lot was 700. Park OPG for the next TSE cash open.
+      key: '6758.T|short|Mon Sep 07 2026', qty: 700,
+      entry: 3768, sl: 3625, tp1: 3935,
+      market: 'JP', restoreMustPrint: true,
+      reason: 'ghost-flat-restore-2026-09-10'
     }
   ];
   function applyUserRequestedRestores() {
@@ -1383,15 +1390,19 @@ async function main() {
         row = { ticker, hz: hz || 'short', side: 'buy', contract };
         state.byKey[spec.key] = row;
       }
+      const asia = spec.market === 'JP' || spec.market === 'HK'
+        || (contract && (contract.market === 'JP' || contract.market === 'HK'));
       row.closed = false;
-      row.deferred = true;
+      row.deferred = !asia;
       row.entryFilled = false;
       row.tp1Done = false;
       row.userReentry = true;
+      row.restoreMustPrint = spec.restoreMustPrint === true;
       row.parentId = null;
       row.stopId = null;
       row.tp1Id = null;
-      row.entryStyle = 'DEFER-US-UNTIL-PRE';
+      row.tp2Id = null;
+      row.entryStyle = asia ? 'OPG' : 'DEFER-US-UNTIL-PRE';
       row.entry = spec.entry;
       row.stopPx = spec.sl;
       row.originalSl = spec.sl;
@@ -1399,10 +1410,13 @@ async function main() {
       row.qtyTotal = spec.qty;
       row.qtySold = 0;
       row.qtyRunner = spec.qty;
-      row.userRestoreReason = 'illegal-tsl-restore-2026-09-03';
+      if (row.errorTrade) delete row.errorTrade;
+      if (row.flatReason) delete row.flatReason;
+      row.userRestoreReason = spec.reason || 'illegal-tsl-restore-2026-09-03';
       row.updated = new Date().toISOString();
       n++;
-      log('USER RESTORE: deferred re-entry', spec.key, 'qty', spec.qty, 'sl', spec.sl);
+      log('USER RESTORE: deferred re-entry', spec.key, 'qty', spec.qty, 'sl', spec.sl,
+        asia ? 'OPG-next-Asia-open' : 'US-pre');
     }
     if (n) saveState(state);
     return n;
@@ -3545,7 +3559,7 @@ async function main() {
       side: evt.side, entryPx: evt.entry, quotePx,
       forceOpg: !!evt.forceOpg,
       forceExt: String(evt.reason || '') === 'rearm-model-entry',
-      skipChase: !!evt.skipChase || !!evt.userReentry,
+      skipChase: !!evt.skipChase || (!!evt.userReentry && !evt.restoreMustPrint),
       throughPct: Number(evt.throughPct) > 0 ? Number(evt.throughPct) : undefined,
       prevExtLmt: Number(evt.prevExtLmt) > 0 ? Number(evt.prevExtLmt) : undefined
     });
@@ -6845,11 +6859,12 @@ async function main() {
             country: src.country || row.country,
             correlationCluster: src.correlationCluster || row.correlationCluster,
             userReentry: !!(row.userReentry || src.userReentry),
+            restoreMustPrint: !!row.restoreMustPrint,
             qtyTotal: Number(row.qtyTotal) || undefined,
             forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-pre-park-opg'
               || reason === 'us-pre-unfavorable-to-opg'
               || reason === 'asia-opg-refresh' || reason === 'asia-to-opg',
-            skipChase: !!(row.userReentry || src.userReentry)
+            skipChase: (!!(row.userReentry || src.userReentry) && !row.restoreMustPrint)
               || reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg',
             carryUnfilled: ((asia || market === 'LSE') && !row.entryFilled) || forceCashOpenActive(row),
             throughPct: (market === 'LSE' && (reason === 'asia-rth-reprice' || reason === 'asia-rth-retry'
@@ -6994,7 +7009,8 @@ async function main() {
             auctionHoldMin: AUCTION_HOLD_MIN,
             side: row.side,
             quotePx,
-            extLmt: Number(row.extLmt) || 0
+            extLmt: Number(row.extLmt) || 0,
+            userReentry: !!row.userReentry
           });
           if (reason === 'asia-rth-reprice') {
             log('RECONCILE: JP/HK through-limit stale', key,

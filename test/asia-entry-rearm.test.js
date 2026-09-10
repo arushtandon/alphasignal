@@ -207,3 +207,14 @@ test('LSE forceSitRetry rotates even when last has not crossed the limit', () =>
   });
   assert.equal(rotate, 'asia-rth-retry');
 });
+
+test('user-restore JP lot parks OPG while TSE is closed', () => {
+  const reason = asiaUnfilledRearmReason({
+    phase: 'closed',
+    entryStyle: 'OPG',
+    userReentry: true,
+    parentId: null,
+    now: NOW
+  });
+  assert.equal(reason, 'asia-to-opg');
+});

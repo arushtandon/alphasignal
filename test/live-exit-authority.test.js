@@ -33,7 +33,7 @@ assert.strictEqual(isOperationalIbkrExit({
 }), true);
 assert.strictEqual(isLiveAuthorizedServerExit({
   reason: 'ib-flat-after-grace', errorTrade: true
-}), true);
+}), false, 'ghost-flat ledger close must not cancel live SL/TP');
 assert.strictEqual(isLiveAuthorizedServerExit({
   errorTrade: true, correctiveReentry: true
 }), true);
