@@ -1912,7 +1912,8 @@ async function main() {
             multiplier: row.contract && row.contract.secType === 'FUT'
               ? (Number(row.contract.multiplier) || null) : null,
             ibSymbol: row.contract && row.contract.symbol || null,
-            errorTrade: !!(row.errorTrade || ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())),
+            errorTrade: !!(row.errorTrade || isForceErrorKey(key)
+              || ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())),
             userReentry: row.userReentry === true,
             session: phase,
             sessionLabel: sessionLabel(phase),
@@ -4669,7 +4670,7 @@ async function main() {
         price: +vwap.toFixed(6),
         currency: (cMeta && cMeta.currency) || t.currency || 'USD',
         ccyScale: cMeta && cMeta.penceQuoted ? 100 : 1,
-        errorTrade: !!t.errorTrade,
+        errorTrade: !!(t.errorTrade || isForceErrorKey(t.key)),
         session: phase,
         sessionLabel: sessionLabel(phase),
         recon: 'ib-exec-history',
@@ -6431,24 +6432,23 @@ async function main() {
         if (e && e.type === 'entry' && e.key) entryByKey.set(e.key, e);
       }
 
-      // Force-error keys (FDS / WDAY Sep 9): Error-trades PnL, drop model exits.
+      // Force-error keys (FDS / WDAY Sep 9): Error-trades PnL only.
+      // Keep the lot and its SL/TP until they print. Do not flatten.
       for (const [key, row] of Object.entries(state.byKey || {})) {
         if (!row || !isForceErrorKey(key)) continue;
-        if (!row.errorTrade) {
-          row.errorTrade = true;
-          row.flatReason = row.flatReason || 'unauthorized-non-recommendation';
+        const hadFlattenTag = !!(row.errorTrade || row.flatReason === 'unauthorized-non-recommendation');
+        row.errorPnlOnly = true;
+        if (row.errorTrade) delete row.errorTrade;
+        if (row.flatReason === 'unauthorized-non-recommendation') delete row.flatReason;
+        if (hadFlattenTag) {
           row.updated = new Date().toISOString();
           saveState(state);
-          log('RECONCILE: tagged force-error key', key);
+          log('RECONCILE: force-error key stays open with SL/TP — error PnL only', key);
         }
-        if (row.stopId != null) { cancelOrder(row.stopId, 'error-key cancel SL ' + key); row.stopId = null; }
-        if (row.tp1Id != null) { cancelOrder(row.tp1Id, 'error-key cancel TP1 ' + key); row.tp1Id = null; }
-        if (row.tp2Id != null) { cancelOrder(row.tp2Id, 'error-key cancel TP2 ' + key); row.tp2Id = null; }
-        saveState(state);
       }
 
       // Dropped from the 06:00 published board → cancel unfilled only.
-      // Filled lots stay unless they are a force-error key.
+      // Filled lots stay and keep SL/TP (including force-error PnL keys).
       try {
         const picks = await fetchJson('/api/dashboard/picks');
         const dashData = picks && picks.dashData;
@@ -7183,13 +7183,13 @@ async function main() {
       }
 
       // 0e2. Resume flattens for rows already tagged unauthorized in local state
-      // (Hold→Buy episode). Force-error tickers flatten even if provenance open.
+      // (Hold→Buy episode). Force-error keys stay open until SL/TP print.
       for (const [key, row] of Object.entries(state.byKey)) {
-        if (!row) continue;
+        if (!row || isForceErrorKey(key)) continue;
         if (!row.errorTrade && row.flatReason !== 'unauthorized-non-recommendation'
           && row.flatReason !== 'dual-list-duplicate-accounting') continue;
         const yProt = normalizeYahooTicker(row.ticker || '');
-        if (yProt && setHasYahooAlias(openYahoo, yProt) && !isForceErrorTicker(yProt) && !isForceErrorKey(key)) {
+        if (yProt && setHasYahooAlias(openYahoo, yProt) && !isForceErrorTicker(yProt)) {
           log('RECONCILE: skip state error-flatten — open MODEL entry', yProt, key);
           continue;
         }
@@ -7308,6 +7308,7 @@ async function main() {
       const unauthorizedYahoo = new Set();
       for (const [key, row] of Object.entries(state.byKey)) {
         if (!row || !row.ticker) continue;
+        if (isForceErrorKey(key)) continue;
         if (!(row.errorTrade || row.flatReason === 'unauthorized-non-recommendation'
           || row.flatReason === 'env-error-ticker' || /\|error\|/.test(key))) continue;
         const y = normalizeYahooTicker(row.ticker);
@@ -7360,6 +7361,7 @@ async function main() {
         const posConId = Number(cMeta.conId || contract.conId) || 0;
         const modelOwnsConId = posConId > 0 && Object.entries(state.byKey).some(([k, row]) => {
           if (!row || row.closed || !row.contract) return false;
+          if (isForceErrorKey(k)) return Number(row.contract.conId) === posConId;
           if (row.errorTrade || /\|error\|/.test(k)) return false;
           return Number(row.contract.conId) === posConId;
         });
