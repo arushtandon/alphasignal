@@ -1369,12 +1369,60 @@ async function main() {
     {
       // 10 Sep restart ghost-flattened Sony while IB was already flat.
       // Remaining live lot was 700. Park OPG for the next TSE cash open.
+      // Rebase SL/TP off the re-entry print — old 3625 is through today's 3640.
       key: '6758.T|short|Mon Sep 07 2026', qty: 700,
-      entry: 3768, sl: 3625, tp1: 3935,
+      entry: 3768, sl: 3625, tp1: 3935, tp2: 4000,
+      modelEntry: 3768, modelSl: 3625, modelTp1: 3935, modelTp2: 4000,
+      reentryPx: 3640, rebaseOnReentry: true,
       market: 'JP', restoreMustPrint: true,
       reason: 'ghost-flat-restore-2026-09-10'
     }
   ];
+  function restoreRefPx(ticker, spec) {
+    for (const md of mktById.values()) {
+      if (!md || md.ticker !== ticker) continue;
+      const px = (md.last > 0 ? md.last : null) || (md.close > 0 ? md.close : null);
+      if (px > 0) return Number(px);
+    }
+    return Number(spec.reentryPx) || Number(spec.entry) || 0;
+  }
+  function applyRestoreExitLevels(row, spec, ticker) {
+    const modelEntry = Number(spec.modelEntry || spec.entry);
+    const modelSl = Number(spec.modelSl || spec.sl);
+    const modelTp1 = Number(spec.modelTp1 || spec.tp1);
+    const modelTp2 = Number(spec.modelTp2 || spec.tp2 || 0);
+    row.modelEntry = modelEntry;
+    row.modelSl = modelSl;
+    row.modelTp1 = modelTp1;
+    if (modelTp2 > 0) row.modelTp2 = modelTp2;
+    const refPx = restoreRefPx(ticker, spec);
+    const c = row.contract;
+    const isSell = row.side === 'sell';
+    if (spec.rebaseOnReentry && modelEntry > 0 && refPx > 0) {
+      const planned = rebaseExitsFromFill({
+        modelEntry, modelTp1, modelSl, modelTp2, fillPx: refPx
+      });
+      if (planned) {
+        row.entry = planned.fillPx;
+        if (planned.sl > 0) {
+          row.stopPx = c ? roundPx(planned.sl, c, isSell ? 'up' : 'down') : planned.sl;
+          row.originalSl = row.stopPx;
+        }
+        if (planned.tp1 > 0) {
+          row.tp1Px = c ? roundPx(planned.tp1, c, isSell ? 'down' : 'up') : planned.tp1;
+        }
+        if (planned.tp2 > 0) {
+          row.tp2Px = c ? roundPx(planned.tp2, c) : planned.tp2;
+        }
+        return;
+      }
+    }
+    row.entry = spec.entry;
+    row.stopPx = spec.sl;
+    row.originalSl = spec.sl;
+    row.tp1Px = spec.tp1;
+    if (Number(spec.tp2) > 0) row.tp2Px = spec.tp2;
+  }
   function applyUserRequestedRestores() {
     let n = 0;
     for (const spec of USER_REQUESTED_RESTORES) {
@@ -1385,7 +1433,18 @@ async function main() {
       const held = contract ? heldForContract(contract) : null;
       const posInDir = held ? ((row && row.side === 'sell') ? -held.pos : held.pos) : 0;
       if (posInDir > 0) continue;
-      if (row && row.userReentry && !row.closed && !row.entryFilled) continue;
+      if (row && row.userReentry && !row.closed && !row.entryFilled) {
+        if (spec.rebaseOnReentry) {
+          applyRestoreExitLevels(row, spec, ticker);
+          row.restoreMustPrint = spec.restoreMustPrint === true;
+          row.updated = new Date().toISOString();
+          n++;
+          log('USER RESTORE: re-entry exits', spec.key,
+            'ref', row.entry, 'sl', row.stopPx, 'tp1', row.tp1Px,
+            'tp2', row.tp2Px, 'model', row.modelEntry);
+        }
+        continue;
+      }
       if (!row) {
         row = { ticker, hz: hz || 'short', side: 'buy', contract };
         state.byKey[spec.key] = row;
@@ -1403,10 +1462,7 @@ async function main() {
       row.tp1Id = null;
       row.tp2Id = null;
       row.entryStyle = asia ? 'OPG' : 'DEFER-US-UNTIL-PRE';
-      row.entry = spec.entry;
-      row.stopPx = spec.sl;
-      row.originalSl = spec.sl;
-      row.tp1Px = spec.tp1;
+      applyRestoreExitLevels(row, spec, ticker);
       row.qtyTotal = spec.qty;
       row.qtySold = 0;
       row.qtyRunner = spec.qty;
@@ -1415,7 +1471,8 @@ async function main() {
       row.userRestoreReason = spec.reason || 'illegal-tsl-restore-2026-09-03';
       row.updated = new Date().toISOString();
       n++;
-      log('USER RESTORE: deferred re-entry', spec.key, 'qty', spec.qty, 'sl', spec.sl,
+      log('USER RESTORE: deferred re-entry', spec.key, 'qty', spec.qty,
+        'sl', row.stopPx, 'tp1', row.tp1Px,
         asia ? 'OPG-next-Asia-open' : 'US-pre');
     }
     if (n) saveState(state);

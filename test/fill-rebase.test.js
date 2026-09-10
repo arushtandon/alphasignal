@@ -25,6 +25,20 @@ test('short percentages are preserved the same way', () => {
   assert.equal(+rec.sl.toFixed(4), 102.6);
 });
 
+test('Sony re-entry at 3640 keeps the original Sep-7 percentages', () => {
+  const rec = rebaseExitsFromFill({
+    modelEntry: 3768, modelTp1: 3935, modelSl: 3625, modelTp2: 4000, fillPx: 3640
+  });
+  assert.ok(rec);
+  assert.equal(+rec.sl.toFixed(2), 3501.86);
+  assert.equal(+rec.tp1.toFixed(2), 3801.33);
+  assert.equal(+rec.tp2.toFixed(2), 3864.12);
+  const slPct = (3768 - 3625) / 3768;
+  const tp1Pct = (3935 - 3768) / 3768;
+  assert.equal(+((3640 - rec.sl) / 3640).toFixed(6), +slPct.toFixed(6));
+  assert.equal(+((rec.tp1 - 3640) / 3640).toFixed(6), +tp1Pct.toFixed(6));
+});
+
 test('missing entry or fill returns null', () => {
   assert.equal(rebaseExitsFromFill({ modelEntry: 0, fillPx: 1600, modelTp1: 1, modelSl: 1 }), null);
   assert.equal(rebaseExitsFromFill({ modelEntry: 1493, fillPx: 0, modelTp1: 1, modelSl: 1 }), null);
