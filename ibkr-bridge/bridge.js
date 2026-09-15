@@ -112,6 +112,11 @@ const {
 } = require('../lib/ibkr/tp1-policy');
 const { tslAfterTp1, catchUpTslFromDailyBars, pickLiveTslCatchUp } = require('../lib/ibkr/tsl-policy');
 const { rebaseExitsFromFill, alignFillToModel } = require('../lib/ibkr/fill-rebase');
+const {
+  STAMP: OPEN_EXIT_WIDEN_STAMP,
+  recDayOnOrBeforeWidenCutoff,
+  widenOpenExits
+} = require('../lib/ibkr/widen-open-exits');
 const { evaluatePortfolioAddition, DEFAULT_CAPS } = require('../lib/risk/portfolio');
 const { BridgeSqliteStore } = require('../lib/storage/bridge-sqlite');
 const { atomicWriteJsonSync } = require('../lib/storage/atomic-json');
@@ -1075,14 +1080,15 @@ function hkTickSize(px) {
   return 2;
 }
 
-/** LSE SETS pence bands — 666.1 was IB error 110 (band tick is 0.5). */
+/** LSE SETS pence bands — 666.1 was IB error 110 (band tick is 0.5).
+ *  SGRO 859.5 also 110: IB uses 1p on the 500–1000 band for this name. */
 function lseTickSize(px) {
   const a = Math.abs(Number(px) || 0);
   if (a < 10) return 0.01;
   if (a < 50) return 0.05;
   if (a < 100) return 0.1;
   if (a < 500) return 0.1;
-  if (a < 1000) return 0.5;
+  if (a < 1000) return 1;
   if (a < 5000) return 1;
   return 5;
 }
@@ -1098,7 +1104,8 @@ function jpTickSize(px) {
   return 100;
 }
 
-/** Xetra / Euronext cash ticks (MiFID-style). 53.41 was IB error 110. */
+/** Xetra / Euronext cash ticks (MiFID-style). 53.41 was IB error 110.
+ *  SAP 124.35 was 110: liquid 100–200 names tick 0.02, not 0.05. */
 function xetraTickSize(px) {
   const a = Math.abs(Number(px) || 0);
   if (a < 1) return 0.001;
@@ -1108,7 +1115,7 @@ function xetraTickSize(px) {
   if (a < 20) return 0.01;
   if (a < 50) return 0.01;
   if (a < 100) return 0.02;
-  if (a < 200) return 0.05;
+  if (a < 200) return 0.02;
   if (a < 500) return 0.1;
   return 0.5;
 }
@@ -1317,6 +1324,7 @@ async function main() {
   let positionsReady = false; // set once IB's initial position snapshot lands
   let forceReconcile = false; // set on positionEnd so Asia re-arms don't wait 5m
   let lastLiveStops = [];
+  let lastLiveBrackets = [];
   let lastWorkingOrders = [];
   const _seedBlocked = new Set(); // tickers/keys that failed portfolio risk this session
   const posKeyOf = c => {
@@ -1762,8 +1770,16 @@ async function main() {
           }
           if (row.stopId === oid) {
             row.stopId = null;
-            row.stopRoutingFailed = true;
-            logOnce('tick110-stop-' + key, 'IB error 110 — stop tick rejected, backing off', key);
+            const isSell = row.side === 'sell';
+            const dir = isSell ? 'up' : 'down';
+            let snapped = roundPx(row.stopPx, row.contract, dir);
+            if (Number(row.stopPx) > 0 && Math.abs(snapped - Number(row.stopPx)) < 1e-12) {
+              snapped = roundPx(isSell ? row.stopPx * 1.002 : row.stopPx * 0.998, row.contract, dir);
+            }
+            if (snapped > 0) row.stopPx = snapped;
+            row.stopRoutingFailed = false;
+            row.stopAttachAttemptAt = null;
+            logOnce('tick110-stop-' + key, 'IB error 110 — stop tick rejected, will snap and repark', key, row.stopPx);
           }
         }
         saveState(state);
@@ -3836,6 +3852,7 @@ async function main() {
     const cutoff = Date.now() - 48 * 3600 * 1000;
     for (const [key, row] of Object.entries(state.byKey || {})) {
       if (!row || row.closed || !row.entryFilled || row.tp1Done) continue;
+      if (row.userReentry || row.openExitWidenDone) continue;
       const y = normalizeYahooTicker(row.ticker);
       if (y === 'FAST' || y === 'DASH') continue;
       const submitted = Date.parse(row.orderSubmittedAt || 0);
@@ -3859,6 +3876,129 @@ async function main() {
       if (!(fill > 0)) continue;
       applyFillRebase(key, row, fill);
     }
+  }
+
+  /**
+   * 15 Sep 2026: move working SL/TP on already-open lots 1.5pts further.
+   * Prefer the live IB stop aux when state drifted (Sony 3625 vs fill 3587).
+   */
+  function liveAuxForRow(row, working, type) {
+    if (!row || !Array.isArray(working) || !working.length) return 0;
+    const y = normalizeYahooTicker(row.ticker);
+    const cid = Number(row.contract && row.contract.conId) || 0;
+    const want = row.side === 'sell' ? 'BUY' : 'SELL';
+    const matches = working.filter(o =>
+      o && o.type === type && o.action === want
+      && (cid > 0 ? o.conId === cid : normalizeYahooTicker(o.yahoo) === y));
+    if (!matches.length) return 0;
+    const wantId = type === 'STP' ? row.stopId : row.tp1Id;
+    const hit = (wantId != null && matches.find(o => o.orderId === wantId))
+      || (type === 'LMT' && Number(row.qtySold) > 0 && matches.find(o => Math.abs(o.qty - row.qtySold) < 1e-6))
+      || matches[0];
+    if (!hit) return 0;
+    if (type === 'STP') return Number(hit.aux) || 0;
+    return Number(hit.lmt) || 0;
+  }
+
+  function applyOpenLotExitWiden(workingOrders) {
+    if (DRY || !ib) return 0;
+    const working = workingOrders || lastWorkingOrders || [];
+    let n = 0;
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (!row || row.closed || !row.entryFilled || row.tp1Done) continue;
+      if (row.openExitWidenDone === OPEN_EXIT_WIDEN_STAMP) continue;
+      if (!recDayOnOrBeforeWidenCutoff(key)) continue;
+      if (!row.contract) continue;
+      const held = heldForContract(row.contract);
+      const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
+      if (!(posInDir > 0)) continue;
+      const entry = Number(row.ibAvgFill) || Number(row.entry) || 0;
+      if (!(entry > 0)) continue;
+      const liveSl = liveAuxForRow(row, working, 'STP');
+      const liveTp1 = liveAuxForRow(row, working, 'LMT');
+      const slNow = liveSl > 0 ? liveSl : Number(row.stopPx) || 0;
+      const tp1Now = liveTp1 > 0 ? liveTp1 : Number(row.tp1Px) || 0;
+      const planned = widenOpenExits({
+        entry,
+        sl: slNow,
+        tp1: tp1Now,
+        tp2: Number(row.tp2Px || row.modelTp2) || 0,
+        isSell: row.side === 'sell',
+        hz: row.hz || 'short'
+      });
+      if (!planned || !planned.changed) {
+        row.openExitWidenDone = OPEN_EXIT_WIDEN_STAMP;
+        continue;
+      }
+      const isSell = row.side === 'sell';
+      const sl = planned.sl > 0
+        ? roundPx(planned.sl, row.contract, isSell ? 'up' : 'down')
+        : 0;
+      const tp1 = planned.tp1 > 0
+        ? roundPx(planned.tp1, row.contract, isSell ? 'down' : 'up')
+        : 0;
+      const tp2 = planned.tp2 > 0 ? roundPx(planned.tp2, row.contract) : 0;
+      const y = normalizeYahooTicker(row.ticker);
+      let lastPx = Number(portfolioMarks.get(y) && portfolioMarks.get(y).price)
+        || Number(portfolioMarks.get(row.ticker) && portfolioMarks.get(row.ticker).price)
+        || 0;
+      if (lastPx > 0 && entry > 0) lastPx = alignFillToModel(lastPx, entry);
+      if (sl > 0 && lastPx > 0) {
+        const through = isSell ? lastPx >= sl : lastPx <= sl;
+        if (through) {
+          log('SL bounce-widen skip — new stop through last', key, 'sl', sl, 'last', lastPx);
+          continue;
+        }
+      }
+      const closeAction = isSell ? 'BUY' : 'SELL';
+      const oca = (!(Number(row.qtyRunner) > 0) && Number(row.qtySold) > 0)
+        ? { ocaGroup: ocaGroupForKey(key), ocaType: 1 } : {};
+      if (tp1 > 0 && Number(row.qtySold) > 0 && Math.abs(tp1 - tp1Now) > 1e-8) {
+        if (row.tp1Id != null) cancelOrder(row.tp1Id, 'TP1 bounce-widen replace ' + key);
+        const tp1Id = nidForRow(row);
+        row.tp1Id = tp1Id;
+        row.tp1ClientId = state.orderClients[tp1Id] || row.placeClientId;
+        row.tp1Px = tp1;
+        transmitOrder(tp1Id, row.contract, baseOrder({
+          orderId: tp1Id, action: closeAction, orderType: 'LMT',
+          lmtPrice: tp1, totalQuantity: row.qtySold, transmit: true, ...oca
+        }), 'TP1 bounce-widen ' + key);
+      } else if (tp1 > 0) {
+        row.tp1Px = tp1;
+      }
+      const stopQty = posInDir > 0 ? posInDir : (Number(row.qtyTotal) || 0);
+      if (sl > 0 && stopQty > 0 && Math.abs(sl - slNow) > 1e-8) {
+        if (row.stopId != null) {
+          row.stopPx = sl;
+          row.originalSl = sl;
+          transmitOrder(row.stopId, row.contract, baseOrder({
+            orderId: row.stopId, action: closeAction, orderType: 'STP',
+            auxPrice: sl, totalQuantity: stopQty, transmit: true
+          }), 'SL bounce-widen in-place ' + key);
+        } else {
+          const sid = nidForRow(row);
+          row.stopId = sid;
+          row.stopClientId = state.orderClients[sid] || row.placeClientId;
+          row.stopPx = sl;
+          row.originalSl = sl;
+          transmitOrder(sid, row.contract, baseOrder({
+            orderId: sid, action: closeAction, orderType: 'STP',
+            auxPrice: sl, totalQuantity: stopQty, transmit: true, ...oca
+          }), 'SL bounce-widen ' + key);
+        }
+      } else if (sl > 0) {
+        row.stopPx = sl;
+        row.originalSl = sl;
+      }
+      if (tp2 > 0) row.tp2Px = tp2;
+      row.openExitWidenDone = OPEN_EXIT_WIDEN_STAMP;
+      row.updated = new Date().toISOString();
+      n++;
+      log('SL bounce-widen', key, 'entry', entry, 'sl', slNow, '→', sl,
+        'tp1', tp1Now, '→', tp1, tp2 > 0 ? ('tp2→' + tp2) : '');
+    }
+    if (n) saveState(state);
+    return n;
   }
 
   function onTp1Filled(key, row) {
@@ -5033,12 +5173,22 @@ async function main() {
       if (mk && Number(mk.price) > 0) marks[y] = Number(mk.price);
     }
     const charges = takePendingCharges();
+    lastLiveBrackets = Object.entries(state.byKey || {}).filter(([, row]) =>
+      row && !row.closed && row.entryFilled
+    ).map(([key, row]) => ({
+      key,
+      ticker: row.ticker,
+      sl: Number(row.stopPx) || 0,
+      tp1: Number(row.tp1Px) || 0,
+      tp2: Number(row.tp2Px) || Number(row.modelTp2) || 0
+    }));
     try {
       const resp = await postJson('/api/ibkr/recon', {
         positions,
         marks,
         charges,
         liveStops: lastLiveStops,
+        liveBrackets: lastLiveBrackets,
         account: ACCOUNT || accountSnap.account || '',
         accountSnapshot: {
           ...accountSnap,
@@ -5363,6 +5513,15 @@ async function main() {
           ticker: o.yahoo, aux: o.aux, qty: o.qty,
           orderId: o.orderId, clientId: o.clientId
         }));
+      lastLiveBrackets = Object.entries(state.byKey || {}).filter(([, row]) =>
+        row && !row.closed && row.entryFilled
+      ).map(([key, row]) => ({
+        key,
+        ticker: row.ticker,
+        sl: Number(row.stopPx) || 0,
+        tp1: Number(row.tp1Px) || 0,
+        tp2: Number(row.tp2Px) || Number(row.modelTp2) || 0
+      }));
       return r.orders;
     });
   }
@@ -5474,11 +5633,16 @@ async function main() {
       const stps = working.filter(o =>
         o.type === 'STP' && o.action === closeAction && rowMatchesWorking(row, o)
       );
-      const tp1WorkingQty = (!row.tp1Done)
+      const tp1WorkingRaw = (!row.tp1Done)
         ? working.filter(o =>
           o.type === 'LMT' && o.action === closeAction && rowMatchesWorking(row, o)
         ).reduce((s, o) => s + (Number(o.qty) || 0), 0)
         : 0;
+      const tp1WorkingQty = Math.min(
+        tp1WorkingRaw,
+        Number(row.qtySold) > 0 ? Number(row.qtySold) : tp1WorkingRaw,
+        posInDir
+      );
       const lot = Math.max(boardLotHint(row.ticker, row.contract && row.contract.lotHint), 1);
       const fullTp1 = !row.tp1Done && isFullQtyTp1(posInDir, lot);
       // Shrink the stop only when a TP1 LMT is actually working. Planned
@@ -5600,7 +5764,8 @@ async function main() {
       if (!onFill && !childNotYetWorking(row.stopId, null, row.stopAttachAttemptAt, row.stopRoutingFailed)) continue;
       const wait = attachRetryWaitMs(row.stopRoutingFailed);
       const last = row.stopAttachAttemptAt ? Date.parse(row.stopAttachAttemptAt) : NaN;
-      if (!onFill && Number.isFinite(last) && Date.now() - last < wait) continue;
+      const nakedStop = row.stopId == null && stps.length === 0;
+      if (!onFill && !nakedStop && Number.isFinite(last) && Date.now() - last < wait) continue;
       if (!(Number(row.contract.conId) > 0)) {
         try { row.contract = await resolveInstrument(row.contract) || row.contract; }
         catch (e) { log('stop attach resolve failed', key, e.message); continue; }
@@ -7613,6 +7778,7 @@ async function main() {
         await ensureWorkingStops(working);
         await ensureWorkingTp1Children(working);
         await ensureWorkingTp2Children(working);
+        applyOpenLotExitWiden(working);
         await applyLiveRunnerTsl();
         const findings = collectRiskFindings(keyState, lastIbReconResp);
         await maybeSendRiskAlert(findings);
@@ -7725,6 +7891,7 @@ async function main() {
         await ensureWorkingStops(working);
         await ensureWorkingTp1Children(working);
         await ensureWorkingTp2Children(working);
+        applyOpenLotExitWiden(working);
         await applyLiveRunnerTsl();
       })().catch(e => log('ensure-exits error', e.message));
     }

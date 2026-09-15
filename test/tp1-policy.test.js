@@ -50,7 +50,8 @@ test('protective stop stays full until a TP1 LMT is actually working', () => {
 });
 
 test('synthesize TP1 uses horizon percentages', () => {
-  assert.equal(+synthesizeTp1Px(23.19, 'medium', false).toFixed(4), 24.8133);
+  assert.equal(synthesizeTp1Px(100, 'medium', false), 108.5);
+  assert.equal(synthesizeTp1Px(100, 'short', false), 105);
   assert.ok(synthesizeTp1Px(29.34, 'short', false) > 29.34);
   assert.ok(synthesizeTp1Px(18760, 'short', false) > 18760);
 });

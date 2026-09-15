@@ -65,6 +65,16 @@ const {
   toDailyArray
 } = require('./lib/ibkr/daily-realized');
 const { fifoLotEconomics } = require('./lib/ibkr/fifo-lots');
+const {
+  applyUserRestoreLedger,
+  fifoFillsForRestoredKey,
+  fillsKeepOriginalRestoreAvg,
+  isGhostFlatFill
+} = require('./lib/ibkr/user-restore');
+const {
+  STAMP: OPEN_EXIT_WIDEN_STAMP,
+  widenOpenExits
+} = require('./lib/ibkr/widen-open-exits');
 const { IBKR_ERROR_PANEL_START, dropArchivedErrorPanelLots } = require('./lib/ibkr/error-panel');
 const { officialFuturesSettlePx, officialFuturesSettleDate, futuresStillTradable } = require('./lib/ibkr/commodity-futures');
 const { isFuturesRollFill, liveIbkrKey, rebuildFuturesRollFills, futuresRollCalendarBias, RESTORED_POST_ROLL_EXITS } = require('./lib/ibkr/futures-roll');
@@ -1171,12 +1181,12 @@ function computeTrailingStopFromTech(tech, entry, hz, isSell, fund = null) {
   const atrPctNow = (atr && cur) ? (atr / cur) : null;
   // ATR multiple widens with the horizon — longer holds need much more room.
   const atrMult = hz === 'short' ? 2.0 : hz === 'medium' ? 4.0 : 6.5;
-  // Minimum stop distance = the horizon's floor % (short 2.5% / medium 5% / long 8%),
+  // Minimum stop distance = the horizon's floor % (short 4.0% / medium 6.5% / long 9.5%),
   // widened further for volatile names via the ATR multiple. This keeps a long-term
   // stop genuinely long-term (never a 2% noise stop) and keeps the displayed level,
   // the exit simulator, and the backtest all in agreement.
   const hzFloors = (typeof HORIZON_MIN_PCT !== 'undefined' && HORIZON_MIN_PCT[hz]) ? HORIZON_MIN_PCT[hz] : null;
-  const pctSafetyFloor = hzFloors ? hzFloors.sl : (hz === 'short' ? 0.025 : hz === 'medium' ? 0.05 : 0.08);
+  const pctSafetyFloor = hzFloors ? hzFloors.sl : (hz === 'short' ? 0.040 : hz === 'medium' ? 0.065 : 0.095);
   const minGap = atrPctNow
     ? Math.max(atrMult * atrPctNow, pctSafetyFloor)
     : pctSafetyFloor;
@@ -1187,7 +1197,7 @@ function computeTrailingStopFromTech(tech, entry, hz, isSell, fund = null) {
       const chanSL = d20?.lower2 ?? null;
       const srSL = s1 && s1 < e * 0.999 && s1 > e * 0.92 ? s1 * (tech.s1Confluence ? 0.992 : 0.994) : null;
       const candidates = [chanSL, srSL].filter(v => v != null && v < e * 0.999 && v > e * 0.88);
-      sl = candidates.length ? Math.max(...candidates) : (atr ? e - 2.0 * atr : e * 0.975);
+      sl = candidates.length ? Math.max(...candidates) : (atr ? e - 2.0 * atr : e * 0.960);
     } else if (hz === 'medium') {
       const candidates = [w20?.lower1, d20?.lower2, s2 && s2 < e * 0.995 ? s2 * 0.993 : null, s1 && s1 < e * 0.995 ? s1 * 0.993 : null, ma50 ? ma50 * 0.97 : null]
         .filter(v => v != null && v < e * 0.998 && v > e * 0.85);
@@ -1376,7 +1386,7 @@ function computeMeanReversionLevels(tech, entry, isSell) {
     // ATR-based stop: 1.5×ATR beyond entry, or the channel lower-2σ, whichever is wider.
     let stop = Math.min(entry - 1.5 * atr, lower2 || entry * 0.97);
     // Clamp: at least 1.2×ATR away (noise floor), at most 8% away (risk cap).
-    const minDist = Math.max(1.5 * atr, entry * 0.025); // ≥1.5×ATR and ≥2.5% — a stop inside daily noise is a donation
+    const minDist = Math.max(1.5 * atr, entry * 0.040); // ≥1.5×ATR and ≥4% — 2.5% was inside the 8–15 Sep bounce-after-SL noise
     stop = Math.min(stop, entry - minDist);
     stop = Math.max(stop, entry * 0.92);
     // Enforce horizon min-% + reward:risk floors so the bounce justifies the cost.
@@ -1388,7 +1398,7 @@ function computeMeanReversionLevels(tech, entry, isSell) {
     target = Math.min(Math.max(target, entry * 0.88), entry * 0.98);
     const upper2 = tech.channels?.daily20?.upper2;
     let stop = Math.max(entry + 1.5 * atr, upper2 || entry * 1.03);
-    const minDistS = Math.max(1.5 * atr, entry * 0.025);
+    const minDistS = Math.max(1.5 * atr, entry * 0.040);
     stop = Math.max(stop, entry + minDistS);
     stop = Math.min(stop, entry * 1.08);
     const fl = applyHorizonMinPctFloors(entry, target, null, stop, true, 'short');
@@ -11025,9 +11035,9 @@ const HORIZON_ATR = {
 
 /** Fallback % levels when ATR unavailable — wider than v75 to survive daily volatility */
 const HORIZON_PCT = {
-  short:  { buy: { tp1: 0.04,  tp2: 0.07,  sl: -0.025 }, sell: { tp1: -0.04,  tp2: -0.07,  sl: 0.025 } },
-  medium: { buy: { tp1: 0.10,  tp2: 0.17,  sl: -0.06  }, sell: { tp1: -0.10,  tp2: -0.17,  sl: 0.06  } },
-  long:   { buy: { tp1: 0.22,  tp2: 0.38,  sl: -0.12  }, sell: { tp1: -0.22,  tp2: -0.38,  sl: 0.12  } }
+  short:  { buy: { tp1: 0.055, tp2: 0.085, sl: -0.040 }, sell: { tp1: -0.055, tp2: -0.085, sl: 0.040 } },
+  medium: { buy: { tp1: 0.115, tp2: 0.185, sl: -0.075 }, sell: { tp1: -0.115, tp2: -0.185, sl: 0.075 } },
+  long:   { buy: { tp1: 0.235, tp2: 0.395, sl: -0.135 }, sell: { tp1: -0.235, tp2: -0.395, sl: 0.135 } }
 };
 
 /** Minimum distance floors — medium always wider than short, long wider than medium. */
@@ -11065,12 +11075,15 @@ function bracketEnabled(side, hz) {
 }
 
 const HORIZON_MIN_PCT = {
-  // SL: noise floors only (ATR / structure still drive the actual stop).
-  // TP stays ATR/structure — never invented to pass RR. Below PICKS_MIN_RR → not recommended.
-  short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.1 },
-  medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.1 },
-  long:   { sl: 0.080, tp1: 0, tp2: 0, minRR: 1.1 }
+  // SL: noise floors. 15 Sep 2026: 13/13 paper stop-outs since 8 Sep bounced
+  // ≥1% after the print (9/13 ≥2%). Widen 1.5pts vs the old 2.5/5/8 floors.
+  // TP floors keep ~1.1 R:R so the min-RR gate does not reject the same setups.
+  short:  { sl: 0.040, tp1: 0.044, tp2: 0.070, minRR: 1.1 },
+  medium: { sl: 0.065, tp1: 0.072, tp2: 0.110, minRR: 1.1 },
+  long:   { sl: 0.095, tp1: 0.105, tp2: 0.160, minRR: 1.1 }
 };
+/** Reopen only truly-tight legacy stops (~0.5–1%). Do not reopen 2.5–4% stops. */
+const LEGACY_TIGHT_SL_FLOOR = { short: 0.025, medium: 0.050, long: 0.080 };
 
 /** Hard floor: TP1 reward / SL risk must be ≥ 1.1 or the setup is not recommended. */
 const PICKS_MIN_RR = Math.max(1.1, parseFloat(process.env.PICKS_MIN_RR || '1.1') || 1.1);
@@ -11455,9 +11468,10 @@ function migrateLegacyTightStops() {
     if (!entry || !Number.isFinite(entry)) continue;
     const sl = parseFloat(h[hz + 'StopLoss'] || h.stopLoss || 0);
     if (!sl || !Number.isFinite(sl)) continue;
+    const legacyFloor = LEGACY_TIGHT_SL_FLOOR[hz] || LEGACY_TIGHT_SL_FLOOR.short;
     const slDistPct = Math.abs(sl - entry) / entry;
-    // "Too tight" = stop sits well inside the horizon minimum (allow 10% tolerance).
-    if (slDistPct >= floor.sl * 0.9) continue;
+    // "Too tight" stays the pre-15-Sep 2.5/5/8 test so 3% stops are not reopened.
+    if (slDistPct >= legacyFloor * 0.9) continue;
 
     const tp1 = parseFloat(h[hz + 'Target1'] || h.target1 || 0) || null;
     const tp2 = parseFloat(h[hz + 'Target2'] || h.target2 || 0) || null;
@@ -11488,6 +11502,54 @@ function migrateLegacyTightStops() {
     console.log('Legacy tight-stop migration: re-floored', refloored, 'rows, reopened', reopened, 'mis-stopped trades');
   }
   return { refloored, reopened };
+}
+
+/** Open book only: same 1.5pt SL widen as the paper bridge (15 Sep bounce). */
+function migrateOpenExitsForSlBounce() {
+  let n = 0;
+  for (const h of tradeHistory) {
+    if (!isHistoryBuySellRecord(h)) continue;
+    if (h.slBounceWiden === OPEN_EXIT_WIDEN_STAMP) continue;
+    const hz = h.hz || 'short';
+    const st = h[hz + 'Status'] || h.status || 'open';
+    if (st !== 'open') continue;
+    const day = historyTradeEntryDay(h);
+    if (day && String(day) > '2026-09-15') continue;
+    const isSell = String(h.action || '').toLowerCase() === 'sell';
+    const entry = parseFloat(h[hz + 'Entry'] || h.entry || 0);
+    const sl = parseFloat(h[hz + 'StopLoss'] || h.stopLoss || 0);
+    const tp1 = parseFloat(h[hz + 'Target1'] || h.target1 || 0);
+    const tp2 = parseFloat(h[hz + 'Target2'] || h.target2 || 0);
+    if (!(entry > 0) || !(sl > 0)) continue;
+    const planned = widenOpenExits({ entry, sl, tp1, tp2, isSell, hz });
+    if (!planned || !planned.changed) {
+      h.slBounceWiden = OPEN_EXIT_WIDEN_STAMP;
+      continue;
+    }
+    const slPx = roundPrice(planned.sl);
+    const tp1Px = planned.tp1 > 0 ? roundPrice(planned.tp1) : tp1;
+    const tp2Px = planned.tp2 > 0 ? roundPrice(planned.tp2) : tp2;
+    h[hz + 'StopLoss'] = slPx;
+    if (tp1Px > 0) h[hz + 'Target1'] = tp1Px;
+    if (tp2Px > 0) h[hz + 'Target2'] = tp2Px;
+    if (h.hz === hz || !h.hz) {
+      h.stopLoss = slPx;
+      if (tp1Px > 0) h.target1 = tp1Px;
+      if (tp2Px > 0) h.target2 = tp2Px;
+    }
+    if (isSell) {
+      h.sellStopLoss = slPx;
+      if (tp1Px > 0) h.sellTarget1 = tp1Px;
+      if (tp2Px > 0) h.sellTarget2 = tp2Px;
+    }
+    h.slBounceWiden = OPEN_EXIT_WIDEN_STAMP;
+    n++;
+  }
+  if (n > 0) {
+    saveHistoryFile(tradeHistory);
+    console.log('Open-lot SL bounce widen: updated', n, 'open history rows');
+  }
+  return n;
 }
 
 function purgeOpenCooldownBuysFromHistory() {
@@ -11617,6 +11679,7 @@ purgeOpenCooldownBuysFromHistory();
 if (process.env.RESEARCH_MODE !== '1') setTimeout(async function bootDashHistorySync() {
   try {
     migrateLegacyTightStops();
+    migrateOpenExitsForSlBounce();
     const cached = loadDashboardPicksFile() || dashboardPicksCache;
     if (cached?.dashData) {
       // Never re-score and rewrite a published daily board during deploy/boot.
@@ -11852,7 +11915,7 @@ function applyHorizonMinPctFloors(e, tp1, tp2, sl, isSell, hz) {
   if (isSell) {
     const minSl = e * (1 + f.sl);
     if (!Number.isFinite(sl) || sl < minSl) sl = roundPrice(minSl);
-    // TP %-floors removed (f.tp1/tp2 = 0) — ATR/momentum set the targets.
+    // TP floors keep R:R after the 15 Sep SL widen (1.5pts).
     if (f.tp1 > 0) {
       const maxTp1 = e * (1 - f.tp1);
       if (!Number.isFinite(tp1) || tp1 > maxTp1) tp1 = roundPrice(maxTp1);
@@ -13892,6 +13955,11 @@ function isIbkrErrorTrade(t, extra) {
   if (isCursorErrIbkrKey(t.key)) return true;
   if (extra && extra.keys.has(t.key)) return true;
   if (IBKR_LEGACY_ERROR_KEYS.has(t.key)) return true;
+  // Ghost-flatten then user restore: still the genuine model lot (Sony 6758.T).
+  if ((Number(t.openQty) || 0) > 0 && fillsKeepOriginalRestoreAvg(t.fills)
+    && !isCursorErrIbkrKey(t.key)) {
+    return false;
+  }
   // Open model lot with an emitted entry → Open trades (orphan fills must live on |cursor-err).
   if ((Number(t.openQty) || 0) > 0 && isPositionAuthorizedByProvenance(tk)) {
     const modelFills = (t.fills || []).filter(f => !f.errorTrade);
@@ -14348,6 +14416,8 @@ function shouldQuarantineFillToCursorErr(r) {
   if (isCursorErrIbkrKey(r.key)) return false;
   if (IBKR_LEGACY_ERROR_KEYS.has(String(r.key || ''))) return true;
   if (isForceIbkrErrorTicker(r.ticker)) return true;
+  // User restore after a ghost-flatten stays on the model key (6758.T 10 Sep).
+  if (r.userRestoreKept === true || r.userReentry === true) return false;
   if (r.errorTrade === true && !isFuturesRollFill(r)) return true;
   // Model IB sync (pad/trim/avg/historical print) must stay on the live key.
   if (isModelIbSyncFill(r)) return false;
@@ -14611,6 +14681,34 @@ function stampGhostFlatFillsAsErrorTrade() {
   const a = quarantineGhostFlatsAsErrorTrades();
   const b = quarantineErrorFillsOffModelKeys();
   return a + b;
+}
+
+/** After a user restore prints, void the invented ghost-flatten and put the
+ *  original runner back on the model key (Sony 6758.T 10 Sep). */
+function restoreUserReentryGhostLots() {
+  try {
+    const before = readIbkrFillRows();
+    const result = applyUserRestoreLedger(before);
+    if (!result.dropped && !result.moved && !result.unstamped) return 0;
+    mutateFillLedger('user_restore_void_ghost', () => result.rows, {
+      mayDropProtected: (r) => {
+        if (!r) return false;
+        if (result.droppedExecIds.has(String(r.execId || ''))) return true;
+        return isGhostFlatFill(r) && result.restoredKeys.has(liveIbkrKey(r.key));
+      }
+    });
+    console.log('User restore: voided', result.dropped, 'ghost-flat fill(s), moved',
+      result.moved, 'unstamped', result.unstamped);
+    try {
+      auditLog('ibkr_user_restore_void_ghost', {
+        dropped: result.dropped, moved: result.moved, unstamped: result.unstamped
+      });
+    } catch (_) {}
+    return result.dropped + result.moved + result.unstamped;
+  } catch (e) {
+    console.warn('user-restore ghost void failed:', e.message);
+    return 0;
+  }
 }
 
 /**
@@ -15719,6 +15817,9 @@ try { repairErroneousGhostFlats(); } catch (e) {
 try { stampGhostFlatFillsAsErrorTrade(); } catch (e) {
   console.warn('boot ghost-flat error stamp failed:', e.message);
 }
+try { restoreUserReentryGhostLots(); } catch (e) {
+  console.warn('boot user-restore ghost void failed:', e.message);
+}
 try { quarantineErrorFillsOffModelKeys(); } catch (e) {
   console.warn('boot quarantine error-off-model failed:', e.message);
 }
@@ -16359,10 +16460,11 @@ function aggregateIbkrOpenFromFills(rows, opts) {
     byKey.get(r.key).push(r);
   }
   const opens = [];
-  for (const [key, fills] of byKey) {
-    const f0 = fills[0];
-    const entries = fills.filter(f => f.role === 'entry');
-    const exits = fills.filter(f => f.role !== 'entry');
+  for (const [key, fillsRaw] of byKey) {
+    const fifoFills = fifoFillsForRestoredKey(fillsRaw);
+    const f0 = fifoFills[0] || fillsRaw[0];
+    const entries = fifoFills.filter(f => f.role === 'entry');
+    const exits = fifoFills.filter(f => f.role !== 'entry');
     const entryQty = entries.reduce((s, f) => s + Number(f.qty || 0), 0);
     const exitQty = exits.reduce((s, f) => s + Number(f.qty || 0), 0);
     if (!(entryQty > 0)) continue;
@@ -16376,7 +16478,8 @@ function aggregateIbkrOpenFromFills(rows, opts) {
       currency: f0.currency || 'USD',
       ccyScale: Number(f0.ccyScale) || 1,
       openQty, avgEntry,
-      errorTrade: !!(f0.errorTrade || fills.some(f => f.errorTrade)),
+      errorTrade: !!(f0.errorTrade || fifoFills.some(f => f.errorTrade)),
+      restoreKept: fillsKeepOriginalRestoreAvg(fillsRaw),
       mark: null
     });
   }
@@ -16433,6 +16536,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   try {
     try { quarantineErrorFillsOffModelKeys(); } catch (_) {}
+    try { restoreUserReentryGhostLots(); } catch (_) {}
     // Refresh dedupe set from disk (purge/other instance may have changed file).
     try {
       _ibkrExecIds.clear();
@@ -16442,6 +16546,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
     } catch (_) {}
     const reconAccount = postedAccountFromBody(req.body, PAPER_ACCOUNT);
     const liveStopsIn = Array.isArray(req.body && req.body.liveStops) ? req.body.liveStops : [];
+    const liveBracketsIn = Array.isArray(req.body && req.body.liveBrackets) ? req.body.liveBrackets : [];
     const positions = Array.isArray(req.body && req.body.positions) ? req.body.positions : [];
     const marksIn = (req.body && req.body.marks && typeof req.body.marks === 'object') ? req.body.marks : {};
     // Persist TWS account window numbers for the IBKR tab (starting / available).
@@ -16898,7 +17003,8 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
             }));
             adjusted.push({ ticker: y, key: primary.key, action: 'qty-pad', qty: delta, price: padPx });
           }
-          if (!shouldSkipStampInflatedAvgCorrect(primary.avgEntry, avg, primary.ccyScale)) {
+          if (!shouldSkipStampInflatedAvgCorrect(primary.avgEntry, avg, primary.ccyScale)
+            && !primary.restoreKept) {
             avgCorrections.set(primary.key, avg);
           }
         } else if (ibAbs < asAbs && ibAbs > 0 && primary) {
@@ -16951,7 +17057,8 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
             const tick = primary.ccyScale === 100 ? 0.1
               : (avg >= 1000 ? 1 : avg >= 100 ? 0.05 : 0.01);
             if (Math.abs(primary.avgEntry - avg) > tick) {
-              if (shouldSkipStampInflatedAvgCorrect(primary.avgEntry, avg, primary.ccyScale)) {
+              if (shouldSkipStampInflatedAvgCorrect(primary.avgEntry, avg, primary.ccyScale)
+                || primary.restoreKept) {
                 matched.push({
                   ticker: y, openQty: asAbs, avgEntry: +primary.avgEntry.toFixed(6),
                   ibQty: ibQty, ibAvg: avg, stampDutyKeptTape: true
@@ -17076,6 +17183,13 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       liveStops: liveStopsIn.filter(s => s && Number(s.aux) > 0).map(s => ({
         ticker: s.ticker, aux: Number(s.aux), qty: Number(s.qty) || null,
         orderId: s.orderId || null, clientId: s.clientId || null
+      })),
+      liveBrackets: liveBracketsIn.filter(b => b && (b.ticker || b.key)).map(b => ({
+        key: b.key || null,
+        ticker: b.ticker || null,
+        sl: Number(b.sl) || 0,
+        tp1: Number(b.tp1) || 0,
+        tp2: Number(b.tp2) || 0
       })),
       account: reconAccount
     };
@@ -17481,9 +17595,10 @@ app.get('/api/ibkr/trades', async (req, res) => {
     const trades = [];
     const needMarks = [];
     for (const [key, fillsRaw] of byKey) {
-      const fills = fillsRaw.slice().sort((a, b) =>
+      const fills = fifoFillsForRestoredKey(fillsRaw).slice().sort((a, b) =>
         String(a && a.time || '').localeCompare(String(b && b.time || '')));
       const f0 = fills[0];
+      if (!f0) continue;
       const dir = f0.side === 'sell' ? -1 : 1;
       const entries = fills.filter(f => f.role === 'entry');
       const exits = fills.filter(f => f.role !== 'entry');
@@ -17522,6 +17637,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
           ibRealizedPnl: f.ibRealizedPnl != null ? Number(f.ibRealizedPnl) : null,
           multiplier: f.multiplier != null ? Number(f.multiplier) : null,
           recon: f.recon ? String(f.recon) : null,
+          userReentry: f.userReentry === true,
+          userRestoreKept: f.userRestoreKept === true,
           realizedLocal: matched && Number.isFinite(Number(matched.realizedLocal))
             ? Number(matched.realizedLocal) : null,
           session,
@@ -17565,10 +17682,17 @@ app.get('/api/ibkr/trades', async (req, res) => {
         status: openQty > 0
           ? (rollSettlePx > 0 ? 'partial' : (exitQty <= 0 ? 'open' : 'partial'))
           : 'closed',
-        errorTrade: !!(f0.errorTrade || fills.some(f => f.errorTrade) || isCursorErrIbkrKey(key)),
+        errorTrade: !!(f0.errorTrade || fills.some(f => f.errorTrade)
+          || fillsRaw.some(f => f && f.errorTrade && !f.userReentry && !f.userRestoreKept)
+          || isCursorErrIbkrKey(key)),
         multiplier: stampedMult
       };
       t.errorTrade = isIbkrErrorTrade(t, errExtra);
+      if ((Number(t.openQty) || 0) > 0 && fillsKeepOriginalRestoreAvg(fillsRaw)
+        && !isCursorErrIbkrKey(key) && !isForceIbkrErrorTicker(t.ticker)
+        && !IBKR_LEGACY_ERROR_KEYS.has(key)) {
+        t.errorTrade = false;
+      }
       trades.push(t);
       if (openQty > 0 && f0.ticker) needMarks.push(f0.ticker);
     }
@@ -17663,13 +17787,13 @@ app.get('/api/ibkr/trades', async (req, res) => {
     function synthesizeTp1FromEntry(avgEntry, hz, isSell) {
       const e = Number(avgEntry);
       if (!(e > 0)) return null;
-      const pct = ({ short: 0.035, medium: 0.07, long: 0.12 })[hz || 'short'] || 0.035;
+      const pct = ({ short: 0.050, medium: 0.085, long: 0.135 })[hz || 'short'] || 0.050;
       return +(isSell ? e * (1 - pct) : e * (1 + pct)).toFixed(4);
     }
     function synthesizeTp2FromEntry(avgEntry, hz, isSell, tp1) {
       const e = Number(avgEntry);
       if (!(e > 0)) return null;
-      const pct = ({ short: 0.06, medium: 0.12, long: 0.20 })[hz || 'short'] || 0.06;
+      const pct = ({ short: 0.070, medium: 0.110, long: 0.160 })[hz || 'short'] || 0.070;
       let tp2 = +(isSell ? e * (1 - pct) : e * (1 + pct)).toFixed(4);
       const t1 = Number(tp1);
       if (t1 > 0) {
@@ -17721,7 +17845,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       }
       if (!(Number(rec.sl) > 0) && Number(t.avgEntry) > 0) {
         const e = Number(t.avgEntry);
-        const pct = ({ short: 0.025, medium: 0.05, long: 0.08 })[t.hz || 'short'] || 0.025;
+        const pct = ({ short: 0.040, medium: 0.065, long: 0.095 })[t.hz || 'short'] || 0.040;
         rec.sl = +((t.side === 'sell' ? e * (1 + pct) : e * (1 - pct)).toFixed(4));
         rec.slSynthesized = true;
       }
@@ -17732,6 +17856,15 @@ app.get('/api/ibkr/trades', async (req, res) => {
         : null;
       if (liveStop && (t.status === 'open' || t.status === 'partial') && Number(liveStop.aux) > 0) {
         rec.lastTrailSl = Number(liveStop.aux);
+      }
+      const liveBr = Array.isArray(reconSnap && reconSnap.liveBrackets)
+        ? (reconSnap.liveBrackets.find(b => b && b.key && String(b.key) === String(t.key))
+          || reconSnap.liveBrackets.find(b => b && normalizeIbkrYahooTicker(b.ticker) === normalizeIbkrYahooTicker(t.ticker)))
+        : null;
+      if (liveBr && (t.status === 'open' || t.status === 'partial')) {
+        if (Number(liveBr.tp1) > 0) rec.tp1 = Number(liveBr.tp1);
+        if (Number(liveBr.tp2) > 0) rec.tp2 = Number(liveBr.tp2);
+        if (Number(liveBr.sl) > 0) rec.sl = Number(liveBr.sl);
       }
       t.rec = rec;
       // Exit type from the actual fills (what really closed the trade at IB).
@@ -17820,7 +17953,8 @@ app.get('/api/ibkr/trades', async (req, res) => {
             if (avg > 0) {
               const tick = t.ccyScale === 100 ? 0.1 : (avg >= 1000 ? 1 : avg >= 100 ? 0.05 : 0.01);
               if (Math.abs(t.avgEntry - avg) > tick
-                && !shouldSkipStampInflatedAvgCorrect(t.avgEntry, avg, t.ccyScale)) {
+                && !shouldSkipStampInflatedAvgCorrect(t.avgEntry, avg, t.ccyScale)
+                && !fillsKeepOriginalRestoreAvg(t.fills)) {
                 t.avgEntry = avg;
                 t.ibReconciled = (t.ibReconciled ? t.ibReconciled + '+avg' : 'avg');
               }
@@ -18709,6 +18843,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
   // (which can still contain pre-floor tight stops). Re-run the migration here so the fix
   // applies to whatever was just uploaded, not only to boot-time data.
   const legacyFix = migrateLegacyTightStops();
+  migrateOpenExitsForSlBounce();
 
   // One-time backfill: older closed rows stored $0 PnL because position sizing
   // floored to 0 shares for high-priced names. Recompute $ from the stored % on
@@ -19676,6 +19811,10 @@ module.exports = {
   quarantineErrorFillsOffModelKeys,
   quarantineExcessModelEntriesVsIb,
   restoreOpenModelFillsFromCursorErr,
+  restoreUserReentryGhostLots,
+  applyUserRestoreLedger,
+  fifoFillsForRestoredKey,
+  fillsKeepOriginalRestoreAvg,
   isModelIbSyncFill,
   isIbkrQtyPadFill,
   entryFillsAreQtyPadOnly,

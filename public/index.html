@@ -3371,11 +3371,11 @@ function fmtPct(n){
   return (n>=0?'+':'')+n.toFixed(1)+'%';
 }
 
-/** Same SL noise floors as server — recommendations require RR ≥ 1.1 (ATR may be higher). */
+/** Same SL/TP noise floors as server — recommendations require RR ≥ 1.1 (ATR may be higher). */
 const DASH_HORIZON_MIN_PCT = {
-  short:  { sl: 0.025, tp1: 0, tp2: 0, minRR: 1.1 },
-  medium: { sl: 0.050, tp1: 0, tp2: 0, minRR: 1.1 },
-  long:   { sl: 0.080, tp1: 0, tp2: 0, minRR: 1.1 }
+  short:  { sl: 0.040, tp1: 0.044, tp2: 0.070, minRR: 1.1 },
+  medium: { sl: 0.065, tp1: 0.072, tp2: 0.110, minRR: 1.1 },
+  long:   { sl: 0.095, tp1: 0.105, tp2: 0.160, minRR: 1.1 }
 };
 const PICKS_MIN_RR = 1.1;
 /** Must match server PICKS_MIN_CONF — confidence % below this is never recommended. */
@@ -3495,19 +3495,19 @@ function levelsMeetMinRRDash(entry, tp1, sl, isSell, minRR) {
   var rr = rewardRiskRatioDash(entry, tp1, sl, isSell);
   return rr != null && rr >= minRR;
 }
-/** Legacy mid-range fallback (unused when channel/ATR math runs) */
+/** Legacy mid-range fallback (unused when channel/ATR math runs) — matches server HORIZON_PCT */
 const DASH_HORIZON_PCT = {
   short: {
-    buy: { tp1: 0.035, tp2: 0.06, sl: -0.025 },
-    sell: { tp1: -0.035, tp2: -0.06, sl: 0.025 }
+    buy: { tp1: 0.055, tp2: 0.085, sl: -0.040 },
+    sell: { tp1: -0.055, tp2: -0.085, sl: 0.040 }
   },
   medium: {
-    buy: { tp1: 0.07, tp2: 0.12, sl: -0.05 },
-    sell: { tp1: -0.07, tp2: -0.12, sl: 0.05 }
+    buy: { tp1: 0.115, tp2: 0.185, sl: -0.075 },
+    sell: { tp1: -0.115, tp2: -0.185, sl: 0.075 }
   },
   long: {
-    buy: { tp1: 0.12, tp2: 0.20, sl: -0.08 },
-    sell: { tp1: -0.12, tp2: -0.20, sl: 0.08 }
+    buy: { tp1: 0.235, tp2: 0.395, sl: -0.135 },
+    sell: { tp1: -0.235, tp2: -0.395, sl: 0.135 }
   }
 };
 function roundDashPrice(x) {
@@ -3701,7 +3701,7 @@ function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
       if (chanSL && srSL) sl = roundDashPrice(Math.max(chanSL, srSL));
       else if (chanSL && chanSL < e * 0.999 && chanSL > e * 0.90) sl = roundDashPrice(chanSL);
       else if (srSL) sl = roundDashPrice(srSL);
-      else sl = atr ? roundDashPrice(e - 2.0 * atr) : roundDashPrice(e * 0.975);
+      else sl = atr ? roundDashPrice(e - 2.0 * atr) : roundDashPrice(e * 0.960);
 
       const chanTP1 = d20?.mean ?? null;
       const srTP1 = r1 && r1 > e * 1.004 && r1 < e * 1.10 ? r1 : null;
@@ -3817,7 +3817,7 @@ function computeHorizonPriceLevels(e, hz, isSell, tech, fund) {
   // Sanity bounds for stops only — NEVER invent TP1 as stop×fixed RR (ATR owns targets).
   var _maxSlDist = hz === 'short' ? 0.06 : hz === 'medium' ? 0.13 : 0.26;
   var _atrMult   = hz === 'short' ? 2.0 : hz === 'medium' ? 4.0 : 6.5;
-  var _dfltSlPct = hz === 'short' ? 0.030 : hz === 'medium' ? 0.080 : 0.160;
+  var _dfltSlPct = hz === 'short' ? 0.040 : hz === 'medium' ? 0.065 : 0.095;
   var _dfltSlDist = atr ? _atrMult * atr : e * _dfltSlPct;
   if (!isSell) {
     if (sl >= e || sl < e * (1 - _maxSlDist)) sl = roundDashPrice(e - _dfltSlDist);
@@ -4961,9 +4961,9 @@ async function saveDashPicksToHistory(data) {
     } else {
       const MKRECORD_PCTS = {
         /* mirrors server HORIZON_MIN_PCT floors — never tighter */
-        short:  { tp1: 0.06, tp2: 0.10, sl: -0.030 },
-        medium: { tp1: 0.15, tp2: 0.23, sl: -0.08 },
-        long:   { tp1: 0.30, tp2: 0.45, sl: -0.16 }
+        short:  { tp1: 0.055, tp2: 0.070, sl: -0.040 },
+        medium: { tp1: 0.115, tp2: 0.185, sl: -0.075 },
+        long:   { tp1: 0.235, tp2: 0.395, sl: -0.135 }
       };
       const dir = isSell ? -1 : 1;
       const p = MKRECORD_PCTS[hz];
@@ -4986,12 +4986,12 @@ async function saveDashPicksToHistory(data) {
         ? parseFloat(aiSl.toFixed(2))
         : parseFloat((entry * (1 + dir * p.sl)).toFixed(2));
 
-      if(!isSell && tp1 <= entry) tp1 = parseFloat((entry*1.04).toFixed(2));
-      if(!isSell && tp2 <= tp1)   tp2 = parseFloat((tp1*1.04).toFixed(2));
-      if(!isSell && sl  >= entry) sl  = parseFloat((entry*0.97).toFixed(2));
-      if(isSell  && tp1 >= entry) tp1 = parseFloat((entry*0.95).toFixed(2));
-      if(isSell  && tp2 >= tp1)   tp2 = parseFloat((tp1*0.95).toFixed(2));
-      if(isSell  && sl  <= entry) sl  = parseFloat((entry*1.03).toFixed(2));
+      if(!isSell && tp1 <= entry) tp1 = parseFloat((entry*1.044).toFixed(2));
+      if(!isSell && tp2 <= tp1)   tp2 = parseFloat((tp1*1.025).toFixed(2));
+      if(!isSell && sl  >= entry) sl  = parseFloat((entry*0.96).toFixed(2));
+      if(isSell  && tp1 >= entry) tp1 = parseFloat((entry*0.956).toFixed(2));
+      if(isSell  && tp2 >= tp1)   tp2 = parseFloat((tp1*0.975).toFixed(2));
+      if(isSell  && sl  <= entry) sl  = parseFloat((entry*1.04).toFixed(2));
     }
     var rrFix = applyHorizonMinPctFloorsDash(entry, tp1, tp2, sl, isSell, hz);
     tp1 = rrFix.tp1;
@@ -5921,7 +5921,7 @@ async function fixHistoryPrices(silent) {
     // Ensure correct direction
     if(!t1||(isSell?t1>=newEntry:t1<=newEntry)) t1=isSell?parseFloat((newEntry*0.95).toFixed(2)):parseFloat((newEntry*1.05).toFixed(2));
     if(!t2||(isSell?t2>=t1:t2<=t1)) t2=isSell?parseFloat((t1*0.95).toFixed(2)):parseFloat((t1*1.05).toFixed(2));
-    if(!s||(isSell?s<=newEntry:s>=newEntry)) s=isSell?parseFloat((newEntry*1.03).toFixed(2)):parseFloat((newEntry*0.97).toFixed(2));
+    if(!s||(isSell?s<=newEntry:s>=newEntry)) s=isSell?parseFloat((newEntry*1.04).toFixed(2)):parseFloat((newEntry*0.96).toFixed(2));
     var rrFix=applyHorizonMinPctFloorsDash(newEntry,t1,t2,s,isSell,hz);
     t1=rrFix.tp1; t2=rrFix.tp2; s=rrFix.sl;
     h.entry=newEntry; h[hz+'Entry']=newEntry;
