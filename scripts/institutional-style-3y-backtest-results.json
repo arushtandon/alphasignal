@@ -1,0 +1,406 @@
+{
+  "generatedAt": "2026-09-22T07:24:30.515Z",
+  "methodology": {
+    "markets": [
+      "US",
+      "UK"
+    ],
+    "equitiesPerMarket": 20,
+    "windowBars": 756,
+    "approximateYears": 3,
+    "nextOpenEntry": true,
+    "gapAwareStops": true,
+    "costsAndShortBorrow": true,
+    "fixedNotionalPerTrade": 10000,
+    "currentFundamentals": false,
+    "parameterSelection": "fixed before sample; no optimization",
+    "promotionEligible": false,
+    "limitations": [
+      "Static current US/UK universe creates survivorship and constituent-selection bias",
+      "Yahoo bars do not provide a verified point-in-time delisting/corporate-action dataset",
+      "Fixed-notional trade sums are not a daily marked portfolio with overlapping capital",
+      "No point-in-time fundamentals, borrow availability, or historical liquidity membership"
+    ],
+    "requiredPromotionStudy": [
+      "Point-in-time S&P 500 and FTSE 350 constituents including delisted names",
+      "Daily portfolio accounting with overlapping positions and inverse-volatility weights",
+      "Stationary-block-bootstrap confidence interval above zero",
+      "Positive net performance in US, UK, long, and short legs separately"
+    ]
+  },
+  "strategies": {
+    "short": {
+      "label": "Fast 20-day breakout + 50-day trend",
+      "warmup": 60,
+      "maxHold": 20,
+      "stopAtr": 2,
+      "trailAtr": 2.5
+    },
+    "medium": {
+      "label": "55-day breakout + 50/200 trend alignment",
+      "warmup": 220,
+      "maxHold": 63,
+      "stopAtr": 2.5,
+      "trailAtr": 3.5
+    },
+    "long": {
+      "label": "12-1 time-series momentum + 200-day regime",
+      "warmup": 275,
+      "maxHold": 180,
+      "stopAtr": 4,
+      "trailAtr": 5
+    }
+  },
+  "results": [
+    {
+      "market": "US",
+      "horizon": "short",
+      "side": "buy",
+      "strategy": "Fast 20-day breakout + 50-day trend",
+      "metrics": {
+        "trades": 388,
+        "wins": 152,
+        "losses": 236,
+        "winRate": 39.2,
+        "avgReturnPct": 0.708,
+        "profitFactor": 1.337,
+        "netPnlUsdAtFixedNotional": 27471.42,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "short",
+      "side": "sell",
+      "strategy": "Fast 20-day breakout + 50-day trend",
+      "metrics": {
+        "trades": 284,
+        "wins": 68,
+        "losses": 216,
+        "winRate": 23.9,
+        "avgReturnPct": -2.109,
+        "profitFactor": 0.359,
+        "netPnlUsdAtFixedNotional": -59888.45,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "strategy": "55-day breakout + 50/200 trend alignment",
+      "metrics": {
+        "trades": 160,
+        "wins": 67,
+        "losses": 93,
+        "winRate": 41.9,
+        "avgReturnPct": 1.298,
+        "profitFactor": 1.496,
+        "netPnlUsdAtFixedNotional": 20760.25,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "strategy": "55-day breakout + 50/200 trend alignment",
+      "metrics": {
+        "trades": 45,
+        "wins": 10,
+        "losses": 35,
+        "winRate": 22.2,
+        "avgReturnPct": -2.977,
+        "profitFactor": 0.389,
+        "netPnlUsdAtFixedNotional": -13395.61,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "strategy": "12-1 time-series momentum + 200-day regime",
+      "metrics": {
+        "trades": 345,
+        "wins": 109,
+        "losses": 236,
+        "winRate": 31.6,
+        "avgReturnPct": 2.611,
+        "profitFactor": 1.882,
+        "netPnlUsdAtFixedNotional": 90065.55,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "strategy": "12-1 time-series momentum + 200-day regime",
+      "metrics": {
+        "trades": 117,
+        "wins": 28,
+        "losses": 89,
+        "winRate": 23.9,
+        "avgReturnPct": -2.418,
+        "profitFactor": 0.29,
+        "netPnlUsdAtFixedNotional": -28291.79,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "short",
+      "side": "buy",
+      "strategy": "Fast 20-day breakout + 50-day trend",
+      "metrics": {
+        "trades": 355,
+        "wins": 114,
+        "losses": 241,
+        "winRate": 32.1,
+        "avgReturnPct": -0.963,
+        "profitFactor": 0.606,
+        "netPnlUsdAtFixedNotional": -34189.09,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "short",
+      "side": "sell",
+      "strategy": "Fast 20-day breakout + 50-day trend",
+      "metrics": {
+        "trades": 269,
+        "wins": 55,
+        "losses": 214,
+        "winRate": 20.4,
+        "avgReturnPct": -2.392,
+        "profitFactor": 0.279,
+        "netPnlUsdAtFixedNotional": -64334.27,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "buy",
+      "strategy": "55-day breakout + 50/200 trend alignment",
+      "metrics": {
+        "trades": 140,
+        "wins": 48,
+        "losses": 92,
+        "winRate": 34.3,
+        "avgReturnPct": -0.615,
+        "profitFactor": 0.788,
+        "netPnlUsdAtFixedNotional": -8608.54,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "strategy": "55-day breakout + 50/200 trend alignment",
+      "metrics": {
+        "trades": 67,
+        "wins": 13,
+        "losses": 54,
+        "winRate": 19.4,
+        "avgReturnPct": -3.779,
+        "profitFactor": 0.203,
+        "netPnlUsdAtFixedNotional": -25316.56,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "strategy": "12-1 time-series momentum + 200-day regime",
+      "metrics": {
+        "trades": 292,
+        "wins": 87,
+        "losses": 205,
+        "winRate": 29.8,
+        "avgReturnPct": 0.557,
+        "profitFactor": 1.176,
+        "netPnlUsdAtFixedNotional": 16253.31,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "strategy": "12-1 time-series momentum + 200-day regime",
+      "metrics": {
+        "trades": 207,
+        "wins": 32,
+        "losses": 175,
+        "winRate": 15.5,
+        "avgReturnPct": -2.688,
+        "profitFactor": 0.259,
+        "netPnlUsdAtFixedNotional": -55641.73,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    }
+  ],
+  "combined": [
+    {
+      "horizon": "short",
+      "side": "buy",
+      "strategy": "Fast 20-day breakout + 50-day trend",
+      "metrics": {
+        "trades": 743,
+        "wins": 266,
+        "losses": 477,
+        "winRate": 35.8,
+        "avgReturnPct": -0.09,
+        "profitFactor": 0.96,
+        "netPnlUsdAtFixedNotional": -6717.67,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "horizon": "short",
+      "side": "sell",
+      "strategy": "Fast 20-day breakout + 50-day trend",
+      "metrics": {
+        "trades": 553,
+        "wins": 123,
+        "losses": 430,
+        "winRate": 22.2,
+        "avgReturnPct": -2.246,
+        "profitFactor": 0.32,
+        "netPnlUsdAtFixedNotional": -124222.73,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "horizon": "short",
+      "side": "both",
+      "strategy": "Fast 20-day breakout + 50-day trend",
+      "metrics": {
+        "trades": 1296,
+        "wins": 389,
+        "losses": 907,
+        "winRate": 30,
+        "avgReturnPct": -1.01,
+        "profitFactor": 0.627,
+        "netPnlUsdAtFixedNotional": -130940.4,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "horizon": "medium",
+      "side": "buy",
+      "strategy": "55-day breakout + 50/200 trend alignment",
+      "metrics": {
+        "trades": 300,
+        "wins": 115,
+        "losses": 185,
+        "winRate": 38.3,
+        "avgReturnPct": 0.405,
+        "profitFactor": 1.147,
+        "netPnlUsdAtFixedNotional": 12151.71,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "horizon": "medium",
+      "side": "sell",
+      "strategy": "55-day breakout + 50/200 trend alignment",
+      "metrics": {
+        "trades": 112,
+        "wins": 23,
+        "losses": 89,
+        "winRate": 20.5,
+        "avgReturnPct": -3.456,
+        "profitFactor": 0.279,
+        "netPnlUsdAtFixedNotional": -38712.17,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "horizon": "medium",
+      "side": "both",
+      "strategy": "55-day breakout + 50/200 trend alignment",
+      "metrics": {
+        "trades": 412,
+        "wins": 138,
+        "losses": 274,
+        "winRate": 33.5,
+        "avgReturnPct": -0.645,
+        "profitFactor": 0.805,
+        "netPnlUsdAtFixedNotional": -26560.46,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "horizon": "long",
+      "side": "buy",
+      "strategy": "12-1 time-series momentum + 200-day regime",
+      "metrics": {
+        "trades": 637,
+        "wins": 196,
+        "losses": 441,
+        "winRate": 30.8,
+        "avgReturnPct": 1.669,
+        "profitFactor": 1.546,
+        "netPnlUsdAtFixedNotional": 106318.86,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "horizon": "long",
+      "side": "sell",
+      "strategy": "12-1 time-series momentum + 200-day regime",
+      "metrics": {
+        "trades": 324,
+        "wins": 60,
+        "losses": 264,
+        "winRate": 18.5,
+        "avgReturnPct": -2.591,
+        "profitFactor": 0.27,
+        "netPnlUsdAtFixedNotional": -83933.52,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    },
+    {
+      "horizon": "long",
+      "side": "both",
+      "strategy": "12-1 time-series momentum + 200-day regime",
+      "metrics": {
+        "trades": 961,
+        "wins": 256,
+        "losses": 705,
+        "winRate": 26.6,
+        "avgReturnPct": 0.233,
+        "profitFactor": 1.072,
+        "netPnlUsdAtFixedNotional": 22385.34,
+        "exploratoryScreenPass": false,
+        "promotionEligible": false
+      }
+    }
+  ]
+}

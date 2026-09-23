@@ -9,7 +9,11 @@ const {
 
 test('closed lot daily equals net realised after commission and stamp', () => {
   const daily = new Map();
+  const details = new Map();
   accumulateLotDaily({
+    key: '0700.HK|long|2026-09-01',
+    ticker: '0700.HK',
+    status: 'closed',
     openQty: 0,
     realizedUsd: 100,
     commissionUsd: 8,
@@ -19,10 +23,18 @@ test('closed lot daily equals net realised after commission and stamp', () => {
       { role: 'tp1', time: '2026-09-02T00:00:00Z', dailyRealizedUsd: 100 },
       { role: 'stop', time: '2026-09-03T00:00:00Z', dailyRealizedUsd: 20 }
     ]
-  }, daily, new Map());
+  }, daily, new Map(), details);
   assert.equal(sumMap(daily), 100);
   assert.equal(daily.get('2026-09-02'), 100);
   assert.equal(daily.has('2026-09-03'), false);
+  const rows = toDailyArray(daily, details);
+  assert.deepEqual(rows[0].components, [{
+    key: '0700.HK|long|2026-09-01',
+    ticker: '0700.HK',
+    status: 'closed',
+    realizedUsd: 100,
+    parts: { exit: 100 }
+  }]);
 });
 
 test('open TP1 is booked gross; stamp stays off daily until the lot closes', () => {

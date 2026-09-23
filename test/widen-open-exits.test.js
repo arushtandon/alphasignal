@@ -58,3 +58,18 @@ test('TP inside the stop is lifted to 1.1 R:R after the widen', () => {
   assert.ok(w.tp1Pct + 1e-9 >= w.slPct * 1.1);
   assert.ok(w.tp1 > 163.3);
 });
+
+test('post-cutoff lot gets bracket floors without another 1.5pt stop widening', () => {
+  const w = widenOpenExits({
+    entry: 1605,
+    sl: 1525,
+    tp1: 1665,
+    tp2: 1720,
+    hz: 'short',
+    isSell: false,
+    addLegacyWiden: false
+  });
+  assert.ok(Math.abs(w.sl - 1525) < 1e-9);
+  assert.ok(w.tp1Pct + 1e-9 >= w.slPct * 1.1);
+  assert.ok(w.tp1 > 1665);
+});

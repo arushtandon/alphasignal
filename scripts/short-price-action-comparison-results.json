@@ -1,0 +1,374 @@
+{
+  "generatedAt": "2026-09-22T05:07:09.815Z",
+  "methodology": {
+    "markets": [
+      "US",
+      "UK"
+    ],
+    "horizon": "short",
+    "windowBars": 756,
+    "entryStep": 2,
+    "nextOpenEntry": true,
+    "stopFirst": true,
+    "gapAwareStructuralStops": true,
+    "currentFundamentals": false,
+    "costs": true,
+    "notionalPerTrade": 10000
+  },
+  "results": [
+    {
+      "market": "US",
+      "side": "buy",
+      "variant": "current",
+      "label": "Current short-horizon policy",
+      "metrics": {
+        "trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "netPnlUsdAtFixedNotional": 0,
+        "maxDrawdownPct": null,
+        "sharpe": null
+      },
+      "rejects": {
+        "actionable": 6661,
+        "sideAllowed": 6746,
+        "confidence": 7122,
+        "marketPolicy": 180
+      }
+    },
+    {
+      "market": "US",
+      "side": "buy",
+      "variant": "score_baseline",
+      "label": "Old score logic without current Anglo pause/Strong-only gate",
+      "metrics": {
+        "trades": 7,
+        "wins": 6,
+        "losses": 1,
+        "winRate": 85.7,
+        "avgReturnPct": 2.736,
+        "profitFactor": 5.539,
+        "netPnlUsdAtFixedNotional": 1915.51,
+        "compoundedReturnPct": 20.03,
+        "maxDrawdownPct": 4.22,
+        "sharpe": 1.516
+      },
+      "rejects": {
+        "actionable": 6646,
+        "sideAllowed": 6731,
+        "rewardRisk": 783
+      }
+    },
+    {
+      "market": "US",
+      "side": "buy",
+      "variant": "price_action",
+      "label": "Old score + price-action setup + structural bracket",
+      "metrics": {
+        "trades": 12,
+        "wins": 5,
+        "losses": 7,
+        "winRate": 41.7,
+        "avgReturnPct": 0.241,
+        "profitFactor": 1.132,
+        "netPnlUsdAtFixedNotional": 289.63,
+        "compoundedReturnPct": 0.743,
+        "maxDrawdownPct": 14.511,
+        "sharpe": 0.118
+      },
+      "rejects": {
+        "actionable": 6637,
+        "sideAllowed": 6722,
+        "priceActionSetup": 746,
+        "relStrength": 30,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "US",
+      "side": "sell",
+      "variant": "current",
+      "label": "Current short-horizon policy",
+      "metrics": {
+        "trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "netPnlUsdAtFixedNotional": 0,
+        "maxDrawdownPct": null,
+        "sharpe": null
+      },
+      "rejects": {
+        "actionable": 6661,
+        "sideAllowed": 7455,
+        "confidence": 7122,
+        "marketPolicy": 2
+      }
+    },
+    {
+      "market": "US",
+      "side": "sell",
+      "variant": "score_baseline",
+      "label": "Old score logic without current Anglo pause/Strong-only gate",
+      "metrics": {
+        "trades": 2,
+        "wins": 1,
+        "losses": 1,
+        "winRate": 50,
+        "avgReturnPct": -1.916,
+        "profitFactor": 0.093,
+        "netPnlUsdAtFixedNotional": -383.23,
+        "compoundedReturnPct": -3.849,
+        "maxDrawdownPct": 4.224,
+        "sharpe": -0.83
+      },
+      "rejects": {
+        "actionable": 6656,
+        "sideAllowed": 7449,
+        "rewardRisk": 83
+      }
+    },
+    {
+      "market": "US",
+      "side": "sell",
+      "variant": "price_action",
+      "label": "Old score + price-action setup + structural bracket",
+      "metrics": {
+        "trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "netPnlUsdAtFixedNotional": 0,
+        "maxDrawdownPct": null,
+        "sharpe": null
+      },
+      "rejects": {
+        "actionable": 6661,
+        "sideAllowed": 7455,
+        "priceActionSetup": 81,
+        "relStrength": 4
+      }
+    },
+    {
+      "market": "UK",
+      "side": "buy",
+      "variant": "current",
+      "label": "Current short-horizon policy",
+      "metrics": {
+        "trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "netPnlUsdAtFixedNotional": 0,
+        "maxDrawdownPct": null,
+        "sharpe": null
+      },
+      "rejects": {
+        "actionable": 6598,
+        "sideAllowed": 6693,
+        "confidence": 7066,
+        "marketPolicy": 219
+      }
+    },
+    {
+      "market": "UK",
+      "side": "buy",
+      "variant": "score_baseline",
+      "label": "Old score logic without current Anglo pause/Strong-only gate",
+      "metrics": {
+        "trades": 12,
+        "wins": 5,
+        "losses": 7,
+        "winRate": 41.7,
+        "avgReturnPct": -1.364,
+        "profitFactor": 0.519,
+        "netPnlUsdAtFixedNotional": -1637.03,
+        "compoundedReturnPct": -10.379,
+        "maxDrawdownPct": 16.242,
+        "sharpe": -0.588
+      },
+      "rejects": {
+        "actionable": 6568,
+        "sideAllowed": 6663,
+        "rewardRisk": 832
+      }
+    },
+    {
+      "market": "UK",
+      "side": "buy",
+      "variant": "price_action",
+      "label": "Old score + price-action setup + structural bracket",
+      "metrics": {
+        "trades": 15,
+        "wins": 5,
+        "losses": 10,
+        "winRate": 33.3,
+        "avgReturnPct": -1.287,
+        "profitFactor": 0.481,
+        "netPnlUsdAtFixedNotional": -1931.07,
+        "compoundedReturnPct": -15.82,
+        "maxDrawdownPct": 15.82,
+        "sharpe": -1.054
+      },
+      "rejects": {
+        "actionable": 6566,
+        "sideAllowed": 6661,
+        "priceActionSetup": 781,
+        "relStrength": 34
+      }
+    },
+    {
+      "market": "UK",
+      "side": "sell",
+      "variant": "current",
+      "label": "Current short-horizon policy",
+      "metrics": {
+        "trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "netPnlUsdAtFixedNotional": 0,
+        "maxDrawdownPct": null,
+        "sharpe": null
+      },
+      "rejects": {
+        "actionable": 6598,
+        "sideAllowed": 7445,
+        "confidence": 7066,
+        "rewardRisk": 1
+      }
+    },
+    {
+      "market": "UK",
+      "side": "sell",
+      "variant": "score_baseline",
+      "label": "Old score logic without current Anglo pause/Strong-only gate",
+      "metrics": {
+        "trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "netPnlUsdAtFixedNotional": 0,
+        "maxDrawdownPct": null,
+        "sharpe": null
+      },
+      "rejects": {
+        "actionable": 6598,
+        "sideAllowed": 7445,
+        "rewardRisk": 95
+      }
+    },
+    {
+      "market": "UK",
+      "side": "sell",
+      "variant": "price_action",
+      "label": "Old score + price-action setup + structural bracket",
+      "metrics": {
+        "trades": 1,
+        "wins": 1,
+        "losses": 0,
+        "winRate": 100,
+        "avgReturnPct": 5.691,
+        "profitFactor": 99,
+        "netPnlUsdAtFixedNotional": 569.12,
+        "compoundedReturnPct": 5.691,
+        "maxDrawdownPct": 0,
+        "sharpe": null
+      },
+      "rejects": {
+        "actionable": 6593,
+        "sideAllowed": 7438,
+        "priceActionSetup": 90,
+        "relStrength": 3,
+        "priceActionBracket": 1
+      }
+    }
+  ],
+  "combined": [
+    {
+      "side": "buy",
+      "variant": "current",
+      "trades": 0,
+      "winRate": null,
+      "netPnlUsdAtFixedNotional": 0,
+      "avgReturnPct": null
+    },
+    {
+      "side": "buy",
+      "variant": "score_baseline",
+      "trades": 19,
+      "winRate": 57.9,
+      "netPnlUsdAtFixedNotional": 278.48,
+      "avgReturnPct": 0.147
+    },
+    {
+      "side": "buy",
+      "variant": "price_action",
+      "trades": 27,
+      "winRate": 37,
+      "netPnlUsdAtFixedNotional": -1641.44,
+      "avgReturnPct": -0.608
+    },
+    {
+      "side": "sell",
+      "variant": "current",
+      "trades": 0,
+      "winRate": null,
+      "netPnlUsdAtFixedNotional": 0,
+      "avgReturnPct": null
+    },
+    {
+      "side": "sell",
+      "variant": "score_baseline",
+      "trades": 2,
+      "winRate": 50,
+      "netPnlUsdAtFixedNotional": -383.23,
+      "avgReturnPct": -1.916
+    },
+    {
+      "side": "sell",
+      "variant": "price_action",
+      "trades": 1,
+      "winRate": 100,
+      "netPnlUsdAtFixedNotional": 569.12,
+      "avgReturnPct": 5.691
+    },
+    {
+      "side": "both",
+      "variant": "current",
+      "trades": 0,
+      "winRate": null,
+      "netPnlUsdAtFixedNotional": 0,
+      "avgReturnPct": null
+    },
+    {
+      "side": "both",
+      "variant": "score_baseline",
+      "trades": 21,
+      "winRate": 57.1,
+      "netPnlUsdAtFixedNotional": -104.75,
+      "avgReturnPct": -0.05
+    },
+    {
+      "side": "both",
+      "variant": "price_action",
+      "trades": 28,
+      "winRate": 39.3,
+      "netPnlUsdAtFixedNotional": -1072.32,
+      "avgReturnPct": -0.383
+    }
+  ]
+}

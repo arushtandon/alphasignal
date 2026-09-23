@@ -21,6 +21,10 @@ const {
   applyMissingFmpHold
 } = require('./lib/strategy/market-tier');
 const {
+  DISABLED_BRACKETS,
+  bracketEnabled
+} = require('./lib/strategy/bracket-policy');
+const {
   HORIZON_WEIGHTING_LABELS,
   applyYahooFundGates,
   applyHorizonQualityBlend,
@@ -32,9 +36,16 @@ const {
   horizonHoldDays,
   normalizePartialFraction
 } = require('./lib/strategy/exit-engine');
+const { attachMa200Entry } = require('./lib/strategy/ma200-entry');
+const {
+  priceActionSetup,
+  structuralBracket,
+  simulatePriceActionExit
+} = require('./lib/strategy/price-action-short');
 const { COST_MODEL_VERSION, applyCosts } = require('./lib/research/cost-model');
 const { summarizeReturns, summarizeDatedPortfolio, promotionDecision } = require('./lib/research/performance');
 const { dailyToWeeklyBars, weeklyBarsVisibleAt } = require('./lib/research/weekly-bars');
+const { evaluateMtf, blendSignal } = require('./lib/research/mtf-supertrend');
 const { atomicWriteFileSync, atomicWriteJsonSync } = require('./lib/storage/atomic-json');
 const { PostgresStore } = require('./lib/storage/postgres-store');
 const {
@@ -2510,6 +2521,11 @@ function computeQuantSignal(tech, fund, hz, market = null) {
   const aboveMa20  = tech.aboveMa20  ?? null;
   const aboveMa50  = tech.aboveMa50  ?? false;
   const aboveMa200 = tech.aboveMa200 ?? false;
+  const ma200Break = !!tech.ma200BreakConfirmed;
+  const ma200Bounce = !!tech.ma200BounceSetup;
+  const ma200Buy = !!tech.ma200BuySetup || ma200Break || ma200Bounce;
+  const stretchMa200 = tech.ma200StretchPct != null ? Number(tech.ma200StretchPct) : null;
+  const extendedMa200 = !!tech.extendedAboveMa200 || (stretchMa200 != null && stretchMa200 > 0.08);
   const macdBull   = tech.macd?.trend === 'bullish';
   const macdHist   = tech.macd?.histogram ?? 0;
   const adx        = tech.adx ?? 15;
@@ -2561,7 +2577,7 @@ function computeQuantSignal(tech, fund, hz, market = null) {
   //            → mean-reversion strategy, SD channel timing dominates
   //
   // Regime scores (0-7 scale)
-  const _bullPts = (aboveMa200?2:0) + (goldenCross?2:0)
+  const _bullPts = (ma200Buy?2:0) + (goldenCross?2:0)
                  + (weeklyTrend==='uptrend'?1:0) + (adx>22?0.5:0)
                  + (macdBull?0.5:0) + (obvBullish===true?0.5:0)
                  + (rsi>50&&rsi<70?0.5:0);
@@ -2614,8 +2630,14 @@ function computeQuantSignal(tech, fund, hz, market = null) {
     const _nearMa50  = ma50 && Math.abs(price - ma50) / price < 0.02;
     const _nearMa20t = _ma20 && Math.abs(price - _ma20) / price < 0.015;
     if (nearS1)            { buyGates += 1.3; condBuy.push(`At support $${s1?.toFixed(2)}`); }
+    else if (ma200Bounce)  { buyGates += 1.2; condBuy.push('Bounce from MA200 support'); }
     else if (_nearMa50 && aboveMa50)  { buyGates += 0.9; condBuy.push('At MA50 support'); }
     else if (_nearMa20t)              { buyGates += 0.6; condBuy.push('At MA20 support'); }
+    if (ma200Break) { buyGates += 0.8; condBuy.push('Confirmed MA200 break'); }
+    if (extendedMa200 && !ma200Buy) {
+      buyGates *= 0.40;
+      condBuy.push('Already extended above MA200 — not a break or bounce');
+    }
 
     // Base 3: Fast oscillators — noise-tolerant reversal timing (RSI(2), Stochastic)
     if (rsi2 != null && rsi2 < 10) { buyGates += 1.6; condBuy.push(`RSI(2) ${rsi2} washed out`); }
@@ -2674,10 +2696,12 @@ function computeQuantSignal(tech, fund, hz, market = null) {
   // ════════════════════════════════════════════════════════════════════════════
   } else if (hz === 'medium') {
 
-    // Gate 1: Primary trend regime (REQUIRED for a 90-day trade)
-    if (aboveMa200&&goldenCross) { buyGates+=2; condBuy.push('MA200 bull regime + Golden Cross'); }
-    else if (aboveMa200)          { buyGates++;  condBuy.push('Above MA200 — primary uptrend'); }
-    else if (goldenCross)         { buyGates++;  condBuy.push('Golden Cross: MA50 > MA200'); }
+    // Gate 1: MA200 is a buy only on a confirmed break or a bounce off the line —
+    // never because price is already well above it.
+    if (ma200Break) { buyGates+=2; condBuy.push('Confirmed MA200 break — held, not extended'); }
+    else if (ma200Bounce) { buyGates+=2; condBuy.push('Bounce expected from MA200'); }
+    else if (goldenCross && !extendedMa200) { buyGates+=0.5; condBuy.push('Golden Cross: MA50 > MA200'); }
+    else if (extendedMa200) { condBuy.push('Already extended above MA200 — not a break or bounce'); }
 
     // Gate 2: Weekly trend
     if (weeklyTrend==='uptrend')                       { buyGates++; condBuy.push('Weekly uptrend confirmed'); }
@@ -2765,10 +2789,11 @@ function computeQuantSignal(tech, fund, hz, market = null) {
 
     const sepaAlignment=aboveMa200&&aboveMa50&&ma50>ma200;
     const slopeBullish=weeklyTrend==='uptrend';
-    if (sepaAlignment&&goldenCross&&slopeBullish){buyGates+=3;condBuy.push('SEPA: full MA alignment+rising');}
-    else if(sepaAlignment&&goldenCross){buyGates+=2;condBuy.push('SEPA: MA alignment+Golden Cross');}
-    else if(aboveMa200&&goldenCross){buyGates+=2;condBuy.push('MA200+Golden Cross');}
-    else if(aboveMa200){buyGates++;condBuy.push('Above MA200 uptrend');}
+    if (sepaAlignment&&goldenCross&&slopeBullish&&ma200Buy){buyGates+=3;condBuy.push('SEPA: MA200 break/bounce + alignment');}
+    else if(sepaAlignment&&goldenCross&&ma200Buy){buyGates+=2;condBuy.push('SEPA: MA200 break/bounce + Golden Cross');}
+    else if(ma200Break){buyGates+=2;condBuy.push('Confirmed MA200 break');}
+    else if(ma200Bounce){buyGates+=2;condBuy.push('Bounce expected from MA200');}
+    else if(extendedMa200){condBuy.push('Already extended above MA200 — not a break or bounce');}
 
     const high52w=tech.high52w??null,low52w=tech.low52w??null;
     const nearHigh52w=high52w?price>=high52w*0.75:true;
@@ -2850,7 +2875,10 @@ function computeQuantSignal(tech, fund, hz, market = null) {
   // This makes Supertrend a real gate across all timeframes, as requested.
   const stHz = (tech.supertrendByHz && tech.supertrendByHz[hz]) || tech.supertrend || null;
   if (stHz) {
-    const stBtOk = !tech._supertrendBacktestWR || tech._supertrendBacktestWR >= 50;
+    // The lightweight analysis endpoint only backtests the short horizon.
+    // Never let that statistic boost medium/long recommendations.
+    const stBtWr = hz === 'short' ? tech._supertrendBacktestWR : null;
+    const stBtOk = stBtWr == null || stBtWr >= 50;
     if (stHz.direction === 'bull') {
       if (stHz.flippedBull && buy >= 50) { buy = Math.min(94, buy + 12); condBuy.unshift(`Supertrend ${hz} Strong Buy (fresh bull flip)`); }
       else if (buy >= 55)               { buy = Math.min(92, buy + 6);  condBuy.push(`Supertrend ${hz} bullish`); }
@@ -2883,7 +2911,7 @@ function computeQuantSignal(tech, fund, hz, market = null) {
       if (!stHz.flippedBear && !_fadeCandidate) { sell = Math.min(sell, 58); condSell.push(`Above ${hz} Supertrend — sell capped`); }
     }
     // Backtest-validated extra confidence (when WR known and strong)
-    if (stBtOk && tech._supertrendBacktestWR >= 60) {
+    if (stBtOk && stBtWr >= 60) {
       if (stHz.direction === 'bull' && buy >= 62) buy = Math.min(95, buy + 2);
       if (stHz.direction === 'bear' && sell >= 62) sell = Math.min(93, sell + 2);
     }
@@ -3006,6 +3034,19 @@ function computeQuantSignal(tech, fund, hz, market = null) {
     }
   }
 
+  // User-approved US/UK short-buy policy: blend the existing score with
+  // Supertrend(10,3), price momentum, daily H/L/C behaviour, and Fibonacci-
+  // derived support/resistance. Other sides/horizons remain unchanged.
+  let mtfShortBuyConfirmed = false;
+  if (hz === 'short' && tech?._angloShortBuyMtf) {
+    const blended = blendSignal({ buyScore: buy }, tech._angloShortBuyMtf, 'buy', 0.6);
+    buy = Number(blended.buyScore) || 0;
+    mtfShortBuyConfirmed = !!tech._angloShortBuyMtf.dualSupertrend && buy >= 62;
+    condBuy.push(mtfShortBuyConfirmed
+      ? 'US/UK short buy: Supertrend(10,3) + momentum/HLC + structural S/R confirmed'
+      : 'US/UK short buy: multi-timeframe confirmation not met');
+  }
+
   // Clamp and mutual exclusivity
   buy  = Math.min(92,Math.max(0,Math.round(buy)));
   sell = Math.min(88,Math.max(0,Math.round(sell)));
@@ -3045,6 +3086,11 @@ function computeQuantSignal(tech, fund, hz, market = null) {
     belowMa20: _belowMa20,
     trendDown: _trendDown,
     fallingKnife: _fallingKnife,
+    ma200BuySetup: ma200Buy,
+    ma200BreakConfirmed: ma200Break,
+    ma200BounceSetup: ma200Bounce,
+    extendedAboveMa200: extendedMa200,
+    mtfShortBuyConfirmed
   };
 }
 
@@ -3128,7 +3174,21 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
     }
     // Historical peer-earnings tide at this bar (same decay math as live).
     if (earningsEvents) tech._earningsTide = earningsTideFromEvents(earningsEvents, data[i].t);
-    const sig = computeQuantSignal(tech, fund, hz, market);
+    let sig = computeQuantSignal(tech, fund, hz, market);
+    // Research-only hook for causal entry overlays (for example multi-timeframe
+    // Supertrend/SR/Fibonacci). Production callers do not supply this option.
+    if (typeof opts.signalOverlay === 'function') {
+      const overlaid = opts.signalOverlay({
+        signal: sig,
+        tech,
+        data,
+        index: i,
+        horizon: hz,
+        symbol: opts.symbol,
+        market
+      });
+      if (overlaid && typeof overlaid === 'object') sig = overlaid;
+    }
     const stHz = (tech.supertrendByHz && tech.supertrendByHz[hz]) || tech.supertrend;
 
     // Use the same canonical score, confidence and side eligibility as live.
@@ -3147,6 +3207,32 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
     }
     const isBuy = decision.side === 'buy';
     const isSell = decision.side === 'sell';
+    const paSetup = opts.priceActionShort && hz === 'short'
+      ? priceActionSetup(data, i, decision.side) : null;
+    if (opts.priceActionShort && hz === 'short' && !paSetup?.eligible) {
+      reject('priceActionSetup');
+      continue;
+    }
+    // Match the published/live market policy. Previously the replay admitted
+    // US/UK trades that the board and bridge would reject, inflating an
+    // irrelevant "same logic" result.
+    const marketPolicy = angloPickAllowed(opts.symbol, {
+      hz,
+      side: decision.side,
+      rating: decision.candidateRating,
+      mtfShortBuyConfirmed: sig.mtfShortBuyConfirmed === true
+    });
+    // Research-only candidate: let the explicit price-action setup replace the
+    // current Anglo Strong-only / short-Buy pause, while retaining score and R:R.
+    const paScore = isBuy ? Number(sig.buyScore) : Number(sig.sellScore);
+    const scoreOnlyAngloOverride = !!(opts.researchAngloScoreOnly
+      && paScore >= Number(decisionPolicy.minScore || 62));
+    const paAngloOverride = !!(opts.priceActionShort && hz === 'short'
+      && paSetup?.eligible && paScore >= Number(decisionPolicy.minScore || 62));
+    if (!marketPolicy.ok && !paAngloOverride && !scoreOnlyAngloOverride) {
+      reject('marketPolicy');
+      continue;
+    }
     // Optional side filter — lets the backtest endpoint measure ONE side in isolation
     if (opts.side === 'sell' && !isSell) continue;
     if (opts.side === 'buy' && !isBuy) continue;
@@ -3173,21 +3259,28 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
     if (!entry || entry <= 0) continue;
 
     // Same hard TP1-vs-SL gate for every horizon as live recommendations.
-    const gSl = computeTrailingStopFromTech(tech, entry, hz, isSell, fund);
-    const gTp = computeFirstTargetFromTech(tech, entry, hz, isSell, gSl);
+    const paBracket = paSetup ? structuralBracket(entry, paSetup, decision.side) : null;
+    if (paSetup && !paBracket) {
+      reject('priceActionBracket');
+      continue;
+    }
+    const gSl = paBracket ? paBracket.stop : computeTrailingStopFromTech(tech, entry, hz, isSell, fund);
+    const gTp = paBracket ? paBracket.tp1 : computeFirstTargetFromTech(tech, entry, hz, isSell, gSl);
     if (!(gSl > 0) || !(gTp > 0)) {
       reject('missingLevels');
       continue;
     }
-    if (!levelsMeetMinRR(entry, gTp, gSl, isSell, PICKS_MIN_RR)) {
+    if (!levelsMeetMinRR(entry, gTp, gSl, isSell, minRrForSymbol(opts.symbol, PICKS_MIN_RR))) {
       reject('rewardRisk');
       continue;
     }
 
-    const res = await simulateHybridExit(data, i + 1, entry, hz, isSell, weeklyAll, fund, null, false, 0.5, {
-      disablePreTp1SignalExit: !!opts.disablePreTp1SignalExit,
-      stopFirst: !!opts.stopFirst
-    });
+    const res = paBracket
+      ? simulatePriceActionExit(data, i + 1, entry, decision.side, paBracket, 15)
+      : await simulateHybridExit(data, i + 1, entry, hz, isSell, weeklyAll, fund, null, false, 0.5, {
+        disablePreTp1SignalExit: !!opts.disablePreTp1SignalExit,
+        stopFirst: !!opts.stopFirst
+      });
     if (!res || res.exitIdx == null) { reject('noClosedExit'); continue; }
     if (opts.closedOnly && (res.status === 'open' || res.status === 'tp1_open')) {
       reject('openMark');
@@ -5646,7 +5739,7 @@ function buildFullTechResult(sym, daily, weekly) {
   const healthyPullback = !!(aboveMa50 && trend20 !== 'downtrend' && ma20 && cp <= ma20 * 1.02 && ma50 && cp >= ma50 * 0.97
     && volume && volume.relativeVolume != null && volume.relativeVolume < 1.0);
 
-  return {
+  const result = {
     symbol: sym, currentPrice: cp, ma20, ma50, ma200,
     aboveMa20, aboveMa50, aboveMa200, bullishMAs, totalMAs,
     maAlignmentStr: `${bullishMAs}/${totalMAs} MAs bullish`,
@@ -5680,8 +5773,12 @@ function buildFullTechResult(sym, daily, weekly) {
     healthyPullback,
     supertrend: calcSupertrend(daily),
     supertrendByHz: calcSupertrendByHorizon(daily),
+    _angloShortBuyMtf: isAngloSymbol(sym) && sym !== 'X'
+      ? evaluateMtf(daily, daily, 'short', 'buy', daily, { period: 10, multiplier: 3 })
+      : null,
     summary: `RSI ${rsi} (${rsi > 70 ? 'overbought' : rsi < 30 ? 'oversold' : 'neutral'}), ADX ${adx ?? 'N/A'}, ${bullishMAs}/${totalMAs} MAs bullish, ${trend20}, S1@${support1}, R1@${resistance1}`
   };
+  return attachMa200Entry(result, daily);
 }
 
 // GET /api/technicals/:symbol — full indicator set (single ticker)
@@ -6394,7 +6491,6 @@ function applyTierScoreCaps(quantSignal) {
     q.tier2Eligible = q.tier >= 1;
     if (q.tier === 0 && q.buyScore > 72) q.buyScore = 72;
     if (q.tier === 1 && q.buyScore > 88) q.buyScore = 88;
-    if (q.tier >= 1) q.winRateHint = Math.max(q.winRateHint || 60, 70);
 
     // STRUCTURAL OVERRIDE (runs after all fundamental/Danelfin overlays).
     // No fundamental quality can make a structurally broken chart a Buy. Final word on score.
@@ -6407,7 +6503,16 @@ function applyTierScoreCaps(quantSignal) {
         }
         q.tierLabel = '⚠ Falling knife — buy blocked';
       }
-    } else if (q.belowMa200 && hz === 'short') {
+    } else if (q.extendedAboveMa200 && !q.ma200BuySetup) {
+      if ((q.buyScore || 0) > 61) {
+        q.buyScore = 61;
+        q.conditions = q.conditions || [];
+        if (!q.conditions.some(c => /already extended above MA200/i.test(c))) {
+          q.conditions.push('Already extended above MA200 — not a break or bounce');
+        }
+        q.tierLabel = q.tierLabel || 'Extended above MA200 — buy blocked';
+      }
+    } else if (q.belowMa200 && hz === 'short' && !q.ma200BounceSetup) {
       // Counter-trend short-term buys below the 200DMA are low-probability regardless of fundamentals.
       if ((q.buyScore || 0) > 61) q.buyScore = 61;
     } else if (hz === 'short' && q.belowMa20 && q.belowMa50) {
@@ -7781,6 +7886,7 @@ async function generateServerPicksFromShortlist(opts = {}) {
         // New picks only — writeOpenRowAction refuses Hold if this row were latched open.
         writeOpenRowAction(row, hz, cooled ? 'Hold' : (sig.action || 'Hold'));
         row[hz + 'Rating'] = cooled ? 'SL cooldown' : (sig.rating || 'Hold');
+        if (hz === 'short') row.shortMtfBuyConfirmed = sig.mtfShortBuyConfirmed === true;
         row[hz + 'Conf'] = sig.winRateHint || Math.max(buy, sell);
         // Hard floor: never recommend when displayed confidence is below 62%.
         if (!cooled && (row[hz + 'Action'] === 'Buy' || row[hz + 'Action'] === 'Sell')
@@ -7882,7 +7988,12 @@ async function generateServerPicksFromShortlist(opts = {}) {
           && (Number(r[hz + 'Conf']) || 0) >= PICKS_MIN_CONF
           && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r, hz);
         if (buyBase && !alreadyLong
-          && angloPickAllowed(r.ticker, { hz, side: 'buy', rating: r[hz + 'Rating'] }).ok
+          && angloPickAllowed(r.ticker, {
+            hz,
+            side: 'buy',
+            rating: r[hz + 'Rating'],
+            mtfShortBuyConfirmed: r.shortMtfBuyConfirmed === true
+          }).ok
           && angloFmpOk(r.ticker, r.fmpScore)) {
           const buyRank = (r[hz + 'Score'] || 0)
             + (isStrongRecommendableRating(r[hz + 'Rating']) ? 1000 : 0);
@@ -8550,7 +8661,8 @@ async function addTradesToHistory(trades) {
       const sl = parseFloat(trade[hz + 'StopLoss'] || trade.stopLoss);
       const angloHist = angloPickAllowed(trade.ticker, {
         hz, side: isSell ? 'sell' : 'buy',
-        rating: trade[hz + 'Rating'] || trade.rating || ''
+        rating: trade[hz + 'Rating'] || trade.rating || '',
+        mtfShortBuyConfirmed: trade.shortMtfBuyConfirmed === true
       });
       if (!angloHist.ok) {
         console.log('History add skipped (US/UK policy):', trade.ticker, hz, angloHist.reason);
@@ -11061,19 +11173,6 @@ const HORIZON_PCT = {
 // expectancy. Strong Sell (score ≥74) is still accepted and sent to IBKR.
 const SELL_PICKS_ENABLED = process.env.SELL_PICKS_ENABLED === '1';
 
-// Bracket acceptance gates (v143). Opt-in via env — default OFF so the dashboard
-// never goes blank. Set e.g. DISABLED_BRACKETS=sell:medium,sell:long,buy:short
-// after you've reviewed acceptance results and still want those panes suppressed.
-const DISABLED_BRACKETS = new Set(
-  String(process.env.DISABLED_BRACKETS || '')
-    .split(',')
-    .map(s => s.trim().toLowerCase())
-    .filter(Boolean)
-);
-function bracketEnabled(side, hz) {
-  return !DISABLED_BRACKETS.has(`${String(side).toLowerCase()}:${String(hz).toLowerCase()}`);
-}
-
 const HORIZON_MIN_PCT = {
   // SL: noise floors. 15 Sep 2026: 13/13 paper stop-outs since 8 Sep bounced
   // ≥1% after the print (9/13 ≥2%). Widen 1.5pts vs the old 2.5/5/8 floors.
@@ -11321,7 +11420,12 @@ function filterDashDataBySLCooldown(dashData) {
       const entry = parseFloat(pick[hz + 'Entry'] || pick.entry);
       const tp1 = parseFloat(pick[hz + 'Target1'] || pick.target1);
       const sl = parseFloat(pick[hz + 'StopLoss'] || pick.stopLoss);
-      if (!angloPickAllowed(pick.ticker, { hz, side, rating }).ok) return false;
+      if (!angloPickAllowed(pick.ticker, {
+        hz,
+        side,
+        rating,
+        mtfShortBuyConfirmed: pick.shortMtfBuyConfirmed === true
+      }).ok) return false;
       if (!angloFmpOk(pick.ticker, pick.fmpScore)) return false;
       return levelsMeetMinRR(entry, tp1, sl, isSell, minRrForSymbol(pick.ticker, PICKS_MIN_RR));
     });
@@ -11345,7 +11449,12 @@ function filterDashDataByMinRR(dashData, minRR = PICKS_MIN_RR) {
         console.log('Pick dropped (Conf <', PICKS_MIN_CONF + '%):', pick.ticker, hz, side, 'conf=', conf);
         return false;
       }
-      if (!angloPickAllowed(pick.ticker, { hz, side, rating: pick[hz + 'Rating'] || pick.rating }).ok) {
+      if (!angloPickAllowed(pick.ticker, {
+        hz,
+        side,
+        rating: pick[hz + 'Rating'] || pick.rating,
+        mtfShortBuyConfirmed: pick.shortMtfBuyConfirmed === true
+      }).ok) {
         dropped++;
         return false;
       }
@@ -11380,15 +11489,26 @@ function filterDashDataByQuantTechMap(dashData, techMap, paneMap = DASH_PANE_MAP
       // name whenever the boot re-validation ran out of its time budget, leaving
       // a US-only dashboard. A pick is only removed when fresh data ACTIVELY
       // contradicts it (action flipped or score fell below threshold).
-      if (!angloPickAllowed(pick.ticker, { hz, side, rating: pick[hz + 'Rating'] || pick.rating }).ok) return false;
+      if (!angloPickAllowed(pick.ticker, {
+        hz,
+        side,
+        rating: pick[hz + 'Rating'] || pick.rating,
+        mtfShortBuyConfirmed: pick.shortMtfBuyConfirmed === true
+      }).ok) return false;
       if (!angloFmpOk(pick.ticker, pick.fmpScore || tech?.fmpScore)) return false;
       if (!sig) return true; // no fresh data → trust the existing pick
       pick[hz + 'Score'] = sig.buyScore ?? pick[hz + 'Score'];
       pick[hz + 'SellScore'] = sig.sellScore ?? pick[hz + 'SellScore'];
       pick[hz + 'Rating'] = sig.rating ?? pick[hz + 'Rating'];
       pick[hz + 'Action'] = sig.action ?? pick[hz + 'Action'];
+      if (hz === 'short') pick.shortMtfBuyConfirmed = sig.mtfShortBuyConfirmed === true;
       if (side === 'buy') {
-        if (!angloPickAllowed(pick.ticker, { hz, side: 'buy', rating: sig.rating }).ok) return false;
+        if (!angloPickAllowed(pick.ticker, {
+          hz,
+          side: 'buy',
+          rating: sig.rating,
+          mtfShortBuyConfirmed: sig.mtfShortBuyConfirmed === true
+        }).ok) return false;
         if (!angloFmpOk(pick.ticker, pick.fmpScore || tech?.fmpScore)) return false;
         return sig.action === 'Buy' && (sig.buyScore || 0) >= 62 && !/SL cooldown/i.test(sig.tierLabel || '');
       }
@@ -12268,8 +12388,28 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
         row[hz + 'Entry'] = row[hz + 'Entry'] || '';
         return;
       }
+      // Keep the API internally consistent. The score-derived candidate rating
+      // is no longer actionable after this final level/confidence gate.
+      row[hz + 'Rating'] = 'Hold';
       row[hz + 'Entry'] = row[hz + 'Target1'] = row[hz + 'Target2'] = row[hz + 'StopLoss'] = '';
     };
+    if (!bracketEnabled(isSell ? 'sell' : 'buy', hz)) {
+      row[hz + 'GateReason'] = `${hz} ${isSell ? 'sell' : 'buy'} recommendations paused`;
+      clearHz();
+      continue;
+    }
+    const anglo = angloPickAllowed(row.ticker, {
+      hz,
+      side: isSell ? 'sell' : 'buy',
+      rating: row[hz + 'Rating'] || row.rating,
+      mtfShortBuyConfirmed: row.shortMtfBuyConfirmed === true
+    });
+    if (!anglo.ok) {
+      row[hz + 'GateReason'] = anglo.reason;
+      clearHz();
+      continue;
+    }
+    const minRr = minRrForSymbol(row.ticker, PICKS_MIN_RR);
     const conf = Number(row[hz + 'Conf'] || row.conf || 0);
     if (conf > 0 && conf < PICKS_MIN_CONF) { clearHz(); continue; }
     const sl = hz === 'short'
@@ -12284,7 +12424,7 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
         const fl0 = applyHorizonMinPctFloors(e, lv.target, null, lv.stop, isSell, hz);
         const tp2s = computeSecondTargetFromTech(tech, e, hz, isSell, fl0.tp1);
         const fl = applyHorizonMinPctFloors(e, fl0.tp1, tp2s, fl0.sl, isSell, hz);
-        if (!levelsMeetMinRR(e, fl.tp1, fl.sl, isSell, PICKS_MIN_RR)) { clearHz(); continue; }
+        if (!levelsMeetMinRR(e, fl.tp1, fl.sl, isSell, minRr)) { clearHz(); continue; }
         row[hz + 'Entry'] = String(roundPrice(e));
         row[hz + 'Target1'] = fl.tp1 != null ? String(fl.tp1) : '';
         row[hz + 'Target2'] = fl.tp2 != null ? String(fl.tp2) : '';
@@ -12296,7 +12436,7 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
       continue;
     }
     const fl = applyHorizonMinPctFloors(e, targets.tp1, targets.tp2, sl, isSell, hz);
-    if (!levelsMeetMinRR(e, fl.tp1, fl.sl, isSell, PICKS_MIN_RR)) { clearHz(); continue; }
+    if (!levelsMeetMinRR(e, fl.tp1, fl.sl, isSell, minRr)) { clearHz(); continue; }
     row[hz + 'Entry'] = String(roundPrice(e));
     row[hz + 'Target1'] = fl.tp1 != null ? String(fl.tp1) : '';
     row[hz + 'Target2'] = fl.tp2 != null ? String(fl.tp2) : '';
@@ -12423,8 +12563,16 @@ app.post('/api/analyze', async (req, res) => {
     let btShort = null, btMedium = null, btLong = null;
     try {
       if (ohlcv && budgetLeft() > 1500) {
-        const btOpts = { windowBars: 252, entryStep: 5, symbol: sym };
-        btShort = await backtestSignal(ohlcv, 'short', weeklyBySym[sym], fund, btOpts);
+        const btOpts = {
+          windowBars: 252,
+          entryStep: 5,
+          symbol: sym,
+          closedOnly: true,
+          stopFirst: true
+        };
+        // Current fundamentals are not point-in-time historical data. Passing
+        // them into every prior bar leaks today's information into the replay.
+        btShort = await backtestSignal(ohlcv, 'short', weeklyBySym[sym], null, btOpts);
       }
     } catch (e) {
       console.warn('backtest failed for', sym, '-', e.message);
@@ -12514,7 +12662,9 @@ app.post('/api/analyze', async (req, res) => {
       row.mediumAction = sig.medium.action;
       row.longAction = sig.long.action;
       const btS = sig.short.backtest;
-      row.backtestedWinRate = btS ? btS.winRate : sig.short.winRateHint;
+      // A heuristic signal-confidence hint is not a backtest. Leave this null
+      // when the causal walk-forward run did not produce a result.
+      row.backtestedWinRate = btS ? btS.winRate : null;
       row.backtestTrades = btS?.trades ?? null;
       row.backtestAvgReturn = btS?.avgReturnPct ?? null;
       row.quantConditions = sig.short.conditions;
@@ -12674,11 +12824,12 @@ Output ONLY the JSON array. No markdown.`;
         row.shortAction       = sig.short.action;
         row.mediumAction      = sig.medium.action;
         row.longAction        = sig.long.action;
+        row.shortMtfBuyConfirmed = sig.short.mtfShortBuyConfirmed === true;
         row.action            = sig.short.action;
         const btS=sig.short.backtest, btM=sig.medium.backtest, btL=sig.long.backtest;
-        row.backtestShortWinRate  = btS ? btS.winRate : sig.short.winRateHint;
-        row.backtestMediumWinRate = btM ? btM.winRate : sig.medium.winRateHint;
-        row.backtestLongWinRate   = btL ? btL.winRate : sig.long.winRateHint;
+        row.backtestShortWinRate  = btS ? btS.winRate : null;
+        row.backtestMediumWinRate = btM ? btM.winRate : null;
+        row.backtestLongWinRate   = btL ? btL.winRate : null;
         row.backtestShortTrades   = btS?.trades ?? null;
         row.backtestMediumTrades  = btM?.trades ?? null;
         row.backtestLongTrades    = btL?.trades ?? null;
@@ -13219,18 +13370,44 @@ function computeTpDonationAnalytics(bars, entryMs, hz, trade, isSell) {
  *  Hold is NOT an exit: we hold the position so normal conviction wobble never
  *  churns a good trade out near breakeven. (Reversal-only flip policy.) */
 function liveSignalFlipExit(ticker, hz, isSell, techMap) {
+  // Safety pause: model-driven market flattens are disabled by default.
+  // Existing IB TP/SL children remain authoritative while reversal exits are
+  // redesigned and independently validated. Re-enable only by explicit deploy
+  // configuration after approval.
+  if (process.env.IBKR_SIGNAL_FLIP_EXIT_ENABLED !== '1') return null;
   const tech = techMap?.[ticker];
   if (!tech?.quantSignal?.[hz]) return null;
   const sig = tech.quantSignal[hz];
-  // REVERSAL-ONLY policy: close a position only when the OPPOSITE side becomes a
-  // genuine, entry-grade signal (score >= 62, i.e. an actual Buy→Sell or Sell→Buy
-  // reversal). We deliberately HOLD through any mere softening to Hold so a normal
-  // wobble in conviction never churns a good position out at ~breakeven.
+  const prev = tech.prevQuantSignal?.[hz];
+  // A raw score crossing 62 is not an executable recommendation: confidence and
+  // structural caps can still demote it to Hold. Also do not liquidate from one
+  // incomplete intraday candle. Require the final opposite action on both the
+  // current bar and the preceding completed daily bar.
   const VALID = 62; // opposite side this strong → true reversal
   if (!isSell) {
-    if ((sig.sellScore || 0) >= VALID) return { flipped: true, reason: 'Sell' };
+    if (sig.action === 'Sell' && prev?.action === 'Sell'
+      && (sig.sellScore || 0) >= VALID && (prev.sellScore || 0) >= VALID) {
+      return {
+        flipped: true,
+        reason: 'Sell',
+        score: sig.sellScore,
+        previousScore: prev.sellScore,
+        confidence: sig.winRateHint,
+        confirmation: 'two-daily-bars'
+      };
+    }
   } else {
-    if ((sig.buyScore || 0) >= VALID) return { flipped: true, reason: 'Buy' };
+    if (sig.action === 'Buy' && prev?.action === 'Buy'
+      && (sig.buyScore || 0) >= VALID && (prev.buyScore || 0) >= VALID) {
+      return {
+        flipped: true,
+        reason: 'Buy',
+        score: sig.buyScore,
+        previousScore: prev.buyScore,
+        confidence: sig.winRateHint,
+        confirmation: 'two-daily-bars'
+      };
+    }
   }
   return null;
 }
@@ -13572,6 +13749,10 @@ function shouldEmitIbkrEntry(trade, hz) {
   if (snap.side !== 'buy' && snap.side !== 'sell') return false;
   if (!(snap.entry > 0) || !(snap.sl > 0)) return false;
   const z = hz || trade.hz || 'short';
+  if (!bracketEnabled(snap.side, z)) {
+    console.log('IBKR entry skipped (recommendation bracket paused):', snap.key, snap.side, z);
+    return false;
+  }
   const rating = trade[z + 'Rating'] || trade.rating || '';
   const action = trade[z + 'Action'] || trade.action || '';
   if (!isExecutableRecommendRating(rating) && !isExecutableRecommendRating(action)) {
@@ -13583,7 +13764,12 @@ function shouldEmitIbkrEntry(trade, hz) {
     console.log('IBKR entry skipped (Conf <', PICKS_MIN_CONF + '%):', snap.key, 'conf=', conf);
     return false;
   }
-  const anglo = angloPickAllowed(trade.ticker, { hz: z, side: snap.side, rating });
+  const anglo = angloPickAllowed(trade.ticker, {
+    hz: z,
+    side: snap.side,
+    rating,
+    mtfShortBuyConfirmed: trade.shortMtfBuyConfirmed === true
+  });
   if (!anglo.ok) {
     console.log('IBKR entry skipped (US/UK policy):', snap.key, anglo.reason);
     return false;
@@ -18012,6 +18198,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
 
     const daily = new Map();
     const dailyError = new Map();
+    const dailyDetails = new Map();
     let totRealUsd = 0, totRealGrossUsd = 0, totCommissionUsd = 0, totOpenCommissionUsd = 0;
     let totUnrealUsd = 0, wins = 0, losses = 0, openCount = 0, closedCount = 0;
     let totStampDutyUsd = 0, totOpenStampDutyUsd = 0;
@@ -18108,7 +18295,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       }
       // Daily realised uses the same net as Total realised: exit-fill price PnL
       // on the fill day, closed-lot commission AND stamp/FTT on the close day.
-      accumulateLotDaily(t, daily, dailyError);
+      accumulateLotDaily(t, daily, dailyError, dailyDetails);
     }
 
     // Flatten / exit reporting: include ALL realised on the same ticker that
@@ -18130,7 +18317,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       }
     }
 
-    const dailyArr = toDailyArray(daily);
+    const dailyArr = toDailyArray(daily, dailyDetails);
     const dailyErrorArr = toDailyArray(dailyError);
     trades.sort((a, b) => (a.entryTime < b.entryTime ? 1 : -1));
 
@@ -19022,6 +19209,19 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
             medium: computeQuantSignal(tech, fund, 'medium'),
             long: computeQuantSignal(tech, fund, 'long')
           };
+          applyTierScoreCaps(tech.quantSignal);
+          const prevBars = bars.slice(0, -1);
+          if (prevBars.length >= 60) {
+            const prevTech = buildFullTechResult(sym, prevBars, dailyToWeeklyBars(prevBars));
+            if (prevTech._sectorRegime == null) prevTech._sectorRegime = tech._sectorRegime;
+            if (prevTech._earningsTide == null) prevTech._earningsTide = tech._earningsTide;
+            tech.prevQuantSignal = {
+              short: computeQuantSignal(prevTech, fund, 'short'),
+              medium: computeQuantSignal(prevTech, fund, 'medium'),
+              long: computeQuantSignal(prevTech, fund, 'long')
+            };
+            applyTierScoreCaps(tech.prevQuantSignal);
+          }
           techLiveMap[sym] = tech;
         }
       } catch (_) {}
@@ -19326,7 +19526,11 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
               exitReason: h[hz + 'ExitReason'],
               reason: 'live-signal-flip',
               liveSignalFlip: true,
-              status: 'signal_exit'
+              status: 'signal_exit',
+              flipScore: flip.score,
+              flipPreviousScore: flip.previousScore,
+              flipConfidence: flip.confidence,
+              flipConfirmation: flip.confirmation
             }));
           } catch (_) {}
         }
@@ -19601,8 +19805,6 @@ async function runBracketAcceptance(opts = {}) {
       const daily = await fetchOHLCV(sym, range, '1d').catch(() => null);
       if (!daily || daily.length < 150) { perTicker.push({ ticker: sym, skipped: 'insufficient data' }); continue; }
       const weekly = dailyToWeeklyBars(daily);
-      const fe = fundCache.get(sym);
-      const fund = fe && Date.now() - fe.ts < TECH_TTL * 4 ? fe.data : null;
       // Gate each ticker by its SECTOR ETF's historical momentum (SPY fallback).
       let marketSeries = spySeries;
       if (useSector) {
@@ -19615,13 +19817,18 @@ async function runBracketAcceptance(opts = {}) {
         const gk = earningsGroupKeyForSymbol(sym);
         if (gk) earningsEvents = ((await getGroupEarnings(gk).catch(() => null)) || {}).events || null;
       }
-      const bt = await backtestSignal(daily, hz, weekly, fund, {
+      const bt = await backtestSignal(daily, hz, weekly, null, {
         windowBars,
         side,
         symbol: sym,
         entryStep: opts.entryStep || 2,
         marketSeries,
-        earningsEvents
+        earningsEvents,
+        closedOnly: true,
+        // If TP1 and SL are both touched inside one daily candle, assume the
+        // protective stop printed first. This is conservative and avoids
+        // bar-order optimism that cannot be established from OHLC data.
+        stopFirst: true
       });
       if (!bt || !bt.trades) {
         perTicker.push({ ticker: sym, trades: 0, rejectionCounts: bt && bt.rejectionCounts || {} });
@@ -19662,7 +19869,7 @@ async function runBracketAcceptance(opts = {}) {
       exit: EXIT_POLICY_VERSION,
       costs: COST_MODEL_VERSION
     },
-    note: 'Replays canonical live eligibility + hybrid exit. Entry = next-bar open. Returns are net of modeled costs.',
+    note: 'Causal technical replay: next-bar open, closed trades only, stop-first ambiguous bars, no current-fundamental leakage, net of modeled costs.',
     perTicker: perTicker.sort((a, b) => (b.trades || 0) - (a.trades || 0))
   };
 }
@@ -19787,11 +19994,13 @@ module.exports = {
   emitTradeEvent,
   ibkrModelOpenQtyForHistory,
   isLiveAuthorizedServerExit,
+  liveSignalFlipExit,
   tradeEventSnapshot,
   writeOpenRowAction,
   isOpenRowLatched,
   isStrongRecommendableRating,
   isExecutableRecommendRating,
+  bracketEnabled,
   deriveActionRating,
   applyServerPriceLevels,
   overlayPublishedBoardOnAnalyzeRow,

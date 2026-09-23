@@ -117,7 +117,10 @@ const {
   recDayOnOrBeforeWidenCutoff,
   widenOpenExits
 } = require('../lib/ibkr/widen-open-exits');
-const { evaluatePortfolioAddition, DEFAULT_CAPS } = require('../lib/risk/portfolio');
+const {
+  evaluateAvailableCapitalAddition,
+  MAX_CAPITAL_UTILIZATION_PCT
+} = require('../lib/risk/portfolio');
 const { BridgeSqliteStore } = require('../lib/storage/bridge-sqlite');
 const { atomicWriteJsonSync } = require('../lib/storage/atomic-json');
 const {
@@ -3431,7 +3434,7 @@ async function main() {
       capitalScale: evt.capitalScale,
       allowMinLot: boardEntry,
       netLiquidityAvailable: availLiq,
-      liquidityFloorPct: 0.20
+      liquidityFloorPct: 1 - MAX_CAPITAL_UTILIZATION_PCT
     });
     if (evt.userReentry) {
       const forceQty = Number(evt.qtyTotal || evt.sharesTotal);
@@ -3453,80 +3456,19 @@ async function main() {
       }).catch(error => log('risk-decision report failed', error.message));
       return null;
     }
-    const existingPositions = [];
-    for (const held of posMap.values()) {
-      if (!held || !held.pos || !held.contract) continue;
-      const heldContract = enrichSessionMeta(held.contract);
-      const localPerUsd = await usdToCurrency(heldContract.currency);
-      const heldPx = Number(held.marketPrice || held.averageCost) || 0;
-      const heldScale = heldContract.penceQuoted ? 100 : 1;
-      const notionalUsd = Math.abs(Number(held.pos)) * (heldPx / heldScale)
-        * (heldContract.secType === 'FUT' ? Number(heldContract.multiplier) || 1 : 1)
-        / localPerUsd;
-      const heldTicker = yahooFromContract(heldContract);
-      const heldState = Object.values(state.byKey || {}).find(row => row && !row.closed && (
-        normalizeYahooTicker(row.ticker) === normalizeYahooTicker(heldTicker)
-        || (row.contract && Number(row.contract.conId) > 0
-          && Number(row.contract.conId) === Number(heldContract.conId))
-      ));
-      existingPositions.push({
-        ticker: heldTicker,
-        side: Number(held.pos) < 0 ? 'sell' : 'buy',
-        notionalUsd,
-        stopRiskUsd: Number(heldState && heldState.riskSizing && heldState.riskSizing.stopRiskUsd) || 0,
-        sector: heldState && heldState.sector,
-        country: heldState && heldState.country || heldContract.market,
-        currency: heldContract.currency,
-        cluster: heldState && heldState.correlationCluster || heldContract.market
-      });
-    }
-    const dailyNewRiskUsd = Object.values(state.byKey || {}).reduce((sum, row) => {
-      if (!row || !row.riskSizing) return sum;
-      const at = Date.parse(row.admittedAt || 0);
-      return Number.isFinite(at) && singaporeToDateString(at) === singaporeToDateString()
-        ? sum + (Number(row.riskSizing.stopRiskUsd) || 0) : sum;
-    }, 0);
-    // 06:00 SGT published names are the day's allocation. The 30% gross /
-    // country / USD cluster caps are for extras (re-entry, unauthorized), not
-    // for blocking the board (DHL-day SNDK/PLTR/ABNB sat behind a 60% book).
-    const ticketScale = liveTicketScale();
-    const portfolioCaps = (boardEntry || evt.userReentry)
-      ? Object.assign({}, DEFAULT_CAPS, {
-        grossPct: 1, netAbsPct: 1, sectorPct: 1,
-        countryPct: 1, currencyPct: 1, clusterPct: 1,
-        singleNamePct: Math.min(1, DEFAULT_CAPS.singleNamePct * ticketScale),
-        openStopRiskPct: Math.min(1, DEFAULT_CAPS.openStopRiskPct * ticketScale),
-        dailyNewRiskPct: Math.min(1, DEFAULT_CAPS.dailyNewRiskPct * ticketScale),
-        ...(split.risk && split.risk.bindingLimit === 'min-lot-liquidity'
-          ? { singleNamePct: 1, dailyNewRiskPct: 1 } : {})
-      })
-      : Object.assign({}, DEFAULT_CAPS, {
-        singleNamePct: Math.min(1, DEFAULT_CAPS.singleNamePct * ticketScale),
-        openStopRiskPct: Math.min(1, DEFAULT_CAPS.openStopRiskPct * ticketScale),
-        dailyNewRiskPct: Math.min(1, DEFAULT_CAPS.dailyNewRiskPct * ticketScale),
-        grossPct: Math.min(1, DEFAULT_CAPS.grossPct * ticketScale),
-        netAbsPct: Math.min(1, DEFAULT_CAPS.netAbsPct * ticketScale),
-        sectorPct: Math.min(1, DEFAULT_CAPS.sectorPct * ticketScale),
-        countryPct: Math.min(1, DEFAULT_CAPS.countryPct * ticketScale),
-        currencyPct: Math.min(1, DEFAULT_CAPS.currencyPct * ticketScale),
-        clusterPct: Math.min(1, DEFAULT_CAPS.clusterPct * ticketScale)
-      });
-    const portfolioGate = evaluatePortfolioAddition({
+    // Admission is governed solely by available-capital utilization. Position
+    // sizing still enforces per-trade stop risk, liquidity, spread and lot size.
+    const portfolioGate = evaluateAvailableCapitalAddition({
       nlv,
-      positions: existingPositions,
-      ticker: evt.ticker,
-      side: evt.side,
-      notionalUsd: split.risk.notionalUsd,
-      stopRiskUsd: split.risk.stopRiskUsd,
-      dailyNewRiskUsd,
-      sector: evt.sector,
-      country: evt.country || contract.market,
-      currency: contract.currency,
-      cluster: evt.correlationCluster || evt.sector || contract.market
-    }, portfolioCaps);
+      availableFunds: availLiq,
+      // Charge the full order notional against available capital. This is more
+      // conservative than IB margin impact while honoring the sole 75% cap.
+      candidateCapitalUsd: split.risk.notionalUsd
+    });
         if (!portfolioGate.allowed) {
-      logOnce('risk-' + String(evt.ticker || ''), 'portfolio risk rejected', evt.ticker, portfolioGate.reasons.join(','),
-        'gross=' + ((portfolioGate.projected && portfolioGate.projected.grossPct || 0) * 100).toFixed(2) + '%');
+      logOnce('risk-' + String(evt.ticker || ''), 'capital utilization rejected', evt.ticker, portfolioGate.reasons.join(','),
+        'projected=' + ((portfolioGate.projected && portfolioGate.projected.projectedUtilizationPct || 0) * 100).toFixed(2) + '%',
+        'limit=' + (MAX_CAPITAL_UTILIZATION_PCT * 100).toFixed(0) + '%');
       if (evt.key) _seedBlocked.add(String(evt.key));
       if (evt.ticker) _seedBlocked.add(String(evt.ticker).toUpperCase());
       postJson('/api/ibkr/risk-decision', {
@@ -3879,7 +3821,8 @@ async function main() {
   }
 
   /**
-   * 15 Sep 2026: move working SL/TP on already-open lots 1.5pts further.
+   * Enforce revised bracket floors on every pre-TP1 equity lot. Legacy lots on
+   * or before 15 Sep also receive the approved extra 1.5pt stop widening.
    * Prefer the live IB stop aux when state drifted (Sony 3625 vs fill 3587).
    */
   function liveAuxForRow(row, working, type) {
@@ -3900,15 +3843,18 @@ async function main() {
     return Number(hit.lmt) || 0;
   }
 
+  const BRACKET_FLOOR_STAMP = '2026-09-22-v1';
   function applyOpenLotExitWiden(workingOrders) {
     if (DRY || !ib) return 0;
     const working = workingOrders || lastWorkingOrders || [];
     let n = 0;
     for (const [key, row] of Object.entries(state.byKey || {})) {
       if (!row || row.closed || !row.entryFilled || row.tp1Done) continue;
-      if (row.openExitWidenDone === OPEN_EXIT_WIDEN_STAMP) continue;
-      if (!recDayOnOrBeforeWidenCutoff(key)) continue;
+      if (row.bracketFloorDone === BRACKET_FLOOR_STAMP) continue;
+      const legacyWiden = recDayOnOrBeforeWidenCutoff(key)
+        && row.openExitWidenDone !== OPEN_EXIT_WIDEN_STAMP;
       if (!row.contract) continue;
+      if (String(row.contract.secType || '').toUpperCase() !== 'STK') continue;
       const held = heldForContract(row.contract);
       const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
       if (!(posInDir > 0)) continue;
@@ -3924,10 +3870,14 @@ async function main() {
         tp1: tp1Now,
         tp2: Number(row.tp2Px || row.modelTp2) || 0,
         isSell: row.side === 'sell',
-        hz: row.hz || 'short'
+        hz: row.hz || 'short',
+        addLegacyWiden: legacyWiden
       });
       if (!planned || !planned.changed) {
         row.openExitWidenDone = OPEN_EXIT_WIDEN_STAMP;
+        row.bracketFloorDone = BRACKET_FLOOR_STAMP;
+        row.updated = new Date().toISOString();
+        n++;
         continue;
       }
       const isSell = row.side === 'sell';
@@ -3992,9 +3942,10 @@ async function main() {
       }
       if (tp2 > 0) row.tp2Px = tp2;
       row.openExitWidenDone = OPEN_EXIT_WIDEN_STAMP;
+      row.bracketFloorDone = BRACKET_FLOOR_STAMP;
       row.updated = new Date().toISOString();
       n++;
-      log('SL bounce-widen', key, 'entry', entry, 'sl', slNow, '→', sl,
+      log('Bracket floor sync', key, 'entry', entry, 'sl', slNow, '→', sl,
         'tp1', tp1Now, '→', tp1, tp2 > 0 ? ('tp2→' + tp2) : '');
     }
     if (n) saveState(state);

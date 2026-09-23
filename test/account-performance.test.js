@@ -98,7 +98,7 @@ test('risk-off and deep IBKR equity drawdown raise the risk label', () => {
   assert.equal(elev.riskLevel, 'Elevated');
 });
 
-test('Sharpe uses every weekday since inception, not sparse snapshot days', () => {
+test('Sharpe does not manufacture returns from sparse fill-PnL weekdays', () => {
   const { listWeekdays } = require('../lib/ibkr/account-performance');
   const days = listWeekdays('2026-08-06', '2026-08-25');
   assert.equal(days[0], '2026-08-06');
@@ -115,8 +115,9 @@ test('Sharpe uses every weekday since inception, not sparse snapshot days', () =
     ]
   });
   assert.equal(p.sharpeSince, '2026-08-06');
-  assert.equal(p.sharpeDays, 13);
-  assert.ok(p.sharpe != null);
+  assert.equal(p.sharpeDays, 0);
+  assert.equal(p.sharpe, null);
+  assert.equal(p.sharpeReliable, false);
 });
 
 test('intraday NLV wiggle does not reprice Sharpe', () => {
@@ -151,13 +152,16 @@ test('US EOD for today is included in Sharpe', () => {
     netPnlUsd: eq - startEq,
     eod: [
       { date: '2026-08-06', currentBalance: startEq, netPnlUsd: 0 },
-      { date: '2026-08-18', currentBalance: 464_000, netPnlUsd: 2000 },
+      { date: '2026-08-24', currentBalance: 463_000, netPnlUsd: 1000 },
+      { date: '2026-08-25', currentBalance: 464_000, netPnlUsd: 2000 },
       { date: today, currentBalance: eq, netPnlUsd: eq - startEq, session: 'us-post-close' }
     ]
   });
   const a = mk(464_000);
   const b = mk(455_000);
-  assert.notEqual(a.sharpe, b.sharpe);
+  assert.notEqual(a.sharpeEstimate, b.sharpeEstimate);
+  assert.equal(a.sharpe, null);
+  assert.equal(b.sharpe, null);
 });
 
 test('negative Sharpe does not raise Moderate while drawdown is under 5%', () => {
@@ -173,15 +177,16 @@ test('negative Sharpe does not raise Moderate while drawdown is under 5%', () =>
       { date: '2026-08-10', currentBalance: 462_000, netPnlUsd: -2000 }
     ]
   });
-  assert.ok(p.sharpe != null && p.sharpe < 0);
+  assert.ok(p.sharpeEstimate != null && p.sharpeEstimate < 0);
+  assert.equal(p.sharpe, null, 'short samples are not published as annualized Sharpe');
   assert.ok(p.drawdownPct < 5);
   assert.equal(p.riskLevel, 'Low');
 });
 
 test('intra-day NLV is not a closed Sharpe day', () => {
   const eod = [
-    { date: '2026-08-06', currentBalance: 464_000, netPnlUsd: 0 },
-    { date: '2026-08-25', currentBalance: 467_000, netPnlUsd: 3000 }
+    { date: '2026-08-25', currentBalance: 464_000, netPnlUsd: 0 },
+    { date: '2026-08-26', currentBalance: 467_000, netPnlUsd: 3000 }
   ];
   const closed = computeAccountPerformance({
     bookStart: '2026-08-06',
@@ -253,10 +258,10 @@ test('intra-day EOD snapshot is not a closed Sharpe day', () => {
   assert.equal(p.sharpe, closed.sharpe);
   assert.equal(p.sharpeDays, closed.sharpeDays);
   assert.equal(p.sharpeIncludesToday, false);
-  assert.equal(p.sharpeMethod, 'nlv-daily-annualized');
+  assert.equal(p.sharpeMethod, 'observed-eod-nlv-return-annualized');
 });
 
-test('missing EOD NLV does not invent a Sharpe crash from fill-PnL cum', () => {
+test('missing EOD NLV does not invent Sharpe from fill-PnL cum', () => {
   const p = computeAccountPerformance({
     bookStart: '2026-08-06',
     today: '2026-08-28',
@@ -272,7 +277,8 @@ test('missing EOD NLV does not invent a Sharpe crash from fill-PnL cum', () => {
     peakIbkrEquity: 470_130,
     troughIbkrEquity: 462_029
   });
-  assert.ok(p.sharpe > 1.5, 'Sharpe=' + p.sharpe);
+  assert.equal(p.sharpe, null);
+  assert.equal(p.sharpeDays, 0);
   assert.ok(p.drawdownUsd < 2500, 'fake daily-cum cliff would print ~$3.7k, got dd=' + p.drawdownUsd);
 });
 
@@ -289,7 +295,7 @@ test('max drawdown never shrinks below the persisted high-water', () => {
   assert.ok(p.drawdownUsd >= 5000, 'dd=' + p.drawdownUsd);
 });
 
-test('a profitable IBKR book does not get a negative Sharpe from peak NLV stamped on day one', () => {
+test('a profitable sparse IBKR book does not publish an unreliable Sharpe', () => {
   const p = computeAccountPerformance({
     bookStart: '2026-08-06',
     today: '2026-08-27',
@@ -305,7 +311,8 @@ test('a profitable IBKR book does not get a negative Sharpe from peak NLV stampe
     ]
   });
   assert.ok(p.fromStartUsd > 0);
-  assert.ok(p.sharpe > 0, 'Sharpe must follow the start→close path, not the high-water mark');
+  assert.equal(p.sharpe, null);
+  assert.equal(p.sharpeReliable, false);
 });
 
 test('expired-month mark unwind does not inflate max DD or crush Sharpe', () => {
@@ -329,7 +336,30 @@ test('expired-month mark unwind does not inflate max DD or crush Sharpe', () => 
     ]
   });
   assert.ok(p.drawdownUsd < 4000, 'fake 2.3k MTM must not stay in max DD, got ' + p.drawdownUsd);
-  assert.ok(p.sharpe > 0, 'Sharpe=' + p.sharpe);
+  assert.equal(p.sharpe, null, 'three sparse closes must not produce a published annualized Sharpe');
+});
+
+test('Sharpe publishes only after 63 consecutive observed EOD returns', () => {
+  const { listWeekdays } = require('../lib/ibkr/account-performance');
+  const dates = listWeekdays('2026-01-02', '2026-04-10').slice(0, 65);
+  const start = 460_000;
+  const eod = dates.map((date, i) => ({
+    date,
+    currentBalance: start * (1 + 0.0005 * i + (i % 5 === 0 ? -0.0008 : 0)),
+    session: i === dates.length - 1 ? 'us-post-close' : 'closed'
+  }));
+  const last = eod[eod.length - 1];
+  const p = computeAccountPerformance({
+    bookStart: dates[0],
+    today: last.date,
+    asOf: last.date,
+    ibkrEquity: last.currentBalance,
+    netPnlUsd: last.currentBalance - start,
+    eod
+  });
+  assert.ok(p.sharpeDays >= 63);
+  assert.equal(p.sharpeReliable, true);
+  assert.ok(Number.isFinite(p.sharpe));
 });
 
 test('NLV extremes do not ratchet trough while expired-mark bias is set', () => {

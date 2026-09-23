@@ -14,7 +14,11 @@ const {
 const { applyCosts } = require('../lib/research/cost-model');
 const { summarizeReturns, summarizeDatedPortfolio, promotionDecision } = require('../lib/research/performance');
 const { calculateRiskSize, drawdownRiskMultiplier } = require('../lib/risk/sizing');
-const { evaluatePortfolioAddition } = require('../lib/risk/portfolio');
+const {
+  evaluatePortfolioAddition,
+  evaluateAvailableCapitalAddition,
+  MAX_CAPITAL_UTILIZATION_PCT
+} = require('../lib/risk/portfolio');
 const { atomicWriteJsonSync } = require('../lib/storage/atomic-json');
 const { BridgeSqliteStore } = require('../lib/storage/bridge-sqlite');
 const { evaluateStagePromotion, revertForIntegrityBreach } = require('../lib/risk/promotion');
@@ -99,10 +103,10 @@ test('risk sizing respects NLV, stop, notional, lot, and drawdown', () => {
   assert.equal(future.reason, 'minimum-contract-exceeds-risk-budget');
 });
 
-test('published 1-lot still trades while leftover liquidity stays above 20% NLV', () => {
+test('published 1-lot still trades while at least 25% NLV remains available', () => {
   const recruit = calculateRiskSize({
     nlv: 467_000, entry: 17155, stop: 14215, fxToUsd: 1 / 150, lot: 100,
-    allowMinLot: true, netLiquidityAvailable: 374_000, liquidityFloorPct: 0.20,
+    allowMinLot: true, netLiquidityAvailable: 374_000, liquidityFloorPct: 0.25,
     ticketScale: 1
   });
   assert.equal(recruit.eligible, true);
@@ -111,7 +115,7 @@ test('published 1-lot still trades while leftover liquidity stays above 20% NLV'
 
   const brent = calculateRiskSize({
     nlv: 467_000, entry: 86.56, stop: 81.86, multiplier: 1000, lot: 1, secType: 'FUT',
-    allowMinLot: true, netLiquidityAvailable: 374_000, liquidityFloorPct: 0.20,
+    allowMinLot: true, netLiquidityAvailable: 374_000, liquidityFloorPct: 0.25,
     ticketScale: 1
   });
   assert.equal(brent.eligible, true);
@@ -128,7 +132,7 @@ test('published 1-lot still trades while leftover liquidity stays above 20% NLV'
 
   const tight = calculateRiskSize({
     nlv: 467_000, entry: 17155, stop: 14215, fxToUsd: 1 / 150, lot: 100,
-    allowMinLot: true, netLiquidityAvailable: 90_000, liquidityFloorPct: 0.20,
+    allowMinLot: true, netLiquidityAvailable: 90_000, liquidityFloorPct: 0.25,
     ticketScale: 1
   });
   assert.equal(tight.eligible, false);
@@ -136,11 +140,38 @@ test('published 1-lot still trades while leftover liquidity stays above 20% NLV'
 
   const noSnap = calculateRiskSize({
     nlv: 467_000, entry: 17155, stop: 14215, fxToUsd: 1 / 150, lot: 100,
-    allowMinLot: true, netLiquidityAvailable: 0, liquidityFloorPct: 0.20,
+    allowMinLot: true, netLiquidityAvailable: 0, liquidityFloorPct: 0.25,
     ticketScale: 1
   });
   assert.equal(noSnap.eligible, true);
   assert.equal(noSnap.quantity, 100);
+});
+
+test('live admission uses only the 75% available-capital utilization ceiling', () => {
+  assert.equal(MAX_CAPITAL_UTILIZATION_PCT, 0.75);
+  const hnr1Like = evaluateAvailableCapitalAddition({
+    nlv: 461_583.46,
+    availableFunds: 334_953.34,
+    candidateCapitalUsd: 34_000
+  });
+  assert.equal(hnr1Like.allowed, true);
+  assert.ok(hnr1Like.projected.projectedUtilizationPct < 0.35);
+
+  const full = evaluateAvailableCapitalAddition({
+    nlv: 100_000,
+    availableFunds: 30_000,
+    candidateCapitalUsd: 5_001
+  });
+  assert.equal(full.allowed, false);
+  assert.deepEqual(full.reasons, ['capitalUtilization']);
+
+  const boundary = evaluateAvailableCapitalAddition({
+    nlv: 100_000,
+    availableFunds: 30_000,
+    candidateCapitalUsd: 5_000
+  });
+  assert.equal(boundary.allowed, true);
+  assert.equal(boundary.projected.projectedUtilizationPct, 0.75);
 });
 
 test('portfolio gate rejects concentration and total risk breaches', () => {

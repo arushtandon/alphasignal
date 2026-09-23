@@ -33,10 +33,17 @@ test('US and UK are the Anglo book; France/Germany/Asia are not', () => {
   assert.equal(isAngloSymbol('0700.HK'), false);
 });
 
-test('US/UK short buys are blocked; Strong medium buys need 1.4 RR', () => {
+test('US/UK short buys require the approved MTF confirmation; other policy is unchanged', () => {
   assert.equal(angloPickAllowed('AAPL', { hz: 'short', side: 'buy', rating: 'Strong Buy' }).ok, false);
+  assert.equal(angloPickAllowed('AAPL', {
+    hz: 'short',
+    side: 'buy',
+    rating: 'Buy',
+    mtfShortBuyConfirmed: true
+  }).ok, true);
   assert.equal(angloPickAllowed('SHEL.L', { hz: 'medium', side: 'buy', rating: 'Buy' }).ok, false);
   assert.equal(angloPickAllowed('AAPL', { hz: 'medium', side: 'buy', rating: 'Strong Buy' }).ok, true);
+  assert.equal(angloPickAllowed('AAPL', { hz: 'short', side: 'sell', rating: 'Strong Sell' }).ok, true);
   assert.equal(angloPickAllowed('0700.HK', { hz: 'short', side: 'buy', rating: 'Buy' }).ok, true);
   assert.equal(minRrForSymbol('AAPL', 1.1), ANGLO_MIN_RR);
   assert.equal(minRrForSymbol('SIE.DE', 1.1), 1.1);

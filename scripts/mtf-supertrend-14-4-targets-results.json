@@ -1,0 +1,519 @@
+{
+  "generatedAt": "2026-09-22T09:47:42.828Z",
+  "methodology": {
+    "markets": [
+      "US",
+      "UK"
+    ],
+    "namesPerMarket": 80,
+    "shortWindow": "2 years (hourly provider retention)",
+    "mediumLongWindow": "3 years",
+    "frames": {
+      "short": [
+        "8H cash-session aggregation",
+        "1D"
+      ],
+      "medium": [
+        "1D",
+        "3D"
+      ],
+      "long": [
+        "3D",
+        "1W"
+      ]
+    },
+    "mtfWeight": 0.4,
+    "baseSignalWeight": 0.6,
+    "profile": "144-targets",
+    "supertrendParameters": {
+      "period": 14,
+      "multiplier": 4
+    },
+    "structureBarsPerFrame": 40,
+    "fibonacciRatios": [
+      0.236,
+      0.382,
+      0.5,
+      0.618,
+      0.786
+    ],
+    "fibonacciUsage": "support/resistance level construction only; no standalone directional points",
+    "priceMomentum": [
+      "5-bar ROC",
+      "20-bar ROC",
+      "10-bar normalized slope",
+      "5-bar ROC acceleration"
+    ],
+    "dailyHlc": [
+      "close position in daily range",
+      "higher-high/higher-low or lower-high/lower-low",
+      "prior-5-day close breakout"
+    ],
+    "nextOpenEntry": true,
+    "stopFirst": true,
+    "costsAndBorrow": true,
+    "currentFundamentals": false,
+    "promotionEligible": false,
+    "limitations": [
+      "Static current-name universe has survivorship bias",
+      "US 8H cash-session bars are effectively one regular-session bar and highly correlated with 1D",
+      "No point-in-time constituent, delisting, borrow-availability, or fundamental data"
+    ]
+  },
+  "testedSymbols": {
+    "US": [
+      "AAPL",
+      "MSFT",
+      "NVDA",
+      "AMZN",
+      "GOOGL",
+      "GOOG",
+      "META",
+      "TSLA",
+      "BRK-B",
+      "AVGO",
+      "LLY",
+      "JPM",
+      "V",
+      "UNH",
+      "XOM",
+      "MA",
+      "COST",
+      "HD",
+      "PG",
+      "JNJ",
+      "NFLX",
+      "ABBV",
+      "CRM",
+      "BAC",
+      "ORCL",
+      "MRK",
+      "CVX",
+      "KO",
+      "AMD",
+      "PEP",
+      "ADBE",
+      "WMT",
+      "TMO",
+      "MCD",
+      "CSCO",
+      "ACN",
+      "ABT",
+      "LIN",
+      "INTC",
+      "QCOM",
+      "TXN",
+      "DIS",
+      "IBM",
+      "GE",
+      "CAT",
+      "GS",
+      "MS",
+      "INTU",
+      "AMAT",
+      "MU",
+      "LRCX",
+      "KLAC",
+      "PANW",
+      "SNPS",
+      "CDNS",
+      "CRWD",
+      "FTNT",
+      "MRVL",
+      "ON",
+      "BKNG",
+      "ISRG",
+      "NOW",
+      "UBER",
+      "PYPL",
+      "SBUX",
+      "GILD",
+      "REGN",
+      "VRTX",
+      "MDT",
+      "PFE",
+      "AMGN",
+      "HON",
+      "LOW",
+      "SPGI",
+      "BLK",
+      "DE",
+      "AXP",
+      "C",
+      "SCHW",
+      "CB"
+    ],
+    "UK": [
+      "SHEL.L",
+      "AZN.L",
+      "HSBA.L",
+      "ULVR.L",
+      "BP.L",
+      "GSK.L",
+      "RIO.L",
+      "DGE.L",
+      "GLEN.L",
+      "BATS.L",
+      "REL.L",
+      "LSEG.L",
+      "NG.L",
+      "RKT.L",
+      "BA.L",
+      "LLOY.L",
+      "VOD.L",
+      "BARC.L",
+      "NWG.L",
+      "PRU.L",
+      "CPG.L",
+      "EXPN.L",
+      "AAL.L",
+      "ANTO.L",
+      "STAN.L",
+      "IMB.L",
+      "TSCO.L",
+      "SSE.L",
+      "HLN.L",
+      "III.L",
+      "BT-A.L",
+      "AV.L",
+      "LGEN.L",
+      "SGRO.L",
+      "SMIN.L",
+      "INF.L",
+      "WTB.L",
+      "ABF.L",
+      "SBRY.L",
+      "SN.L",
+      "MNDI.L",
+      "HLMA.L",
+      "CCH.L",
+      "RR.L",
+      "ITRK.L",
+      "BNZL.L",
+      "SPX.L",
+      "PSON.L",
+      "ADM.L",
+      "SVT.L",
+      "UU.L",
+      "RTO.L",
+      "WPP.L",
+      "DCC.L",
+      "JD.L",
+      "KGF.L",
+      "PSN.L",
+      "TW.L",
+      "LAND.L",
+      "BLND.L",
+      "UTG.L",
+      "HWDN.L",
+      "MRO.L",
+      "WEIR.L",
+      "SMT.L",
+      "FRES.L",
+      "EDV.L",
+      "ENT.L",
+      "IHG.L",
+      "CNA.L",
+      "DPLM.L",
+      "RMV.L",
+      "BKG.L",
+      "AUTO.L",
+      "HIK.L",
+      "CTEC.L",
+      "PSH.L",
+      "BME.L",
+      "CCEP.L",
+      "EZJ.L"
+    ]
+  },
+  "rows": [
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "baseline",
+      "metrics": {
+        "trades": 2,
+        "winRate": 50,
+        "avgReturnPct": -0.436,
+        "profitFactor": 0.66,
+        "netPnlUsdAtFixedNotional": -87.28,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23506,
+        "sideAllowed": 28522,
+        "rewardRisk": 1633,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "metrics": {
+        "trades": 11,
+        "winRate": 36.4,
+        "avgReturnPct": -1.951,
+        "profitFactor": 0.331,
+        "netPnlUsdAtFixedNotional": -2145.88,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23097,
+        "sideAllowed": 28113,
+        "rewardRisk": 2007,
+        "openMark": 2
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "baseline",
+      "metrics": {
+        "trades": 5,
+        "winRate": 40,
+        "avgReturnPct": 1.394,
+        "profitFactor": 1.281,
+        "netPnlUsdAtFixedNotional": 696.79,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 24935,
+        "sideAllowed": 26686,
+        "rewardRisk": 3355
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "metrics": {
+        "trades": 11,
+        "winRate": 27.3,
+        "avgReturnPct": -4.463,
+        "profitFactor": 0.488,
+        "netPnlUsdAtFixedNotional": -4908.91,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25056,
+        "sideAllowed": 26807,
+        "rewardRisk": 3058
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "baseline",
+      "metrics": {
+        "trades": 3,
+        "winRate": 0,
+        "avgReturnPct": -11.762,
+        "profitFactor": 0,
+        "netPnlUsdAtFixedNotional": -3528.58,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25005,
+        "sideAllowed": 28380,
+        "rewardRisk": 1743
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "metrics": {
+        "trades": 4,
+        "winRate": 25,
+        "avgReturnPct": -6.415,
+        "profitFactor": 0.273,
+        "netPnlUsdAtFixedNotional": -2566.04,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25282,
+        "sideAllowed": 28657,
+        "rewardRisk": 1437
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "baseline",
+      "metrics": {
+        "trades": 11,
+        "winRate": 27.3,
+        "avgReturnPct": -0.162,
+        "profitFactor": 0.914,
+        "netPnlUsdAtFixedNotional": -177.9,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23794,
+        "sideAllowed": 28255,
+        "rewardRisk": 1866
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "metrics": {
+        "trades": 22,
+        "winRate": 18.2,
+        "avgReturnPct": -1.779,
+        "profitFactor": 0.33,
+        "netPnlUsdAtFixedNotional": -3912.7,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23308,
+        "sideAllowed": 27769,
+        "rewardRisk": 2303,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "baseline",
+      "metrics": {
+        "trades": 6,
+        "winRate": 33.3,
+        "avgReturnPct": 2.159,
+        "profitFactor": 2.037,
+        "netPnlUsdAtFixedNotional": 1295.24,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25324,
+        "sideAllowed": 27313,
+        "rewardRisk": 2807,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "metrics": {
+        "trades": 8,
+        "winRate": 37.5,
+        "avgReturnPct": -1.242,
+        "profitFactor": 0.819,
+        "netPnlUsdAtFixedNotional": -993.9,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25527,
+        "sideAllowed": 27516,
+        "rewardRisk": 2503
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "baseline",
+      "metrics": {
+        "trades": 5,
+        "winRate": 40,
+        "avgReturnPct": -9.077,
+        "profitFactor": 0.259,
+        "netPnlUsdAtFixedNotional": -4538.68,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25292,
+        "sideAllowed": 28113,
+        "rewardRisk": 1961
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "metrics": {
+        "trades": 7,
+        "winRate": 28.6,
+        "avgReturnPct": -8.511,
+        "profitFactor": 0.254,
+        "netPnlUsdAtFixedNotional": -5957.48,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25349,
+        "sideAllowed": 28170,
+        "rewardRisk": 1754
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "baseline",
+      "trades": 13,
+      "winRate": 30.8,
+      "netPnlUsdAtFixedNotional": -265.18,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "trades": 33,
+      "winRate": 24.3,
+      "netPnlUsdAtFixedNotional": -6058.58,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "buy",
+      "variant": "baseline",
+      "trades": 11,
+      "winRate": 36.3,
+      "netPnlUsdAtFixedNotional": 1992.03,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "trades": 19,
+      "winRate": 31.6,
+      "netPnlUsdAtFixedNotional": -5902.81,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "sell",
+      "variant": "baseline",
+      "trades": 8,
+      "winRate": 25,
+      "netPnlUsdAtFixedNotional": -8067.26,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "trades": 11,
+      "winRate": 27.3,
+      "netPnlUsdAtFixedNotional": -8523.52,
+      "promotionEligible": false
+    }
+  ]
+}

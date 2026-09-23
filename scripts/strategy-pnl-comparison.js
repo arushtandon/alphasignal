@@ -49,12 +49,12 @@ const VARIANTS = [
   {
     id: 'production',
     label: 'Current live policy (score + confidence ≥62)',
-    opts: { decisionPolicy: DEFAULT_POLICY, closedOnly: true }
+    opts: { decisionPolicy: DEFAULT_POLICY, closedOnly: true, stopFirst: true }
   },
   {
     id: 'score_baseline',
     label: 'Score ≥62 only (research baseline, no confidence overlay)',
-    opts: { decisionPolicy: SCORE_POLICY, closedOnly: true }
+    opts: { decisionPolicy: SCORE_POLICY, closedOnly: true, stopFirst: true }
   },
   {
     id: 'candidate',
@@ -118,7 +118,8 @@ async function loadBars(sym, range) {
 }
 
 async function main() {
-  const range = windowBars >= 1000 ? '5y' : '2y';
+  // 756 evaluation bars + ~220 warm-up bars cannot fit in Yahoo's 2y payload.
+  const range = windowBars >= 500 ? '5y' : '2y';
   console.log(`Strategy PnL comparison | tickers=${tickers.length} window=${windowBars} entryStep=${entryStep}`);
   console.log('Leakage controls: completed weekly bars, signal-bar stops, next-open entry, closed trades only, no current fundamentals.\n');
 

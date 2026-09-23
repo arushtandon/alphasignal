@@ -59,6 +59,15 @@ test('open runner with flatten fill is not a flatten-exit dollar', () => {
   assert.equal(q.buckets.find((b) => b.type === 'tp1 banked — runner live').realizedUsd, 50);
 });
 
+test('signal-reversal market fill keeps its trigger instead of generic flatten label', () => {
+  assert.equal(classifyIbkrExitQuality({
+    status: 'closed',
+    rec: { exitReason: 'Signal → Sell' },
+    hasFlatten: true,
+    fills: [{ role: 'flatten', qty: 100, price: 4.4 }]
+  }), 'signal/time exit');
+});
+
 test('TP1 fill PnL is booked separately from a TSL that never reached TP2', () => {
   const { bookedExitPnlUsd } = require('../lib/ibkr/exit-quality');
   const t = {

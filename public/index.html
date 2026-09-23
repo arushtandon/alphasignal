@@ -1875,12 +1875,13 @@ function ibkrPerfColor(level) {
 }
 function ibkrSharpeSub(p) {
   const n = p && p.sharpeDays;
+  const min = Number(p && p.sharpeMinDays) || 63;
   const since = (p && (p.sharpeSince || p.bookStart)) || '';
   const todayBit = (p && p.sharpeIncludesToday)
     ? 'includes US close today'
     : "today's fills wait until US close";
-  return 'NLV daily returns × √252 · not trade Sharpe · ' + todayBit
-    + (n != null ? ' · n=' + n + ' weekdays (noisy)' : ' · need 2+ days')
+  return 'Consecutive observed EOD NLV returns × √252 · not trade Sharpe · ' + todayBit
+    + (n != null ? ' · n=' + n + '/' + min + ' required' : ' · building sample')
     + (since ? ' · ' + since : '');
 }
 function ibkrPerfTiles(d, pfx) {
@@ -1908,7 +1909,7 @@ function ibkrPerfTiles(d, pfx) {
     : '—';
   const ddSub = 'peak ' + (p.peakEquity != null ? ibkrBal(p.peakEquity) : '—')
     + ' → well ' + (p.troughEquity != null ? ibkrBal(p.troughEquity) : '—');
-  const sh = p.sharpe != null ? String(p.sharpe) : '—';
+  const sh = p.sharpe != null ? String(p.sharpe) : 'Building sample';
   const shC = p.sharpe == null ? 'var(--m1)' : p.sharpe >= 1 ? 'var(--buy)' : p.sharpe >= 0 ? '#F5C842' : 'var(--sell)';
   const shSub = ibkrSharpeSub(p);
   const risk = p.riskLevel || '—';
@@ -1936,7 +1937,7 @@ function ibkrPatchPerfTiles(d, pfx) {
     set(pfx+'CardDD', ibkrFp(-Math.abs(p.drawdownUsd)) + (p.drawdownPct != null ? ' / −' + p.drawdownPct + '%' : ''), p.drawdownUsd > 0 ? 'var(--sell)' : 'var(--m1)');
   }
   if (document.getElementById(pfx+'CardSharpe')) {
-    set(pfx+'CardSharpe', p.sharpe != null ? String(p.sharpe) : '—',
+    set(pfx+'CardSharpe', p.sharpe != null ? String(p.sharpe) : 'Building sample',
       p.sharpe == null ? 'var(--m1)' : p.sharpe >= 1 ? 'var(--buy)' : p.sharpe >= 0 ? '#F5C842' : 'var(--sell)');
     const sub = document.getElementById(pfx+'CardSharpeSub');
     if (sub) {
@@ -2921,7 +2922,10 @@ async function renderIbkr(force, kind){
           acct.liquidityRiskOff ? 'var(--sell)' : 'var(--t1)')
       + tile(pfx+'CardMargin','Margin used', ibkrBal(acct.marginsUsed), marginSub,
           (acct.marginsUsed > 0) ? 'var(--sell)' : 'var(--t1)')
-      + tile(pfx+'CardToday','Today realised', fp(todayReal), 'fills · '+todayKey, pc(todayReal))
+      + tile(pfx+'CardToday','Today realised', fp(todayReal),
+          ((todayRow && todayRow.components && todayRow.components.length)
+            ? todayRow.components.length+' realised position event(s) · '
+            : 'fills · ')+todayKey, pc(todayReal))
       + tile(pfx+'CardReal','Total realised (net)', fp(tt.realizedUsd),
           'already after closed comm · '+tt.closedCount+' closed', pc(tt.realizedUsd))
       + tileClick(pfx+'CardComm','Commissions & charges',
@@ -2953,10 +2957,19 @@ async function renderIbkr(force, kind){
 
     let dailyHtml = '';
     if (d.daily.length) {
-      const rows = d.daily.slice().reverse().slice(0, 30).map(x =>
-        '<tr>'+td('left','var(--m2)')+x.date+'</td>'
-        +td('right',pc(x.realizedUsd))+fp(x.realizedUsd)+'</td>'
-        +td('right',pc(x.cumUsd))+fp(x.cumUsd)+'</td></tr>').join('');
+      const rows = d.daily.slice().reverse().slice(0, 30).map(function(x) {
+        const components = (x.components || []).map(function(c) {
+          const note = c.status === 'partial' ? ' (position remains open / roll or partial exit)' : '';
+          return (c.ticker || '—')+' '+fp(c.realizedUsd)+note;
+        }).join(' · ');
+        return '<tr>'+td('left','var(--m2)')+x.date+'</td>'
+          +td('right',pc(x.realizedUsd))+fp(x.realizedUsd)+'</td>'
+          +td('right',pc(x.cumUsd))+fp(x.cumUsd)+'</td></tr>'
+          +(components
+            ? '<tr><td colspan="3" style="padding:0 8px 8px;color:var(--m2);font-size:10px;line-height:1.4">'
+              +components+'</td></tr>'
+            : '');
+      }).join('');
       dailyHtml = '<div class="ibkr-book" style="background:var(--s1);border:1px solid var(--b1);border-radius:8px;padding:8px 4px;margin-bottom:14px;max-width:420px">'
         +'<div style="font-size:11px;letter-spacing:0.06em;text-transform:uppercase;color:var(--m2);font-family:DM Sans,sans-serif;font-weight:600;padding:0 8px 5px">Daily realised PnL (USD)</div>'
         +'<table style="width:100%;border-collapse:collapse"><thead><tr>'
@@ -2991,6 +3004,9 @@ async function renderIbkr(force, kind){
       }
       if (hasStop && hasTp1) return 'trailing stop (post-TP1)';
       if (hasStop && !hasTp1) return 'stop-loss (full)';
+      if (raw.includes('signal')) return 'signal reversal (market exit)';
+      if (raw.includes('time_limit') || raw.includes('time limit') || raw.includes('horizon time'))
+        return 'time-limit market exit';
       if (hasFlat && !hasTp1) return 'flatten exit';
       if (hasTp1 && hasFlat) return 'trailing stop (post-TP1)';
       if (hasTp1) return 'tp exit';
@@ -2998,8 +3014,6 @@ async function renderIbkr(force, kind){
         return 'trailing stop (post-TP1)';
       if (raw === 'sl_hit' || raw.includes('stop loss') || raw.includes('stop-loss'))
         return 'stop-loss (full)';
-      if (raw.includes('signal') || raw.includes('time_limit') || raw.includes('time limit') || raw.includes('horizon time'))
-        return 'signal/time exit';
       if (raw === 'flatten exit' || raw.includes('flatten')) return 'flatten exit';
       return t.exitType && t.exitType !== 'tp exit' ? t.exitType : 'flatten exit';
     };
@@ -4607,9 +4621,10 @@ async function runDashScan(force){
 
               var domS=Math.max(sh,shS), domM=Math.max(me,meS), domL=Math.max(lo,loS);
               var tBt = batchTech[r.ticker] || {};
-              r.backtestShortWinRate  = tBt.backtestShortWinRate  ?? (qs.short  && qs.short.winRateHint)  ?? null;
-              r.backtestMediumWinRate = tBt.backtestMediumWinRate ?? (qs.medium && qs.medium.winRateHint) ?? null;
-              r.backtestLongWinRate   = tBt.backtestLongWinRate   ?? (qs.long   && qs.long.winRateHint)   ?? null;
+              // Never label a heuristic confidence hint as a backtested result.
+              r.backtestShortWinRate  = tBt.backtestShortWinRate  ?? null;
+              r.backtestMediumWinRate = tBt.backtestMediumWinRate ?? null;
+              r.backtestLongWinRate   = tBt.backtestLongWinRate   ?? null;
               r.backtestedWinRate     = r.backtestShortWinRate;
               r.backtestShortTrades   = tBt.backtestShortTrades  ?? null;
               r.backtestMediumTrades  = tBt.backtestMediumTrades ?? null;
@@ -4663,19 +4678,10 @@ async function runDashScan(force){
                 r.shortAction   = act(r.shortScore,r.shortSellScore); r.mediumAction = act(r.mediumScore,r.mediumSellScore); r.longAction = act(r.longScore,r.longSellScore);
               }
 
-              // Map tier to win rate estimate
-              var _tierWR = function(tier){ return tier>=2?75:tier>=1?71:0; };
               r.shortTier  = _shortTier;
               r.mediumTier = _medTier;
               r.longTier   = _longTier;
-              r.shortWinRateEst  = _shortTier>=1  ? _tierWR(_shortTier)  : null;
-              r.mediumWinRateEst = _medTier>=1    ? _tierWR(_medTier)    : null;
-              r.longWinRateEst   = _longTier>=1   ? _tierWR(_longTier)   : null;
-
-              // If tier1+ confirmed, upgrade backtested win rate display
-              if (_shortTier>=1  && r.backtestShortWinRate  == null)  r.backtestShortWinRate  = _tierWR(_shortTier);
-              if (_medTier>=1    && r.backtestMediumWinRate == null)  r.backtestMediumWinRate = _tierWR(_medTier);
-              if (_longTier>=1   && r.backtestLongWinRate   == null)  r.backtestLongWinRate   = _tierWR(_longTier);
+              r.shortWinRateEst = r.mediumWinRateEst = r.longWinRateEst = null;
 
             } else {
               if (!r.shortScore)  r.shortScore  = scoreFrom(r.shortRating,  r.action, r.backtestedWinRate);
@@ -6903,6 +6909,7 @@ function renderCard(s){
       rating:applyWinRateThreshold(s.shortRating, s.backtestedWinRate), conf:hzDisplayConf(s,'short'),
       weighting:s.shortWeighting||'75% technical · 15% FMP · 10% fundamentals',
       action: hzActionFromRow('short', s.shortRating, s.shortAction),
+      gateReason: s.shortGateReason || '',
       entry:  s.shortEntry  || s.entry,
       tp1:    s.shortTarget1|| s.target1,
       tp2:    s.shortTarget2|| s.target2,
@@ -6921,6 +6928,7 @@ function renderCard(s){
       rating:applyWinRateThreshold(s.mediumRating, s.backtestMediumWinRate), conf:hzDisplayConf(s,'medium'),
       weighting:s.mediumWeighting||'50% technical · 30% FMP · 20% fundamentals',
       action: hzActionFromRow('medium', s.mediumRating, s.mediumAction),
+      gateReason: s.mediumGateReason || '',
       entry:  s.mediumEntry  || s.entry,
       tp1:    s.mediumTarget1|| s.target1,
       tp2:    s.mediumTarget2|| s.target2,
@@ -6939,6 +6947,7 @@ function renderCard(s){
       rating:applyWinRateThreshold(s.longRating, s.backtestLongWinRate), conf:hzDisplayConf(s,'long'),
       weighting:s.longWeighting||'35% technical · 30% FMP · 35% fundamentals',
       action: hzActionFromRow('long', s.longRating, s.longAction),
+      gateReason: s.longGateReason || '',
       entry:  s.longEntry  || s.entry,
       tp1:    s.longTarget1|| s.target1,
       tp2:    s.longTarget2|| s.target2,
@@ -6981,6 +6990,13 @@ function renderCard(s){
       h.sl  = floored.sl  != null ? String(floored.sl)  : h.sl;
       if (floored.tp2 != null) h.tp2 = String(floored.tp2);
     }
+  });
+
+  // Rating is the final actionable decision, not the upstream raw score.
+  // A later confidence / R:R / level gate may demote a candidate to Hold; do
+  // not leave a stale "Strong Buy" badge beside that Hold decision.
+  horizons.forEach(function (h) {
+    if (h.action !== 'Buy' && h.action !== 'Sell') h.rating = 'Hold';
   });
 
   if (!_mm.danelfin && s.fmpScore && typeof s.fmpScore === 'object') {
@@ -7069,8 +7085,10 @@ function renderCard(s){
       // Rating row
       + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">'
       + '<div class="hz-r '+rCls(hz.rating)+'" style="font-size:16px">'+( hz.rating||'—')+'</div>'
-      + '<div style="flex:1"><div class="cb"><div class="cf" style="width:'+(hz.conf||0)+'%;background:'+cC(hz.conf||0)+'"></div></div>'
-      + '<div style="font-size:12px;font-weight:600;color:var(--tx);font-family:DM Mono,monospace;margin-top:5px">'+(hz.conf||0)+'% confidence <span style="font-size:11px;font-weight:400;color:var(--m2)">· '+hz.weighting+'</span></div></div>'
+      + '<div style="flex:1"><div class="cb"><div class="cf" style="width:'+(showTrade?(hz.conf||0):0)+'%;background:'+cC(hz.conf||0)+'"></div></div>'
+      + '<div style="font-size:12px;font-weight:600;color:var(--tx);font-family:DM Mono,monospace;margin-top:5px">'
+      + (showTrade ? ((hz.conf||0)+'% signal confidence') : 'No actionable signal')
+      + '</div></div>'
       + '</div>'
       // Rec box
       + '<div class="rec-box '+ac2+'" style="margin-bottom:10px">'
@@ -7089,7 +7107,9 @@ function renderCard(s){
           + '<div><div class="pnl-label">P&L @ T2</div><div class="pnl-value g">'+(pnl2?fmtUsd(pnl2.tp_pnl)+' ('+fmtPct(pnl2.tp_pct)+')':'—')+'</div></div>'
           + '<div><div class="pnl-label">Max Loss</div><div class="pnl-value r">'+(pnl&&pnl.sl_pnl!==null?fmtUsd(pnl.sl_pnl)+' ('+fmtPct(pnl.sl_pct)+')':'—')+'</div></div>'
           + '</div>'
-        : '<div style="padding:10px 12px;font-size:11px;color:var(--m2);font-family:DM Mono,monospace;border:1px dashed var(--b1);border-radius:8px;margin-bottom:8px">No active trade setup — signal is Hold. Wait for a clearer Buy or Sell edge before sizing a position.</div>')
+        : '<div style="padding:10px 12px;font-size:11px;color:var(--m2);font-family:DM Mono,monospace;border:1px dashed var(--b1);border-radius:8px;margin-bottom:8px">No active trade setup — signal is Hold. '
+          +(hz.gateReason || 'Wait for a clearer Buy or Sell edge before sizing a position.')
+          +'</div>')
       + '</div>'
       // ── TIER BADGE (most prominent signal quality indicator) ─────────────
       + (hz.tier>=1
@@ -7098,10 +7118,6 @@ function renderCard(s){
           +'<div style="flex:1">'
             +'<div style="font-size:9px;font-weight:700;color:'+(hz.tier>=2?'#ffc800':'#00c864')+';font-family:DM Mono,monospace;letter-spacing:.10em">'+(hz.tier>=2?'TIER 2 — ELITE SIGNAL':'TIER 1 — INSTITUTIONAL GRADE')+'</div>'
             +'<div style="font-size:8px;color:rgba(255,255,255,0.5);font-family:DM Mono,monospace;margin-top:1px">'+(hz.tierLabel||(_isFMP?'FMP tier + SD channel':'Danelfin≥8 + SD channel'))+'</div>'
-          +'</div>'
-          +'<div style="text-align:center">'
-            +'<div style="font-size:17px;font-weight:800;font-family:DM Mono,monospace;color:'+(hz.tier>=2?'#ffc800':'#00c864')+'">~'+(hz.winRateEst||71)+'%</div>'
-            +'<div style="font-size:7px;color:rgba(255,255,255,0.35);font-family:DM Mono,monospace">est. win rate</div>'
           +'</div>'
         +'</div>'
         :'')

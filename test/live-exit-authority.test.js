@@ -9,6 +9,12 @@ const {
   initialProtectiveStop
 } = require('../lib/ibkr/live-exit-authority');
 
+delete process.env.IBKR_SIGNAL_FLIP_EXIT_ENABLED;
+assert.strictEqual(isLiveAuthorizedServerExit({
+  liveSignalFlip: true, reason: 'live-signal-flip', exitReason: 'Signal → Sell'
+}), false, 'bridge signal flattening is paused unless explicitly enabled');
+process.env.IBKR_SIGNAL_FLIP_EXIT_ENABLED = '1';
+
 assert.strictEqual(isPaperPathSimExit({
   status: 'tp1_then_sl',
   exitReason: 'TP1 banked; trailing stop closed runner'
@@ -26,7 +32,7 @@ assert.strictEqual(isLiveAuthorizedServerExit({
 }), true);
 assert.strictEqual(isLiveAuthorizedServerExit({
   exitReason: 'Signal → Sell', status: 'signal_exit'
-}), true);
+}), false, 'historical signal_exit label is not live market-order authority');
 
 assert.strictEqual(isOperationalIbkrExit({
   reason: 'unauthorized-non-recommendation', errorTrade: true

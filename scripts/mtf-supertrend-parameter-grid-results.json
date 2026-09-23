@@ -1,0 +1,2017 @@
+{
+  "generatedAt": "2026-09-22T10:25:38.373Z",
+  "methodology": {
+    "markets": [
+      "US",
+      "UK"
+    ],
+    "namesPerMarket": 80,
+    "shortWindow": "2 years (hourly provider retention)",
+    "mediumLongWindow": "3 years",
+    "frames": {
+      "short": [
+        "8H cash-session aggregation",
+        "1D"
+      ],
+      "medium": [
+        "1D",
+        "3D"
+      ],
+      "long": [
+        "3D",
+        "1W"
+      ]
+    },
+    "mtfWeight": 0.4,
+    "baseSignalWeight": 0.6,
+    "profile": "grid-targets",
+    "supertrendParameters": [
+      {
+        "period": 14,
+        "multiplier": 4
+      },
+      {
+        "period": 14,
+        "multiplier": 3
+      },
+      {
+        "period": 13,
+        "multiplier": 4
+      },
+      {
+        "period": 13,
+        "multiplier": 3
+      },
+      {
+        "period": 12,
+        "multiplier": 4
+      },
+      {
+        "period": 12,
+        "multiplier": 3
+      },
+      {
+        "period": 11,
+        "multiplier": 4
+      },
+      {
+        "period": 11,
+        "multiplier": 3
+      },
+      {
+        "period": 10,
+        "multiplier": 4
+      }
+    ],
+    "structureBarsPerFrame": 40,
+    "fibonacciRatios": [
+      0.236,
+      0.382,
+      0.5,
+      0.618,
+      0.786
+    ],
+    "fibonacciUsage": "support/resistance level construction only; no standalone directional points",
+    "priceMomentum": [
+      "5-bar ROC",
+      "20-bar ROC",
+      "10-bar normalized slope",
+      "5-bar ROC acceleration"
+    ],
+    "dailyHlc": [
+      "close position in daily range",
+      "higher-high/higher-low or lower-high/lower-low",
+      "prior-5-day close breakout"
+    ],
+    "nextOpenEntry": true,
+    "stopFirst": true,
+    "costsAndBorrow": true,
+    "currentFundamentals": false,
+    "promotionEligible": false,
+    "limitations": [
+      "Static current-name universe has survivorship bias",
+      "US 8H cash-session bars are effectively one regular-session bar and highly correlated with 1D",
+      "No point-in-time constituent, delisting, borrow-availability, or fundamental data"
+    ]
+  },
+  "testedSymbols": {
+    "US": [
+      "AAPL",
+      "MSFT",
+      "NVDA",
+      "AMZN",
+      "GOOGL",
+      "GOOG",
+      "META",
+      "TSLA",
+      "BRK-B",
+      "AVGO",
+      "LLY",
+      "JPM",
+      "V",
+      "UNH",
+      "XOM",
+      "MA",
+      "COST",
+      "HD",
+      "PG",
+      "JNJ",
+      "NFLX",
+      "ABBV",
+      "CRM",
+      "BAC",
+      "ORCL",
+      "MRK",
+      "CVX",
+      "KO",
+      "AMD",
+      "PEP",
+      "ADBE",
+      "WMT",
+      "TMO",
+      "MCD",
+      "CSCO",
+      "ACN",
+      "ABT",
+      "LIN",
+      "INTC",
+      "QCOM",
+      "TXN",
+      "DIS",
+      "IBM",
+      "GE",
+      "CAT",
+      "GS",
+      "MS",
+      "INTU",
+      "AMAT",
+      "MU",
+      "LRCX",
+      "KLAC",
+      "PANW",
+      "SNPS",
+      "CDNS",
+      "CRWD",
+      "FTNT",
+      "MRVL",
+      "ON",
+      "BKNG",
+      "ISRG",
+      "NOW",
+      "UBER",
+      "PYPL",
+      "SBUX",
+      "GILD",
+      "REGN",
+      "VRTX",
+      "MDT",
+      "PFE",
+      "AMGN",
+      "HON",
+      "LOW",
+      "SPGI",
+      "BLK",
+      "DE",
+      "AXP",
+      "C",
+      "SCHW",
+      "CB"
+    ],
+    "UK": [
+      "SHEL.L",
+      "AZN.L",
+      "HSBA.L",
+      "ULVR.L",
+      "BP.L",
+      "GSK.L",
+      "RIO.L",
+      "DGE.L",
+      "GLEN.L",
+      "BATS.L",
+      "REL.L",
+      "LSEG.L",
+      "NG.L",
+      "RKT.L",
+      "BA.L",
+      "LLOY.L",
+      "VOD.L",
+      "BARC.L",
+      "NWG.L",
+      "PRU.L",
+      "CPG.L",
+      "EXPN.L",
+      "AAL.L",
+      "ANTO.L",
+      "STAN.L",
+      "IMB.L",
+      "TSCO.L",
+      "SSE.L",
+      "HLN.L",
+      "III.L",
+      "BT-A.L",
+      "AV.L",
+      "LGEN.L",
+      "SGRO.L",
+      "SMIN.L",
+      "INF.L",
+      "WTB.L",
+      "ABF.L",
+      "SBRY.L",
+      "SN.L",
+      "MNDI.L",
+      "HLMA.L",
+      "CCH.L",
+      "RR.L",
+      "ITRK.L",
+      "BNZL.L",
+      "SPX.L",
+      "PSON.L",
+      "ADM.L",
+      "SVT.L",
+      "UU.L",
+      "RTO.L",
+      "WPP.L",
+      "DCC.L",
+      "JD.L",
+      "KGF.L",
+      "PSN.L",
+      "TW.L",
+      "LAND.L",
+      "BLND.L",
+      "UTG.L",
+      "HWDN.L",
+      "MRO.L",
+      "WEIR.L",
+      "SMT.L",
+      "FRES.L",
+      "EDV.L",
+      "ENT.L",
+      "IHG.L",
+      "CNA.L",
+      "DPLM.L",
+      "RMV.L",
+      "BKG.L",
+      "AUTO.L",
+      "HIK.L",
+      "CTEC.L",
+      "PSH.L",
+      "BME.L",
+      "CCEP.L",
+      "EZJ.L"
+    ]
+  },
+  "rows": [
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "baseline",
+      "parameterKey": "original",
+      "supertrendParameters": null,
+      "metrics": {
+        "trades": 2,
+        "winRate": 50,
+        "avgReturnPct": -0.436,
+        "profitFactor": 0.66,
+        "netPnlUsdAtFixedNotional": -87.28,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23506,
+        "sideAllowed": 28522,
+        "rewardRisk": 1633,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "14,4",
+      "supertrendParameters": {
+        "period": 14,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 11,
+        "winRate": 36.4,
+        "avgReturnPct": -1.951,
+        "profitFactor": 0.331,
+        "netPnlUsdAtFixedNotional": -2145.88,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23097,
+        "sideAllowed": 28113,
+        "rewardRisk": 2007,
+        "openMark": 2
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "baseline",
+      "parameterKey": "original",
+      "supertrendParameters": null,
+      "metrics": {
+        "trades": 5,
+        "winRate": 40,
+        "avgReturnPct": 1.394,
+        "profitFactor": 1.281,
+        "netPnlUsdAtFixedNotional": 696.79,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 24935,
+        "sideAllowed": 26686,
+        "rewardRisk": 3355
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "14,4",
+      "supertrendParameters": {
+        "period": 14,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 11,
+        "winRate": 27.3,
+        "avgReturnPct": -4.463,
+        "profitFactor": 0.488,
+        "netPnlUsdAtFixedNotional": -4908.91,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25056,
+        "sideAllowed": 26807,
+        "rewardRisk": 3058
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "baseline",
+      "parameterKey": "original",
+      "supertrendParameters": null,
+      "metrics": {
+        "trades": 3,
+        "winRate": 0,
+        "avgReturnPct": -11.762,
+        "profitFactor": 0,
+        "netPnlUsdAtFixedNotional": -3528.58,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25005,
+        "sideAllowed": 28380,
+        "rewardRisk": 1743
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "14,4",
+      "supertrendParameters": {
+        "period": 14,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 4,
+        "winRate": 25,
+        "avgReturnPct": -6.415,
+        "profitFactor": 0.273,
+        "netPnlUsdAtFixedNotional": -2566.04,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25282,
+        "sideAllowed": 28657,
+        "rewardRisk": 1437
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "baseline",
+      "parameterKey": "original",
+      "supertrendParameters": null,
+      "metrics": {
+        "trades": 11,
+        "winRate": 27.3,
+        "avgReturnPct": -0.162,
+        "profitFactor": 0.914,
+        "netPnlUsdAtFixedNotional": -177.9,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23794,
+        "sideAllowed": 28255,
+        "rewardRisk": 1866
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "14,4",
+      "supertrendParameters": {
+        "period": 14,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 22,
+        "winRate": 18.2,
+        "avgReturnPct": -1.779,
+        "profitFactor": 0.33,
+        "netPnlUsdAtFixedNotional": -3912.7,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23308,
+        "sideAllowed": 27769,
+        "rewardRisk": 2303,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "baseline",
+      "parameterKey": "original",
+      "supertrendParameters": null,
+      "metrics": {
+        "trades": 6,
+        "winRate": 33.3,
+        "avgReturnPct": 2.159,
+        "profitFactor": 2.037,
+        "netPnlUsdAtFixedNotional": 1295.24,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25324,
+        "sideAllowed": 27313,
+        "rewardRisk": 2807,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "14,4",
+      "supertrendParameters": {
+        "period": 14,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 8,
+        "winRate": 37.5,
+        "avgReturnPct": -1.242,
+        "profitFactor": 0.819,
+        "netPnlUsdAtFixedNotional": -993.9,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25527,
+        "sideAllowed": 27516,
+        "rewardRisk": 2503
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "baseline",
+      "parameterKey": "original",
+      "supertrendParameters": null,
+      "metrics": {
+        "trades": 5,
+        "winRate": 40,
+        "avgReturnPct": -9.077,
+        "profitFactor": 0.259,
+        "netPnlUsdAtFixedNotional": -4538.68,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25292,
+        "sideAllowed": 28113,
+        "rewardRisk": 1961
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "14,4",
+      "supertrendParameters": {
+        "period": 14,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 7,
+        "winRate": 28.6,
+        "avgReturnPct": -8.511,
+        "profitFactor": 0.254,
+        "netPnlUsdAtFixedNotional": -5957.48,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25349,
+        "sideAllowed": 28170,
+        "rewardRisk": 1754
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "14,3",
+      "supertrendParameters": {
+        "period": 14,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 12,
+        "winRate": 25,
+        "avgReturnPct": -2.286,
+        "profitFactor": 0.265,
+        "netPnlUsdAtFixedNotional": -2743.02,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23058,
+        "sideAllowed": 28074,
+        "rewardRisk": 2043,
+        "openMark": 2
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "14,3",
+      "supertrendParameters": {
+        "period": 14,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 11,
+        "winRate": 27.3,
+        "avgReturnPct": -4.463,
+        "profitFactor": 0.488,
+        "netPnlUsdAtFixedNotional": -4908.91,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 24898,
+        "sideAllowed": 26649,
+        "rewardRisk": 3215,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "14,3",
+      "supertrendParameters": {
+        "period": 14,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 4,
+        "winRate": 25,
+        "avgReturnPct": -6.415,
+        "profitFactor": 0.273,
+        "netPnlUsdAtFixedNotional": -2566.04,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25064,
+        "sideAllowed": 28439,
+        "rewardRisk": 1655
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "14,3",
+      "supertrendParameters": {
+        "period": 14,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 22,
+        "winRate": 18.2,
+        "avgReturnPct": -1.848,
+        "profitFactor": 0.321,
+        "netPnlUsdAtFixedNotional": -4064.79,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23223,
+        "sideAllowed": 27684,
+        "rewardRisk": 2388,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "14,3",
+      "supertrendParameters": {
+        "period": 14,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 8,
+        "winRate": 25,
+        "avgReturnPct": -3.916,
+        "profitFactor": 0.536,
+        "netPnlUsdAtFixedNotional": -3133,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25335,
+        "sideAllowed": 27324,
+        "rewardRisk": 2684
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "14,3",
+      "supertrendParameters": {
+        "period": 14,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 8,
+        "winRate": 37.5,
+        "avgReturnPct": -6.389,
+        "profitFactor": 0.36,
+        "netPnlUsdAtFixedNotional": -5111.06,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25164,
+        "sideAllowed": 27985,
+        "rewardRisk": 1937
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "13,4",
+      "supertrendParameters": {
+        "period": 13,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 11,
+        "winRate": 36.4,
+        "avgReturnPct": -1.951,
+        "profitFactor": 0.331,
+        "netPnlUsdAtFixedNotional": -2145.88,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23112,
+        "sideAllowed": 28128,
+        "rewardRisk": 1992,
+        "openMark": 2
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "13,4",
+      "supertrendParameters": {
+        "period": 13,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 11,
+        "winRate": 27.3,
+        "avgReturnPct": -4.463,
+        "profitFactor": 0.488,
+        "netPnlUsdAtFixedNotional": -4908.91,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25010,
+        "sideAllowed": 26761,
+        "rewardRisk": 3103,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "13,4",
+      "supertrendParameters": {
+        "period": 13,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 4,
+        "winRate": 25,
+        "avgReturnPct": -6.415,
+        "profitFactor": 0.273,
+        "netPnlUsdAtFixedNotional": -2566.04,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25296,
+        "sideAllowed": 28671,
+        "rewardRisk": 1423
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "13,4",
+      "supertrendParameters": {
+        "period": 13,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 22,
+        "winRate": 18.2,
+        "avgReturnPct": -1.779,
+        "profitFactor": 0.33,
+        "netPnlUsdAtFixedNotional": -3912.7,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23312,
+        "sideAllowed": 27773,
+        "rewardRisk": 2299,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "13,4",
+      "supertrendParameters": {
+        "period": 13,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 8,
+        "winRate": 37.5,
+        "avgReturnPct": -1.242,
+        "profitFactor": 0.819,
+        "netPnlUsdAtFixedNotional": -993.9,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25543,
+        "sideAllowed": 27532,
+        "rewardRisk": 2487
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "13,4",
+      "supertrendParameters": {
+        "period": 13,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 7,
+        "winRate": 28.6,
+        "avgReturnPct": -8.511,
+        "profitFactor": 0.254,
+        "netPnlUsdAtFixedNotional": -5957.48,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25343,
+        "sideAllowed": 28164,
+        "rewardRisk": 1760
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "13,3",
+      "supertrendParameters": {
+        "period": 13,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 13,
+        "winRate": 23.1,
+        "avgReturnPct": -2.29,
+        "profitFactor": 0.249,
+        "netPnlUsdAtFixedNotional": -2976.75,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23025,
+        "sideAllowed": 28041,
+        "rewardRisk": 2074,
+        "openMark": 2
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "13,3",
+      "supertrendParameters": {
+        "period": 13,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 11,
+        "winRate": 27.3,
+        "avgReturnPct": -4.463,
+        "profitFactor": 0.488,
+        "netPnlUsdAtFixedNotional": -4908.91,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 24897,
+        "sideAllowed": 26648,
+        "rewardRisk": 3216,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "13,3",
+      "supertrendParameters": {
+        "period": 13,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 4,
+        "winRate": 25,
+        "avgReturnPct": -6.415,
+        "profitFactor": 0.273,
+        "netPnlUsdAtFixedNotional": -2566.04,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25022,
+        "sideAllowed": 28397,
+        "rewardRisk": 1697
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "13,3",
+      "supertrendParameters": {
+        "period": 13,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 22,
+        "winRate": 18.2,
+        "avgReturnPct": -1.848,
+        "profitFactor": 0.321,
+        "netPnlUsdAtFixedNotional": -4064.79,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23248,
+        "sideAllowed": 27709,
+        "rewardRisk": 2363,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "13,3",
+      "supertrendParameters": {
+        "period": 13,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 8,
+        "winRate": 25,
+        "avgReturnPct": -3.916,
+        "profitFactor": 0.536,
+        "netPnlUsdAtFixedNotional": -3133,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25306,
+        "sideAllowed": 27295,
+        "rewardRisk": 2713
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "13,3",
+      "supertrendParameters": {
+        "period": 13,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 8,
+        "winRate": 37.5,
+        "avgReturnPct": -6.389,
+        "profitFactor": 0.36,
+        "netPnlUsdAtFixedNotional": -5111.06,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25154,
+        "sideAllowed": 27975,
+        "rewardRisk": 1947
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "12,4",
+      "supertrendParameters": {
+        "period": 12,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 11,
+        "winRate": 36.4,
+        "avgReturnPct": -1.951,
+        "profitFactor": 0.331,
+        "netPnlUsdAtFixedNotional": -2145.88,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23109,
+        "sideAllowed": 28125,
+        "rewardRisk": 1995,
+        "openMark": 2
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "12,4",
+      "supertrendParameters": {
+        "period": 12,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 10,
+        "winRate": 20,
+        "avgReturnPct": -6.311,
+        "profitFactor": 0.342,
+        "netPnlUsdAtFixedNotional": -6310.88,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25028,
+        "sideAllowed": 26779,
+        "rewardRisk": 3115,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "12,4",
+      "supertrendParameters": {
+        "period": 12,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 4,
+        "winRate": 25,
+        "avgReturnPct": -6.415,
+        "profitFactor": 0.273,
+        "netPnlUsdAtFixedNotional": -2566.04,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25285,
+        "sideAllowed": 28660,
+        "rewardRisk": 1434
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "12,4",
+      "supertrendParameters": {
+        "period": 12,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 22,
+        "winRate": 18.2,
+        "avgReturnPct": -1.779,
+        "profitFactor": 0.33,
+        "netPnlUsdAtFixedNotional": -3912.7,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23290,
+        "sideAllowed": 27751,
+        "rewardRisk": 2321,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "12,4",
+      "supertrendParameters": {
+        "period": 12,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 8,
+        "winRate": 37.5,
+        "avgReturnPct": -1.242,
+        "profitFactor": 0.819,
+        "netPnlUsdAtFixedNotional": -993.9,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25543,
+        "sideAllowed": 27532,
+        "rewardRisk": 2487
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "12,4",
+      "supertrendParameters": {
+        "period": 12,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 7,
+        "winRate": 28.6,
+        "avgReturnPct": -8.511,
+        "profitFactor": 0.254,
+        "netPnlUsdAtFixedNotional": -5957.48,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25369,
+        "sideAllowed": 28190,
+        "rewardRisk": 1734
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "12,3",
+      "supertrendParameters": {
+        "period": 12,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 13,
+        "winRate": 23.1,
+        "avgReturnPct": -2.29,
+        "profitFactor": 0.249,
+        "netPnlUsdAtFixedNotional": -2976.75,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23026,
+        "sideAllowed": 28042,
+        "rewardRisk": 2073,
+        "openMark": 2
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "12,3",
+      "supertrendParameters": {
+        "period": 12,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 11,
+        "winRate": 27.3,
+        "avgReturnPct": -4.463,
+        "profitFactor": 0.488,
+        "netPnlUsdAtFixedNotional": -4908.91,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 24875,
+        "sideAllowed": 26626,
+        "rewardRisk": 3238,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "12,3",
+      "supertrendParameters": {
+        "period": 12,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 4,
+        "winRate": 25,
+        "avgReturnPct": -6.415,
+        "profitFactor": 0.273,
+        "netPnlUsdAtFixedNotional": -2566.04,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25027,
+        "sideAllowed": 28402,
+        "rewardRisk": 1692
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "12,3",
+      "supertrendParameters": {
+        "period": 12,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 22,
+        "winRate": 18.2,
+        "avgReturnPct": -1.848,
+        "profitFactor": 0.321,
+        "netPnlUsdAtFixedNotional": -4064.79,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23240,
+        "sideAllowed": 27701,
+        "rewardRisk": 2371,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "12,3",
+      "supertrendParameters": {
+        "period": 12,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 8,
+        "winRate": 25,
+        "avgReturnPct": -3.916,
+        "profitFactor": 0.536,
+        "netPnlUsdAtFixedNotional": -3133,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25335,
+        "sideAllowed": 27324,
+        "rewardRisk": 2684
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "12,3",
+      "supertrendParameters": {
+        "period": 12,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 8,
+        "winRate": 37.5,
+        "avgReturnPct": -6.389,
+        "profitFactor": 0.36,
+        "netPnlUsdAtFixedNotional": -5111.06,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25167,
+        "sideAllowed": 27988,
+        "rewardRisk": 1934
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "11,4",
+      "supertrendParameters": {
+        "period": 11,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 11,
+        "winRate": 36.4,
+        "avgReturnPct": -1.951,
+        "profitFactor": 0.331,
+        "netPnlUsdAtFixedNotional": -2145.88,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23132,
+        "sideAllowed": 28148,
+        "rewardRisk": 1972,
+        "openMark": 2
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "11,4",
+      "supertrendParameters": {
+        "period": 11,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 10,
+        "winRate": 20,
+        "avgReturnPct": -6.311,
+        "profitFactor": 0.342,
+        "netPnlUsdAtFixedNotional": -6310.88,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25049,
+        "sideAllowed": 26800,
+        "rewardRisk": 3094,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "11,4",
+      "supertrendParameters": {
+        "period": 11,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 4,
+        "winRate": 25,
+        "avgReturnPct": -6.415,
+        "profitFactor": 0.273,
+        "netPnlUsdAtFixedNotional": -2566.04,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25281,
+        "sideAllowed": 28656,
+        "rewardRisk": 1438
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "11,4",
+      "supertrendParameters": {
+        "period": 11,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 22,
+        "winRate": 18.2,
+        "avgReturnPct": -1.779,
+        "profitFactor": 0.33,
+        "netPnlUsdAtFixedNotional": -3912.7,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23298,
+        "sideAllowed": 27759,
+        "rewardRisk": 2313,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "11,4",
+      "supertrendParameters": {
+        "period": 11,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 8,
+        "winRate": 37.5,
+        "avgReturnPct": -1.242,
+        "profitFactor": 0.819,
+        "netPnlUsdAtFixedNotional": -993.9,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25532,
+        "sideAllowed": 27521,
+        "rewardRisk": 2498
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "11,4",
+      "supertrendParameters": {
+        "period": 11,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 7,
+        "winRate": 28.6,
+        "avgReturnPct": -8.511,
+        "profitFactor": 0.254,
+        "netPnlUsdAtFixedNotional": -5957.48,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25368,
+        "sideAllowed": 28189,
+        "rewardRisk": 1735
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "11,3",
+      "supertrendParameters": {
+        "period": 11,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 12,
+        "winRate": 25,
+        "avgReturnPct": -2.267,
+        "profitFactor": 0.266,
+        "netPnlUsdAtFixedNotional": -2720.2,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23048,
+        "sideAllowed": 28064,
+        "rewardRisk": 2053,
+        "openMark": 2
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "11,3",
+      "supertrendParameters": {
+        "period": 11,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 11,
+        "winRate": 27.3,
+        "avgReturnPct": -4.463,
+        "profitFactor": 0.488,
+        "netPnlUsdAtFixedNotional": -4908.91,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 24872,
+        "sideAllowed": 26623,
+        "rewardRisk": 3241,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "11,3",
+      "supertrendParameters": {
+        "period": 11,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 4,
+        "winRate": 25,
+        "avgReturnPct": -6.415,
+        "profitFactor": 0.273,
+        "netPnlUsdAtFixedNotional": -2566.04,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25066,
+        "sideAllowed": 28441,
+        "rewardRisk": 1653
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "11,3",
+      "supertrendParameters": {
+        "period": 11,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 22,
+        "winRate": 18.2,
+        "avgReturnPct": -1.848,
+        "profitFactor": 0.321,
+        "netPnlUsdAtFixedNotional": -4064.79,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23280,
+        "sideAllowed": 27741,
+        "rewardRisk": 2331,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "11,3",
+      "supertrendParameters": {
+        "period": 11,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 8,
+        "winRate": 25,
+        "avgReturnPct": -3.916,
+        "profitFactor": 0.536,
+        "netPnlUsdAtFixedNotional": -3133,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25294,
+        "sideAllowed": 27283,
+        "rewardRisk": 2725
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "11,3",
+      "supertrendParameters": {
+        "period": 11,
+        "multiplier": 3
+      },
+      "metrics": {
+        "trades": 8,
+        "winRate": 37.5,
+        "avgReturnPct": -6.389,
+        "profitFactor": 0.36,
+        "netPnlUsdAtFixedNotional": -5111.06,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25198,
+        "sideAllowed": 28019,
+        "rewardRisk": 1903
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "10,4",
+      "supertrendParameters": {
+        "period": 10,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 11,
+        "winRate": 36.4,
+        "avgReturnPct": -1.951,
+        "profitFactor": 0.331,
+        "netPnlUsdAtFixedNotional": -2145.88,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23133,
+        "sideAllowed": 28149,
+        "rewardRisk": 1971,
+        "openMark": 2
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "10,4",
+      "supertrendParameters": {
+        "period": 10,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 10,
+        "winRate": 20,
+        "avgReturnPct": -6.311,
+        "profitFactor": 0.342,
+        "netPnlUsdAtFixedNotional": -6310.88,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25026,
+        "sideAllowed": 26777,
+        "rewardRisk": 3117,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "10,4",
+      "supertrendParameters": {
+        "period": 10,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 4,
+        "winRate": 25,
+        "avgReturnPct": -6.415,
+        "profitFactor": 0.273,
+        "netPnlUsdAtFixedNotional": -2566.04,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25260,
+        "sideAllowed": 28635,
+        "rewardRisk": 1459
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "10,4",
+      "supertrendParameters": {
+        "period": 10,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 22,
+        "winRate": 18.2,
+        "avgReturnPct": -1.779,
+        "profitFactor": 0.33,
+        "netPnlUsdAtFixedNotional": -3912.7,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 23315,
+        "sideAllowed": 27776,
+        "rewardRisk": 2296,
+        "openMark": 1
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "10,4",
+      "supertrendParameters": {
+        "period": 10,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 8,
+        "winRate": 37.5,
+        "avgReturnPct": -1.242,
+        "profitFactor": 0.819,
+        "netPnlUsdAtFixedNotional": -993.9,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25520,
+        "sideAllowed": 27509,
+        "rewardRisk": 2510
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "10,4",
+      "supertrendParameters": {
+        "period": 10,
+        "multiplier": 4
+      },
+      "metrics": {
+        "trades": 7,
+        "winRate": 28.6,
+        "avgReturnPct": -8.511,
+        "profitFactor": 0.254,
+        "netPnlUsdAtFixedNotional": -5957.48,
+        "promotionEligible": false
+      },
+      "rejectionCounts": {
+        "actionable": 25345,
+        "sideAllowed": 28166,
+        "rewardRisk": 1758
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "baseline",
+      "parameterKey": "original",
+      "trades": 13,
+      "winRate": 30.8,
+      "netPnlUsdAtFixedNotional": -265.18,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "14,4",
+      "trades": 33,
+      "winRate": 24.3,
+      "netPnlUsdAtFixedNotional": -6058.58,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "14,3",
+      "trades": 34,
+      "winRate": 20.6,
+      "netPnlUsdAtFixedNotional": -6807.81,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "13,4",
+      "trades": 33,
+      "winRate": 24.3,
+      "netPnlUsdAtFixedNotional": -6058.58,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "13,3",
+      "trades": 35,
+      "winRate": 20,
+      "netPnlUsdAtFixedNotional": -7041.54,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "12,4",
+      "trades": 33,
+      "winRate": 24.3,
+      "netPnlUsdAtFixedNotional": -6058.58,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "12,3",
+      "trades": 35,
+      "winRate": 20,
+      "netPnlUsdAtFixedNotional": -7041.54,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "11,4",
+      "trades": 33,
+      "winRate": 24.3,
+      "netPnlUsdAtFixedNotional": -6058.58,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "11,3",
+      "trades": 34,
+      "winRate": 20.6,
+      "netPnlUsdAtFixedNotional": -6784.99,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "10,4",
+      "trades": 33,
+      "winRate": 24.3,
+      "netPnlUsdAtFixedNotional": -6058.58,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "buy",
+      "variant": "baseline",
+      "parameterKey": "original",
+      "trades": 11,
+      "winRate": 36.3,
+      "netPnlUsdAtFixedNotional": 1992.03,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "14,4",
+      "trades": 19,
+      "winRate": 31.6,
+      "netPnlUsdAtFixedNotional": -5902.81,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "14,3",
+      "trades": 19,
+      "winRate": 26.3,
+      "netPnlUsdAtFixedNotional": -8041.91,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "13,4",
+      "trades": 19,
+      "winRate": 31.6,
+      "netPnlUsdAtFixedNotional": -5902.81,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "13,3",
+      "trades": 19,
+      "winRate": 26.3,
+      "netPnlUsdAtFixedNotional": -8041.91,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "12,4",
+      "trades": 18,
+      "winRate": 27.8,
+      "netPnlUsdAtFixedNotional": -7304.78,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "12,3",
+      "trades": 19,
+      "winRate": 26.3,
+      "netPnlUsdAtFixedNotional": -8041.91,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "11,4",
+      "trades": 18,
+      "winRate": 27.8,
+      "netPnlUsdAtFixedNotional": -7304.78,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "11,3",
+      "trades": 19,
+      "winRate": 26.3,
+      "netPnlUsdAtFixedNotional": -8041.91,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "buy",
+      "variant": "mtf",
+      "parameterKey": "10,4",
+      "trades": 18,
+      "winRate": 27.8,
+      "netPnlUsdAtFixedNotional": -7304.78,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "sell",
+      "variant": "baseline",
+      "parameterKey": "original",
+      "trades": 8,
+      "winRate": 25,
+      "netPnlUsdAtFixedNotional": -8067.26,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "14,4",
+      "trades": 11,
+      "winRate": 27.3,
+      "netPnlUsdAtFixedNotional": -8523.52,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "14,3",
+      "trades": 12,
+      "winRate": 33.3,
+      "netPnlUsdAtFixedNotional": -7677.1,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "13,4",
+      "trades": 11,
+      "winRate": 27.3,
+      "netPnlUsdAtFixedNotional": -8523.52,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "13,3",
+      "trades": 12,
+      "winRate": 33.3,
+      "netPnlUsdAtFixedNotional": -7677.1,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "12,4",
+      "trades": 11,
+      "winRate": 27.3,
+      "netPnlUsdAtFixedNotional": -8523.52,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "12,3",
+      "trades": 12,
+      "winRate": 33.3,
+      "netPnlUsdAtFixedNotional": -7677.1,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "11,4",
+      "trades": 11,
+      "winRate": 27.3,
+      "netPnlUsdAtFixedNotional": -8523.52,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "11,3",
+      "trades": 12,
+      "winRate": 33.3,
+      "netPnlUsdAtFixedNotional": -7677.1,
+      "promotionEligible": false
+    },
+    {
+      "horizon": "long",
+      "side": "sell",
+      "variant": "mtf",
+      "parameterKey": "10,4",
+      "trades": 11,
+      "winRate": 27.3,
+      "netPnlUsdAtFixedNotional": -8523.52,
+      "promotionEligible": false
+    }
+  ]
+}
