@@ -8390,6 +8390,21 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
   }
 });
 
+// Authenticated, read-only research probe. It returns only a redacted schema
+// and endpoint capability classification; FMP credentials and raw payloads
+// never leave the Render process.
+app.get('/api/research/fmp-point-in-time-capability', async (req, res) => {
+  if (!req.authUser) return res.status(403).json({ error: 'Interactive user authentication required' });
+  try {
+    const { runProbe } = require('./scripts/probe-fmp-point-in-time');
+    const result = await runProbe({ write: false });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: String(error?.message || error) });
+  }
+});
+
 app.get('/api/health', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
