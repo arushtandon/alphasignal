@@ -1156,12 +1156,12 @@ function horizonHoldDaysServer(hz) {
 // window of daily bars (and the weekly bars up to that date). This is the key to
 // a fast walk-forward backtest: indicator helpers all read the tail of the array,
 // so a fixed-size window gives the same recent values without O(n) per-call cost.
-function techAtBoundedIndex(data, weeklyAll, i) {
+function techAtBoundedIndex(data, weeklyAll, i, symbol = 'X') {
   const lo = Math.max(0, i - (BACKTEST_TECH_WINDOW - 1));
   const dw = data.slice(lo, i + 1);
   const cutT = data[i]?.t || 0;
   const weekly = weeklyBarsVisibleAt(weeklyAll, cutT, dw);
-  return buildFullTechResult('X', dw, weekly);
+  return buildFullTechResult(symbol || 'X', dw, weekly);
 }
 
 function signalTechAtEntry(data, weeklyAll, entryIdx) {
@@ -3166,7 +3166,7 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
   for (let i = windowStart; i < data.length - 2; i += entryStep) {
     if (i < nextAllowed) continue;
     if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r));
-    const tech = techAtBoundedIndex(data, weeklyAll, i);
+    const tech = techAtBoundedIndex(data, weeklyAll, i, opts.symbol);
     let market = null;
     if (marketSeries) {
       market = marketRegimeAt(marketSeries, data[i].t, marketLatest);
@@ -3309,14 +3309,27 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
     tradeResults.push({
       ret: netRet,
       grossRet: res.ret,
+      symbol: opts.symbol || null,
+      market: opts.market || null,
+      horizon: hz,
+      signalIndex: i,
+      signalTs: Number(data[i] && data[i].t) || null,
+      entryIndex: i + 1,
+      exitIndex: res.exitIdx,
       entryTs,
       exitTs,
       heldDays,
       side: isSell ? 'sell' : 'buy',
-      status: res.status
+      status: res.status,
+      buyScore: Number(sig.buyScore) || 0,
+      sellScore: Number(sig.sellScore) || 0,
+      candidateRating: decision.candidateRating
     });
     if (netRet > 0) { wins++; grossWin += netRet; } else { losses++; grossLoss += Math.abs(netRet); }
-    nextAllowed = res.exitIdx + 1;
+    // Research studies can capture every production-eligible opportunity and
+    // apply candidate-specific non-overlap later. Live/default replay remains
+    // unchanged and still blocks a new entry until the prior trade has exited.
+    if (!opts.allowOverlapping) nextAllowed = res.exitIdx + 1;
 
     const stAligned = (isBuy && stHz?.direction === 'bull') || (isSell && stHz?.direction === 'bear');
     if (stAligned) { stTrades++; if (netRet > 0) stWins++; }
@@ -7413,6 +7426,15 @@ function sanitizeDashDataForServer(dashData) {
   for (const k of keys) {
     out[k] = Array.isArray(dashData[k]) ? dashData[k].map(stripPickForStorage) : [];
   }
+  // Persisted daily boards can survive a deployment that pauses a bracket.
+  // Apply the current policy when loading, saving, and serving so stale picks
+  // cannot remain visible or be overlaid back into full analysis.
+  if (!bracketEnabled('buy', 'short')) out.short = [];
+  if (!bracketEnabled('buy', 'medium')) out.medium = [];
+  if (!bracketEnabled('buy', 'long')) out.long = [];
+  if (!bracketEnabled('sell', 'short')) out.shortSell = [];
+  if (!bracketEnabled('sell', 'medium')) out.medSell = [];
+  if (!bracketEnabled('sell', 'long')) out.longSell = [];
   return out;
 }
 
@@ -7420,7 +7442,9 @@ function loadDashboardPicksFile() {
   try {
     if (!fs.existsSync(DASHBOARD_PICKS_FILE)) return null;
     const raw = JSON.parse(fs.readFileSync(DASHBOARD_PICKS_FILE, 'utf8'));
-    if (raw && raw.version === DASHBOARD_PICKS_VERSION && raw.dashData) return raw;
+    if (raw && raw.version === DASHBOARD_PICKS_VERSION && raw.dashData) {
+      return { ...raw, dashData: sanitizeDashDataForServer(raw.dashData) };
+    }
   } catch (e) {
     console.warn('Dashboard picks load error:', e.message);
   }
@@ -7754,7 +7778,12 @@ async function runUniverseScan(opts = {}) {
       if (!isAfterDailyRecommendationRelease()) {
         console.log('post-scan picks deferred until SGT recommendation release');
       } else {
-        const picksResult = await generateServerPicksFromShortlist().catch(e => {
+        // A completed morning scan must become the day's board. Otherwise an
+        // empty qualifying set falls through to the sparse-board safeguard and
+        // leaves yesterday's recommendations visible indefinitely.
+        const picksResult = await generateServerPicksFromShortlist({
+          replaceFreshScanBoard: opts.publishFreshBoard === true,
+        }).catch(e => {
           console.warn('post-scan picks:', e.message);
           return { ok: false, error: e.message };
         });
@@ -8146,7 +8175,11 @@ async function generateServerPicksFromShortlist(opts = {}) {
     // explicit force / allowRepeat unlocks (Refresh with force).
     const prevTs = Number(dashboardPicksCache && dashboardPicksCache.dashTs) || 0;
     const sameSgtDay = prevTs > 0 && singaporeDateKey(prevTs) === singaporeDateKey();
-    const forceBoard = opts.force === true || opts.allowRepeat === true || opts.unlockBoard === true;
+    // A completed new-day universe scan is authoritative. It needs to replace
+    // an interim board built from yesterday's shortlist, or explicitly publish
+    // an empty board when nothing passes today's gates.
+    const forceBoard = opts.force === true || opts.allowRepeat === true || opts.unlockBoard === true
+      || opts.replaceFreshScanBoard === true;
     if (sameSgtDay && !forceBoard && cleanPrevCount > 0) {
       console.log('Same-day board lock — keeping', dashboardPicksSummary(cleanPrev || prevDash));
       return {
@@ -8161,7 +8194,10 @@ async function generateServerPicksFromShortlist(opts = {}) {
     }
 
     const sparseCollapse = cleanPrevCount >= 3 && newCount < Math.min(3, Math.ceil(cleanPrevCount * 0.4));
-    if (!opts.replaceInvalidBoard && ((newCount === 0 && cleanPrevCount > 0) || sparseCollapse)) {
+    const replacePriorDayBoard = opts.replacePreviousDayBoard === true && !sameSgtDay;
+    const mustPublishFreshScan = opts.replaceFreshScanBoard === true;
+    if (!opts.replaceInvalidBoard && !replacePriorDayBoard && !mustPublishFreshScan
+      && ((newCount === 0 && cleanPrevCount > 0) || sparseCollapse)) {
       console.warn(
         'Server picks regen too thin (', newCount, 'vs prior', cleanPrevCount,
         ') — keeping previous board (prior-day opens stripped)'
@@ -11895,7 +11931,10 @@ async function scanSchedulerTick(boot = false) {
     // A 20h TTL otherwise fires ~02:00 SGT and used to publish a fake morning board.
     if (shortlistStale && (sgtMinutes >= SCAN_PRE_MINUTES_SGT)) {
       console.log('Scheduler: universe shortlist stale → rescan (reason=', boot ? 'boot' : 'daily-shortlist', ')');
-      runUniverseScan({ reason: boot ? 'boot' : 'daily-shortlist' });
+      runUniverseScan({
+        reason: boot ? 'boot' : 'daily-shortlist',
+        publishFreshBoard: picksTs <= 0 || singaporeDateKey(picksTs) !== todayKey,
+      });
       // Fall through: still regen picks from the current shortlist so the morning
       // board updates even while the heavy universe scan is running.
     }
@@ -11912,7 +11951,7 @@ async function scanSchedulerTick(boot = false) {
     // Runs BEFORE the 06:00 picks regen so the board is built from fresh candidates.
     if (pastScanTime && needsDailyRefresh && !shortlistStale && !universeScanState.running) {
       console.log('Scheduler: new SGT morning (04:45+) → universe rescan for fresh candidates');
-      runUniverseScan({ reason: 'morning' });
+      runUniverseScan({ reason: 'morning', publishFreshBoard: true });
     }
 
     // Morning regeneration — overdue is a retry condition, not permission to
@@ -11935,7 +11974,11 @@ async function scanSchedulerTick(boot = false) {
         force: needsDailyRefresh || overdue,
         unlockBoard: needsDailyRefresh || overdue,
         cooldownFromCurrent: beforeDailyRelease,
-        replaceInvalidBoard: beforeDailyRelease
+        // A current-day refresh may publish an empty board, but it must never
+        // leave the previous day's recommendations live.
+        replaceInvalidBoard: beforeDailyRelease,
+        replacePreviousDayBoard: needsDailyRefresh,
+        replaceFreshScanBoard: beforeDailyRelease,
       }).catch(e => ({ ok: false, error: e.message }));
       if (r && r.ok) {
         _lastPicksDateKey = todayKey;
