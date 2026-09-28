@@ -863,11 +863,23 @@ function ok(name, cond, detail) {
         && /if \(!stop && !stopAcknowledged\)/.test(bridge));
     })();
 
+    // ── T33 LSE stop acknowledgement is bound to the active order ID ────────
+    (function t33() {
+      const bridge = fs.readFileSync(path.join(__dirname, '..', 'ibkr-bridge', 'bridge.js'), 'utf8');
+      ok('T33 acknowledgement matches current stop id',
+        /row\.stopAcknowledgedId = Number\(orderId\)/.test(bridge)
+        && /Number\(row\.stopAcknowledgedId\) === Number\(row\.stopId\)/.test(bridge));
+      ok('T33 external stop cancel clears stale acknowledgement',
+        /const ownCancel = \(st === 'Cancelled' \|\| st === 'ApiCancelled'\) && bridgeRequestedCancel\(orderId\)/.test(bridge)
+        && /external stop cancellation — clearing acknowledgement/.test(bridge)
+        && /row\.stopRoutingFailed = true/.test(bridge));
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T32 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T33 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();

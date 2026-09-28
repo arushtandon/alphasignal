@@ -50,3 +50,11 @@ test('acknowledged LSE runner stop can park one TP2 when omitted from open order
   assert.match(bridge, /if \(!stop && !stopAcknowledged\)/);
   assert.match(bridge, /runner stop acknowledged but absent from open-order snapshot/);
 });
+
+test('LSE acknowledgement belongs to the current stop and is cleared on external cancellation', () => {
+  assert.match(bridge, /row\.stopAcknowledgedId = Number\(orderId\)/);
+  assert.match(bridge, /Number\(row\.stopAcknowledgedId\) === Number\(row\.stopId\)/);
+  assert.match(bridge, /const ownCancel = \(st === 'Cancelled' \|\| st === 'ApiCancelled'\) && bridgeRequestedCancel\(orderId\)/);
+  assert.match(bridge, /external stop cancellation — clearing acknowledgement/);
+  assert.match(bridge, /row\.stopId = null/);
+});

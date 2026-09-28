@@ -1494,6 +1494,7 @@ async function main() {
   // Persist debounce across restarts (in-memory Map was resetting to 1/2 every boot).
   if (!state.unauthStreak || typeof state.unauthStreak !== 'object') state.unauthStreak = {};
   const _cancelWaiters = new Map(); // orderId -> { resolve, timer }
+  const _bridgeCancelRequestedAt = new Map(); // orderId -> monotonic-ish timestamp
   const portfolioAvgCost = new Map(); // normalized yahoo -> averageCost from IB
   const lotCache = new Map(); // posKey -> board lot
   let nextDetailsId = 900000;
@@ -1862,6 +1863,7 @@ async function main() {
           if (row.stopId === Number(orderId)) {
             row.stopRoutingFailed = false;
             row.stopAcknowledgedAt = new Date().toISOString();
+            row.stopAcknowledgedId = Number(orderId);
             row.stopAcknowledgedSource = 'orderStatus:' + st;
           }
         }
@@ -3238,7 +3240,24 @@ async function main() {
         label, orderId);
       return;
     }
-    try { api.cancelOrder(orderId); log('cancel sent', label, orderId, 'client=' + clientForOrder(orderId, { orderClients: state.orderClients, row: rowOwningOrder(state.byKey, orderId), managerId: activeClientId })); } catch (e) { log('cancel failed', label, orderId, e.message); }
+    try {
+      _bridgeCancelRequestedAt.set(Number(orderId), Date.now());
+      api.cancelOrder(orderId);
+      log('cancel sent', label, orderId, 'client=' + clientForOrder(orderId, { orderClients: state.orderClients, row: rowOwningOrder(state.byKey, orderId), managerId: activeClientId }));
+    } catch (e) {
+      _bridgeCancelRequestedAt.delete(Number(orderId));
+      log('cancel failed', label, orderId, e.message);
+    }
+  }
+
+  function bridgeRequestedCancel(orderId) {
+    const at = Number(_bridgeCancelRequestedAt.get(Number(orderId)) || 0);
+    if (!(at > 0)) return false;
+    if (Date.now() - at > 10 * 60 * 1000) {
+      _bridgeCancelRequestedAt.delete(Number(orderId));
+      return false;
+    }
+    return true;
   }
 
   /** Wait until IB acks cancel (or timeout). Used to close the place-then-cancel double-fill window. */
@@ -3728,7 +3747,9 @@ async function main() {
   const RUNNER_STOP_ACK_GRACE_MS = 10 * 60 * 1000;
   function runnerStopRecentlyAcknowledged(row) {
     const at = Date.parse(row && row.stopAcknowledgedAt || '');
-    return Number.isFinite(at) && Date.now() - at >= 0 && Date.now() - at <= RUNNER_STOP_ACK_GRACE_MS;
+    return row && row.stopId != null
+      && Number(row.stopAcknowledgedId) === Number(row.stopId)
+      && Number.isFinite(at) && Date.now() - at >= 0 && Date.now() - at <= RUNNER_STOP_ACK_GRACE_MS;
   }
 
   function sameContractAndSide(a, b) {
@@ -4352,6 +4373,7 @@ async function main() {
 
   function onOrderStatus(orderId, status, filled, avgFillPrice) {
     const st = String(status || '');
+    const ownCancel = (st === 'Cancelled' || st === 'ApiCancelled') && bridgeRequestedCancel(orderId);
     if (st === 'Cancelled' || st === 'ApiCancelled' || st === 'Inactive') {
       noteCancelAck(orderId, st);
     }
@@ -4362,9 +4384,23 @@ async function main() {
     }
     if (st === 'Cancelled' || st === 'ApiCancelled') {
       pendingOrders.delete(Number(orderId));
+      _bridgeCancelRequestedAt.delete(Number(orderId));
     }
     for (const [key, row] of Object.entries(state.byKey)) {
       if (row.closed) continue;
+      // A broker-side cancellation of a stop invalidates its LSE "ack" proof.
+      // Bridge-initiated cancel/replace keeps the id until its replacement path
+      // updates it, so it must not be mistaken for an externally lost stop.
+      if ((st === 'Cancelled' || st === 'ApiCancelled')
+        && !ownCancel && Number(row.stopId) === Number(orderId)) {
+        delete row.stopAcknowledgedAt;
+        delete row.stopAcknowledgedId;
+        delete row.stopAcknowledgedSource;
+        row.stopId = null;
+        row.stopRoutingFailed = true;
+        row.updated = new Date().toISOString();
+        log('external stop cancellation — clearing acknowledgement', key, 'oid=' + orderId);
+      }
       // Persist the parent-fill fact — entry_finalized's safety guard reads it
       // after restarts, when the in-memory orderFills counters are gone.
       if (row.parentId === orderId && filled > 0 && !row.entryFilled) {
@@ -5564,6 +5600,7 @@ async function main() {
         for (const stateRow of Object.values(state.byKey || {})) {
           if (stateRow && Number(stateRow.stopId) === Number(orderId)) {
             stateRow.stopAcknowledgedAt = new Date().toISOString();
+            stateRow.stopAcknowledgedId = Number(orderId);
             stateRow.stopAcknowledgedSource = 'openOrder';
           }
         }
