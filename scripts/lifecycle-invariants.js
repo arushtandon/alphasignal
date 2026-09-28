@@ -834,11 +834,27 @@ function ok(name, cond, detail) {
         && staleClient.mediumExitTs === undefined, JSON.stringify(staleClient));
     })();
 
+    // ── T31 Runner TP2/TSL OCA contract (bridge source) ─────────────────────
+    (function t31() {
+      const bridge = fs.readFileSync(path.join(__dirname, '..', 'ibkr-bridge', 'bridge.js'), 'utf8');
+      ok('T31 runner stops use live OCA helper',
+        /function runnerStopOrder\(row, key, fields\)/.test(bridge)
+        && /order\.ocaType = 2/.test(bridge)
+        && /tsl ratchet OCA check/.test(bridge));
+      ok('T31 reconcile verifies live OCA orders',
+        /stop\.ocaGroup !== group \|\| existing\.ocaGroup !== group/.test(bridge)
+        && /row\.runnerOcaStopId !== stop\.orderId/.test(bridge));
+      ok('T31 TP2 attribution and partial-fill guard intact',
+        /function attributedRunnerQty\(key, row, posInDir\)/.test(bridge)
+        && /skip TP2 — runner attribution ambiguous/.test(bridge)
+        && /runner stop partial-TP2 resize/.test(bridge));
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T30 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T31 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();

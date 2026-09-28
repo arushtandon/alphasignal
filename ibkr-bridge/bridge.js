@@ -1954,7 +1954,10 @@ async function main() {
           }
           if (!role) continue;
           if (role === 'tp1') onTp1Filled(key, row);
-          if (role === 'tp2') onTp2Filled(key, row);
+          if (role === 'tp2') recordTp2Fill(
+            key, row, Number(exec.shares) || 0, 'execDetails',
+            String(exec.execId || exec.id || `${orderId}:${exec.time || exec.timeStamp || ''}`)
+          );
           if (role === 'entry') {
             const firstEntry = !row.entryFilled;
             row.entryFilled = true;
@@ -3687,6 +3690,68 @@ async function main() {
       : Math.max(rounded, roundPx(entryPx, row.contract));
   }
 
+  // Post-TP1 TP2 and TSL are one reducing OCA pair. Use type 2 so an
+  // intentionally partial TP2 fill reduces, rather than cancels, the runner
+  // stop and TP2 remainder. Type 1 would cancel the sibling on the first
+  // partial fill and leave the residual runner unprotected.
+  function runnerOcaGroupForKey(key, row) {
+    if (!row.runnerOcaGroup) row.runnerOcaGroup = `${ocaGroupForKey(key)}-runner`;
+    return row.runnerOcaGroup;
+  }
+
+  function runnerStopOrder(row, key, fields) {
+    const order = {
+      ...fields,
+      action: fields.action || (row.side === 'sell' ? 'BUY' : 'SELL'),
+      orderType: 'STP',
+      tif: 'GTC',
+      outsideRth: fields.outsideRth == null ? ORDER_OUTSIDE_RTH : fields.outsideRth,
+      transmit: fields.transmit !== false
+    };
+    if (row.tp1Done === true) {
+      order.ocaGroup = runnerOcaGroupForKey(key, row);
+      order.ocaType = 2;
+    }
+    return baseOrder(order);
+  }
+
+  function protectiveStopOrder(row, key, fields) {
+    return row.tp1Done === true
+      ? runnerStopOrder(row, key, fields)
+      : baseOrder({ ...fields, orderType: 'STP' });
+  }
+
+  function sameContractAndSide(a, b) {
+    if (!a || !b || String(a.side || 'buy') !== String(b.side || 'buy')) return false;
+    const aConId = Number(a.contract && a.contract.conId) || 0;
+    const bConId = Number(b.contract && b.contract.conId) || 0;
+    if (aConId > 0 && bConId > 0) return aConId === bConId;
+    return normalizeYahooTicker(a.ticker) === normalizeYahooTicker(b.ticker);
+  }
+
+  // IB reports one net position per contract, but the bridge can hold multiple
+  // model rows for it. Never size an exit from the net position alone.
+  function attributedRunnerQty(key, row, posInDir) {
+    const desired = Math.max(0, (Number(row.qtyRunner) || 0) - (Number(row.tp2FilledQty) || 0));
+    if (!(desired > 0) || !(posInDir > 0)) return { qty: 0, ambiguous: false };
+    let siblingQty = 0;
+    for (const [otherKey, other] of Object.entries(state.byKey || {})) {
+      if (otherKey === key || !other || other.closed || !other.entryFilled || !sameContractAndSide(row, other)) continue;
+      const claimed = other.tp1Done
+        ? Math.max(0, Number(other.qtyRunner) - Number(other.tp2FilledQty || 0))
+        : Math.max(0, Number(other.qtyTotal));
+      if (!(claimed > 0)) {
+        return { qty: 0, ambiguous: true, reason: `sibling ${otherKey} has no attributable quantity` };
+      }
+      siblingQty += claimed;
+    }
+    const available = posInDir - siblingQty;
+    if (!(available > 0)) {
+      return { qty: 0, ambiguous: true, reason: `siblings claim ${siblingQty} of ${posInDir}` };
+    }
+    return { qty: Math.min(desired, available), ambiguous: false, siblingQty };
+  }
+
   /** Remaining shares are the runner: no TP1 child, STP at TSL (BE floor). */
   function restoreRunnerStop(key, row, qty) {
     if (!row || !(qty > 0) || !row.contract) return false;
@@ -3715,10 +3780,8 @@ async function main() {
     row.stopPx = stp;
     row.qtyRunner = qty;
     row.qtySold = Math.max(0, (Number(row.qtyTotal) || qty) - qty);
-    transmitOrder(sid, row.contract, baseOrder({
-      orderId: sid,
-      action: row.side === 'sell' ? 'BUY' : 'SELL',
-      orderType: 'STP', auxPrice: stp, totalQuantity: qty, transmit: true
+    transmitOrder(sid, row.contract, runnerStopOrder(row, key, {
+      orderId: sid, auxPrice: stp, totalQuantity: qty
     }), 'runner TSL restore ' + key);
     return true;
   }
@@ -3970,18 +4033,10 @@ async function main() {
     const runnerStop = roundPx(tsl > 0 ? tsl : beStop, row.contract);
     row.stopPx = runnerStop;
     if (row.qtyRunner > 0) {
-      // The runner is a two-order OCA: its GTC TP2 limit is the live profit
-      // exit and the ratcheted stop is its protective backup. This is distinct
-      // from the pre-TP1 full-position bracket (and from 1-lot TP1 OCA).
-      const runnerOca = { ocaGroup: runnerOcaGroupForKey(key, row), ocaType: 1 };
-      transmitOrder(row.stopId, row.contract, baseOrder({
-        orderId: row.stopId,
-        action: isSell ? 'BUY' : 'SELL',
-        orderType: 'STP', auxPrice: runnerStop,
-        totalQuantity: row.qtyRunner, parentId: row.parentId, tif: 'GTC',
-        transmit: true, ...runnerOca
+      transmitOrder(row.stopId, row.contract, runnerStopOrder(row, key, {
+        orderId: row.stopId, auxPrice: runnerStop, totalQuantity: row.qtyRunner,
+        parentId: row.parentId
       }), 'stop→runner/TSL ' + key);
-      row.runnerOcaApplied = true;
     } else {
       cancelOrder(row.stopId, 'stop (no runner) ' + key);
     }
@@ -4013,13 +4068,9 @@ async function main() {
     return roundPx(raw, row.contract, isSell ? 'down' : 'up');
   }
 
-  function runnerOcaGroupForKey(key, row) {
-    if (!row.runnerOcaGroup) row.runnerOcaGroup = `${ocaGroupForKey(key)}-runner`;
-    return row.runnerOcaGroup;
-  }
-
-  function parkRunnerTp2(key, row) {
-    if (!row || row.closed || row.tp2Done || !(Number(row.qtyRunner) > 0)) return false;
+  function parkRunnerTp2(key, row, qty) {
+    const runnerQty = Number(qty) || Math.max(0, Number(row && row.qtyRunner) - Number(row && row.tp2FilledQty || 0));
+    if (!row || row.closed || row.tp2Done || !(runnerQty > 0)) return false;
     if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK' && row.contract.secType !== 'FUT')) return false;
     const tp2Px = runnerTp2Px(row);
     if (!(tp2Px > 0)) {
@@ -4042,13 +4093,13 @@ async function main() {
     row.tp2AttachAttemptAt = new Date().toISOString();
     row.tp2RoutingFailed = false;
     const closeAction = isSell ? 'BUY' : 'SELL';
-    const runnerOca = { ocaGroup: runnerOcaGroupForKey(key, row), ocaType: 1 };
+    const runnerOca = { ocaGroup: runnerOcaGroupForKey(key, row), ocaType: 2 };
     transmitOrder(oid, row.contract, baseOrder({
       orderId: oid, action: closeAction, orderType: 'LMT',
-      lmtPrice: lmt, totalQuantity: row.qtyRunner,
+      lmtPrice: lmt, totalQuantity: runnerQty,
       tif: 'GTC', outsideRth: ORDER_OUTSIDE_RTH, transmit: true, ...runnerOca
     }), 'tp2 runner ' + key);
-    log('TP2 parked', key, closeAction, 'LMT', lmt, 'x' + row.qtyRunner,
+    log('TP2 parked', key, closeAction, 'LMT', lmt, 'x' + runnerQty,
       lastPx > 0 ? ('last=' + lastPx) : '');
     return true;
   }
@@ -4071,6 +4122,48 @@ async function main() {
       ).then(() => log('TELEGRAM: TP2 hit sent', key))
         .catch(e => log('TELEGRAM: TP2 hit failed', e.message));
     }
+  }
+
+  function recordTp2Fill(key, row, shares, source, execId) {
+    if (!row || row.closed || row.tp2Done) return;
+    const total = Math.max(0, Number(row.qtyRunner) || 0);
+    if (!(total > 0)) return;
+    if (execId) {
+      const seen = Array.isArray(row.tp2ExecIds) ? row.tp2ExecIds : [];
+      if (seen.includes(execId)) return;
+      row.tp2ExecIds = [...seen.slice(-31), execId];
+    }
+    const qty = Math.max(0, Number(shares) || 0);
+    if (!(qty > 0)) return;
+    if (row.tp2ExecFilledQty == null && row.tp2OrderStatusFilled == null && Number(row.tp2FilledQty) > 0) {
+      row.tp2OrderStatusFilled = Number(row.tp2FilledQty);
+    }
+    if (source === 'orderStatus') {
+      row.tp2OrderStatusFilled = Math.max(Number(row.tp2OrderStatusFilled) || 0, qty);
+    } else {
+      row.tp2ExecFilledQty = Math.min(total, (Number(row.tp2ExecFilledQty) || 0) + qty);
+    }
+    row.tp2FilledQty = Math.min(total, Math.max(
+      Number(row.tp2ExecFilledQty) || 0,
+      Number(row.tp2OrderStatusFilled) || 0,
+    ));
+    const remaining = Math.max(0, total - Number(row.tp2FilledQty || 0));
+    if (!(remaining > 0)) {
+      onTp2Filled(key, row);
+      return;
+    }
+    // OCA type 2 should reduce both live children. Reassert the precise
+    // remainder immediately so a delayed/partial broker update cannot leave
+    // an oversized stop or a stale TP2 quantity.
+    if (row.stopId != null && Number(row.stopPx) > 0) {
+      transmitOrder(row.stopId, row.contract, runnerStopOrder(row, key, {
+        orderId: row.stopId, auxPrice: row.stopPx, totalQuantity: remaining
+      }), 'runner stop partial-TP2 resize ' + key);
+    }
+    ensureWorkingTp2Children(null, { onlyKey: key })
+      .catch(e => log('partial TP2 runner repair failed', key, e.message));
+    log('TP2 partial fill', key, Number(row.tp2FilledQty) + '/' + total,
+      'remaining=' + remaining);
   }
 
   /**
@@ -4166,19 +4259,22 @@ async function main() {
         log('TSL catch-up skipped — through/tight last', key, 'floor', floorTsl, 'last', lastPx);
         continue;
       }
+      const attribution = attributedRunnerQty(key, row, posInDir);
+      if (attribution.ambiguous || !(attribution.qty > 0)) {
+        log('TSL catch-up skipped — runner attribution ambiguous', key, attribution.reason || '');
+        continue;
+      }
       const want = runnerStopPx(row, raw);
       const improves = isSell ? want < Number(row.stopPx) : want > Number(row.stopPx);
       if (!improves || !(want > 0)) continue;
       row.stopPx = want;
       row.lastTslRatchetAt = new Date().toISOString();
-      transmitOrder(row.stopId, row.contract, baseOrder({
-        orderId: row.stopId,
-        action: isSell ? 'BUY' : 'SELL',
-        orderType: 'STP', auxPrice: want, totalQuantity: posInDir,
-        transmit: true
+      transmitOrder(row.stopId, row.contract, runnerStopOrder(row, key, {
+        orderId: row.stopId, auxPrice: want, totalQuantity: attribution.qty
       }), 'tsl live-catchup ' + key);
       n++;
-      log('TSL live catch-up', key, 'stp', want, 'qty', posInDir);
+      log('TSL live catch-up', key, 'stp', want, 'qty', attribution.qty,
+        'oca=' + runnerOcaGroupForKey(key, row));
     }
     if (n) saveState(state);
     return n;
@@ -4231,7 +4327,9 @@ async function main() {
         ? (row.side === 'sell' ? Math.max(0, -held.pos) : Math.max(0, held.pos))
         : 0;
       if (shares > 0) row.qtySold = shares;
-      if (posInDir > 0) row.qtyRunner = posInDir;
+      if (!(Number(row.qtyRunner) > 0) && Number(row.qtyTotal) > shares) {
+        row.qtyRunner = Number(row.qtyTotal) - shares;
+      }
       if (match.orderId) row.tp1Id = Number(match.orderId);
       onTp1Filled(key, row);
       n++;
@@ -4286,8 +4384,8 @@ async function main() {
           saveState(state);
         }
       }
-      if (row.tp2Id === orderId && (status === 'Filled' || filled >= (Number(row.qtyRunner) || 0)) && filled > 0) {
-        onTp2Filled(key, row);
+      if (row.tp2Id === orderId && filled > 0) {
+        recordTp2Fill(key, row, filled, 'orderStatus');
         saveState(state);
       }
       if (row.stopId === orderId && status === 'Filled') {
@@ -4496,16 +4594,31 @@ async function main() {
       const liveQty = held
         ? (row.side === 'sell' ? Math.max(0, -held.pos) : Math.max(0, held.pos))
         : 0;
-      const qty = liveQty > 0 ? liveQty : (Number(row.qtyRunner) || Number(row.qtyTotal) || 0);
+      const attributed = liveQty > 0
+        ? attributedRunnerQty(key, row, liveQty)
+        : { qty: Number(row.qtyRunner) || Number(row.qtyTotal) || 0, ambiguous: false };
+      const qty = attributed.qty;
+      if (attributed.ambiguous) {
+        log('tsl_update skipped — runner attribution ambiguous', key, attributed.reason || '');
+        return;
+      }
       if (!(qty > 0) || row.stopId == null) {
         log('tsl_update skipped — no live qty/stop', key);
         return;
       }
-      transmitOrder(row.stopId, row.contract, baseOrder({
-        orderId: row.stopId, action: row.side === 'sell' ? 'BUY' : 'SELL',
-        orderType: 'STP', auxPrice: floored, totalQuantity: qty,
-        transmit: true
+      transmitOrder(row.stopId, row.contract, runnerStopOrder(row, key, {
+        orderId: row.stopId, auxPrice: floored, totalQuantity: qty
       }), 'tsl ratchet ' + key);
+      const liveOrders = await listWorkingOrders();
+      const liveStop = liveOrders.find(o => o.orderId === row.stopId);
+      const liveTp2 = liveOrders.find(o => o.orderId === row.tp2Id);
+      const expectedGroup = runnerOcaGroupForKey(key, row);
+      log('tsl ratchet OCA check', key,
+        'stop=' + (liveStop && liveStop.ocaGroup || 'missing'),
+        'tp2=' + (liveTp2 && liveTp2.ocaGroup || 'missing'),
+        'expected=' + expectedGroup,
+        liveStop && liveTp2 && liveStop.ocaGroup === expectedGroup && liveTp2.ocaGroup === expectedGroup
+          ? 'MATCH' : 'PENDING_RECONCILE');
       row.updated = evt.t;
       saveState(state);
       return;
@@ -5432,6 +5545,8 @@ async function main() {
           lmt: Number(order.lmtPrice) || 0,
           aux: Number(order.auxPrice) || 0,
           tif: String(order.tif || '').toUpperCase(),
+          ocaGroup: String(order.ocaGroup || ''),
+          ocaType: Number(order.ocaType) || 0,
           yahoo: yahooFromContract(contract),
           status: st,
           clientId: cid
@@ -5617,10 +5732,20 @@ async function main() {
       // half / qtySold is not a fill (MNDI 850→425 naked, PLTR runner dump).
       // When TP1 is live, runner-only stop: DHL 25 Aug STP 157 + TP1 78 on a
       // 157 long would otherwise be short 78.
-      const stopQty = protectiveStopQty({
+      const plannedStopQty = protectiveStopQty({
         posInDir, tp1WorkingQty, tp1Done: row.tp1Done, fullTp1
       });
-      const existing = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null) || stps[0];
+      const runnerAttribution = row.tp1Done ? attributedRunnerQty(key, row, posInDir) : null;
+      if (runnerAttribution && (runnerAttribution.ambiguous || !(runnerAttribution.qty > 0))) {
+        log('RECONCILE: skip runner stop — attribution ambiguous', key, runnerAttribution.reason || '');
+        continue;
+      }
+      const stopQty = row.tp1Done ? runnerAttribution.qty : plannedStopQty;
+      // A post-TP1 runner must never adopt a same-contract sibling's stop.
+      // Before TP1 the legacy fallback is safe; after TP1 only its tracked ID
+      // can identify the per-row protective order.
+      const existing = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null)
+        || (!row.tp1Done ? stps[0] : null);
       if (existing) {
         const ownerCid = Number(existing.clientId) || Number(state.orderClients[existing.orderId]) || 0;
         if (ownerCid > 0) {
@@ -5647,10 +5772,9 @@ async function main() {
             continue;
           }
           const qty = stopQty > 0 ? stopQty : existing.qty;
-          transmitOrder(existing.orderId, row.contract, baseOrder({
+          transmitOrder(existing.orderId, row.contract, protectiveStopOrder(row, key, {
             orderId: existing.orderId,
             action: closeAction,
-            orderType: 'STP',
             auxPrice: wantSl,
             totalQuantity: qty,
             transmit: true
@@ -5682,10 +5806,9 @@ async function main() {
             log('RECONCILE: cannot resize stop — no socket for client', ownerCid, key);
             continue;
           }
-          transmitOrder(existing.orderId, row.contract, baseOrder({
+          transmitOrder(existing.orderId, row.contract, protectiveStopOrder(row, key, {
             orderId: existing.orderId,
             action: closeAction,
-            orderType: 'STP',
             auxPrice: existing.aux > 0 ? existing.aux : roundPx(row.stopPx, row.contract),
             totalQuantity: stopQty,
             transmit: true
@@ -5701,10 +5824,9 @@ async function main() {
       }
       // LSE often omits GTC children from reqOpenOrders. Cap our own STP from state.
       if (row.stopId != null && stopQty > 0 && stopQty < posInDir - 1e-6) {
-        transmitOrder(row.stopId, row.contract, baseOrder({
+        transmitOrder(row.stopId, row.contract, protectiveStopOrder(row, key, {
           orderId: row.stopId,
           action: closeAction,
-          orderType: 'STP',
           auxPrice: roundPx(row.stopPx, row.contract),
           totalQuantity: stopQty,
           transmit: true
@@ -5738,7 +5860,7 @@ async function main() {
         try { row.contract = await resolveInstrument(row.contract) || row.contract; }
         catch (e) { log('stop attach resolve failed', key, e.message); continue; }
       }
-      const qty = row.tp1Done ? posInDir : stopQty;
+      const qty = row.tp1Done ? runnerAttribution.qty : stopQty;
       const stp = row.tp1Done ? runnerStopPx(row, row.stopPx) : roundPx(row.stopPx, row.contract);
       if (!(stp > 0) || !(qty > 0)) {
         logOnce('stop-skip-qty-' + key, 'stop attach skip', key, 'qty', qty, 'stp', stp, 'pos', posInDir, 'tp1Working', tp1WorkingQty);
@@ -5751,10 +5873,9 @@ async function main() {
       row.stopRoutingFailed = false;
       row.stopAttachAttemptAt = new Date().toISOString();
       row.updated = row.stopAttachAttemptAt;
-      transmitOrder(oid, row.contract, baseOrder({
+      transmitOrder(oid, row.contract, protectiveStopOrder(row, key, {
         orderId: oid,
         action: closeAction,
-        orderType: 'STP',
         auxPrice: stp,
         totalQuantity: qty,
         transmit: true
@@ -5995,7 +6116,12 @@ async function main() {
       const held = heldForContract(row.contract);
       const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
       if (!(posInDir > 0)) continue;
-      row.qtyRunner = posInDir;
+      const attribution = attributedRunnerQty(key, row, posInDir);
+      if (attribution.ambiguous || !(attribution.qty > 0)) {
+        log('RECONCILE: skip TP2 — runner attribution ambiguous', key, attribution.reason || '');
+        continue;
+      }
+      const runnerQty = attribution.qty;
       const closeAction = row.side === 'sell' ? 'BUY' : 'SELL';
       const want = runnerTp2Px(row);
       if (!(want > 0)) continue;
@@ -6003,8 +6129,16 @@ async function main() {
       const lmts = working.filter(o =>
         o.type === 'LMT' && o.action === closeAction && rowMatchesWorking(row, o)
       );
+      const stps = working.filter(o =>
+        o.type === 'STP' && o.action === closeAction && rowMatchesWorking(row, o)
+      );
+      const stop = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null) || null;
+      if (!stop) {
+        log('RECONCILE: skip TP2 — live runner stop not visible', key);
+        continue;
+      }
       const existing = (row.tp2Id != null ? lmts.find(o => o.orderId === row.tp2Id) : null)
-        || lmts.find(o => Math.abs(o.qty - posInDir) < 1e-6 && Math.abs((o.lmt || 0) - want) < Math.max(Math.abs(want) * 0.002, 0.01))
+        || lmts.find(o => Math.abs(o.qty - runnerQty) < 1e-6 && Math.abs((o.lmt || 0) - want) < Math.max(Math.abs(want) * 0.002, 0.01))
         || null;
       if (existing) {
         if (row.tp2Id !== existing.orderId) {
@@ -6013,30 +6147,35 @@ async function main() {
           n++;
           log('RECONCILE: adopted working TP2', key, 'orderId=' + existing.orderId, 'lmt=' + existing.lmt);
         }
-        // Older recovered rows can have a TP2 and runner stop that pre-date
-        // the OCA pairing. Modify those live orders in place; never add a
-        // second limit or stop just to repair the linkage.
-        if (!row.runnerOcaApplied && row.stopId != null && Number(row.stopPx) > 0) {
-          const runnerOca = { ocaGroup: runnerOcaGroupForKey(key, row), ocaType: 1 };
-          transmitOrder(row.stopId, row.contract, baseOrder({
-            orderId: row.stopId, action: closeAction, orderType: 'STP',
-            auxPrice: row.stopPx, totalQuantity: posInDir, tif: 'GTC',
-            outsideRth: ORDER_OUTSIDE_RTH, transmit: true, ...runnerOca
+        // Verify the LIVE open-order pair on every reconciliation. A local
+        // marker is not proof: a TSL modify may otherwise silently drop OCA.
+        const group = runnerOcaGroupForKey(key, row);
+        const needsPairRepair = stop.ocaGroup !== group || existing.ocaGroup !== group
+          || stop.ocaType !== 2 || existing.ocaType !== 2
+          || Number(stop.qty) !== runnerQty || Number(existing.qty) !== runnerQty
+          || row.runnerOcaStopId !== stop.orderId;
+        if (needsPairRepair && Number(row.stopPx) > 0) {
+          transmitOrder(stop.orderId, row.contract, runnerStopOrder(row, key, {
+            orderId: stop.orderId, action: closeAction, auxPrice: row.stopPx,
+            totalQuantity: runnerQty
           }), 'runner stop OCA repair ' + key);
           transmitOrder(existing.orderId, row.contract, baseOrder({
             orderId: existing.orderId, action: closeAction, orderType: 'LMT',
-            lmtPrice: want, totalQuantity: posInDir, tif: 'GTC',
-            outsideRth: ORDER_OUTSIDE_RTH, transmit: true, ...runnerOca
+            lmtPrice: want, totalQuantity: runnerQty, tif: 'GTC',
+            outsideRth: ORDER_OUTSIDE_RTH, transmit: true,
+            ocaGroup: group, ocaType: 2
           }), 'runner TP2 OCA repair ' + key);
-          row.runnerOcaApplied = true;
+          row.stopId = stop.orderId;
+          row.runnerOcaStopId = stop.orderId;
           n++;
-          log('RECONCILE: linked runner TP2+TSL OCA', key, 'orderId=' + existing.orderId);
+          log('RECONCILE: linked runner TP2+TSL OCA', key, 'orderId=' + existing.orderId,
+            'stop=' + stop.orderId, 'qty=' + runnerQty, 'group=' + group);
         }
         continue;
       }
       const lastAttempt = row.tp2AttachAttemptAt ? Date.parse(row.tp2AttachAttemptAt) : NaN;
       if (Number.isFinite(lastAttempt) && Date.now() - lastAttempt < 2 * 60 * 1000 && !row.tp2RoutingFailed) continue;
-      if (parkRunnerTp2(key, row)) n++;
+      if (parkRunnerTp2(key, row, runnerQty)) n++;
     }
     if (n) saveState(state);
     return n;
@@ -6640,12 +6779,16 @@ async function main() {
         const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
         if (!(posInDir > 0)) continue;
         const total = Number(row.qtyTotal) || 0;
+        const attribution = attributedRunnerQty(key, row, posInDir);
+        if (attribution.ambiguous || !(attribution.qty > 0)) {
+          log('RECONCILE: runner resume skipped — attribution ambiguous', key, attribution.reason || '');
+          continue;
+        }
         row.closed = false;
         row.entryFilled = true;
-        row.qtyRunner = posInDir;
-        row.qtySold = Math.max(0, total - posInDir);
-        restoreRunnerStop(key, row, posInDir);
-        log('RECONCILE: resume runner TSL', key, 'qty', posInDir, 'stp', row.stopPx);
+        row.qtySold = Math.max(0, total - attribution.qty);
+        restoreRunnerStop(key, row, attribution.qty);
+        log('RECONCILE: resume runner TSL', key, 'qty', attribution.qty, 'stp', row.stopPx);
         saveState(state);
       }
 
