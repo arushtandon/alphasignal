@@ -850,11 +850,24 @@ function ok(name, cond, detail) {
         && /runner stop partial-TP2 resize/.test(bridge));
     })();
 
+    // ── T32 Partial TP2 / LSE omitted-GTC runner safeguards ─────────────────
+    (function t32() {
+      const bridge = fs.readFileSync(path.join(__dirname, '..', 'ibkr-bridge', 'bridge.js'), 'utf8');
+      ok('T32 partial TP2 modifies total, not remainder-only',
+        /const tp2TotalQty = tp2FilledQty \+ runnerQty/.test(bridge)
+        && /const existingUnfilledQty = Math\.max\(0, Number\(existing\.qty\) - tp2FilledQty\)/.test(bridge)
+        && /totalQuantity: tp2TotalQty/.test(bridge));
+      ok('T32 acknowledged omitted runner stop can park TP2',
+        /function runnerStopRecentlyAcknowledged\(row\)/.test(bridge)
+        && /const stopAcknowledged = !stop && row\.stopId != null && runnerStopRecentlyAcknowledged\(row\)/.test(bridge)
+        && /if \(!stop && !stopAcknowledged\)/.test(bridge));
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T31 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T32 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();

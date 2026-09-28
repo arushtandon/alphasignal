@@ -35,3 +35,18 @@ test('runner quantities are attributed per row and partial TP2 fills retain prot
   assert.match(bridge, /TP2 partial fill/);
   assert.match(bridge, /if \(!\(remaining > 0\)\) \{\s*onTp2Filled\(key, row\)/);
 });
+
+test('partial TP2 reconciliation preserves the unfilled remainder', () => {
+  assert.match(bridge, /const tp2FilledQty = Math\.max\(0, Number\(row\.tp2FilledQty\) \|\| 0\)/);
+  assert.match(bridge, /const tp2TotalQty = tp2FilledQty \+ runnerQty/);
+  assert.match(bridge, /const existingUnfilledQty = Math\.max\(0, Number\(existing\.qty\) - tp2FilledQty\)/);
+  assert.match(bridge, /existingUnfilledQty !== runnerQty/);
+  assert.match(bridge, /totalQuantity: tp2TotalQty/);
+});
+
+test('acknowledged LSE runner stop can park one TP2 when omitted from open orders', () => {
+  assert.match(bridge, /function runnerStopRecentlyAcknowledged\(row\)/);
+  assert.match(bridge, /const stopAcknowledged = !stop && row\.stopId != null && runnerStopRecentlyAcknowledged\(row\)/);
+  assert.match(bridge, /if \(!stop && !stopAcknowledged\)/);
+  assert.match(bridge, /runner stop acknowledged but absent from open-order snapshot/);
+});

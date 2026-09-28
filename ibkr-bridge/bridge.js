@@ -1859,7 +1859,11 @@ async function main() {
           if (!row) continue;
           if (row.tp1Id === Number(orderId)) row.tp1RoutingFailed = false;
           if (row.tp2Id === Number(orderId)) row.tp2RoutingFailed = false;
-          if (row.stopId === Number(orderId)) row.stopRoutingFailed = false;
+          if (row.stopId === Number(orderId)) {
+            row.stopRoutingFailed = false;
+            row.stopAcknowledgedAt = new Date().toISOString();
+            row.stopAcknowledgedSource = 'orderStatus:' + st;
+          }
         }
       }
       onOrderStatus(orderId, status, Number(filled) || 0, avg);
@@ -3721,6 +3725,12 @@ async function main() {
       : baseOrder({ ...fields, orderType: 'STP' });
   }
 
+  const RUNNER_STOP_ACK_GRACE_MS = 10 * 60 * 1000;
+  function runnerStopRecentlyAcknowledged(row) {
+    const at = Date.parse(row && row.stopAcknowledgedAt || '');
+    return Number.isFinite(at) && Date.now() - at >= 0 && Date.now() - at <= RUNNER_STOP_ACK_GRACE_MS;
+  }
+
   function sameContractAndSide(a, b) {
     if (!a || !b || String(a.side || 'buy') !== String(b.side || 'buy')) return false;
     const aConId = Number(a.contract && a.contract.conId) || 0;
@@ -5551,6 +5561,12 @@ async function main() {
           status: st,
           clientId: cid
         };
+        for (const stateRow of Object.values(state.byKey || {})) {
+          if (stateRow && Number(stateRow.stopId) === Number(orderId)) {
+            stateRow.stopAcknowledgedAt = new Date().toISOString();
+            stateRow.stopAcknowledgedSource = 'openOrder';
+          }
+        }
         byId.set(orderId, preferWorkerOpenOrder(byId.get(orderId), row, activeClientId));
       };
       const finish = (allEnded) => {
@@ -6133,12 +6149,19 @@ async function main() {
         o.type === 'STP' && o.action === closeAction && rowMatchesWorking(row, o)
       );
       const stop = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null) || null;
-      if (!stop) {
+      const stopAcknowledged = !stop && row.stopId != null && runnerStopRecentlyAcknowledged(row);
+      if (!stop && !stopAcknowledged) {
         log('RECONCILE: skip TP2 — live runner stop not visible', key);
         continue;
       }
+      if (stopAcknowledged) {
+        log('RECONCILE: runner stop acknowledged but absent from open-order snapshot', key,
+          'oid=' + row.stopId, 'source=' + (row.stopAcknowledgedSource || 'unknown'));
+      }
+      const tp2FilledQty = Math.max(0, Number(row.tp2FilledQty) || 0);
+      const tp2TotalQty = tp2FilledQty + runnerQty;
       const existing = (row.tp2Id != null ? lmts.find(o => o.orderId === row.tp2Id) : null)
-        || lmts.find(o => Math.abs(o.qty - runnerQty) < 1e-6 && Math.abs((o.lmt || 0) - want) < Math.max(Math.abs(want) * 0.002, 0.01))
+        || lmts.find(o => Math.abs(o.qty - tp2TotalQty) < 1e-6 && Math.abs((o.lmt || 0) - want) < Math.max(Math.abs(want) * 0.002, 0.01))
         || null;
       if (existing) {
         if (row.tp2Id !== existing.orderId) {
@@ -6149,10 +6172,21 @@ async function main() {
         }
         // Verify the LIVE open-order pair on every reconciliation. A local
         // marker is not proof: a TSL modify may otherwise silently drop OCA.
+        // An IB LMT's totalQuantity includes its cumulative fills. Compare the
+        // remaining quantity to the runner, and preserve those fills on modify.
+        const existingUnfilledQty = Math.max(0, Number(existing.qty) - tp2FilledQty);
         const group = runnerOcaGroupForKey(key, row);
+        if (!stop) {
+          // LSE can omit a live GTC stop from reqOpenOrders. The acknowledged
+          // ID is enough to retain/adopt this TP2, but not enough to modify a
+          // missing stop; wait for a later complete snapshot to repair it.
+          log('RECONCILE: TP2 retained — deferred OCA stop verification', key,
+            'tp2=' + existing.orderId, 'stop=' + row.stopId);
+          continue;
+        }
         const needsPairRepair = stop.ocaGroup !== group || existing.ocaGroup !== group
           || stop.ocaType !== 2 || existing.ocaType !== 2
-          || Number(stop.qty) !== runnerQty || Number(existing.qty) !== runnerQty
+          || Number(stop.qty) !== runnerQty || existingUnfilledQty !== runnerQty
           || row.runnerOcaStopId !== stop.orderId;
         if (needsPairRepair && Number(row.stopPx) > 0) {
           transmitOrder(stop.orderId, row.contract, runnerStopOrder(row, key, {
@@ -6161,7 +6195,7 @@ async function main() {
           }), 'runner stop OCA repair ' + key);
           transmitOrder(existing.orderId, row.contract, baseOrder({
             orderId: existing.orderId, action: closeAction, orderType: 'LMT',
-            lmtPrice: want, totalQuantity: runnerQty, tif: 'GTC',
+            lmtPrice: want, totalQuantity: tp2TotalQty, tif: 'GTC',
             outsideRth: ORDER_OUTSIDE_RTH, transmit: true,
             ocaGroup: group, ocaType: 2
           }), 'runner TP2 OCA repair ' + key);
