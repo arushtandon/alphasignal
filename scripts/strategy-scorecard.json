@@ -1,16 +1,21 @@
 {
-  "generatedAt": "2026-09-28T10:34:29.719Z",
-  "codeCommit": "e683c5341744d8e1bca0d5e0900754109b9b8de4",
+  "generatedAt": "2026-09-28T10:55:03.831Z",
+  "codeCommit": "f2a56cc3404a812915a68c91cdda58f377fe77e8",
   "render": {
     "healthUrl": "https://alphasignal-dvg5.onrender.com/api/health",
-    "deploy": "server_build=20260903-hist-tp-booked-v8.2.17; uptime_s=12127; commit=UNKNOWN",
+    "deploy": "server_build=20260903-hist-tp-booked-v8.2.17; uptime_s=13361; commit=UNKNOWN",
     "healthError": null,
     "publicEnv": {
+      "deployCommit": "UNKNOWN",
+      "runtimeConfig": "UNKNOWN",
       "fmpKeyResolved": true,
       "fmpPlan": "ultimate",
       "disabledBrackets": "UNKNOWN"
-    }
+    },
+    "commitStatus": "UNKNOWN"
   },
+  "errorTradePnlTotal": 0,
+  "paperSource": "C:\\Users\\tando\\Downloads\\alphasignal-repo\\data/ibkr_fills.jsonl",
   "cells": [
     {
       "geography": "US",
@@ -20,14 +25,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Strong rating; MTF Supertrend(10,3), momentum/HLC and structural S/R confirmation; FMP quality required; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "us",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "us",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -40,17 +72,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
-        "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
-        "winPct": null,
+        "status": "DATA_DIR",
+        "dateRange": "2026-08-12T13:30:00.000Z → 2026-08-27T13:30:11.000Z",
+        "closedTrades": 1,
+        "openTrades": 0,
+        "winPct": 0,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -62,14 +95,41 @@
         "enabled": "UNKNOWN",
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Strong rating; MTF Supertrend(10,3), momentum/HLC and structural S/R confirmation; FMP quality required; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "us",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "us",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -82,17 +142,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -104,14 +165,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Strong rating; FMP quality required; minimum RR 1.4; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "us",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "us",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -124,17 +212,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -146,14 +235,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Strong rating; FMP quality required; minimum RR 1.4; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "us",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "us",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -166,17 +282,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -188,14 +305,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Strong rating; FMP quality required; minimum RR 1.4; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "us",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "us",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -208,17 +352,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -230,14 +375,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Strong rating; FMP quality required; minimum RR 1.4; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "us",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "us",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -250,17 +422,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -272,14 +445,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -292,17 +492,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -314,14 +515,41 @@
         "enabled": "UNKNOWN",
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -334,17 +562,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -356,14 +585,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -376,17 +632,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -398,14 +655,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -418,17 +702,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -440,14 +725,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -460,17 +772,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -482,14 +795,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -502,17 +842,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -524,14 +865,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -544,17 +912,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -566,14 +935,41 @@
         "enabled": "UNKNOWN",
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -586,17 +982,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -608,14 +1005,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -628,17 +1052,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -650,14 +1075,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -670,17 +1122,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -692,14 +1145,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -712,17 +1192,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -734,14 +1215,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -754,17 +1262,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -776,14 +1285,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Strong rating; MTF Supertrend(10,3), momentum/HLC and structural S/R confirmation; FMP quality required; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "uk",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "uk",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -796,17 +1332,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -818,14 +1355,41 @@
         "enabled": "UNKNOWN",
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Strong rating; MTF Supertrend(10,3), momentum/HLC and structural S/R confirmation; FMP quality required; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "uk",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "uk",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -838,17 +1402,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -860,14 +1425,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Strong rating; FMP quality required; minimum RR 1.4; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "uk",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "uk",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -880,17 +1472,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -902,14 +1495,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Strong rating; FMP quality required; minimum RR 1.4; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "uk",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "uk",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -922,17 +1542,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -944,14 +1565,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Strong rating; FMP quality required; minimum RR 1.4; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "uk",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "uk",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -964,17 +1612,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -986,14 +1635,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Strong rating; FMP quality required; minimum RR 1.4; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "uk",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "uk",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1006,17 +1682,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1028,14 +1705,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "europe",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "europe",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1048,17 +1752,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1070,14 +1775,41 @@
         "enabled": "UNKNOWN",
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "europe",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "europe",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1090,17 +1822,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1112,14 +1845,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "europe",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "europe",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1132,17 +1892,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1154,14 +1915,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "europe",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "europe",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1174,17 +1962,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1196,14 +1985,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "europe",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "europe",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1216,17 +2032,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1238,14 +2055,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "europe",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "europe",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1258,17 +2102,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1280,14 +2125,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "europe",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "europe",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1300,17 +2172,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1322,14 +2195,41 @@
         "enabled": "UNKNOWN",
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "europe",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "europe",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1342,17 +2242,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1364,14 +2265,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "europe",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "europe",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1384,17 +2312,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1406,14 +2335,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "europe",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "europe",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1426,17 +2382,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1448,14 +2405,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "europe",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "europe",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1468,17 +2452,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1490,14 +2475,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "europe",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "europe",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1510,17 +2522,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1532,14 +2545,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1552,17 +2592,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "signals-only / IBKR execution eligibility UNKNOWN",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1574,14 +2615,41 @@
         "enabled": "UNKNOWN",
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1594,17 +2662,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "signals-only / IBKR execution eligibility UNKNOWN",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1616,14 +2685,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1636,17 +2732,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "signals-only / IBKR execution eligibility UNKNOWN",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1658,14 +2755,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1678,17 +2802,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "signals-only / IBKR execution eligibility UNKNOWN",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1700,14 +2825,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1720,17 +2872,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "signals-only / IBKR execution eligibility UNKNOWN",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1742,14 +2895,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Trend/momentum technical engine with FMP quality/fundamental overlay when provider data exists; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings report: PIT available; analyst estimates: CURRENT-only",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "asia",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "asia",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1762,17 +2942,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "signals-only / IBKR execution eligibility UNKNOWN",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -1784,14 +2965,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Technical-only market tier; no FMP quality gate; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical inputs: YES; inventory, curve and event data: UNKNOWN/not live",
+        "marketTier": {
+          "tier": "technical_only",
+          "label": "Technical Only",
+          "region": "commodity",
+          "danelfin": false,
+          "fmp": false,
+          "note": "No fundamental scoring for commodities — SD channel + momentum"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "technical_only",
+            "label": "Technical Only",
+            "region": "commodity",
+            "danelfin": false,
+            "fmp": false,
+            "note": "No fundamental scoring for commodities — SD channel + momentum"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -1804,288 +3012,64 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
-        "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "status": "DATA_DIR",
+        "dateRange": "2026-09-02T01:00:00.278Z → 2026-09-02T01:00:00.278Z",
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
     {
       "geography": "Commodities",
-      "horizon": "short",
-      "side": "sell",
-      "liveConfig": {
-        "enabled": "UNKNOWN",
-        "disabledBy": null,
-        "strategyFamily": "trend engine",
-        "entryRules": "Technical-only market tier; no FMP quality gate; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical inputs: YES; inventory, curve and event data: UNKNOWN/not live",
-        "envOverrides": {
-          "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
-        }
-      },
-      "backtestEvidence": {
-        "study": "NONE",
-        "date": null,
-        "holdoutN": null,
-        "winPct": null,
-        "profitFactor": null,
-        "netPnl": null,
-        "holdoutStatus": "NONE"
-      },
-      "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
-        "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
-        "winPct": null,
-        "profitFactor": null,
-        "realisedPnl": null,
-        "avgWin": null,
-        "avgLoss": null
-      },
-      "driftFlag": "UNTESTED",
-      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
-    },
-    {
-      "geography": "Commodities",
-      "horizon": "medium",
-      "side": "buy",
-      "liveConfig": {
-        "enabled": true,
-        "disabledBy": null,
-        "strategyFamily": "trend engine",
-        "entryRules": "Technical-only market tier; no FMP quality gate; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical inputs: YES; inventory, curve and event data: UNKNOWN/not live",
-        "envOverrides": {
-          "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
-        }
-      },
-      "backtestEvidence": {
-        "study": "NONE",
-        "date": null,
-        "holdoutN": null,
-        "winPct": null,
-        "profitFactor": null,
-        "netPnl": null,
-        "holdoutStatus": "NONE"
-      },
-      "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
-        "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
-        "winPct": null,
-        "profitFactor": null,
-        "realisedPnl": null,
-        "avgWin": null,
-        "avgLoss": null
-      },
-      "driftFlag": "UNTESTED",
-      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
-    },
-    {
-      "geography": "Commodities",
-      "horizon": "medium",
-      "side": "sell",
-      "liveConfig": {
-        "enabled": false,
-        "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
-        "strategyFamily": "trend engine",
-        "entryRules": "Technical-only market tier; no FMP quality gate; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical inputs: YES; inventory, curve and event data: UNKNOWN/not live",
-        "envOverrides": {
-          "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
-        }
-      },
-      "backtestEvidence": {
-        "study": "NONE",
-        "date": null,
-        "holdoutN": null,
-        "winPct": null,
-        "profitFactor": null,
-        "netPnl": null,
-        "holdoutStatus": "NONE"
-      },
-      "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
-        "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
-        "winPct": null,
-        "profitFactor": null,
-        "realisedPnl": null,
-        "avgWin": null,
-        "avgLoss": null
-      },
-      "driftFlag": "UNTESTED",
-      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
-    },
-    {
-      "geography": "Commodities",
-      "horizon": "long",
-      "side": "buy",
-      "liveConfig": {
-        "enabled": true,
-        "disabledBy": null,
-        "strategyFamily": "trend engine",
-        "entryRules": "Technical-only market tier; no FMP quality gate; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical inputs: YES; inventory, curve and event data: UNKNOWN/not live",
-        "envOverrides": {
-          "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
-        }
-      },
-      "backtestEvidence": {
-        "study": "NONE",
-        "date": null,
-        "holdoutN": null,
-        "winPct": null,
-        "profitFactor": null,
-        "netPnl": null,
-        "holdoutStatus": "NONE"
-      },
-      "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
-        "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
-        "winPct": null,
-        "profitFactor": null,
-        "realisedPnl": null,
-        "avgWin": null,
-        "avgLoss": null
-      },
-      "driftFlag": "UNTESTED",
-      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
-    },
-    {
-      "geography": "Commodities",
-      "horizon": "long",
-      "side": "sell",
-      "liveConfig": {
-        "enabled": false,
-        "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
-        "strategyFamily": "trend engine",
-        "entryRules": "Technical-only market tier; no FMP quality gate; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical inputs: YES; inventory, curve and event data: UNKNOWN/not live",
-        "envOverrides": {
-          "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
-        }
-      },
-      "backtestEvidence": {
-        "study": "NONE",
-        "date": null,
-        "holdoutN": null,
-        "winPct": null,
-        "profitFactor": null,
-        "netPnl": null,
-        "holdoutStatus": "NONE"
-      },
-      "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
-        "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
-        "winPct": null,
-        "profitFactor": null,
-        "realisedPnl": null,
-        "avgWin": null,
-        "avgLoss": null
-      },
-      "driftFlag": "UNTESTED",
-      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
-    },
-    {
-      "geography": "Crypto",
-      "horizon": "short",
-      "side": "buy",
-      "liveConfig": {
-        "enabled": true,
-        "disabledBy": null,
-        "strategyFamily": "trend engine",
-        "entryRules": "Technical-only market tier; no FMP quality gate; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical inputs: YES; inventory, curve and event data: UNKNOWN/not live",
-        "envOverrides": {
-          "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
-        }
-      },
-      "backtestEvidence": {
-        "study": "NONE",
-        "date": null,
-        "holdoutN": null,
-        "winPct": null,
-        "profitFactor": null,
-        "netPnl": null,
-        "holdoutStatus": "NONE"
-      },
-      "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
-        "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
-        "winPct": null,
-        "profitFactor": null,
-        "realisedPnl": null,
-        "avgWin": null,
-        "avgLoss": null
-      },
-      "driftFlag": "UNTESTED",
-      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
-    },
-    {
-      "geography": "Crypto",
       "horizon": "short",
       "side": "sell",
       "liveConfig": {
         "enabled": "UNKNOWN",
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Technical-only market tier; no FMP quality gate; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical inputs: YES; inventory, curve and event data: UNKNOWN/not live",
+        "marketTier": {
+          "tier": "technical_only",
+          "label": "Technical Only",
+          "region": "commodity",
+          "danelfin": false,
+          "fmp": false,
+          "note": "No fundamental scoring for commodities — SD channel + momentum"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "technical_only",
+            "label": "Technical Only",
+            "region": "commodity",
+            "danelfin": false,
+            "fmp": false,
+            "note": "No fundamental scoring for commodities — SD channel + momentum"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -2098,17 +3082,438 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
+      "driftFlag": "UNTESTED",
+      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
+    },
+    {
+      "geography": "Commodities",
+      "horizon": "medium",
+      "side": "buy",
+      "liveConfig": {
+        "enabled": true,
+        "disabledBy": null,
+        "strategyFamily": "trend engine",
+        "marketTier": {
+          "tier": "technical_only",
+          "label": "Technical Only",
+          "region": "commodity",
+          "danelfin": false,
+          "fmp": false,
+          "note": "No fundamental scoring for commodities — SD channel + momentum"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "technical_only",
+            "label": "Technical Only",
+            "region": "commodity",
+            "danelfin": false,
+            "fmp": false,
+            "note": "No fundamental scoring for commodities — SD channel + momentum"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
+        "envOverrides": {
+          "DISABLED_BRACKETS": "sell:medium,sell:long",
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
+        }
+      },
+      "backtestEvidence": {
+        "study": "NONE",
+        "date": null,
+        "holdoutN": null,
+        "winPct": null,
+        "profitFactor": null,
+        "netPnl": null,
+        "holdoutStatus": "NONE"
+      },
+      "livePaper": {
+        "status": "DATA_DIR",
+        "dateRange": null,
+        "closedTrades": 0,
+        "openTrades": 0,
+        "winPct": null,
+        "profitFactor": null,
+        "realisedPnl": 0,
+        "avgWin": null,
+        "avgLoss": null,
+        "tooEarly": true
+      },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
+      "driftFlag": "UNTESTED",
+      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
+    },
+    {
+      "geography": "Commodities",
+      "horizon": "medium",
+      "side": "sell",
+      "liveConfig": {
+        "enabled": false,
+        "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
+        "strategyFamily": "trend engine",
+        "marketTier": {
+          "tier": "technical_only",
+          "label": "Technical Only",
+          "region": "commodity",
+          "danelfin": false,
+          "fmp": false,
+          "note": "No fundamental scoring for commodities — SD channel + momentum"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "technical_only",
+            "label": "Technical Only",
+            "region": "commodity",
+            "danelfin": false,
+            "fmp": false,
+            "note": "No fundamental scoring for commodities — SD channel + momentum"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
+        "envOverrides": {
+          "DISABLED_BRACKETS": "sell:medium,sell:long",
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
+        }
+      },
+      "backtestEvidence": {
+        "study": "NONE",
+        "date": null,
+        "holdoutN": null,
+        "winPct": null,
+        "profitFactor": null,
+        "netPnl": null,
+        "holdoutStatus": "NONE"
+      },
+      "livePaper": {
+        "status": "DATA_DIR",
+        "dateRange": null,
+        "closedTrades": 0,
+        "openTrades": 0,
+        "winPct": null,
+        "profitFactor": null,
+        "realisedPnl": 0,
+        "avgWin": null,
+        "avgLoss": null,
+        "tooEarly": true
+      },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
+      "driftFlag": "UNTESTED",
+      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
+    },
+    {
+      "geography": "Commodities",
+      "horizon": "long",
+      "side": "buy",
+      "liveConfig": {
+        "enabled": true,
+        "disabledBy": null,
+        "strategyFamily": "trend engine",
+        "marketTier": {
+          "tier": "technical_only",
+          "label": "Technical Only",
+          "region": "commodity",
+          "danelfin": false,
+          "fmp": false,
+          "note": "No fundamental scoring for commodities — SD channel + momentum"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "technical_only",
+            "label": "Technical Only",
+            "region": "commodity",
+            "danelfin": false,
+            "fmp": false,
+            "note": "No fundamental scoring for commodities — SD channel + momentum"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
+        "envOverrides": {
+          "DISABLED_BRACKETS": "sell:medium,sell:long",
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
+        }
+      },
+      "backtestEvidence": {
+        "study": "NONE",
+        "date": null,
+        "holdoutN": null,
+        "winPct": null,
+        "profitFactor": null,
+        "netPnl": null,
+        "holdoutStatus": "NONE"
+      },
+      "livePaper": {
+        "status": "DATA_DIR",
+        "dateRange": null,
+        "closedTrades": 0,
+        "openTrades": 0,
+        "winPct": null,
+        "profitFactor": null,
+        "realisedPnl": 0,
+        "avgWin": null,
+        "avgLoss": null,
+        "tooEarly": true
+      },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
+      "driftFlag": "UNTESTED",
+      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
+    },
+    {
+      "geography": "Commodities",
+      "horizon": "long",
+      "side": "sell",
+      "liveConfig": {
+        "enabled": false,
+        "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
+        "strategyFamily": "trend engine",
+        "marketTier": {
+          "tier": "technical_only",
+          "label": "Technical Only",
+          "region": "commodity",
+          "danelfin": false,
+          "fmp": false,
+          "note": "No fundamental scoring for commodities — SD channel + momentum"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "technical_only",
+            "label": "Technical Only",
+            "region": "commodity",
+            "danelfin": false,
+            "fmp": false,
+            "note": "No fundamental scoring for commodities — SD channel + momentum"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
+        "envOverrides": {
+          "DISABLED_BRACKETS": "sell:medium,sell:long",
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
+        }
+      },
+      "backtestEvidence": {
+        "study": "NONE",
+        "date": null,
+        "holdoutN": null,
+        "winPct": null,
+        "profitFactor": null,
+        "netPnl": null,
+        "holdoutStatus": "NONE"
+      },
+      "livePaper": {
+        "status": "DATA_DIR",
+        "dateRange": null,
+        "closedTrades": 0,
+        "openTrades": 0,
+        "winPct": null,
+        "profitFactor": null,
+        "realisedPnl": 0,
+        "avgWin": null,
+        "avgLoss": null,
+        "tooEarly": true
+      },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
+      "driftFlag": "UNTESTED",
+      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
+    },
+    {
+      "geography": "Crypto",
+      "horizon": "short",
+      "side": "buy",
+      "liveConfig": {
+        "enabled": true,
+        "disabledBy": null,
+        "strategyFamily": "trend engine",
+        "marketTier": {
+          "tier": "technical_only",
+          "label": "Technical Only",
+          "region": "commodity",
+          "danelfin": false,
+          "fmp": false,
+          "note": "No fundamental scoring for commodities — SD channel + momentum"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "technical_only",
+            "label": "Technical Only",
+            "region": "commodity",
+            "danelfin": false,
+            "fmp": false,
+            "note": "No fundamental scoring for commodities — SD channel + momentum"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
+        "envOverrides": {
+          "DISABLED_BRACKETS": "sell:medium,sell:long",
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
+        }
+      },
+      "backtestEvidence": {
+        "study": "NONE",
+        "date": null,
+        "holdoutN": null,
+        "winPct": null,
+        "profitFactor": null,
+        "netPnl": null,
+        "holdoutStatus": "NONE"
+      },
+      "livePaper": {
+        "status": "DATA_DIR",
+        "dateRange": null,
+        "closedTrades": 0,
+        "openTrades": 0,
+        "winPct": null,
+        "profitFactor": null,
+        "realisedPnl": 0,
+        "avgWin": null,
+        "avgLoss": null,
+        "tooEarly": true
+      },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
+      "driftFlag": "UNTESTED",
+      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
+    },
+    {
+      "geography": "Crypto",
+      "horizon": "short",
+      "side": "sell",
+      "liveConfig": {
+        "enabled": "UNKNOWN",
+        "disabledBy": null,
+        "strategyFamily": "trend engine",
+        "marketTier": {
+          "tier": "technical_only",
+          "label": "Technical Only",
+          "region": "commodity",
+          "danelfin": false,
+          "fmp": false,
+          "note": "No fundamental scoring for commodities — SD channel + momentum"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "technical_only",
+            "label": "Technical Only",
+            "region": "commodity",
+            "danelfin": false,
+            "fmp": false,
+            "note": "No fundamental scoring for commodities — SD channel + momentum"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
+        "envOverrides": {
+          "DISABLED_BRACKETS": "sell:medium,sell:long",
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
+        }
+      },
+      "backtestEvidence": {
+        "study": "NONE",
+        "date": null,
+        "holdoutN": null,
+        "winPct": null,
+        "profitFactor": null,
+        "netPnl": null,
+        "holdoutStatus": "NONE"
+      },
+      "livePaper": {
+        "status": "DATA_DIR",
+        "dateRange": null,
+        "closedTrades": 0,
+        "openTrades": 0,
+        "winPct": null,
+        "profitFactor": null,
+        "realisedPnl": 0,
+        "avgWin": null,
+        "avgLoss": null,
+        "tooEarly": true
+      },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -2120,14 +3525,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Technical-only market tier; no FMP quality gate; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical inputs: YES; inventory, curve and event data: UNKNOWN/not live",
+        "marketTier": {
+          "tier": "technical_only",
+          "label": "Technical Only",
+          "region": "commodity",
+          "danelfin": false,
+          "fmp": false,
+          "note": "No fundamental scoring for commodities — SD channel + momentum"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "technical_only",
+            "label": "Technical Only",
+            "region": "commodity",
+            "danelfin": false,
+            "fmp": false,
+            "note": "No fundamental scoring for commodities — SD channel + momentum"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -2140,17 +3572,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -2162,14 +3595,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Technical-only market tier; no FMP quality gate; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical inputs: YES; inventory, curve and event data: UNKNOWN/not live",
+        "marketTier": {
+          "tier": "technical_only",
+          "label": "Technical Only",
+          "region": "commodity",
+          "danelfin": false,
+          "fmp": false,
+          "note": "No fundamental scoring for commodities — SD channel + momentum"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "technical_only",
+            "label": "Technical Only",
+            "region": "commodity",
+            "danelfin": false,
+            "fmp": false,
+            "note": "No fundamental scoring for commodities — SD channel + momentum"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -2182,17 +3642,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -2204,14 +3665,41 @@
         "enabled": true,
         "disabledBy": null,
         "strategyFamily": "trend engine",
-        "entryRules": "Technical-only market tier; no FMP quality gate; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical inputs: YES; inventory, curve and event data: UNKNOWN/not live",
+        "marketTier": {
+          "tier": "technical_only",
+          "label": "Technical Only",
+          "region": "commodity",
+          "danelfin": false,
+          "fmp": false,
+          "note": "No fundamental scoring for commodities — SD channel + momentum"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "technical_only",
+            "label": "Technical Only",
+            "region": "commodity",
+            "danelfin": false,
+            "fmp": false,
+            "note": "No fundamental scoring for commodities — SD channel + momentum"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -2224,17 +3712,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     },
@@ -2246,14 +3735,41 @@
         "enabled": false,
         "disabledBy": "DISABLED_BRACKETS=sell:medium,sell:long",
         "strategyFamily": "trend engine",
-        "entryRules": "Technical-only market tier; no FMP quality gate; Conf >= 62; RR >= 1.1; horizon Supertrend cap; market/sector/earnings overlays",
-        "exits": "ATR/structure SL floor; partial TP1; TP2 is live runner exit; post-TP1 TSL ratchet; horizon time exit",
-        "pointInTimeReplayable": "price/volume/technical inputs: YES; inventory, curve and event data: UNKNOWN/not live",
+        "marketTier": {
+          "tier": "technical_only",
+          "label": "Technical Only",
+          "region": "commodity",
+          "danelfin": false,
+          "fmp": false,
+          "note": "No fundamental scoring for commodities — SD channel + momentum"
+        },
+        "entryRules": {
+          "confidenceFloor": "UNKNOWN",
+          "rrFloor": "UNKNOWN",
+          "supertrend": "UNKNOWN",
+          "marketTier": {
+            "tier": "technical_only",
+            "label": "Technical Only",
+            "region": "commodity",
+            "danelfin": false,
+            "fmp": false,
+            "note": "No fundamental scoring for commodities — SD channel + momentum"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": "UNKNOWN",
+          "atrMultiples": "UNKNOWN",
+          "minimumPct": "UNKNOWN",
+          "policy": "UNKNOWN",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_CONF": "UNKNOWN (Render health does not expose this non-secret flag)",
-          "PICKS_MIN_RR": "UNKNOWN (Render health does not expose this non-secret flag)"
+          "SELL_PICKS_ENABLED": "UNKNOWN",
+          "PICKS_MIN_CONF": "UNKNOWN",
+          "PICKS_MIN_RR": "UNKNOWN"
         }
       },
       "backtestEvidence": {
@@ -2266,17 +3782,18 @@
         "holdoutStatus": "NONE"
       },
       "livePaper": {
-        "status": "UNKNOWN",
-        "reason": "Render /api/ibkr/trades requires authentication; no Render ledger export was available to this read-only runtime",
+        "status": "DATA_DIR",
         "dateRange": null,
-        "closedTrades": null,
-        "openTrades": null,
+        "closedTrades": 0,
+        "openTrades": 0,
         "winPct": null,
         "profitFactor": null,
-        "realisedPnl": null,
+        "realisedPnl": 0,
         "avgWin": null,
-        "avgLoss": null
+        "avgLoss": null,
+        "tooEarly": true
       },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     }

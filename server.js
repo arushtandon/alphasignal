@@ -8425,6 +8425,18 @@ app.get('/api/health', async (req, res) => {
   res.json({
     status: 'ok',
     server_build: '20260903-hist-tp-booked-v8.2.17',
+    deployCommit: String(process.env.RENDER_GIT_COMMIT || '').trim() || null,
+    runtimeConfig: {
+      SELL_PICKS_ENABLED,
+      PICKS_MIN_CONF,
+      PICKS_MIN_RR,
+      DISABLED_BRACKETS: [...DISABLED_BRACKETS],
+      HORIZON_MIN_PCT,
+      HORIZON_PCT,
+      HORIZON_ATR,
+      SUPERTREND_PARAMS,
+      exitPolicyVersion: EXIT_POLICY_VERSION
+    },
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     quotes: 'yahoo_finance',
