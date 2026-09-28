@@ -13,7 +13,7 @@ const path = require('path');
 const key = String(
   process.env.FMP_API_KEY || process.env.FMP_KEY || process.env.FINANCIAL_MODELING_PREP_API_KEY || '',
 ).trim();
-const output = path.join(__dirname, process.argv[2] || 'fmp-point-in-time-capability.json');
+const defaultOutput = path.join(__dirname, process.argv[2] || 'fmp-point-in-time-capability.json');
 
 function normalize(payload) {
   if (Array.isArray(payload)) return payload;
@@ -70,6 +70,7 @@ async function probe(id, endpoint) {
 }
 
 async function runProbe(options = {}) {
+  const output = options.outputFile || defaultOutput;
   const probes = await Promise.all([
     probe('analyst_estimates', '/stable/analyst-estimates?symbol=AAPL&period=quarter&page=0&limit=20'),
     probe('historical_grades', '/stable/grades-historical?symbol=AAPL'),
@@ -126,7 +127,7 @@ async function runProbe(options = {}) {
 if (require.main === module) {
   runProbe().then(result => {
     console.log(JSON.stringify({
-      output,
+      output: defaultOutput,
       capability: result.capability,
       pointInTimeDecision: result.pointInTimeDecision,
     }, null, 2));

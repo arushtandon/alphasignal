@@ -7310,6 +7310,25 @@ const DATA_DIR = (() => {
 const DATA_DIR_PERSISTENT = Boolean(process.env.DATA_DIR || process.env.RENDER_DISK_MOUNT_PATH);
 console.log('Data dir:', DATA_DIR, DATA_DIR_PERSISTENT ? '(persistent disk)' : '(EPHEMERAL — set DATA_DIR to a mounted disk)');
 
+// This capture is intentionally initiated by the server at boot, not by a
+// browser request. On Render it runs in the process that owns FMP_API_KEY and
+// saves only the probe's redacted schema/sample report on the persistent disk.
+const FMP_CAPABILITY_VERDICT_FILE = path.join(DATA_DIR, 'fmp-capability-verdict.json');
+async function captureFmpCapabilityVerdict() {
+  try {
+    const { runProbe } = require('./scripts/probe-fmp-point-in-time');
+    const result = await runProbe({ outputFile: FMP_CAPABILITY_VERDICT_FILE });
+    console.log(
+      `FMP PIT capability capture saved: ${FMP_CAPABILITY_VERDICT_FILE} ` +
+      `(credentialConfigured=${result.credentialConfigured})`,
+    );
+    return result;
+  } catch (error) {
+    console.error('FMP PIT capability capture failed:', String(error?.message || error));
+    return null;
+  }
+}
+
 const HISTORY_FILE = (() => {
   const p = path.join(DATA_DIR, 'history_data.json');
   try { if (!fs.existsSync(p)) fs.writeFileSync(p, '[]'); } catch (_) {}
@@ -19994,6 +20013,9 @@ Promise.all([snapshotRecoveryReady, eventRecoveryReady, executionRecoveryReady])
 app.listen(PORT, () => {
   console.log('AlphaSignal on port', PORT);
     console.log('Anthropic API key set:', !!anthropicApiKey());
+  // One server-side, redacted capture per process start. This provides an
+  // auditable Render-side capability record without depending on SPA routing.
+  captureFmpCapabilityVerdict().catch(() => {});
   const likelyRender =
     String(process.env.RENDER || '').toLowerCase() === 'true' ||
     /\bonrender\.com\b/i.test(
