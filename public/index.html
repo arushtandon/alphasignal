@@ -7804,12 +7804,14 @@ function renderHist() {
             : '<span style="font-family:DM Mono,monospace;font-size:10px;color:var(--sell)">'+sl+'</span>';
           var bits = [];
           if (h[rh+'TslActivated']) bits.push('<span title="Trailing stop activated after TP1">TSL active</span>');
-          var alt = h[rh+'Tp2AltPnlPct'];
-          if (alt != null && isFinite(alt)) {
-            var actP = (computedPnlP != null && isFinite(computedPnlP)) ? Number(computedPnlP).toFixed(1)+'%' : '—';
-            var diff = (computedPnlP != null && isFinite(computedPnlP)) ? (Number(computedPnlP) - Number(alt)) : null;
-            var diffTxt = diff != null ? (diff >= 0 ? ' <span style="color:var(--buy)">(+'+diff.toFixed(1)+' running)</span>' : ' <span style="color:var(--sell)">('+diff.toFixed(1)+' running)</span>') : '';
-            bits.push('<span title="Hypothetical full exit at TP2 vs actual trailing-runner result">TP2-exit '+Number(alt).toFixed(1)+'% vs '+actP+diffTxt+'</span>');
+          var tp2Exit = h[rh+'Tp2ExitPnlPct'];
+          var tslExit = h[rh+'TslOnlyPnlPct'];
+          if (isClosed && tp2Exit != null && tslExit != null && isFinite(tp2Exit) && isFinite(tslExit)) {
+            var diff = Number(tslExit) - Number(tp2Exit);
+            var diffTxt = diff >= 0
+              ? ' <span style="color:var(--buy)">(TSL +'+diff.toFixed(1)+'%)</span>'
+              : ' <span style="color:var(--sell)">(TP2 +'+Math.abs(diff).toFixed(1)+'%)</span>';
+            bits.push('<span title="Closed runner comparison: live TP2 exit versus the alternative of riding the trailing stop">TP2 '+Number(tp2Exit).toFixed(1)+'% vs TSL '+Number(tslExit).toFixed(1)+'%'+diffTxt+'</span>');
           }
           var sec = h[rh+'SectorTrend'] || h.sectorTrend || '';
           if (!sec && (h.sector || h.fundSnapshot)) {

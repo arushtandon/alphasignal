@@ -807,11 +807,38 @@ function ok(name, cond, detail) {
       ok('T29 closed after signal flip', !S.hasOpenEmittedEntryForKey(key));
     })();
 
+    // ── T30 TP2 is a settled runner exit; only client ingest folds stale rows ─
+    (function t30() {
+      const settled = {
+        ticker: 'TP2.SETTLED', hz: 'medium', action: 'Buy',
+        mediumStatus: 'tp2_hit', mediumExitPrice: 112,
+        mediumExitTs: 1790000000000, mediumSettledTs: 1790000000000
+      };
+      const baseline = JSON.stringify(settled);
+      const refreshes = [
+        S.normalizeExtinctStatuses([settled], 'refresh'),
+        S.normalizeExtinctStatuses([settled], 'refresh'),
+        S.normalizeExtinctStatuses([settled], 'refresh')
+      ];
+      ok('T30 TP2 survives three refresh passes', refreshes.every(n => n === 0)
+        && JSON.stringify(settled) === baseline, JSON.stringify({ refreshes, settled }));
+
+      const staleClient = {
+        ticker: 'TP2.STALE', hz: 'medium', action: 'Buy',
+        mediumStatus: 'tp2_hit', mediumExitPrice: 112, mediumExitTs: 1790000000000
+      };
+      const folded = S.normalizeExtinctStatuses([staleClient], 'ingest');
+      ok('T30 client-uploaded stale TP2 folds on ingest', folded === 1
+        && staleClient.mediumStatus === 'open'
+        && staleClient.mediumExitPrice === undefined
+        && staleClient.mediumExitTs === undefined, JSON.stringify(staleClient));
+    })();
+
     if (failed) {
       console.error('\n' + failed + ' invariant(s) failed. DATA_DIR=' + tmp);
       process.exit(1);
     }
-    console.log('\nAll T1–T29 invariants passed. DATA_DIR=' + tmp);
+    console.log('\nAll T1–T30 invariants passed. DATA_DIR=' + tmp);
     process.exit(0);
   })();
 })();

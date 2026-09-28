@@ -3970,19 +3970,30 @@ async function main() {
     const runnerStop = roundPx(tsl > 0 ? tsl : beStop, row.contract);
     row.stopPx = runnerStop;
     if (row.qtyRunner > 0) {
+      // The runner is a two-order OCA: its GTC TP2 limit is the live profit
+      // exit and the ratcheted stop is its protective backup. This is distinct
+      // from the pre-TP1 full-position bracket (and from 1-lot TP1 OCA).
+      const runnerOca = { ocaGroup: runnerOcaGroupForKey(key, row), ocaType: 1 };
       transmitOrder(row.stopId, row.contract, baseOrder({
         orderId: row.stopId,
         action: isSell ? 'BUY' : 'SELL',
         orderType: 'STP', auxPrice: runnerStop,
-        totalQuantity: row.qtyRunner, parentId: row.parentId, transmit: true
+        totalQuantity: row.qtyRunner, parentId: row.parentId, tif: 'GTC',
+        transmit: true, ...runnerOca
       }), 'stop→runner/TSL ' + key);
+      row.runnerOcaApplied = true;
     } else {
       cancelOrder(row.stopId, 'stop (no runner) ' + key);
     }
     row.tp1FilledAt = row.tp1FilledAt || new Date().toISOString();
     log('TP1 filled', key, '— stop resized to runner', row.qtyRunner, '@ TSL', runnerStop);
     cancelExtraStopsAfterTp1(key, row).catch(e => log('extra-stop cancel failed', key, e.message));
-    if (row.qtyRunner > 0) parkRunnerTp2(key, row);
+    // Consult the live order book before placing. This adopts an existing TP2
+    // after reconnect/restart rather than creating a duplicate runner exit.
+    if (row.qtyRunner > 0) {
+      ensureWorkingTp2Children(null, { onlyKey: key })
+        .catch(e => log('TP2 post-TP1 attach failed', key, e.message));
+    }
     if (!DRY && telegramConfigured()) {
       const side = isSell ? 'SHORT' : 'LONG';
       const msg = '🟢 <b>TP1 hit</b>\n'
@@ -4000,6 +4011,11 @@ async function main() {
     const raw = resolveRunnerTp2Px(row);
     if (!(raw > 0) || !row.contract) return 0;
     return roundPx(raw, row.contract, isSell ? 'down' : 'up');
+  }
+
+  function runnerOcaGroupForKey(key, row) {
+    if (!row.runnerOcaGroup) row.runnerOcaGroup = `${ocaGroupForKey(key)}-runner`;
+    return row.runnerOcaGroup;
   }
 
   function parkRunnerTp2(key, row) {
@@ -4026,10 +4042,11 @@ async function main() {
     row.tp2AttachAttemptAt = new Date().toISOString();
     row.tp2RoutingFailed = false;
     const closeAction = isSell ? 'BUY' : 'SELL';
+    const runnerOca = { ocaGroup: runnerOcaGroupForKey(key, row), ocaType: 1 };
     transmitOrder(oid, row.contract, baseOrder({
       orderId: oid, action: closeAction, orderType: 'LMT',
       lmtPrice: lmt, totalQuantity: row.qtyRunner,
-      tif: 'GTC', outsideRth: ORDER_OUTSIDE_RTH, transmit: true
+      tif: 'GTC', outsideRth: ORDER_OUTSIDE_RTH, transmit: true, ...runnerOca
     }), 'tp2 runner ' + key);
     log('TP2 parked', key, closeAction, 'LMT', lmt, 'x' + row.qtyRunner,
       lastPx > 0 ? ('last=' + lastPx) : '');
@@ -5995,6 +6012,25 @@ async function main() {
           row.tp2RoutingFailed = false;
           n++;
           log('RECONCILE: adopted working TP2', key, 'orderId=' + existing.orderId, 'lmt=' + existing.lmt);
+        }
+        // Older recovered rows can have a TP2 and runner stop that pre-date
+        // the OCA pairing. Modify those live orders in place; never add a
+        // second limit or stop just to repair the linkage.
+        if (!row.runnerOcaApplied && row.stopId != null && Number(row.stopPx) > 0) {
+          const runnerOca = { ocaGroup: runnerOcaGroupForKey(key, row), ocaType: 1 };
+          transmitOrder(row.stopId, row.contract, baseOrder({
+            orderId: row.stopId, action: closeAction, orderType: 'STP',
+            auxPrice: row.stopPx, totalQuantity: posInDir, tif: 'GTC',
+            outsideRth: ORDER_OUTSIDE_RTH, transmit: true, ...runnerOca
+          }), 'runner stop OCA repair ' + key);
+          transmitOrder(existing.orderId, row.contract, baseOrder({
+            orderId: existing.orderId, action: closeAction, orderType: 'LMT',
+            lmtPrice: want, totalQuantity: posInDir, tif: 'GTC',
+            outsideRth: ORDER_OUTSIDE_RTH, transmit: true, ...runnerOca
+          }), 'runner TP2 OCA repair ' + key);
+          row.runnerOcaApplied = true;
+          n++;
+          log('RECONCILE: linked runner TP2+TSL OCA', key, 'orderId=' + existing.orderId);
         }
         continue;
       }

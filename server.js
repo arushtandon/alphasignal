@@ -8409,21 +8409,6 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
   }
 });
 
-// Authenticated, read-only research probe. It returns only a redacted schema
-// and endpoint capability classification; FMP credentials and raw payloads
-// never leave the Render process.
-app.get('/api/research/fmp-point-in-time-capability', async (req, res) => {
-  if (!req.authUser) return res.status(403).json({ error: 'Interactive user authentication required' });
-  try {
-    const { runProbe } = require('./scripts/probe-fmp-point-in-time');
-    const result = await runProbe({ write: false });
-    res.setHeader('Cache-Control', 'no-store');
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: String(error?.message || error) });
-  }
-});
-
 app.get('/api/health', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
@@ -8650,7 +8635,11 @@ app.get('/api/history/exit-quality', (req, res) => {
       donationDollar: don != null && Number.isFinite(+don) ? +((+don / 100) * 10000).toFixed(2) : null,
       beyondTp1Pct: d1 != null ? +d1 : null,
       beyondTp2Pct: d2 != null ? +d2 : null,
-      tp2AltPnlPct: h[hz + 'Tp2AltPnlPct'] != null ? +h[hz + 'Tp2AltPnlPct'] : null,
+      // Runner-method comparison only: TP2 is the live exit; TSL is the
+      // alternative. Do not describe TP2 as a hypothetical "reference".
+      tp2ExitPnlPct: h[hz + 'Tp2ExitPnlPct'] != null ? +h[hz + 'Tp2ExitPnlPct'] : null,
+      tslExitPnlPct: h[hz + 'TslOnlyPnlPct'] != null ? +h[hz + 'TslOnlyPnlPct'] : null,
+      tp2VsTslDeltaPct: h[hz + 'Tp2VsTslDeltaPct'] != null ? +h[hz + 'Tp2VsTslDeltaPct'] : null,
       favExtreme: h[hz + 'FavExtreme'] || null,
       sectorTrend: h[hz + 'SectorTrend'] || h.sector || null,
       pnlDollar: pn,
@@ -19075,10 +19064,9 @@ app.post('/api/risk-status/reset', express.json(), (req, res) => {
 });
 
 /** tp1_hit is extinct as a *full close* — TP1 only banks the partial.
- *  tp2_hit is a real runner exit again (remaining shares at TP2; TSL is backup).
- *  Fold both back to open on ingest so a stale browser localStorage row cannot
- *  mark Realised while the live runner is still open. Refresh then re-sims:
- *  a true TP2 print becomes tp2_hit; a TP1-only print stays open on the TSL. */
+ *  tp2_hit is a real, settled runner exit. A browser may upload an old
+ *  pre-live TP2 simulation, so client ingest folds it once; refresh must never
+ *  reopen a genuine TP2 exit that has already been settled. */
 function normalizeExtinctStatuses(rows, source) {
   let n = 0;
   for (const h of rows || []) {
@@ -19086,7 +19074,8 @@ function normalizeExtinctStatuses(rows, source) {
     const hzL = h.hz ? [h.hz] : ['short', 'medium', 'long'];
     for (const hz of hzL) {
       const s = h[hz + 'Status'];
-      if (s !== 'tp1_hit' && s !== 'tp2_hit') continue;
+      const mayFoldTp2 = source === 'ingest';
+      if (s !== 'tp1_hit' && !(mayFoldTp2 && s === 'tp2_hit')) continue;
       auditLog('foldin_reopen', { ticker: h.ticker, hz, from: s, source: source || 'refresh' });
       h[hz + 'Status'] = 'open';
       h[hz + 'ExitPrice'] = undefined;
@@ -19155,18 +19144,17 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
     if (reopened) saveHistoryFile(tradeHistory);
   }
 
-  // ALWAYS-ON: fold any extinct tp1_hit/tp2_hit rows back into partial+TSL so
-  // the sim re-decides them this pass. Idempotent — legitimate rows can never
-  // carry these statuses, so a clean history is a no-op here.
+  // ALWAYS-ON: TP1-only rows are extinct full closes and return to their
+  // partial+TSL lifecycle. TP2 is a live runner exit and remains settled.
   {
     const foldN = normalizeExtinctStatuses(tradeHistory, 'refresh');
-    if (foldN) { saveHistoryFile(tradeHistory); console.log('Partial+TSL fold-in: reopened', foldN, 'stale full-TP1/TP2 rows'); }
+    if (foldN) { saveHistoryFile(tradeHistory); console.log('Partial+TSL fold-in: reopened', foldN, 'stale full-TP1 rows'); }
   }
 
   // GRANDFATHER: rows settled before settlement-date accounting existed keep the
   // period they were already reported in (their exit-bar session). Stamped once.
   {
-    const _SET = ['tp1_then_sl', 'tp1_then_time', 'sl_hit', 'time_limit', 'signal_exit'];
+    const _SET = ['tp2_hit', 'tp1_then_sl', 'tp1_then_time', 'sl_hit', 'time_limit', 'signal_exit'];
     let gf = 0;
     for (const h of tradeHistory) {
       if (!(h.action === 'Buy' || h.action === 'Sell')) continue;
@@ -19649,10 +19637,8 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         // already blends the TP1 partial — use it directly, don't re-apply `dir`.
         h[hz + 'PnlPct'] = +(pathExit.ret * 100).toFixed(2);
         h[hz + 'PnlDollar'] = +(pathExit.ret * NOTIONAL).toFixed(2);
-        // EXIT-QUALITY ANALYSIS: the hypothetical "closed the runner at TP2"
-        // outcome vs what the ratchet actually produced. Null = TP2 never printed.
-        h[hz + 'Tp2AltPnlPct'] = pathExit.tp2AltRet != null ? +(pathExit.tp2AltRet * 100).toFixed(2) : null;
-        h[hz + 'Tp2AltPnlDollar'] = pathExit.tp2AltRet != null ? +(pathExit.tp2AltRet * NOTIONAL).toFixed(2) : null;
+        // Retain legacy fields only for old reports. Current exit-quality
+        // analytics below compare the live TP2 runner exit against TSL-only.
         // Surface the LIVE trailing stop — post-TP1 this ratchets daily on
         // favorable moves (never loosens), so History shows today's actual level.
         h[hz + 'LiveTrailSL'] = (pathExit.tp1Hit && pathExit.stopLoss > 0) ? roundPrice(pathExit.stopLoss) : null;
@@ -19664,6 +19650,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
           open: pathExit.tp1Hit ? 'TP1 banked; runner open on trailing stop' : '',
           tp1_open: 'TP1 banked; runner open on trailing stop',
           tp1_hit: 'TP1 target hit',
+          tp2_hit: 'TP1 banked; runner closed at TP2',
           tp1_then_sl: 'TP1 banked; trailing stop closed runner',
           tp1_then_time: 'TP1 banked; horizon time exit closed runner',
           sl_hit: 'Stop loss / trailing stop hit',
@@ -20056,6 +20043,7 @@ module.exports = {
   levelsMeetMinRR,
   rewardRiskRatio,
   computeTrailingStopFromTech,
+  normalizeExtinctStatuses,
   signalFlipped,
   horizonHoldDaysServer,
   fetchOHLCV,
