@@ -83,6 +83,39 @@ async function probe(id, endpoint) {
   }
 }
 
+async function probeHistory(id, endpoint, opts = {}) {
+  const limit = opts.limit || 250;
+  const maxPages = opts.maxPages || 20;
+  const rows = [];
+  let first = null;
+  for (let page = 0; page < maxPages; page++) {
+    const suffix = `${endpoint}${endpoint.includes('?') ? '&' : '?'}limit=${limit}&page=${page}`;
+    const result = await probe(id, suffix);
+    if (!first) first = result;
+    if (result.status !== 'PRESENT' || !(result.rowCount > 0)) break;
+    rows.push(result);
+    if (result.rowCount < limit) break;
+  }
+  if (!first) return { id, endpoint, status: 'UNAVAILABLE' };
+  const dated = rows.map(result => result.history).filter(Boolean);
+  const earliest = dated.map(item => item.earliestDate).filter(Boolean).sort()[0] || null;
+  const latest = dated.map(item => item.latestDate).filter(Boolean).sort().at(-1) || null;
+  const spacing = dated.map(item => item.averageSpacingDays).filter(Number.isFinite);
+  // Raw provider rows are deliberately never retained: only redacted page-zero
+  // sample/schema plus aggregate depth and date bounds are persisted.
+  return {
+    ...first,
+    endpoint,
+    rowCountTotal: rows.reduce((n, result) => n + (result.rowCount || 0), 0),
+    pagesFetched: rows.length,
+    history: dated.length ? {
+      earliestDate: earliest,
+      latestDate: latest,
+      averageSpacingDays: spacing.length ? +(spacing.reduce((n, value) => n + value, 0) / spacing.length).toFixed(1) : null
+    } : null
+  };
+}
+
 function presentWithHistory(result, timestampPattern) {
   if (result?.status !== 'PRESENT') return null;
   return (result.fields || []).some(field => timestampPattern.test(field));
@@ -107,11 +140,11 @@ function coverageMarket(symbol) {
 async function coverageForSymbol(symbol) {
   const encoded = encodeURIComponent(symbol);
   const endpoints = await Promise.all([
-    probe('grades_historical', `/stable/grades-historical?symbol=${encoded}`),
-    probe('earnings', `/stable/earnings?symbol=${encoded}`),
-    probe('income_statement_quarter', `/stable/income-statement?symbol=${encoded}&period=quarter&limit=20`),
-    probe('balance_sheet_quarter', `/stable/balance-sheet-statement?symbol=${encoded}&period=quarter&limit=20`),
-    probe('cash_flow_quarter', `/stable/cash-flow-statement?symbol=${encoded}&period=quarter&limit=20`),
+    probeHistory('grades_historical', `/stable/grades-historical?symbol=${encoded}`),
+    probeHistory('earnings', `/stable/earnings?symbol=${encoded}`),
+    probeHistory('income_statement_quarter', `/stable/income-statement?symbol=${encoded}&period=quarter`),
+    probeHistory('balance_sheet_quarter', `/stable/balance-sheet-statement?symbol=${encoded}&period=quarter`),
+    probeHistory('cash_flow_quarter', `/stable/cash-flow-statement?symbol=${encoded}&period=quarter`),
   ]);
   return {
     symbol,
@@ -119,7 +152,14 @@ async function coverageForSymbol(symbol) {
     endpoints: Object.fromEntries(endpoints.map(result => [result.id, {
       status: result.status,
       rowCount: result.rowCount || 0,
+      rowCountTotal: result.rowCountTotal || result.rowCount || 0,
+      pagesFetched: result.pagesFetched || 0,
       fields: result.fields || [],
+      sample: result.sample || null,
+      history: result.history || null,
+      filingDatePresent: (result.fields || []).includes('filingDate'),
+      acceptedDatePresent: (result.fields || []).includes('acceptedDate'),
+      epsEstimatedPresent: (result.fields || []).some(field => /^(epsEstimated|estimated|estimatedEpsAvg|estimatedEarning)$/i.test(field)),
     }])),
   };
 }
@@ -182,7 +222,7 @@ async function runProbe(options = {}) {
     statementQualityAsOf: statementFilingTimestamp,
   };
   const coverage = await Promise.all(
-    ['7203.T', '0700.HK', 'SHEL.L', 'SAP.DE', 'MC.PA'].map(coverageForSymbol),
+    ['AAPL', '7203.T', '0700.HK', 'SHEL.L', 'SAP.DE', 'MC.PA'].map(coverageForSymbol),
   );
   const result = {
     generatedAt: new Date().toISOString(),

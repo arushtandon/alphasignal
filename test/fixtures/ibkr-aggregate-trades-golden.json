@@ -1,0 +1,22 @@
+{
+  "rows": [
+    {"key":"AAPL|short|2026-09-01","ticker":"AAPL","hz":"short","side":"buy","currency":"USD","role":"entry","qty":10,"price":100,"time":"2026-09-01T01:00:00.000Z","execId":"multi-entry"},
+    {"key":"AAPL|short|2026-09-01","ticker":"AAPL","hz":"short","side":"buy","currency":"USD","role":"tp1","qty":4,"price":110,"time":"2026-09-02T01:00:00.000Z","execId":"multi-tp1"},
+    {"key":"MNDI.L|medium|2026-09-02","ticker":"MNDI.L","hz":"medium","side":"buy","currency":"GBP","ccyScale":100,"role":"entry","qty":100,"price":123.8,"time":"2026-09-02T01:00:00.000Z","execId":"lse-entry"},
+    {"key":"MNDI.L|medium|2026-09-02","ticker":"MNDI.L","hz":"medium","side":"buy","currency":"GBP","ccyScale":100,"role":"tp2","qty":100,"price":125,"time":"2026-09-03T01:00:00.000Z","execId":"lse-tp2"},
+    {"key":"TSLA|short|2026-09-03","ticker":"TSLA","hz":"short","side":"sell","currency":"USD","role":"entry","qty":5,"price":200,"time":"2026-09-03T01:00:00.000Z","execId":"short-entry"},
+    {"key":"TSLA|short|2026-09-03","ticker":"TSLA","hz":"short","side":"sell","currency":"USD","role":"tp1","qty":5,"price":180,"time":"2026-09-04T01:00:00.000Z","execId":"short-tp1"},
+    {"key":"6758.T|long|2026-09-04","ticker":"6758.T","hz":"long","side":"buy","currency":"JPY","role":"entry","qty":10,"price":1000,"time":"2026-09-04T01:00:00.000Z","execId":"jpy-entry"},
+    {"key":"6758.T|long|2026-09-04","ticker":"6758.T","hz":"long","side":"buy","currency":"JPY","role":"flatten","qty":10,"price":1100,"time":"2026-09-05T01:00:00.000Z","execId":"jpy-flat"},
+    {"key":"ERR|short|2026-09-05|cursor-err","ticker":"ERR","hz":"short","side":"buy","currency":"USD","role":"entry","qty":2,"price":10,"time":"2026-09-05T01:00:00.000Z","execId":"err-entry"},
+    {"key":"ERR|short|2026-09-05|cursor-err","ticker":"ERR","hz":"short","side":"buy","currency":"USD","role":"flatten","qty":2,"price":9,"time":"2026-09-06T01:00:00.000Z","execId":"err-flat"}
+  ],
+  "expected": [
+    {"key":"ERR|short|2026-09-05|cursor-err","entryQty":2,"exitQty":2,"openQty":0,"avgEntry":10,"avgExit":9,"status":"closed","realizedLocal":-2,"errorTrade":true,"commissionUsd":0,"stampDutyLocal":0,"stampDutyGbp":0,"stampDutyUsd":0,"realizedUsdGross":-2,"commissionInRealized":true,"realizedUsd":-2,"mark":null,"markSrc":null,"unrealizedUsd":0,"notionalUsd":20},
+    {"key":"6758.T|long|2026-09-04","entryQty":10,"exitQty":10,"openQty":0,"avgEntry":1000,"avgExit":1100,"status":"closed","realizedLocal":1000,"errorTrade":false,"commissionUsd":0,"stampDutyLocal":0,"stampDutyGbp":0,"stampDutyUsd":0,"realizedUsdGross":6.67,"commissionInRealized":true,"realizedUsd":6.67,"mark":null,"markSrc":null,"unrealizedUsd":0,"notionalUsd":66.67},
+    {"key":"TSLA|short|2026-09-03","entryQty":5,"exitQty":5,"openQty":0,"avgEntry":200,"avgExit":180,"status":"closed","realizedLocal":100,"errorTrade":false,"commissionUsd":0,"stampDutyLocal":0,"stampDutyGbp":0,"stampDutyUsd":0,"realizedUsdGross":100,"commissionInRealized":true,"realizedUsd":100,"mark":null,"markSrc":null,"unrealizedUsd":0,"notionalUsd":1000},
+    {"key":"MNDI.L|medium|2026-09-02","entryQty":100,"exitQty":100,"openQty":0,"avgEntry":123.8,"avgExit":125,"status":"closed","realizedLocal":1.2000000000000028,"errorTrade":false,"commissionUsd":0,"stampDutyLocal":0.619,"stampDutyGbp":0.619,"stampDutyUsd":0.79,"realizedUsdGross":1.54,"commissionInRealized":true,"realizedUsd":0.75,"mark":null,"markSrc":null,"unrealizedUsd":0,"notionalUsd":158.46},
+    {"key":"AAPL|short|2026-09-01","entryQty":10,"exitQty":4,"openQty":6,"avgEntry":100,"avgExit":110,"status":"partial","realizedLocal":40,"errorTrade":false,"commissionUsd":0,"stampDutyLocal":0,"stampDutyGbp":0,"stampDutyUsd":0,"realizedUsdGross":40,"commissionInRealized":false,"realizedUsd":40,"mark":120,"markSrc":"fixture","unrealizedUsd":120,"notionalUsd":600}
+  ],
+  "totals": {"totRealUsd":147.42,"totRealGrossUsd":148.20999999999998,"totCommissionUsd":0,"totOpenCommissionUsd":0,"totUnrealUsd":120,"wins":3,"losses":0,"openCount":1,"closedCount":3,"totStampDutyUsd":0.79,"totOpenStampDutyUsd":0,"errRealUsd":-2,"errUnrealUsd":0,"errOpen":0,"errClosed":1,"errCommissionUsd":0,"errOpenCommissionUsd":0}
+}

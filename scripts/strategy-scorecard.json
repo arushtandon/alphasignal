@@ -1,21 +1,146 @@
 {
-  "generatedAt": "2026-09-28T10:55:03.831Z",
-  "codeCommit": "f2a56cc3404a812915a68c91cdda58f377fe77e8",
+  "generatedAt": "2026-09-29T05:45:41.740Z",
+  "codeCommit": "3f4a5e04fb29a56103aa1fc6843d77174b3d3cf0",
   "render": {
     "healthUrl": "https://alphasignal-dvg5.onrender.com/api/health",
-    "deploy": "server_build=20260903-hist-tp-booked-v8.2.17; uptime_s=13361; commit=UNKNOWN",
+    "deploy": "server_build=20260903-hist-tp-booked-v8.2.17; uptime_s=63560; commit=3f4a5e04fb29a56103aa1fc6843d77174b3d3cf0",
     "healthError": null,
     "publicEnv": {
-      "deployCommit": "UNKNOWN",
-      "runtimeConfig": "UNKNOWN",
+      "deployCommit": "3f4a5e04fb29a56103aa1fc6843d77174b3d3cf0",
+      "runtimeConfig": {
+        "SELL_PICKS_ENABLED": false,
+        "PICKS_MIN_CONF": 62,
+        "PICKS_MIN_RR": 1.1,
+        "DISABLED_BRACKETS": [
+          "sell:medium",
+          "sell:long"
+        ],
+        "HORIZON_MIN_PCT": {
+          "short": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "medium": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "long": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          }
+        },
+        "HORIZON_PCT": {
+          "short": {
+            "buy": {
+              "tp1": 0.055,
+              "tp2": 0.085,
+              "sl": -0.04
+            },
+            "sell": {
+              "tp1": -0.055,
+              "tp2": -0.085,
+              "sl": 0.04
+            }
+          },
+          "medium": {
+            "buy": {
+              "tp1": 0.115,
+              "tp2": 0.185,
+              "sl": -0.075
+            },
+            "sell": {
+              "tp1": -0.115,
+              "tp2": -0.185,
+              "sl": 0.075
+            }
+          },
+          "long": {
+            "buy": {
+              "tp1": 0.235,
+              "tp2": 0.395,
+              "sl": -0.135
+            },
+            "sell": {
+              "tp1": -0.235,
+              "tp2": -0.395,
+              "sl": 0.135
+            }
+          }
+        },
+        "HORIZON_ATR": {
+          "short": {
+            "buy": {
+              "tp1": 3,
+              "tp2": 5,
+              "sl": -2
+            },
+            "sell": {
+              "tp1": -3,
+              "tp2": -5,
+              "sl": 2
+            }
+          },
+          "medium": {
+            "buy": {
+              "tp1": 5,
+              "tp2": 8.5,
+              "sl": -3
+            },
+            "sell": {
+              "tp1": -5,
+              "tp2": -8.5,
+              "sl": 3
+            }
+          },
+          "long": {
+            "buy": {
+              "tp1": 10,
+              "tp2": 17,
+              "sl": -5
+            },
+            "sell": {
+              "tp1": -10,
+              "tp2": -17,
+              "sl": 5
+            }
+          }
+        },
+        "SUPERTREND_PARAMS": {
+          "short": {
+            "period": 7,
+            "mult": 2
+          },
+          "medium": {
+            "period": 10,
+            "mult": 3
+          },
+          "long": {
+            "period": 14,
+            "mult": 4
+          }
+        },
+        "exitPolicyVersion": "hybrid-exit-v1"
+      },
       "fmpKeyResolved": true,
       "fmpPlan": "ultimate",
       "disabledBrackets": "UNKNOWN"
     },
-    "commitStatus": "UNKNOWN"
+    "commitStatus": "MATCH"
   },
   "errorTradePnlTotal": 0,
   "paperSource": "C:\\Users\\tando\\Downloads\\alphasignal-repo\\data/ibkr_fills.jsonl",
+  "assignment": {
+    "geography": "ticker suffix (.T/.HK/.L/.DE/.PA/.NS/.BO, =F, -USD/-EUR; otherwise US)",
+    "horizon": "ledger trade hz from the event key/fill",
+    "side": "ledger trade side from the event key/fill",
+    "unassignedCount": 0
+  },
   "cells": [
     {
       "geography": "US",
@@ -34,9 +159,12 @@
           "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -48,18 +176,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.055,
+            "tp2": 0.085,
+            "sl": -0.04
+          },
+          "atrMultiples": {
+            "tp1": 3,
+            "tp2": 5,
+            "sl": -2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -77,10 +218,10 @@
         "closedTrades": 1,
         "openTrades": 0,
         "winPct": 0,
-        "profitFactor": null,
-        "realisedPnl": 0,
+        "profitFactor": 0,
+        "realisedPnl": -382.94,
         "avgWin": null,
-        "avgLoss": null,
+        "avgLoss": -382.94,
         "tooEarly": true
       },
       "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
@@ -92,8 +233,8 @@
       "horizon": "short",
       "side": "sell",
       "liveConfig": {
-        "enabled": "UNKNOWN",
-        "disabledBy": null,
+        "enabled": false,
+        "disabledBy": "SELL_PICKS_ENABLED=false (Strong Sell exception is enforced by the decision engine)",
         "strategyFamily": "trend engine",
         "marketTier": {
           "tier": "fmp_quality",
@@ -104,9 +245,12 @@
           "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -118,88 +262,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
-          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
-        },
-        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
-        "envOverrides": {
-          "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
-        }
-      },
-      "backtestEvidence": {
-        "study": "NONE",
-        "date": null,
-        "holdoutN": null,
-        "winPct": null,
-        "profitFactor": null,
-        "netPnl": null,
-        "holdoutStatus": "NONE"
-      },
-      "livePaper": {
-        "status": "DATA_DIR",
-        "dateRange": null,
-        "closedTrades": 0,
-        "openTrades": 0,
-        "winPct": null,
-        "profitFactor": null,
-        "realisedPnl": 0,
-        "avgWin": null,
-        "avgLoss": null,
-        "tooEarly": true
-      },
-      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
-      "driftFlag": "UNTESTED",
-      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
-    },
-    {
-      "geography": "US",
-      "horizon": "medium",
-      "side": "buy",
-      "liveConfig": {
-        "enabled": true,
-        "disabledBy": null,
-        "strategyFamily": "trend engine",
-        "marketTier": {
-          "tier": "fmp_quality",
-          "label": "FMP Quality Score",
-          "region": "us",
-          "danelfin": false,
-          "fmp": true,
-          "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
-        },
-        "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
-          "marketTier": {
-            "tier": "fmp_quality",
-            "label": "FMP Quality Score",
-            "region": "us",
-            "danelfin": false,
-            "fmp": true,
-            "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+          "fallbackPct": {
+            "tp1": -0.055,
+            "tp2": -0.085,
+            "sl": 0.04
           },
-          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
-        },
-        "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "atrMultiples": {
+            "tp1": -3,
+            "tp2": -5,
+            "sl": 2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -230,6 +317,92 @@
     {
       "geography": "US",
       "horizon": "medium",
+      "side": "buy",
+      "liveConfig": {
+        "enabled": true,
+        "disabledBy": null,
+        "strategyFamily": "trend engine",
+        "marketTier": {
+          "tier": "fmp_quality",
+          "label": "FMP Quality Score",
+          "region": "us",
+          "danelfin": false,
+          "fmp": true,
+          "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+        },
+        "entryRules": {
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
+          "marketTier": {
+            "tier": "fmp_quality",
+            "label": "FMP Quality Score",
+            "region": "us",
+            "danelfin": false,
+            "fmp": true,
+            "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
+          },
+          "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
+        },
+        "exits": {
+          "fallbackPct": {
+            "tp1": 0.115,
+            "tp2": 0.185,
+            "sl": -0.075
+          },
+          "atrMultiples": {
+            "tp1": 5,
+            "tp2": 8.5,
+            "sl": -3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
+          "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
+        },
+        "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
+        "envOverrides": {
+          "DISABLED_BRACKETS": "sell:medium,sell:long",
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
+        }
+      },
+      "backtestEvidence": {
+        "study": "NONE",
+        "date": null,
+        "holdoutN": null,
+        "winPct": null,
+        "profitFactor": null,
+        "netPnl": null,
+        "holdoutStatus": "NONE"
+      },
+      "livePaper": {
+        "status": "DATA_DIR",
+        "dateRange": null,
+        "closedTrades": 0,
+        "openTrades": 0,
+        "winPct": null,
+        "profitFactor": null,
+        "realisedPnl": 0,
+        "avgWin": null,
+        "avgLoss": null,
+        "tooEarly": true
+      },
+      "execution": "IBKR-eligible when provenance, account, release, Conf and RR gates pass",
+      "driftFlag": "UNTESTED",
+      "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
+    },
+    {
+      "geography": "US",
+      "horizon": "medium",
       "side": "sell",
       "liveConfig": {
         "enabled": false,
@@ -244,9 +417,12 @@
           "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -258,18 +434,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.115,
+            "tp2": -0.185,
+            "sl": 0.075
+          },
+          "atrMultiples": {
+            "tp1": -5,
+            "tp2": -8.5,
+            "sl": 3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -314,9 +503,12 @@
           "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -328,18 +520,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.235,
+            "tp2": 0.395,
+            "sl": -0.135
+          },
+          "atrMultiples": {
+            "tp1": 10,
+            "tp2": 17,
+            "sl": -5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -384,9 +589,12 @@
           "note": "Technical + FMP + fundamentals (US, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -398,18 +606,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.235,
+            "tp2": -0.395,
+            "sl": 0.135
+          },
+          "atrMultiples": {
+            "tp1": -10,
+            "tp2": -17,
+            "sl": 5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -454,9 +675,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -468,18 +692,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.055,
+            "tp2": 0.085,
+            "sl": -0.04
+          },
+          "atrMultiples": {
+            "tp1": 3,
+            "tp2": 5,
+            "sl": -2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -512,8 +749,8 @@
       "horizon": "short",
       "side": "sell",
       "liveConfig": {
-        "enabled": "UNKNOWN",
-        "disabledBy": null,
+        "enabled": false,
+        "disabledBy": "SELL_PICKS_ENABLED=false (Strong Sell exception is enforced by the decision engine)",
         "strategyFamily": "trend engine",
         "marketTier": {
           "tier": "fmp_quality",
@@ -524,9 +761,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -538,18 +778,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.055,
+            "tp2": -0.085,
+            "sl": 0.04
+          },
+          "atrMultiples": {
+            "tp1": -3,
+            "tp2": -5,
+            "sl": 2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -594,9 +847,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -608,18 +864,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.115,
+            "tp2": 0.185,
+            "sl": -0.075
+          },
+          "atrMultiples": {
+            "tp1": 5,
+            "tp2": 8.5,
+            "sl": -3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -664,9 +933,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -678,18 +950,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.115,
+            "tp2": -0.185,
+            "sl": 0.075
+          },
+          "atrMultiples": {
+            "tp1": -5,
+            "tp2": -8.5,
+            "sl": 3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -734,9 +1019,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -748,18 +1036,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.235,
+            "tp2": 0.395,
+            "sl": -0.135
+          },
+          "atrMultiples": {
+            "tp1": 10,
+            "tp2": 17,
+            "sl": -5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -804,9 +1105,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -818,18 +1122,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.235,
+            "tp2": -0.395,
+            "sl": 0.135
+          },
+          "atrMultiples": {
+            "tp1": -10,
+            "tp2": -17,
+            "sl": 5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -874,9 +1191,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -888,18 +1208,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.055,
+            "tp2": 0.085,
+            "sl": -0.04
+          },
+          "atrMultiples": {
+            "tp1": 3,
+            "tp2": 5,
+            "sl": -2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -932,8 +1265,8 @@
       "horizon": "short",
       "side": "sell",
       "liveConfig": {
-        "enabled": "UNKNOWN",
-        "disabledBy": null,
+        "enabled": false,
+        "disabledBy": "SELL_PICKS_ENABLED=false (Strong Sell exception is enforced by the decision engine)",
         "strategyFamily": "trend engine",
         "marketTier": {
           "tier": "fmp_quality",
@@ -944,9 +1277,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -958,18 +1294,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.055,
+            "tp2": -0.085,
+            "sl": 0.04
+          },
+          "atrMultiples": {
+            "tp1": -3,
+            "tp2": -5,
+            "sl": 2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1014,9 +1363,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1028,18 +1380,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.115,
+            "tp2": 0.185,
+            "sl": -0.075
+          },
+          "atrMultiples": {
+            "tp1": 5,
+            "tp2": 8.5,
+            "sl": -3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1084,9 +1449,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1098,18 +1466,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.115,
+            "tp2": -0.185,
+            "sl": 0.075
+          },
+          "atrMultiples": {
+            "tp1": -5,
+            "tp2": -8.5,
+            "sl": 3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1154,9 +1535,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1168,18 +1552,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.235,
+            "tp2": 0.395,
+            "sl": -0.135
+          },
+          "atrMultiples": {
+            "tp1": 10,
+            "tp2": 17,
+            "sl": -5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1224,9 +1621,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1238,18 +1638,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.235,
+            "tp2": -0.395,
+            "sl": 0.135
+          },
+          "atrMultiples": {
+            "tp1": -10,
+            "tp2": -17,
+            "sl": 5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1294,9 +1707,12 @@
           "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1308,18 +1724,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.055,
+            "tp2": 0.085,
+            "sl": -0.04
+          },
+          "atrMultiples": {
+            "tp1": 3,
+            "tp2": 5,
+            "sl": -2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1352,8 +1781,8 @@
       "horizon": "short",
       "side": "sell",
       "liveConfig": {
-        "enabled": "UNKNOWN",
-        "disabledBy": null,
+        "enabled": false,
+        "disabledBy": "SELL_PICKS_ENABLED=false (Strong Sell exception is enforced by the decision engine)",
         "strategyFamily": "trend engine",
         "marketTier": {
           "tier": "fmp_quality",
@@ -1364,9 +1793,12 @@
           "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1378,18 +1810,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.055,
+            "tp2": -0.085,
+            "sl": 0.04
+          },
+          "atrMultiples": {
+            "tp1": -3,
+            "tp2": -5,
+            "sl": 2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1434,9 +1879,12 @@
           "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1448,18 +1896,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.115,
+            "tp2": 0.185,
+            "sl": -0.075
+          },
+          "atrMultiples": {
+            "tp1": 5,
+            "tp2": 8.5,
+            "sl": -3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1504,9 +1965,12 @@
           "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1518,18 +1982,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.115,
+            "tp2": -0.185,
+            "sl": 0.075
+          },
+          "atrMultiples": {
+            "tp1": -5,
+            "tp2": -8.5,
+            "sl": 3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1574,9 +2051,12 @@
           "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1588,18 +2068,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.235,
+            "tp2": 0.395,
+            "sl": -0.135
+          },
+          "atrMultiples": {
+            "tp1": 10,
+            "tp2": 17,
+            "sl": -5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1644,9 +2137,12 @@
           "note": "Technical + FMP + fundamentals (UK, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1658,18 +2154,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.235,
+            "tp2": -0.395,
+            "sl": 0.135
+          },
+          "atrMultiples": {
+            "tp1": -10,
+            "tp2": -17,
+            "sl": 5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1714,9 +2223,12 @@
           "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1728,18 +2240,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.055,
+            "tp2": 0.085,
+            "sl": -0.04
+          },
+          "atrMultiples": {
+            "tp1": 3,
+            "tp2": 5,
+            "sl": -2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1772,8 +2297,8 @@
       "horizon": "short",
       "side": "sell",
       "liveConfig": {
-        "enabled": "UNKNOWN",
-        "disabledBy": null,
+        "enabled": false,
+        "disabledBy": "SELL_PICKS_ENABLED=false (Strong Sell exception is enforced by the decision engine)",
         "strategyFamily": "trend engine",
         "marketTier": {
           "tier": "fmp_quality",
@@ -1784,9 +2309,12 @@
           "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1798,18 +2326,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.055,
+            "tp2": -0.085,
+            "sl": 0.04
+          },
+          "atrMultiples": {
+            "tp1": -3,
+            "tp2": -5,
+            "sl": 2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1854,9 +2395,12 @@
           "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1868,18 +2412,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.115,
+            "tp2": 0.185,
+            "sl": -0.075
+          },
+          "atrMultiples": {
+            "tp1": 5,
+            "tp2": 8.5,
+            "sl": -3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1924,9 +2481,12 @@
           "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -1938,18 +2498,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.115,
+            "tp2": -0.185,
+            "sl": 0.075
+          },
+          "atrMultiples": {
+            "tp1": -5,
+            "tp2": -8.5,
+            "sl": 3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -1994,9 +2567,12 @@
           "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2008,18 +2584,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.235,
+            "tp2": 0.395,
+            "sl": -0.135
+          },
+          "atrMultiples": {
+            "tp1": 10,
+            "tp2": 17,
+            "sl": -5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2064,9 +2653,12 @@
           "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2078,18 +2670,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.235,
+            "tp2": -0.395,
+            "sl": 0.135
+          },
+          "atrMultiples": {
+            "tp1": -10,
+            "tp2": -17,
+            "sl": 5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2134,9 +2739,12 @@
           "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2148,18 +2756,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.055,
+            "tp2": 0.085,
+            "sl": -0.04
+          },
+          "atrMultiples": {
+            "tp1": 3,
+            "tp2": 5,
+            "sl": -2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2192,8 +2813,8 @@
       "horizon": "short",
       "side": "sell",
       "liveConfig": {
-        "enabled": "UNKNOWN",
-        "disabledBy": null,
+        "enabled": false,
+        "disabledBy": "SELL_PICKS_ENABLED=false (Strong Sell exception is enforced by the decision engine)",
         "strategyFamily": "trend engine",
         "marketTier": {
           "tier": "fmp_quality",
@@ -2204,9 +2825,12 @@
           "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2218,18 +2842,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.055,
+            "tp2": -0.085,
+            "sl": 0.04
+          },
+          "atrMultiples": {
+            "tp1": -3,
+            "tp2": -5,
+            "sl": 2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2274,9 +2911,12 @@
           "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2288,18 +2928,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.115,
+            "tp2": 0.185,
+            "sl": -0.075
+          },
+          "atrMultiples": {
+            "tp1": 5,
+            "tp2": 8.5,
+            "sl": -3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2344,9 +2997,12 @@
           "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2358,18 +3014,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.115,
+            "tp2": -0.185,
+            "sl": 0.075
+          },
+          "atrMultiples": {
+            "tp1": -5,
+            "tp2": -8.5,
+            "sl": 3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2414,9 +3083,12 @@
           "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2428,18 +3100,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.235,
+            "tp2": 0.395,
+            "sl": -0.135
+          },
+          "atrMultiples": {
+            "tp1": 10,
+            "tp2": 17,
+            "sl": -5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2484,9 +3169,12 @@
           "note": "Technical + FMP + fundamentals (Europe, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2498,18 +3186,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.235,
+            "tp2": -0.395,
+            "sl": 0.135
+          },
+          "atrMultiples": {
+            "tp1": -10,
+            "tp2": -17,
+            "sl": 5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2554,9 +3255,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2568,18 +3272,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.055,
+            "tp2": 0.085,
+            "sl": -0.04
+          },
+          "atrMultiples": {
+            "tp1": 3,
+            "tp2": 5,
+            "sl": -2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2612,8 +3329,8 @@
       "horizon": "short",
       "side": "sell",
       "liveConfig": {
-        "enabled": "UNKNOWN",
-        "disabledBy": null,
+        "enabled": false,
+        "disabledBy": "SELL_PICKS_ENABLED=false (Strong Sell exception is enforced by the decision engine)",
         "strategyFamily": "trend engine",
         "marketTier": {
           "tier": "fmp_quality",
@@ -2624,9 +3341,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2638,18 +3358,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.055,
+            "tp2": -0.085,
+            "sl": 0.04
+          },
+          "atrMultiples": {
+            "tp1": -3,
+            "tp2": -5,
+            "sl": 2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2694,9 +3427,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2708,18 +3444,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.115,
+            "tp2": 0.185,
+            "sl": -0.075
+          },
+          "atrMultiples": {
+            "tp1": 5,
+            "tp2": 8.5,
+            "sl": -3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2764,9 +3513,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2778,18 +3530,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.115,
+            "tp2": -0.185,
+            "sl": 0.075
+          },
+          "atrMultiples": {
+            "tp1": -5,
+            "tp2": -8.5,
+            "sl": 3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2834,9 +3599,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2848,18 +3616,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.235,
+            "tp2": 0.395,
+            "sl": -0.135
+          },
+          "atrMultiples": {
+            "tp1": 10,
+            "tp2": 17,
+            "sl": -5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2904,9 +3685,12 @@
           "note": "Technical + FMP + fundamentals (Asia, horizon-weighted)"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "fmp_quality",
             "label": "FMP Quality Score",
@@ -2918,18 +3702,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.235,
+            "tp2": -0.395,
+            "sl": 0.135
+          },
+          "atrMultiples": {
+            "tp1": -10,
+            "tp2": -17,
+            "sl": 5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; FMP financial score: CURRENT-only; earnings reports: PIT available; analyst estimates: CURRENT-only",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -2974,9 +3771,12 @@
           "note": "No fundamental scoring for commodities — SD channel + momentum"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "technical_only",
             "label": "Technical Only",
@@ -2988,18 +3788,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.055,
+            "tp2": 0.085,
+            "sl": -0.04
+          },
+          "atrMultiples": {
+            "tp1": 3,
+            "tp2": 5,
+            "sl": -2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -3013,7 +3826,7 @@
       },
       "livePaper": {
         "status": "DATA_DIR",
-        "dateRange": "2026-09-02T01:00:00.278Z → 2026-09-02T01:00:00.278Z",
+        "dateRange": null,
         "closedTrades": 0,
         "openTrades": 0,
         "winPct": null,
@@ -3032,8 +3845,8 @@
       "horizon": "short",
       "side": "sell",
       "liveConfig": {
-        "enabled": "UNKNOWN",
-        "disabledBy": null,
+        "enabled": false,
+        "disabledBy": "SELL_PICKS_ENABLED=false (Strong Sell exception is enforced by the decision engine)",
         "strategyFamily": "trend engine",
         "marketTier": {
           "tier": "technical_only",
@@ -3044,9 +3857,12 @@
           "note": "No fundamental scoring for commodities — SD channel + momentum"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "technical_only",
             "label": "Technical Only",
@@ -3058,18 +3874,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.055,
+            "tp2": -0.085,
+            "sl": 0.04
+          },
+          "atrMultiples": {
+            "tp1": -3,
+            "tp2": -5,
+            "sl": 2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -3114,9 +3943,12 @@
           "note": "No fundamental scoring for commodities — SD channel + momentum"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "technical_only",
             "label": "Technical Only",
@@ -3128,18 +3960,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.115,
+            "tp2": 0.185,
+            "sl": -0.075
+          },
+          "atrMultiples": {
+            "tp1": 5,
+            "tp2": 8.5,
+            "sl": -3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -3184,9 +4029,12 @@
           "note": "No fundamental scoring for commodities — SD channel + momentum"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "technical_only",
             "label": "Technical Only",
@@ -3198,18 +4046,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.115,
+            "tp2": -0.185,
+            "sl": 0.075
+          },
+          "atrMultiples": {
+            "tp1": -5,
+            "tp2": -8.5,
+            "sl": 3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -3254,9 +4115,12 @@
           "note": "No fundamental scoring for commodities — SD channel + momentum"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "technical_only",
             "label": "Technical Only",
@@ -3268,18 +4132,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.235,
+            "tp2": 0.395,
+            "sl": -0.135
+          },
+          "atrMultiples": {
+            "tp1": 10,
+            "tp2": 17,
+            "sl": -5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -3324,9 +4201,12 @@
           "note": "No fundamental scoring for commodities — SD channel + momentum"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "technical_only",
             "label": "Technical Only",
@@ -3338,18 +4218,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.235,
+            "tp2": -0.395,
+            "sl": 0.135
+          },
+          "atrMultiples": {
+            "tp1": -10,
+            "tp2": -17,
+            "sl": 5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -3394,9 +4287,12 @@
           "note": "No fundamental scoring for commodities — SD channel + momentum"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "technical_only",
             "label": "Technical Only",
@@ -3408,18 +4304,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.055,
+            "tp2": 0.085,
+            "sl": -0.04
+          },
+          "atrMultiples": {
+            "tp1": 3,
+            "tp2": 5,
+            "sl": -2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -3452,8 +4361,8 @@
       "horizon": "short",
       "side": "sell",
       "liveConfig": {
-        "enabled": "UNKNOWN",
-        "disabledBy": null,
+        "enabled": false,
+        "disabledBy": "SELL_PICKS_ENABLED=false (Strong Sell exception is enforced by the decision engine)",
         "strategyFamily": "trend engine",
         "marketTier": {
           "tier": "technical_only",
@@ -3464,9 +4373,12 @@
           "note": "No fundamental scoring for commodities — SD channel + momentum"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 7,
+            "mult": 2
+          },
           "marketTier": {
             "tier": "technical_only",
             "label": "Technical Only",
@@ -3478,18 +4390,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.055,
+            "tp2": -0.085,
+            "sl": 0.04
+          },
+          "atrMultiples": {
+            "tp1": -3,
+            "tp2": -5,
+            "sl": 2
+          },
+          "minimumPct": {
+            "sl": 0.04,
+            "tp1": 0.044,
+            "tp2": 0.07,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -3534,9 +4459,12 @@
           "note": "No fundamental scoring for commodities — SD channel + momentum"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "technical_only",
             "label": "Technical Only",
@@ -3548,18 +4476,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.115,
+            "tp2": 0.185,
+            "sl": -0.075
+          },
+          "atrMultiples": {
+            "tp1": 5,
+            "tp2": 8.5,
+            "sl": -3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -3604,9 +4545,12 @@
           "note": "No fundamental scoring for commodities — SD channel + momentum"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 10,
+            "mult": 3
+          },
           "marketTier": {
             "tier": "technical_only",
             "label": "Technical Only",
@@ -3618,18 +4562,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.115,
+            "tp2": -0.185,
+            "sl": 0.075
+          },
+          "atrMultiples": {
+            "tp1": -5,
+            "tp2": -8.5,
+            "sl": 3
+          },
+          "minimumPct": {
+            "sl": 0.065,
+            "tp1": 0.072,
+            "tp2": 0.11,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -3674,9 +4631,12 @@
           "note": "No fundamental scoring for commodities — SD channel + momentum"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "technical_only",
             "label": "Technical Only",
@@ -3688,18 +4648,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": 0.235,
+            "tp2": 0.395,
+            "sl": -0.135
+          },
+          "atrMultiples": {
+            "tp1": 10,
+            "tp2": 17,
+            "sl": -5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -3744,9 +4717,12 @@
           "note": "No fundamental scoring for commodities — SD channel + momentum"
         },
         "entryRules": {
-          "confidenceFloor": "UNKNOWN",
-          "rrFloor": "UNKNOWN",
-          "supertrend": "UNKNOWN",
+          "confidenceFloor": 62,
+          "rrFloor": 1.1,
+          "supertrend": {
+            "period": 14,
+            "mult": 4
+          },
           "marketTier": {
             "tier": "technical_only",
             "label": "Technical Only",
@@ -3758,18 +4734,31 @@
           "overlays": "market/sector/earnings overlays: implementation-specific; UNKNOWN where no exported runtime setting exists"
         },
         "exits": {
-          "fallbackPct": "UNKNOWN",
-          "atrMultiples": "UNKNOWN",
-          "minimumPct": "UNKNOWN",
-          "policy": "UNKNOWN",
+          "fallbackPct": {
+            "tp1": -0.235,
+            "tp2": -0.395,
+            "sl": 0.135
+          },
+          "atrMultiples": {
+            "tp1": -10,
+            "tp2": -17,
+            "sl": 5
+          },
+          "minimumPct": {
+            "sl": 0.095,
+            "tp1": 0.105,
+            "tp2": 0.16,
+            "minRR": 1.1
+          },
+          "policy": "hybrid-exit-v1",
           "runner": "partial TP1; TP2 live runner exit; post-TP1 TSL ratchet"
         },
         "pointInTimeReplayable": "price/volume/technical: YES; non-price fundamental inputs: not used",
         "envOverrides": {
           "DISABLED_BRACKETS": "sell:medium,sell:long",
-          "SELL_PICKS_ENABLED": "UNKNOWN",
-          "PICKS_MIN_CONF": "UNKNOWN",
-          "PICKS_MIN_RR": "UNKNOWN"
+          "SELL_PICKS_ENABLED": false,
+          "PICKS_MIN_CONF": 62,
+          "PICKS_MIN_RR": 1.1
         }
       },
       "backtestEvidence": {
@@ -3797,5 +4786,26 @@
       "driftFlag": "UNTESTED",
       "driftReason": "No study exactly replays the live FMP-gated production configuration with point-in-time financial-score data"
     }
-  ]
+  ],
+  "liveTotals": {
+    "overall": {
+      "closedCount": 1,
+      "openCount": 0,
+      "realizedUsd": -382.94
+    },
+    "byGeography": {
+      "US": {
+        "closedTrades": 1,
+        "openTrades": 0,
+        "realisedPnl": -382.94
+      }
+    },
+    "byHorizon": {
+      "short": {
+        "closedTrades": 1,
+        "openTrades": 0,
+        "realisedPnl": -382.94
+      }
+    }
+  }
 }

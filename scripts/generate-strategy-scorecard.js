@@ -11,6 +11,15 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const { DISABLED_BRACKETS } = require('../lib/strategy/bracket-policy');
 const { classifyMarket } = require('../lib/strategy/market-tier');
+const { aggregateTrades, calculateTradePnl } = require('../lib/ibkr/aggregate-trades');
+const { dedupeIbkrFillsByExecId } = require('../lib/ibkr/fill-dedupe');
+const { fifoFillsForRestoredKey } = require('../lib/ibkr/user-restore');
+const { fifoLotEconomics } = require('../lib/ibkr/fifo-lots');
+const { ibkrAvgToFillUnit, futuresMultiplierFor } = require('../lib/ibkr/avg-cost');
+const { fillTax } = require('../lib/ibkr/stamp-duty');
+const { PAPER_ACCOUNT, filterRowsForAccount } = require('../lib/ibkr/account-scope');
+const { bookedExitPnlUsd, fillExitPnlUsd, fillDailyPnlUsd } = require('../lib/ibkr/exit-quality');
+const { accumulateLotDaily, toDailyArray } = require('../lib/ibkr/daily-realized');
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(__dirname, 'strategy-scorecard.json');
@@ -50,40 +59,116 @@ function geographyOf(ticker) {
   if (s.endsWith('.NS') || s.endsWith('.BO')) return 'India';
   return 'US';
 }
-function readJsonLines(file) {
-  try { return fs.readFileSync(file, 'utf8').split(/\r?\n/).filter(Boolean).map(JSON.parse); } catch (_) { return null; }
+function modelSidesByKey(dataDir) {
+  const sides = new Map();
+  try {
+    for (const line of fs.readFileSync(path.join(dataDir, 'trade_events.jsonl'), 'utf8').split(/\r?\n/)) {
+      let event; try { event = JSON.parse(line); } catch (_) { continue; }
+      if (!event || event.type !== 'entry' || !event.key) continue;
+      const side = String(event.side || '').toLowerCase();
+      if (side === 'buy' || side === 'sell') sides.set(String(event.key), side);
+    }
+  } catch (_) {}
+  return sides;
 }
-function paperByCell() {
+function readJsonLines(file) {
+  try {
+    return fs.readFileSync(file, 'utf8').split(/\r?\n/)
+      .filter(Boolean).map(line => { try { return JSON.parse(line); } catch (_) { return null; } }).filter(Boolean);
+  } catch (_) { return []; }
+}
+function scorecardUsdPerCcy(ccy) {
+  return ({ JPY: 1 / 150, HKD: 1 / 7.8, INR: 1 / 84, EUR: 1.08, GBP: 1.28 })[String(ccy || '').toUpperCase()] || 1;
+}
+function isCursorErrIbkrKey(key) {
+  return /\|cursor-err(?:\||$)/i.test(String(key || ''));
+}
+async function paperByCell() {
   const dataDir = process.env.DATA_DIR || process.env.RENDER_DISK_MOUNT_PATH || path.join(ROOT, 'data');
-  const fills = readJsonLines(path.join(dataDir, 'ibkr_fills.jsonl'));
-  if (!fills) return { available: false, errorPnl: 'UNKNOWN', cells: new Map() };
-  const lots = new Map(), error = [];
-  for (const f of fills) {
-    if (f.errorTrade || String(f.key || '').includes('|cursor-err')) { error.push(f); continue; }
-    const key = f.key || `${f.ticker}|${f.hz}|unknown`;
-    const lot = lots.get(key) || { ticker: f.ticker, hz: f.hz || 'short', side: f.side || 'buy', entry: 0, exit: 0, pnl: 0, dates: [] };
-    if (f.role === 'entry') lot.entry += Number(f.qty) || 0; else lot.exit += Number(f.qty) || 0;
-    lot.pnl += Number(f.realizedUsd) || 0;
-    if (f.time) lot.dates.push(f.time);
-    lots.set(key, lot);
-  }
+  const { trades } = aggregateTrades(
+    dedupeIbkrFillsByExecId(filterRowsForAccount(readJsonLines(path.join(dataDir, 'ibkr_fills.jsonl')), PAPER_ACCOUNT)),
+    {
+      fifoFillsForRestoredKey,
+      futuresMultiplierFor,
+      ibkrAvgToFillUnit,
+      fifoLotEconomics,
+      ibkrFillSession: () => null,
+      ibkrSessionLabel: () => '—',
+      isIbkrSyntheticFillRow: () => false,
+      ibkrRecDayIsoFromKey: () => null,
+      isCursorErrIbkrKey,
+      isIbkrErrorTrade: t => t.errorTrade,
+      fillsKeepOriginalRestoreAvg: () => false,
+      isForceIbkrErrorTicker: () => false,
+      legacyErrorKeys: new Set(),
+      errExtra: null
+    }
+  );
+  const accounting = await calculateTradePnl(trades, {
+    usdPerCcy: async ccy => scorecardUsdPerCcy(ccy),
+    fillTax,
+    bookedExitPnlUsd,
+    fillExitPnlUsd,
+    fillDailyPnlUsd,
+    futuresMultiplierFor,
+    liveMarks: {},
+    futuresStillTradable: () => true,
+    markMap: {},
+    accumulateLotDaily,
+    toDailyArray
+  });
+  const canonical = {
+    trades: accounting.trades,
+    model: {
+      closedCount: accounting.totals.closedCount,
+      openCount: accounting.totals.openCount,
+      realizedUsd: +accounting.totals.totRealUsd.toFixed(2)
+    },
+    error: {
+      closedCount: accounting.totals.errClosed,
+      openCount: accounting.totals.errOpen,
+      realizedUsd: +accounting.totals.errRealUsd.toFixed(2)
+    }
+  };
+  const modelSides = modelSidesByKey(dataDir);
+  const lots = canonical.trades;
   const cells = new Map();
-  for (const lot of lots.values()) {
-    const id = `${geographyOf(lot.ticker)}|${lot.hz}|${lot.side}`;
+  const unassigned = [];
+  for (const lot of lots) {
+    if (lot.errorTrade) continue;
+    const geo = geographyOf(lot.ticker);
+    const horizon = ['short', 'medium', 'long'].includes(lot.hz) ? lot.hz : null;
+    // Event side is the model’s strategy direction; fill action alone is not
+    // reliable for exits and partials.
+    const side = modelSides.get(String(lot.key)) || String(lot.side || '').toLowerCase();
+    lot.side = ['buy', 'sell'].includes(side) ? side : null;
+    if (!geo || !horizon || !side) { unassigned.push(lot); continue; }
+    const id = `${geo}|${horizon}|${side}`;
     const a = cells.get(id) || { lots: [], dates: [] };
-    a.lots.push(lot); a.dates.push(...lot.dates); cells.set(id, a);
+    a.lots.push(lot);
+    a.dates.push(...lot.fills.map(fill => fill.time).filter(Boolean));
+    cells.set(id, a);
   }
-  return { available: true, errorPnl: error.reduce((s, f) => s + (Number(f.realizedUsd) || 0), 0), cells };
+  const assigned = [...cells.values()].flatMap(c => c.lots);
+  const assignedSummary = {
+    closedCount: assigned.filter(t => t.status === 'closed').length,
+    realizedUsd: +assigned.reduce((s, t) => s + (Number(t.realizedUsd) || 0), 0).toFixed(2)
+  };
+  if (unassigned.length || assignedSummary.closedCount !== canonical.model.closedCount
+    || Math.abs(assignedSummary.realizedUsd - canonical.model.realizedUsd) > 0.01) {
+    throw new Error(`IBKR model-total mismatch: tab closed=${canonical.model.closedCount} pnl=${canonical.model.realizedUsd}; scorecard closed=${assignedSummary.closedCount} pnl=${assignedSummary.realizedUsd}; unassigned=${unassigned.length}`);
+  }
+  return { available: true, dataDir, canonical, cells, unassigned, errorPnl: canonical.error.realizedUsd };
 }
 function paperMetrics(paper, geo, horizon, side) {
   if (!paper.available) return { status: 'UNKNOWN', reason: 'No readable DATA_DIR ibkr_fills.jsonl', dateRange: null, closedTrades: null, openTrades: null, winPct: null, profitFactor: null, realisedPnl: null, avgWin: null, avgLoss: null, tooEarly: 'UNKNOWN' };
   const lots = (paper.cells.get(`${geo}|${horizon}|${side}`) || { lots: [], dates: [] });
-  const closed = lots.lots.filter(x => x.entry > 0 && x.exit >= x.entry);
-  const open = lots.lots.filter(x => x.entry > x.exit);
-  const wins = closed.filter(x => x.pnl > 0), losses = closed.filter(x => x.pnl < 0);
-  const grossWin = wins.reduce((s, x) => s + x.pnl, 0), grossLoss = losses.reduce((s, x) => s + Math.abs(x.pnl), 0);
+  const closed = lots.lots.filter(x => x.status === 'closed');
+  const open = lots.lots.filter(x => x.status !== 'closed');
+  const wins = closed.filter(x => x.realizedUsd > 0), losses = closed.filter(x => x.realizedUsd < 0);
+  const grossWin = wins.reduce((s, x) => s + x.realizedUsd, 0), grossLoss = losses.reduce((s, x) => s + Math.abs(x.realizedUsd), 0);
   const dates = lots.dates.sort();
-  return { status: 'DATA_DIR', dateRange: dates.length ? `${dates[0]} → ${dates[dates.length - 1]}` : null, closedTrades: closed.length, openTrades: open.length, winPct: closed.length ? +(wins.length / closed.length * 100).toFixed(1) : null, profitFactor: grossLoss ? +(grossWin / grossLoss).toFixed(2) : null, realisedPnl: +closed.reduce((s, x) => s + x.pnl, 0).toFixed(2), avgWin: wins.length ? +(grossWin / wins.length).toFixed(2) : null, avgLoss: losses.length ? +(-grossLoss / losses.length).toFixed(2) : null, tooEarly: closed.length < 30 };
+  return { status: 'DATA_DIR', dateRange: dates.length ? `${dates[0]} → ${dates[dates.length - 1]}` : null, closedTrades: closed.length, openTrades: open.length, winPct: closed.length ? +(wins.length / closed.length * 100).toFixed(1) : null, profitFactor: grossLoss ? +(grossWin / grossLoss).toFixed(2) : null, realisedPnl: +closed.reduce((s, x) => s + x.realizedUsd, 0).toFixed(2), avgWin: wins.length ? +(grossWin / wins.length).toFixed(2) : null, avgLoss: losses.length ? +(-grossLoss / losses.length).toFixed(2) : null, tooEarly: closed.length < 30 };
 }
 
 async function health() {
@@ -192,7 +277,7 @@ function markdown(report) {
 (async () => {
   const render = await health();
   const h = render.data;
-  const paper = paperByCell();
+  const paper = await paperByCell();
   const deployCommit = h?.deployCommit || null;
   const codeCommit = git('rev-parse', 'HEAD');
   const report = {
@@ -212,10 +297,44 @@ function markdown(report) {
     },
     errorTradePnlTotal: paper.errorPnl,
     paperSource: paper.available ? `${process.env.DATA_DIR || process.env.RENDER_DISK_MOUNT_PATH || path.join(ROOT, 'data')}/ibkr_fills.jsonl` : 'UNKNOWN',
+    assignment: paper.available ? {
+      geography: 'ticker suffix (.T/.HK/.L/.DE/.PA/.NS/.BO, =F, -USD/-EUR; otherwise US)',
+      horizon: 'ledger trade hz from the event key/fill',
+      side: 'ledger trade side from the event key/fill',
+      unassignedCount: paper.unassigned.length
+    } : 'UNKNOWN',
     cells: geographies.flatMap(geo => horizons.flatMap(horizon => sides.map(side => cell(geo, horizon, side, paper, h?.runtimeConfig)))),
   };
+  const modelTrades = paper.canonical ? paper.canonical.trades.filter(t => !t.errorTrade) : [];
+  const aggregate = selector => {
+    const groups = new Map();
+    for (const trade of modelTrades) {
+      const key = selector(trade);
+      if (!key) continue;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(trade);
+    }
+    return Object.fromEntries([...groups].map(([key, trades]) => [key, {
+      closedTrades: trades.filter(t => t.status === 'closed').length,
+      openTrades: trades.filter(t => t.status !== 'closed').length,
+      realisedPnl: +trades.reduce((n, t) => n + t.realizedUsd, 0).toFixed(2)
+    }]));
+  };
+  report.liveTotals = paper.canonical ? {
+    overall: paper.canonical.model,
+    byGeography: aggregate(t => geographyOf(t.ticker)),
+    byHorizon: aggregate(t => t.hz)
+  } : 'UNKNOWN';
   report.render.commitStatus = deployCommit ? (deployCommit === codeCommit ? 'MATCH' : 'DRIFT') : 'UNKNOWN';
   fs.writeFileSync(OUT, JSON.stringify(report, null, 2));
   fs.writeFileSync(DOC, markdown(report));
+  for (const row of report.cells) {
+    const p = row.livePaper;
+    console.log(`${row.geography}/${row.horizon}/${row.side} closed=${p.closedTrades} open=${p.openTrades} win=${p.winPct} PF=${p.profitFactor} PnL=${p.realisedPnl}`);
+  }
+  for (const trade of paper.canonical?.trades || []) {
+    console.log(`TRADE key=${trade.key} ticker=${trade.ticker} geography=${geographyOf(trade.ticker)} horizon=${trade.hz} side=${trade.side} qty=${trade.openQty || trade.entryQty || 0} avgEntry=${trade.avgEntry ?? 'UNKNOWN'} avgExit=${trade.avgExit ?? 'UNKNOWN'} realisedPnl=${trade.realizedUsd} bucket=${trade.errorTrade ? 'error' : 'model'}`);
+  }
+  console.log('MODEL TOTALS', JSON.stringify(report.liveTotals));
   console.log(JSON.stringify({ output: OUT, document: DOC, cells: report.cells.length, codeCommit: report.codeCommit }, null, 2));
 })().catch(error => { console.error(error.stack || error); process.exitCode = 1; });
