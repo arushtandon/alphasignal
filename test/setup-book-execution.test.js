@@ -19,6 +19,7 @@ const {
   evaluateSetupCapacity,
   evaluateCapitalPool,
   capitalSlotPlan,
+  capitalEntryFit,
   marginDecision,
   evidenceTier,
 } = require('../lib/strategy/setup-book-execution');
@@ -266,10 +267,12 @@ test('one 50-slot pool and the margin floor', () => {
   assert.equal(plan.free, 25);
   assert.equal(plan.byBook['old-engine'], 22);
   const account = {
+    summaryAt: new Date().toISOString(),
     availableFunds: 315984,
     buyingPower: 900000,
     excessLiquidity: 200000,
     netLiquidation: 461316,
+    grossPositionValue: 100000,
   };
   const allowed = evaluateCapitalPool('UK_LONG_MOMENTUM', open, 30000, account, { ticker: 'SHEL.L' });
   assert.equal(allowed.allowed, true);
@@ -292,7 +295,10 @@ test('one 50-slot pool and the margin floor', () => {
   assert.equal(floor.allowed, false);
   assert.equal(floor.detail, 'excess-liquidity-floor');
   const missing = evaluateCapitalPool('JAPAN_MEDIUM_MR', [], 30000, {
-    buyingPower: 900000, netLiquidation: 461316,
+    summaryAt: new Date().toISOString(),
+    buyingPower: 900000,
+    netLiquidation: 461316,
+    grossPositionValue: 100000,
   }, { ticker: 'BBB' });
   assert.equal(missing.detail, 'missing-account');
   process.env.IBKR_BRIDGE_ROLE = 'live';
@@ -301,4 +307,71 @@ test('one 50-slot pool and the margin floor', () => {
   else process.env.CAPITAL_POOL_ENABLED = prior;
   if (role == null) delete process.env.IBKR_BRIDGE_ROLE;
   else process.env.IBKR_BRIDGE_ROLE = role;
+});
+
+test('gross leverage, overnight margin, and fresh account data', () => {
+  const prior = process.env.CAPITAL_POOL_ENABLED;
+  const leverageCap = process.env.MAX_GROSS_LEVERAGE;
+  process.env.CAPITAL_POOL_ENABLED = '1';
+  delete process.env.MAX_GROSS_LEVERAGE;
+  const now = Date.parse('2026-10-06T15:20:00+08:00');
+  const account = {
+    summaryAt: '2026-10-06T15:19:00+08:00',
+    buyingPower: 1267685.81,
+    excessLiquidity: 330676.91,
+    netLiquidation: 461952.82,
+    grossPositionValue: 486753.43,
+  };
+  const open = Array.from({ length: 25 }, (_, index) => ({
+    entryFilled: true, closed: false, ticker: `N${index}`,
+  }));
+  const fit = capitalEntryFit(open, account);
+  assert.equal(fit.slots, 25);
+  assert.equal(fit.leverage, 14);
+  assert.equal(fit.excessLiquidity, 33);
+  assert.equal(fit.strictest, 14);
+  const allowed = evaluateCapitalPool('JAPAN_MEDIUM_MR', open, 30000, account, { ticker: 'NEW', now });
+  assert.equal(allowed.allowed, true);
+  const tooMuchGross = evaluateCapitalPool('JAPAN_MEDIUM_MR', [], 30000, {
+    ...account,
+    grossPositionValue: 2 * account.netLiquidation - 1000,
+  }, { ticker: 'BIG', now });
+  assert.equal(tooMuchGross.log, 'skipped: leverage');
+  assert.equal(tooMuchGross.detail, 'gross-leverage');
+  process.env.MAX_GROSS_LEVERAGE = '3';
+  const wider = evaluateCapitalPool('JAPAN_MEDIUM_MR', [], 30000, {
+    ...account,
+    grossPositionValue: 2 * account.netLiquidation,
+  }, { ticker: 'WIDE', now });
+  assert.equal(wider.allowed, true);
+  const overnightFunds = evaluateCapitalPool('JAPAN_MEDIUM_MR', [], 30000, {
+    ...account,
+    lookAheadAvailableFunds: 10000,
+    lookAheadExcessLiquidity: 300000,
+  }, { ticker: 'NIGHT', now });
+  assert.equal(overnightFunds.log, 'skipped: margin');
+  assert.equal(overnightFunds.detail, 'lookahead-available-funds');
+  const overnightExcess = evaluateCapitalPool('JAPAN_MEDIUM_MR', [], 30000, {
+    ...account,
+    lookAheadAvailableFunds: 80000,
+    lookAheadExcessLiquidity: 70000,
+  }, { ticker: 'NIGHT2', now });
+  assert.equal(overnightExcess.log, 'skipped: margin');
+  assert.equal(overnightExcess.detail, 'lookahead-excess-liquidity');
+  const stale = evaluateCapitalPool('JAPAN_MEDIUM_MR', [], 30000, {
+    ...account,
+    summaryAt: '2026-10-06T14:00:00+08:00',
+  }, { ticker: 'OLD', now });
+  assert.equal(stale.log, 'skipped: margin data stale');
+  assert.equal(stale.detail, 'older-than-15m');
+  const previousDay = evaluateCapitalPool('JAPAN_MEDIUM_MR', [], 30000, {
+    ...account,
+    summaryAt: '2026-10-05T23:55:00+08:00',
+  }, { ticker: 'YDAY', now: Date.parse('2026-10-06T00:05:00+08:00') });
+  assert.equal(previousDay.log, 'skipped: margin data stale');
+  assert.equal(previousDay.detail, 'previous-day');
+  if (prior == null) delete process.env.CAPITAL_POOL_ENABLED;
+  else process.env.CAPITAL_POOL_ENABLED = prior;
+  if (leverageCap == null) delete process.env.MAX_GROSS_LEVERAGE;
+  else process.env.MAX_GROSS_LEVERAGE = leverageCap;
 });

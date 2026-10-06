@@ -4167,6 +4167,7 @@ async function loadCapitalBook(){
   const capital = data && data.capital;
   if (!capital) { el.innerHTML = ''; return; }
   const margin = capital.margin || {};
+  const fit = capital.fit || {};
   const money = value => value == null || !Number.isFinite(Number(value)) ? '—' : '$'+Number(value).toLocaleString(undefined,{maximumFractionDigits:0});
   const books = Object.entries(capital.byBook || {}).map(([name, count]) => name+' '+count).join(' · ') || 'none';
   const markets = Object.entries(capital.byMarket || {}).map(([name, count]) => name+' '+count).join(' · ') || 'none';
@@ -4176,6 +4177,14 @@ async function loadCapitalBook(){
   el.innerHTML = '<div style="letter-spacing:.08em;text-transform:uppercase;color:var(--m1);margin-bottom:6px">Capital pool'
     +(capital.enabled ? '' : ' · flag off')+'</div>'
     +'<div>Slots '+capital.used+' used / '+capital.free+' free of '+capital.slots+'</div>'
+    +'<div>Gross '+money(margin.grossPositionValue)+' · leverage '
+    +(margin.leverage == null ? '—' : Number(margin.leverage).toFixed(2)+'×')
+    +' / '+(margin.maxGrossLeverage == null ? '2' : Number(margin.maxGrossLeverage).toFixed(1))+'× cap'
+    +(margin.fresh === false ? ' · account data stale' : '')+'</div>'
+    +'<div>$30k fit today: slots '+(fit.slots == null ? '—' : fit.slots)
+    +' · leverage '+(fit.leverage == null ? '—' : fit.leverage)
+    +' · excess liquidity '+(fit.excessLiquidity == null ? '—' : fit.excessLiquidity)
+    +(fit.overnight == null ? '' : ' · overnight '+fit.overnight)+'</div>'
     +'<div>Margin headroom '+money(margin.headroomUsd)+' · excess liquidity '+money(margin.excessLiquidity)
     +' · buying power '+money(margin.buyingPower)+' · floor 15% of NLV</div>'
     +'<div style="margin-top:6px">By book: '+books+'</div>'
