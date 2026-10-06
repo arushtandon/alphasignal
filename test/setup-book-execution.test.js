@@ -375,3 +375,44 @@ test('gross leverage, overnight margin, and fresh account data', () => {
   if (leverageCap == null) delete process.env.MAX_GROSS_LEVERAGE;
   else process.env.MAX_GROSS_LEVERAGE = leverageCap;
 });
+
+test('same-batch working orders count toward gross leverage', () => {
+  const prior = process.env.CAPITAL_POOL_ENABLED;
+  const leverageCap = process.env.MAX_GROSS_LEVERAGE;
+  process.env.CAPITAL_POOL_ENABLED = '1';
+  delete process.env.MAX_GROSS_LEVERAGE;
+  const account = {
+    summaryAt: new Date().toISOString(),
+    buyingPower: 5000000,
+    excessLiquidity: 2000000,
+    netLiquidation: 462000,
+    grossPositionValue: 487000,
+  };
+  const rows = [];
+  let placed = 0;
+  for (let index = 0; index < 25; index++) {
+    const decision = evaluateCapitalPool('JAPAN_MEDIUM_MR', rows, 30000, account, { ticker: `T${index}` });
+    if (decision.allowed) {
+      placed += 1;
+      rows.push({
+        parentId: 1000 + index,
+        entryFilled: false,
+        closed: false,
+        ticker: `T${index}`,
+        setupNotionalUsd: 30000,
+      });
+    } else {
+      assert.equal(decision.log, 'skipped: leverage');
+    }
+  }
+  assert.equal(placed, 14);
+  assert.equal(rows.length, 14);
+  const ignored = evaluateCapitalPool('JAPAN_MEDIUM_MR', [
+    { parentId: null, entryFilled: false, closed: false, ticker: 'WAIT', setupNotionalUsd: 300000 },
+  ], 30000, account, { ticker: 'NEW' });
+  assert.equal(ignored.allowed, true);
+  if (prior == null) delete process.env.CAPITAL_POOL_ENABLED;
+  else process.env.CAPITAL_POOL_ENABLED = prior;
+  if (leverageCap == null) delete process.env.MAX_GROSS_LEVERAGE;
+  else process.env.MAX_GROSS_LEVERAGE = leverageCap;
+});

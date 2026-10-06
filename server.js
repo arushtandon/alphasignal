@@ -62,7 +62,7 @@ const {
   resolveSetupBookCell,
 } = require('./lib/strategy/setup-book');
 const { compareSetupEntries, capitalPoolEnabled, capitalDashboard } = require('./lib/strategy/setup-book-execution');
-const { planMomentumBatch } = require('./lib/strategy/momentum-book');
+const { planMomentumBatch, commitMomentumAcceptances } = require('./lib/strategy/momentum-book');
 const { buildPublicationCellRecord, freezePublishedFields } = require('./lib/strategy/publication-record');
 const {
   isSetupPaused,
@@ -7875,16 +7875,43 @@ function readSetupSkips() {
   }
 }
 
+const SETUP_CAPITAL_PLAN_FILE = path.join(path.dirname(HISTORY_FILE), 'setup-book-capital.json');
+let postedCapitalPlan = null;
+
+function loadPostedCapitalPlan() {
+  if (postedCapitalPlan) return postedCapitalPlan;
+  try { postedCapitalPlan = JSON.parse(fs.readFileSync(SETUP_CAPITAL_PLAN_FILE, 'utf8')); }
+  catch (_) { postedCapitalPlan = null; }
+  return postedCapitalPlan;
+}
+
+function savePostedCapitalPlan(plan) {
+  if (!plan || typeof plan !== 'object' || !plan.plan) return;
+  postedCapitalPlan = { ...plan, savedAt: new Date().toISOString() };
+  try { atomicWriteJsonSync(SETUP_CAPITAL_PLAN_FILE, postedCapitalPlan); } catch (_) {}
+}
+
 function setupBookCapitalView() {
-  let rows = [];
-  try {
-    const state = JSON.parse(fs.readFileSync(path.join(__dirname, 'ibkr-bridge', 'bridge-state.json'), 'utf8'));
-    rows = Object.values(state.byKey || {});
-  } catch (_) {}
-  let snap = null;
-  try { snap = loadIbkrAccountSnapshot(process.env.IBKR_ACCOUNT || 'DU1764495'); }
-  catch (_) { snap = null; }
-  return capitalDashboard(rows, snap, readSetupSkips());
+  const skips = readSetupSkips();
+  const posted = loadPostedCapitalPlan();
+  if (posted && posted.plan) {
+    const view = capitalDashboard([], posted.account || {}, skips);
+    return {
+      ...view,
+      source: 'bridge',
+      postedAt: posted.at || posted.savedAt || null,
+      slots: posted.plan.slots,
+      used: posted.plan.used,
+      free: posted.plan.free,
+      over: posted.plan.over,
+      poolUsd: posted.plan.poolUsd,
+      byBook: posted.plan.byBook || {},
+      byMarket: posted.plan.byMarket || {},
+      positions: posted.plan.positions || [],
+      fit: posted.fit || view.fit,
+    };
+  }
+  return { ...capitalDashboard([], null, skips), source: 'none' };
 }
 
 app.get('/api/setup-book/status', (req, res) => {
@@ -7901,7 +7928,8 @@ app.get('/api/setup-book/status', (req, res) => {
 
 app.post('/api/setup-book/skip', express.json({ limit: '32kb' }), (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
-  const reason = req.body && req.body.reason === 'margin' ? 'margin' : 'capacity';
+  const skipReasons = new Set(['margin', 'leverage', 'margin-data-stale', 'capacity']);
+  const reason = skipReasons.has(req.body && req.body.reason) ? req.body.reason : 'capacity';
   const row = {
     at: new Date().toISOString(),
     ticker: String(req.body && req.body.ticker || ''),
@@ -7924,12 +7952,16 @@ app.post('/api/setup-book/momentum-run', express.json({ limit: '64kb' }), async 
       held: Array.isArray(req.body && req.body.held) ? req.body.held : [],
       loadBars: symbol => fetchOHLCV(symbol, '2y', '1d'),
     });
-    const emitted = [];
+    const accepted = [];
     for (const order of plan.orders || []) {
       const evt = emitTradeEvent(order.action === 'sell' ? 'exit' : 'entry', order.event);
-      if (evt) emitted.push(order.event && order.event.key);
+      if (evt) accepted.push(order);
     }
-    res.json({ ...plan, emitted });
+    if (accepted.length) commitMomentumAcceptances(accepted);
+    res.json({
+      ...plan,
+      emitted: accepted.map(order => order.event && order.event.key).filter(Boolean),
+    });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
   }
@@ -17648,6 +17680,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
         }
       }
       ingestIbkrChargesFromBody(req.body);
+      if (req.body && req.body.capitalPlan) savePostedCapitalPlan(req.body.capitalPlan);
     } catch (_) { /* best-effort */ }
     const ibByY = new Map();
     const ibByConId = new Map(); // conId → canonical yahoo (dual-list identity)

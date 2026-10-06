@@ -194,6 +194,8 @@ const {
   evaluateSetupCapacity,
   evaluateCapitalPool,
   capitalPoolEnabled,
+  capitalSlotPlan,
+  capitalEntryFit,
   SETUP_TICKET_USD,
 } = require('../lib/strategy/setup-book-execution');
 const { sendTelegram } = require('../lib/strategy/setup-book-runtime');
@@ -859,17 +861,43 @@ function extendedFillLimit(side, entryPx, quotePx, contract) {
  * Parent entry order: MOO / RTH MKT / US extended LMT (price-gated).
  * opts: { side, entryPx, quotePx } — quotePx gates US pre/extended only.
  */
+function momentumNoStopEntry(evt) {
+  return !!(evt && evt.noStop === true && evt.momentumOpen === true
+    && (evt.setupId === 'UK_LONG_MOMENTUM' || evt.setupId === 'FRANCE_LONG_MOMENTUM'));
+}
+
+function entryChildFlags({ asiaStandalone, momentumNoStop, oneLotRunner, tp1Px, tp2Px, sold, runner }) {
+  return {
+    stop: !(asiaStandalone || momentumNoStop),
+    tp1: !asiaStandalone && !momentumNoStop && !oneLotRunner && tp1Px > 0 && sold > 0,
+    tp2: !asiaStandalone && !momentumNoStop && oneLotRunner && tp2Px > 0 && runner > 0,
+  };
+}
+
 function parentEntrySpec(contract, action, qty, opts = {}) {
   const phase = opts.phaseOverride || sessionPhase(contract);
+  const side = opts.side || (String(action).toUpperCase() === 'SELL' ? 'sell' : 'buy');
+  const entryPx = Number(opts.entryPx);
+  const quotePx = Number(opts.quotePx);
+  if (opts.momentumOpen && contract && contract.market === 'LSE') {
+    const ref = quotePx > 0 ? quotePx : entryPx;
+    if (ref > 0) {
+      const sell = side === 'sell';
+      const raw = sell ? ref * (1 - LSE_THROUGH_PCT) : ref * (1 + LSE_THROUGH_PCT);
+      return {
+        orderType: 'LMT', action, totalQuantity: qty,
+        lmtPrice: roundPx(raw, contract, sell ? 'down' : 'up'),
+        tif: 'DAY', outsideRth: ORDER_OUTSIDE_RTH, transmit: true,
+        entryStyle: phase === 'rth' ? 'LMT-THROUGH' : 'LMT-OPEN',
+      };
+    }
+  }
   if (opts.momentumOpen && phase !== 'rth' && phase !== 'lunch' && phase !== 'closed') {
     return {
       orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG',
       outsideRth: false, transmit: true, entryStyle: 'OPG-MOMENTUM',
     };
   }
-  const side = opts.side || (String(action).toUpperCase() === 'SELL' ? 'sell' : 'buy');
-  const entryPx = Number(opts.entryPx);
-  const quotePx = Number(opts.quotePx);
   // Futures / crypto on Globex & PAXOS — MKT while the venue is open.
   if (contract.secType === 'FUT' || contract.secType === 'CRYPTO' || contract.market === 'GLOBE' || contract.market === 'CRYPTO') {
     if (phase === 'closed') {
@@ -3497,7 +3525,7 @@ async function main() {
         'releaseHour=', ENTRY_RELEASE_HOUR_SGT);
       return null;
     }
-    if (!isManualEntryBypass(evt) && !evt.carryUnfilled) {
+    if (!isManualEntryBypass(evt) && !evt.carryUnfilled && !momentumNoStopEntry(evt)) {
       try {
         const picks = await fetchJson('/api/dashboard/picks');
         if (!boardPublishedAtRelease(picks && picks.dashTs)) {
@@ -3835,10 +3863,14 @@ async function main() {
     const execSlot = pickExecSlot();
     const execClientId = execSlot ? execSlot.clientId : activeClientId;
     const parentId = nid(execClientId);
-    const stopId = (asiaStandalone || momentumNoStop) ? null : nid(execClientId);
     const oneLotRunner = setupShape?.oneLotRunner === true;
-    const tp1Id = (!asiaStandalone && !momentumNoStop && !oneLotRunner && tp1Px > 0 && split.sold > 0) ? nid(execClientId) : null;
-    const initialTp2Id = (!asiaStandalone && oneLotRunner && tp2Px > 0 && split.runner > 0) ? nid(execClientId) : null;
+    const children = entryChildFlags({
+      asiaStandalone, momentumNoStop, oneLotRunner, tp1Px, tp2Px,
+      sold: split.sold, runner: split.runner,
+    });
+    const stopId = children.stop ? nid(execClientId) : null;
+    const tp1Id = children.tp1 ? nid(execClientId) : null;
+    const initialTp2Id = children.tp2 ? nid(execClientId) : null;
     const { entryStyle, defer, ...parentFields } = parentSpec;
     const parent = baseOrder({ orderId: parentId, ...parentFields });
     if (asiaStandalone || momentumNoStop) parent.transmit = true;
@@ -4765,13 +4797,32 @@ async function main() {
       const phase = sessionPhase(row.contract);
       const openingCorrection = !!(row.correctiveReentry && row.contract.usRth && phase !== 'rth');
       if (row.correctiveReentry) row.correctiveExitQty = remaining;
-      transmitOrder(fid, row.contract, baseOrder({
-        orderId: fid,
-        action: row.side === 'sell' ? 'BUY' : 'SELL',
-        orderType: 'MKT', totalQuantity: remaining,
-        tif: openingCorrection ? 'OPG' : 'DAY',
-        outsideRth: ORDER_OUTSIDE_RTH, transmit: true
-      }), 'flatten @exit ' + key);
+      const lseMomentum = !!(row.contract && row.contract.market === 'LSE'
+        && (row.momentumNoStop === true || row.setupId === 'UK_LONG_MOMENTUM'));
+      let flatten;
+      if (lseMomentum) {
+        const ref = Number(row.ibAvgFill) > 0 ? Number(row.ibAvgFill) : Number(row.entry);
+        const action = row.side === 'sell' ? 'BUY' : 'SELL';
+        const spec = parentEntrySpec(row.contract, action, remaining, {
+          side: action.toLowerCase(),
+          entryPx: ref,
+          quotePx: ref,
+          momentumOpen: true,
+          phaseOverride: phase,
+        });
+        const { entryStyle, defer, ...fields } = spec;
+        flatten = baseOrder({ orderId: fid, ...fields, transmit: spec.transmit !== false });
+        if (defer) flatten = null;
+      } else {
+        flatten = baseOrder({
+          orderId: fid,
+          action: row.side === 'sell' ? 'BUY' : 'SELL',
+          orderType: 'MKT', totalQuantity: remaining,
+          tif: openingCorrection ? 'OPG' : 'DAY',
+          outsideRth: ORDER_OUTSIDE_RTH, transmit: true
+        });
+      }
+      if (flatten) transmitOrder(fid, row.contract, flatten, 'flatten @exit ' + key);
     }
     row.closed = true;
     row.updated = new Date().toISOString();
@@ -4861,7 +4912,7 @@ async function main() {
           'releaseHour=', ENTRY_RELEASE_HOUR_SGT);
         return;
       }
-      if (!(Number(evt.entry) > 0) || !(Number(evt.trailSl != null ? evt.trailSl : evt.sl) > 0)) {
+      if (!(Number(evt.entry) > 0) || (!(Number(evt.trailSl != null ? evt.trailSl : evt.sl) > 0) && !momentumNoStopEntry(evt))) {
         log('skip entry (missing entry/SL):', key);
         return;
       }
@@ -5644,7 +5695,24 @@ async function main() {
           accruedCash: accountSnap.accruedCash,
           accruedDividend: accountSnap.accruedDividend,
           dividendReceivable: accountSnap.dividendReceivable
-        }
+        },
+        ...(capitalPoolEnabled() ? {
+          capitalPlan: {
+            at: new Date().toISOString(),
+            plan: capitalSlotPlan(Object.values(state.byKey || {})),
+            fit: capitalEntryFit(Object.values(state.byKey || {}), accountSnap),
+            account: {
+              netLiquidation: accountSnap.netLiquidation,
+              grossPositionValue: accountSnap.grossPositionValue,
+              buyingPower: accountSnap.buyingPower,
+              excessLiquidity: accountSnap.excessLiquidity,
+              availableFunds: accountSnap.availableFunds,
+              lookAheadAvailableFunds: accountSnap.lookAheadAvailableFunds,
+              lookAheadExcessLiquidity: accountSnap.lookAheadExcessLiquidity,
+              summaryAt: accountSnap.summaryAt,
+            },
+          },
+        } : {}),
       });
       if (!(resp && resp.ok) && charges.length) restorePendingCharges(charges);
       lastIbReconAt = Date.now();
@@ -8512,6 +8580,8 @@ module.exports = {
   toContract,
   boardLotHint,
   parentEntrySpec,
+  momentumNoStopEntry,
+  entryChildFlags,
   correctiveExtExitSpec,
   sessionPhase,
   minutesUntilUsRth,

@@ -2,6 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const {
   batchDue,
   score12Minus1,
@@ -10,6 +13,8 @@ const {
   sleevesToExit,
   shouldAutoPause,
   addMonths,
+  planMomentumBatch,
+  commitMomentumAcceptances,
 } = require('../lib/strategy/momentum-book');
 const { setupExitDecision, SETUPS } = require('../lib/strategy/evidence-setup-book');
 
@@ -60,4 +65,50 @@ test('auto-pause needs six entries and more than five points behind', () => {
   const held = Array.from({ length: 130 }, (_, index) => ({ h: 101, l: 99, c: 100, o: 100 }));
   assert.equal(setupExitDecision('UK_LONG_MOMENTUM', position, held, 10).action, 'hold');
   assert.equal(setupExitDecision('UK_LONG_MOMENTUM', position, held, 126).reason, 'hold_complete');
+});
+
+test('momentum batch before 06:00 SGT writes nothing', async () => {
+  const file = path.join(os.tmpdir(), `momentum-before-release-${process.pid}.json`);
+  const prior = process.env.MOMENTUM_BOOK_STATE_FILE;
+  process.env.MOMENTUM_BOOK_STATE_FILE = file;
+  fs.writeFileSync(file, '{"sentinel":true}\n');
+  const before = fs.readFileSync(file, 'utf8');
+  const plan = await planMomentumBatch({
+    now: new Date('2026-10-06T21:30:00.000Z'),
+    loadBars: async () => { throw new Error('bars should not load before the release'); },
+  });
+  assert.equal(plan.skipped, 'before-sgt-release');
+  assert.deepEqual(plan.orders, []);
+  assert.equal(plan.wrote, false);
+  assert.equal(fs.readFileSync(file, 'utf8'), before);
+  fs.unlinkSync(file);
+  if (prior == null) delete process.env.MOMENTUM_BOOK_STATE_FILE;
+  else process.env.MOMENTUM_BOOK_STATE_FILE = prior;
+});
+
+test('momentum month is recorded only after the emit is accepted', () => {
+  const file = path.join(os.tmpdir(), `momentum-accept-${process.pid}.json`);
+  const prior = process.env.MOMENTUM_BOOK_STATE_FILE;
+  process.env.MOMENTUM_BOOK_STATE_FILE = file;
+  fs.writeFileSync(file, '{"UK_LONG_MOMENTUM":{"monthsRun":[],"entries":[{"month":"2026-04","ticker":"AAA.L","entry":10,"key":"AAA.L|long|2026-04-01"}],"paused":null}}\n');
+  commitMomentumAcceptances([]);
+  const untouched = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.deepEqual(untouched.UK_LONG_MOMENTUM.monthsRun, []);
+  assert.equal(untouched.UK_LONG_MOMENTUM.entries[0].exited, undefined);
+  commitMomentumAcceptances([{
+    accept: {
+      setupId: 'UK_LONG_MOMENTUM',
+      month: '2026-10',
+      entry: { month: '2026-10', ticker: 'SHEL.L', entry: 100, entryDate: '2026-10-01', key: 'SHEL.L|long|2026-10-01' },
+    },
+  }, {
+    accept: { setupId: 'UK_LONG_MOMENTUM', month: '2026-10', exitKey: 'AAA.L|long|2026-04-01' },
+  }]);
+  const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.deepEqual(saved.UK_LONG_MOMENTUM.monthsRun, ['2026-10']);
+  assert.equal(saved.UK_LONG_MOMENTUM.entries[0].exited, '2026-10');
+  assert.equal(saved.UK_LONG_MOMENTUM.entries[1].ticker, 'SHEL.L');
+  fs.unlinkSync(file);
+  if (prior == null) delete process.env.MOMENTUM_BOOK_STATE_FILE;
+  else process.env.MOMENTUM_BOOK_STATE_FILE = prior;
 });
