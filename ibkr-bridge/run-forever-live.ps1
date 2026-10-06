@@ -31,6 +31,10 @@ if (-not $env:IBKR_LIVE_ACCOUNT -or $env:IBKR_LIVE_ACCOUNT -match '^DU') {
   exit 2
 }
 $env:IBKR_ACCOUNT = $env:IBKR_LIVE_ACCOUNT.Trim().ToUpper()
+$env:IBKR_BRIDGE_ROLE = "live"
+$env:SETUP_BOOK_ENABLED = "0"
+$env:SETUP_BOOK_PAPER_EXECUTION = "0"
+$env:CAPITAL_POOL_ENABLED = "0"
 
 # Live stays blank until an explicit go-ahead. ARM alone cannot place orders.
 $env:IBKR_DRY_RUN = "1"

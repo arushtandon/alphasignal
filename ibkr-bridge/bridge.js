@@ -193,8 +193,10 @@ const {
   setupFillLevels,
   evaluateSetupCapacity,
   evaluateCapitalPool,
+  capitalPoolEnabled,
   SETUP_TICKET_USD,
 } = require('../lib/strategy/setup-book-execution');
+const { sendTelegram } = require('../lib/strategy/setup-book-runtime');
 const { instrumentFor } = require('../lib/research/exit-amendment');
 const { SETUPS: EVIDENCE_SETUPS } = require('../lib/strategy/evidence-setup-book');
 
@@ -859,6 +861,12 @@ function extendedFillLimit(side, entryPx, quotePx, contract) {
  */
 function parentEntrySpec(contract, action, qty, opts = {}) {
   const phase = opts.phaseOverride || sessionPhase(contract);
+  if (opts.momentumOpen && phase !== 'rth' && phase !== 'lunch' && phase !== 'closed') {
+    return {
+      orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG',
+      outsideRth: false, transmit: true, entryStyle: 'OPG-MOMENTUM',
+    };
+  }
   const side = opts.side || (String(action).toUpperCase() === 'SELL' ? 'sell' : 'buy');
   const entryPx = Number(opts.entryPx);
   const quotePx = Number(opts.quotePx);
@@ -1057,6 +1065,7 @@ async function shareSplit(entry, contract, lotOverride, riskInput = {}) {
     capitalScale: riskInput.capitalScale,
     ticketScale: liveTicketScale(),
     allowMinLot: riskInput.allowMinLot === true,
+    ticketNotionalUsd: riskInput.ticketNotionalUsd,
     netLiquidityAvailable: riskInput.netLiquidityAvailable,
     liquidityFloorPct: riskInput.liquidityFloorPct,
     maxNotionalUsd: (contract.secType === 'FUT' || contract.secType === 'CRYPTO')
@@ -2240,6 +2249,21 @@ async function main() {
       }
       refreshStartingBalance();
     }
+    function maybeAlertExcessLiquidity() {
+      if (!capitalPoolEnabled()) return;
+      const excess = Number(accountSnap.excessLiquidity);
+      const nlv = Number(accountSnap.netLiquidation);
+      if (!(nlv > 0) || !Number.isFinite(excess)) return;
+      if (excess / nlv >= 0.10) {
+        accountSnap._excessAlerted = false;
+        return;
+      }
+      if (accountSnap._excessAlerted) return;
+      accountSnap._excessAlerted = true;
+      const text = `MARGIN ALERT ExcessLiquidity ${excess.toFixed(0)} is ${(100 * excess / nlv).toFixed(1)}% of net liquidation ${nlv.toFixed(0)}, below 10%.`;
+      log(text);
+      sendTelegram(text).catch(error => log('TELEGRAM excess liquidity alert failed', error.message));
+    }
     function refreshStartingBalance() {
       if (accountSnap.previousDayEquity != null) {
         accountSnap.startingBalance = accountSnap.previousDayEquity;
@@ -2271,6 +2295,7 @@ async function main() {
         accountSnap.account = accountName || ACCOUNT || accountSnap.account;
         accountSnap.at = new Date().toISOString();
         refreshAccountDerived();
+        maybeAlertExcessLiquidity();
         if (field === 'accruedDividend') {
           noteChargeMove('dividend', 'Accrued dividend (IB)', n, accountSnap.currency, 'income');
         } else if (field === 'dividendReceivable') {
@@ -3495,9 +3520,10 @@ async function main() {
     const boardEntry = (scheduledEntryReleaseAllowed(evt) || !!evt.carryUnfilled) && !evt.userReentry;
     const availLiq = Number(accountSnap.netLiquidityAvailable != null
       ? accountSnap.netLiquidityAvailable : accountSnap.availableFunds);
+    const momentumTicket = EVIDENCE_SETUPS[evt.setupId]?.kind === 'momentum';
     const split = await shareSplit(evt.entry, contract, lot, {
       nlv,
-      stop: rawStop,
+      stop: rawStop > 0 ? rawStop : (momentumTicket ? Number(evt.entry) * 0.99 : rawStop),
       advShares: evt.advShares,
       spreadBps: Number.isFinite(liveSpreadBps) ? liveSpreadBps : evt.spreadBps,
       drawdownPct: Number(evt.drawdownPct) || 0,
@@ -3557,10 +3583,18 @@ async function main() {
       const pool = evaluateCapitalPool(evt.setupId, Object.values(state.byKey || {}), split.risk?.notionalUsd, {
         availableFunds: accountSnap.availableFunds,
         buyingPower: accountSnap.buyingPower,
-      });
+        excessLiquidity: accountSnap.excessLiquidity,
+        netLiquidation: accountSnap.netLiquidation,
+      }, { ticker: evt.ticker });
       if (pool.applied && !pool.allowed) {
-        log(pool.log || 'skipped: slots', evt.ticker, evt.setupId, pool.reason,
+        log(pool.log, evt.ticker, evt.setupId, pool.detail || pool.reason,
           `open=${pool.plan?.open ?? 0}/${pool.plan?.slots ?? 0}`);
+        postJson('/api/setup-book/skip', {
+          ticker: evt.ticker,
+          setupId: evt.setupId,
+          reason: pool.reason,
+          detail: pool.detail || pool.reason,
+        }).catch(error => log('skip report failed', error.message));
         return null;
       }
       if (!setupCapacity.allowed) {
@@ -3640,8 +3674,10 @@ async function main() {
       setupAmendedExits: EVIDENCE_SETUPS[evt.setupId]?.amendedExits === true,
       setupTimeStopBars: EVIDENCE_SETUPS[evt.setupId]?.amendedExits ? null : (Number(evt.setupTimeStopBars) || null),
       setupNotionalUsd: Number(split.risk?.notionalUsd) || null,
+      momentumNoStop: EVIDENCE_SETUPS[evt.setupId]?.kind === 'momentum',
     } : {};
-    if (!(stopPx > 0)) { log('skip entry — no stop level for', evt.ticker); return null; }
+    const momentumNoStop = setupState.momentumNoStop === true;
+    if (!momentumNoStop && !(stopPx > 0)) { log('skip entry — no stop level for', evt.ticker); return null; }
     if (!DRY && contract.secType === 'STK' && !(Number(contract.conId) > 0)) {
       // Never manufacture order IDs for a contract IB could not qualify. This
       // row remains recoverable by reconcile, but no phantom "Placed bracket"
@@ -3710,6 +3746,7 @@ async function main() {
     const parentSpec = parentEntrySpec(contract, openAction, split.total, {
       side: evt.side, entryPx: evt.entry, quotePx,
       forceOpg: !!evt.forceOpg,
+      momentumOpen: !!evt.momentumOpen,
       forceExt: String(evt.reason || '') === 'rearm-model-entry',
       skipChase: !!evt.skipChase || (!!evt.userReentry && !evt.restoreMustPrint),
       throughPct: Number(evt.throughPct) > 0 ? Number(evt.throughPct) : undefined,
@@ -3739,13 +3776,13 @@ async function main() {
     const execSlot = pickExecSlot();
     const execClientId = execSlot ? execSlot.clientId : activeClientId;
     const parentId = nid(execClientId);
-    const stopId = asiaStandalone ? null : nid(execClientId);
+    const stopId = (asiaStandalone || momentumNoStop) ? null : nid(execClientId);
     const oneLotRunner = setupShape?.oneLotRunner === true;
-    const tp1Id = (!asiaStandalone && !oneLotRunner && tp1Px > 0 && split.sold > 0) ? nid(execClientId) : null;
+    const tp1Id = (!asiaStandalone && !momentumNoStop && !oneLotRunner && tp1Px > 0 && split.sold > 0) ? nid(execClientId) : null;
     const initialTp2Id = (!asiaStandalone && oneLotRunner && tp2Px > 0 && split.runner > 0) ? nid(execClientId) : null;
     const { entryStyle, defer, ...parentFields } = parentSpec;
     const parent = baseOrder({ orderId: parentId, ...parentFields });
-    if (asiaStandalone) parent.transmit = true;
+    if (asiaStandalone || momentumNoStop) parent.transmit = true;
     const fullTp1 = !oneLotRunner && split.sold > 0 && !(split.runner > 0);
     const oca = (fullTp1 || oneLotRunner) ? { ocaGroup: ocaGroupForKey(evt.key || evt.ticker), ocaType: 1 } : {};
     // Stop child: FULL quantity — pre-TP1 an SL hit closes the whole position
@@ -5729,7 +5766,7 @@ async function main() {
     for (const [key, row] of Object.entries(state.byKey || {})) {
       if (!row || row.closed || !row.entryFilled) continue;
       if (keyState && keyState.get(key) !== 'open') continue;
-      if (row.stopId != null) continue;
+      if (row.stopId != null || row.momentumNoStop === true) continue;
       const yStop = normalizeYahooTicker(row.ticker);
       if ((lastLiveStops || []).some(s => s && normalizeYahooTicker(s.ticker) === yStop && Number(s.orderId) > 0)) continue;
       const phase = row.contract ? sessionPhase(row.contract) : 'closed';
@@ -5746,7 +5783,7 @@ async function main() {
 
     // Filled lot with no live TP1 LMT while the venue can rest a GTC.
     for (const [key, row] of Object.entries(state.byKey || {})) {
-      if (!row || row.closed || row.errorTrade || !row.entryFilled || row.tp1Done) continue;
+      if (!row || row.closed || row.errorTrade || !row.entryFilled || row.tp1Done || row.momentumNoStop === true) continue;
       if (keyState && keyState.get(key) !== 'open') continue;
       if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK' && row.contract.secType !== 'FUT')) continue;
       if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
@@ -5959,7 +5996,7 @@ async function main() {
     let n = 0;
     for (const [key, row] of Object.entries(state.byKey || {})) {
       if (onlyKey && key !== onlyKey) continue;
-      if (!row || row.closed || row.errorTrade || !row.entryFilled) continue;
+      if (!row || row.closed || row.errorTrade || !row.entryFilled || row.momentumNoStop === true) continue;
       if (!row.contract || (row.contract.secType && row.contract.secType !== 'STK' && row.contract.secType !== 'FUT')) continue;
       if (ERROR_TRADE_TICKERS.has(String(row.ticker || '').toUpperCase())) continue;
       if (futuresDueForRoll(row.contract)) {
@@ -8205,7 +8242,21 @@ async function main() {
       // Once per US session after post-market close (≈20:00 ET / 00:00 UTC EDT).
       try { await maybeSendEodPerformanceSummary(); }
       catch (e) { log('TELEGRAM: EOD check failed', e.message); }
+      try { await maybeRunMomentumBatch(); }
+      catch (e) { log('momentum batch failed', e.message); }
     } catch (e) { log('reconcile error', e.message); }
+  }
+
+  async function maybeRunMomentumBatch() {
+    if (!capitalPoolEnabled()) return;
+    const held = Object.values(state.byKey || {})
+      .filter(row => row && row.entryFilled === true && row.closed !== true)
+      .map(row => row.ticker)
+      .filter(Boolean);
+    const plan = await postJson('/api/setup-book/momentum-run', { held });
+    if (plan && plan.emitted && plan.emitted.length) {
+      log('momentum batch emitted', plan.emitted.join(','));
+    }
   }
 
   async function pollOnce() {

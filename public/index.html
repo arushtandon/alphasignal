@@ -534,6 +534,7 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
         <p>Top 5 long &amp; short opportunities across the full research universe, ranked by AI composite score</p>
         <div class="dash-ts" id="dashTs">Loading...</div>
       </div>
+      <div id="capitalBook" style="margin:0 0 12px;padding:10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:10px;font:11px 'DM Mono',monospace;color:var(--tx)"></div>
 
       <!-- Two-column layout: picks (left) + earnings sidebar (right) -->
       <div class="dash-layout">
@@ -4159,7 +4160,30 @@ function updateHorizonTabLabels(data){
   });
 }
 
+async function loadCapitalBook(){
+  const el = document.getElementById('capitalBook');
+  if (!el) return;
+  const data = await fetch('/api/setup-book/status?t='+Date.now(),{cache:'no-store'}).then(r => r.ok ? r.json() : null).catch(() => null);
+  const capital = data && data.capital;
+  if (!capital) { el.innerHTML = ''; return; }
+  const margin = capital.margin || {};
+  const money = value => value == null || !Number.isFinite(Number(value)) ? '—' : '$'+Number(value).toLocaleString(undefined,{maximumFractionDigits:0});
+  const books = Object.entries(capital.byBook || {}).map(([name, count]) => name+' '+count).join(' · ') || 'none';
+  const markets = Object.entries(capital.byMarket || {}).map(([name, count]) => name+' '+count).join(' · ') || 'none';
+  const skips = (capital.skips || []).slice(0, 12).map(row =>
+    '<div>'+(row.at || '').slice(0, 16)+' '+row.ticker+' '+(row.setupId || '')+' — '+(row.reason || '')+(row.detail ? ' ('+row.detail+')' : '')+'</div>'
+  ).join('') || '<div>No skips recorded.</div>';
+  el.innerHTML = '<div style="letter-spacing:.08em;text-transform:uppercase;color:var(--m1);margin-bottom:6px">Capital pool'
+    +(capital.enabled ? '' : ' · flag off')+'</div>'
+    +'<div>Slots '+capital.used+' used / '+capital.free+' free of '+capital.slots+'</div>'
+    +'<div>Margin headroom '+money(margin.headroomUsd)+' · excess liquidity '+money(margin.excessLiquidity)
+    +' · buying power '+money(margin.buyingPower)+' · floor 15% of NLV</div>'
+    +'<div style="margin-top:6px">By book: '+books+'</div>'
+    +'<div>By market: '+markets+'</div>'
+    +'<div style="margin-top:6px;color:var(--m1)">Skips</div>'+skips;
+}
 async function loadDashboard(force=false){
+  loadCapitalBook();
   ST.dashData=null;
   ST.dashTs=null;
 

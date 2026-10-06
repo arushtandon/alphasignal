@@ -19,6 +19,8 @@ const {
   evaluateSetupCapacity,
   evaluateCapitalPool,
   capitalSlotPlan,
+  marginDecision,
+  evidenceTier,
 } = require('../lib/strategy/setup-book-execution');
 
 function bar({ o = 100, h = 100, l = 100, c = 100 } = {}) {
@@ -206,49 +208,97 @@ test('setup target exits are not reopened by extinct-status folding', () => {
   assert.equal(plain.mediumStatus, 'open');
 });
 
-test('capacity is per setup and entry ordering is deterministic', () => {
-  const rows = Array.from({ length: 5 }, (_, index) => ({
+test('per-setup caps are off unless an env override is set', () => {
+  const key = 'SETUP_CAPACITY_JAPAN_MEDIUM_MR_POSITIONS';
+  const prior = process.env[key];
+  delete process.env[key];
+  const rows = Array.from({ length: 5 }, () => ({
     setupId: 'JAPAN_MEDIUM_MR',
     setupNotionalUsd: 1000,
     closed: false,
-    index,
   }));
+  assert.equal(evaluateSetupCapacity('JAPAN_MEDIUM_MR', rows, 1000, 100000).allowed, true);
+  process.env[key] = '5';
   const rejected = evaluateSetupCapacity('JAPAN_MEDIUM_MR', rows, 1000, 100000);
   assert.equal(rejected.allowed, false);
   assert.equal(rejected.reason, 'position-count');
+  if (prior == null) delete process.env[key];
+  else process.env[key] = prior;
   const ordered = [
-    { setupId: 'US_SHORT_MR', ticker: 'Z' },
-    { setupId: 'JAPAN_MEDIUM_MR', ticker: 'A' },
-    { setupId: 'JAPAN_SHORT_MR', ticker: 'B' },
+    { setupId: 'US_SHORT_MR', ticker: 'Z', signalDate: '2026-10-06' },
+    { setupId: 'COMMODITIES_MEDIUM_MR', ticker: 'CL=F', signalDate: '2026-10-06' },
+    { setupId: 'JAPAN_MEDIUM_MR', ticker: 'A', signalDate: '2026-10-06' },
+    { setupId: 'UK_LONG_MOMENTUM', ticker: 'SHEL.L', signalDate: '2026-10-06' },
+    { setupId: 'JAPAN_SHORT_MR', ticker: 'B', signalDate: '2026-10-06' },
   ].sort(compareSetupEntries);
-  assert.deepEqual(ordered.map(row => row.setupId), [
-    'JAPAN_MEDIUM_MR',
+  assert.equal(ordered[0].setupId, 'JAPAN_MEDIUM_MR');
+  assert.deepEqual(ordered.slice(1, 3).map(row => row.setupId).sort(), [
+    'COMMODITIES_MEDIUM_MR',
     'JAPAN_SHORT_MR',
+  ]);
+  assert.deepEqual(ordered.slice(3).map(row => row.setupId).sort(), [
+    'UK_LONG_MOMENTUM',
     'US_SHORT_MR',
   ]);
+  assert.equal(evidenceTier('JAPAN_MEDIUM_MR'), 1);
+  assert.equal(evidenceTier('UK_LONG_MOMENTUM'), 3);
 });
 
-test('capital pool stays off unless the flag is set', () => {
+test('one 50-slot pool and the margin floor', () => {
   const prior = process.env.CAPITAL_POOL_ENABLED;
+  const role = process.env.IBKR_BRIDGE_ROLE;
   delete process.env.CAPITAL_POOL_ENABLED;
-  const dormant = evaluateCapitalPool('JAPAN_MEDIUM_MR', [], 30000, { availableFunds: 0, buyingPower: 0 });
+  delete process.env.IBKR_BRIDGE_ROLE;
+  const dormant = evaluateCapitalPool('JAPAN_MEDIUM_MR', [], 30000, {
+    buyingPower: 0, excessLiquidity: 0, netLiquidation: 1,
+  });
   assert.equal(dormant.applied, false);
-  assert.equal(dormant.allowed, true);
   process.env.CAPITAL_POOL_ENABLED = '1';
-  const open = Array.from({ length: 25 }, () => ({ entryFilled: true, closed: false }));
+  const open = Array.from({ length: 25 }, (_, index) => ({
+    entryFilled: true,
+    closed: false,
+    ticker: `N${index}`,
+    setupId: index < 3 ? 'JAPAN_MEDIUM_MR' : '',
+    market: index < 10 ? 'Japan' : 'US',
+  }));
   const plan = capitalSlotPlan(open);
-  assert.equal(plan.slots, 23);
-  assert.equal(plan.free, 0);
-  assert.equal(plan.over, 2);
-  const blocked = evaluateCapitalPool('COMMODITIES_MEDIUM_MR', open, 30000, {
-    availableFunds: 500000, buyingPower: 500000,
+  assert.equal(plan.slots, 50);
+  assert.equal(plan.free, 25);
+  assert.equal(plan.byBook['old-engine'], 22);
+  const account = {
+    availableFunds: 315984,
+    buyingPower: 900000,
+    excessLiquidity: 200000,
+    netLiquidation: 461316,
+  };
+  const allowed = evaluateCapitalPool('UK_LONG_MOMENTUM', open, 30000, account, { ticker: 'SHEL.L' });
+  assert.equal(allowed.allowed, true);
+  const duplicate = evaluateCapitalPool('FRANCE_LONG_MOMENTUM', open, 30000, account, { ticker: 'N0' });
+  assert.equal(duplicate.log, 'skipped: capacity');
+  assert.equal(duplicate.detail, 'one-position-per-ticker');
+  const full = Array.from({ length: 50 }, (_, index) => ({ entryFilled: true, closed: false, ticker: `F${index}` }));
+  const capped = evaluateCapitalPool('JAPAN_SHORT_MR', full, 30000, account, { ticker: 'NEW' });
+  assert.equal(capped.log, 'skipped: capacity');
+  const buyingPower = evaluateCapitalPool('JAPAN_SHORT_MR', [], 30000, {
+    ...account, buyingPower: 10000,
+  }, { ticker: 'AAA' });
+  assert.equal(buyingPower.log, 'skipped: margin');
+  assert.equal(buyingPower.detail, 'buying-power');
+  const floor = marginDecision(30000, {
+    buyingPower: 70000,
+    excessLiquidity: 70000,
+    netLiquidation: 400000,
   });
-  assert.equal(blocked.allowed, false);
-  assert.equal(blocked.log, 'skipped: slots');
-  const margin = evaluateCapitalPool('JAPAN_SHORT_MR', [], 30000, {
-    availableFunds: 10000, buyingPower: 800000,
-  });
-  assert.equal(margin.log, 'skipped: margin');
+  assert.equal(floor.allowed, false);
+  assert.equal(floor.detail, 'excess-liquidity-floor');
+  const missing = evaluateCapitalPool('JAPAN_MEDIUM_MR', [], 30000, {
+    buyingPower: 900000, netLiquidation: 461316,
+  }, { ticker: 'BBB' });
+  assert.equal(missing.detail, 'missing-account');
+  process.env.IBKR_BRIDGE_ROLE = 'live';
+  assert.equal(evaluateCapitalPool('JAPAN_MEDIUM_MR', full, 30000, account).applied, false);
   if (prior == null) delete process.env.CAPITAL_POOL_ENABLED;
   else process.env.CAPITAL_POOL_ENABLED = prior;
+  if (role == null) delete process.env.IBKR_BRIDGE_ROLE;
+  else process.env.IBKR_BRIDGE_ROLE = role;
 });

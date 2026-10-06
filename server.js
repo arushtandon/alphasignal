@@ -61,7 +61,8 @@ const {
 const {
   resolveSetupBookCell,
 } = require('./lib/strategy/setup-book');
-const { compareSetupEntries } = require('./lib/strategy/setup-book-execution');
+const { compareSetupEntries, capitalPoolEnabled, capitalDashboard } = require('./lib/strategy/setup-book-execution');
+const { planMomentumBatch } = require('./lib/strategy/momentum-book');
 const { buildPublicationCellRecord, freezePublishedFields } = require('./lib/strategy/publication-record');
 const {
   isSetupPaused,
@@ -69,6 +70,7 @@ const {
   setupBookPnlViews,
   copyPublicationFields,
   resumeSetup,
+  pauseSetup,
 } = require('./lib/strategy/setup-book-runtime');
 const { dailyToWeeklyBars, weeklyBarsVisibleAt } = require('./lib/research/weekly-bars');
 const { evaluateMtf, blendSignal } = require('./lib/research/mtf-supertrend');
@@ -7862,14 +7864,75 @@ app.get('/api/dashboard/picks', (req, res) => {
   });
 });
 
+const SETUP_SKIPS_FILE = path.join(path.dirname(HISTORY_FILE), 'setup-book-skips.json');
+
+function readSetupSkips() {
+  try {
+    const rows = JSON.parse(fs.readFileSync(SETUP_SKIPS_FILE, 'utf8'));
+    return Array.isArray(rows) ? rows : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function setupBookCapitalView() {
+  let rows = [];
+  try {
+    const state = JSON.parse(fs.readFileSync(path.join(__dirname, 'ibkr-bridge', 'bridge-state.json'), 'utf8'));
+    rows = Object.values(state.byKey || {});
+  } catch (_) {}
+  let snap = null;
+  try { snap = loadIbkrAccountSnapshot(process.env.IBKR_ACCOUNT || 'DU1764495'); }
+  catch (_) { snap = null; }
+  return capitalDashboard(rows, snap, readSetupSkips());
+}
+
 app.get('/api/setup-book/status', (req, res) => {
   res.json({
     enabled: setupBookEnabled(),
     paperExecution: setupBookPaperExecutionEnabled(),
+    capitalPool: capitalPoolEnabled(),
     cells: require('./lib/strategy/setup-book').CELLS,
     pnl: setupBookPnlViews(tradeHistory),
     runtime: evaluateSetupBookPauses(tradeHistory, { notify: false }).state,
+    capital: setupBookCapitalView(),
   });
+});
+
+app.post('/api/setup-book/skip', express.json({ limit: '32kb' }), (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const reason = req.body && req.body.reason === 'margin' ? 'margin' : 'capacity';
+  const row = {
+    at: new Date().toISOString(),
+    ticker: String(req.body && req.body.ticker || ''),
+    setupId: req.body && req.body.setupId || null,
+    reason,
+    detail: req.body && req.body.detail || null,
+  };
+  const rows = readSetupSkips();
+  rows.push(row);
+  try { atomicWriteJsonSync(SETUP_SKIPS_FILE, rows.slice(-200)); } catch (_) {}
+  res.json({ ok: true, skip: row });
+});
+
+app.post('/api/setup-book/momentum-run', express.json({ limit: '64kb' }), async (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  if (!capitalPoolEnabled()) return res.json({ ok: false, armed: false, reason: 'capital-pool-off' });
+  try {
+    const plan = await planMomentumBatch({
+      now: new Date(),
+      held: Array.isArray(req.body && req.body.held) ? req.body.held : [],
+      loadBars: symbol => fetchOHLCV(symbol, '2y', '1d'),
+    });
+    const emitted = [];
+    for (const order of plan.orders || []) {
+      const evt = emitTradeEvent(order.action === 'sell' ? 'exit' : 'entry', order.event);
+      if (evt) emitted.push(order.event && order.event.key);
+    }
+    res.json({ ...plan, emitted });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
 });
 
 app.post('/api/setup-book/resume', express.json(), (req, res) => {
@@ -9260,6 +9323,7 @@ async function addTradesToHistory(trades) {
 
   const incomingKeys = new Set(trades.map(keyOf));
   tradeHistory = tradeHistory.filter(h => !incomingKeys.has(keyOf(h)));
+  const pendingSetupEmits = [];
 
   const caches = {};
   const accepted = [];
@@ -9414,7 +9478,7 @@ async function addTradesToHistory(trades) {
     // Hold must never emit (tradeEventSnapshot used to default Hold→buy).
     // Re-importing old history must never re-emit 'entry'.
     if (!prev && isToday && shouldEmitIbkrEntry(trade, hz)) {
-      try { emitTradeEvent('entry', tradeEventSnapshot(trade, hz)); } catch (_) {}
+      pendingSetupEmits.push({ trade, hz });
     }
    } catch (err) {
      // Never let one malformed pick abort the whole batch — a single uncaught
@@ -9424,6 +9488,14 @@ async function addTradesToHistory(trades) {
      try { auditLog('entry_record_error', { ticker: trade && trade.ticker, hz: trade && trade.hz, error: err && err.message }); } catch (_) {}
      continue;
    }
+  }
+
+  pendingSetupEmits.sort((left, right) => compareSetupEntries(
+    { setupId: left.trade.setupId, ticker: left.trade.ticker, signalDate: singaporeDateKey(), key: left.trade.ticker },
+    { setupId: right.trade.setupId, ticker: right.trade.ticker, signalDate: singaporeDateKey(), key: right.trade.ticker },
+  ));
+  for (const item of pendingSetupEmits) {
+    try { emitTradeEvent('entry', tradeEventSnapshot(item.trade, item.hz)); } catch (_) {}
   }
 
   tradeHistory.unshift(...accepted);
@@ -14648,7 +14720,9 @@ function emitTradeEvent(type, payload) {
       console.log('IBKR entry skipped (not Buy/Sell):', payload && payload.key);
       return null;
     }
-    if (!(payload.entry > 0) || !(payload.sl > 0)) {
+    const momentumEntry = payload.noStop === true && payload.momentumOpen === true
+      && (payload.setupId === 'UK_LONG_MOMENTUM' || payload.setupId === 'FRANCE_LONG_MOMENTUM');
+    if (!(payload.entry > 0) || (!(payload.sl > 0) && !momentumEntry)) {
       console.log('IBKR entry skipped (missing levels):', payload && payload.key);
       return null;
     }
@@ -14658,7 +14732,7 @@ function emitTradeEvent(type, payload) {
         'entryDate=', payload && (payload.entryDate || payload.t));
       return null;
     }
-    if (!entryReleaseTestBypass && !isManualEntryBypass(payload)
+    if (!entryReleaseTestBypass && !momentumEntry && !isManualEntryBypass(payload)
       && !boardPublishedAtRelease(dashboardPicksCache && dashboardPicksCache.dashTs)) {
       console.log('IBKR entry skipped (board is not the 06:00 SGT publish):', payload && payload.key);
       return null;

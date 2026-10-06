@@ -1,0 +1,8 @@
+{
+  "SETUP_BOOK_ENABLED": true,
+  "SETUP_BOOK_PAPER_EXECUTION": true,
+  "CAPITAL_POOL_ENABLED": true,
+  "account": "paper-only",
+  "enabledAt": "2026-10-05T15:50:00+08:00",
+  "note": "Recommendations + paper execution. Live/real-money bridges must refuse."
+}

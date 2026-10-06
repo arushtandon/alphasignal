@@ -1,25 +1,11 @@
 # One capital plan
 
-Not enabled. Operator decision on 6 October 2026: keep the **$700,000** model pool. IBKR margin covers the gap to net liquidation. The paper account's last logged net liquidation is **$461,315.62** (DU1764495, 5 October 2026, 20:45 UTC), with available funds **$315,984.25**.
+Operator decision on 6 October 2026, revised the same day: one open pool of **50 slots × $30,000**. Every enabled book and market shares it. There is no per-book or per-market maximum. Old-engine positions that are still open count toward the 50.
 
-The check lives behind `CAPITAL_POOL_ENABLED`. That flag defaults off. It is not set in the paper supervisor.
+`CAPITAL_POOL_ENABLED` is on for the paper supervisor and off for the live supervisor. Per-setup position caps stay off unless `SETUP_CAPACITY_<SETUP>_POSITIONS` is set.
 
-## Gross cap
+When more same-day signals exist than free slots, the order is Tier 1 (Japan medium), then Tier 2 (Japan short and commodities medium), then Experimental (UK and France long momentum, current-engine cells, US short). Inside a tier the seeded hash breaks ties. One ticker is held by only one book.
 
-Gross cap is $700,000. A $30,000 ticket gives **23 slots**. Old-engine positions that are still open count toward the 23. On 6 October 2026 the paper book has **25** open old-engine names, so **0 slots are free** and the book is 2 over the cap. While the flag is off those names are not blocked by this rule.
+Before an entry the bridge reads available funds, buying power, and excess liquidity. It skips the order, logs `skipped: margin`, and shows that skip on the dashboard if the notional exceeds buying power or the order would leave excess liquidity below 15% of net liquidation. Excess liquidity below 10% of net liquidation sends a Telegram alert.
 
-Before every entry the bridge also checks IBKR available funds and buying power. If either figure is missing, or the order's notional is larger than the smaller of the two, the order is skipped and logged `skipped: margin`. It is not sent for IBKR to reject.
-
-## Slot maxima
-
-Each figure is a maximum. An unused dedicated slot is not lent to another book. The shared group is the only place books borrow from each other.
-
-| Book | Slots |
-| --- | ---: |
-| JAPAN_MEDIUM_MR | 5 |
-| JAPAN_SHORT_MR | 3 |
-| UK_LONG_MOMENTUM | 6 |
-| FRANCE_LONG_MOMENTUM | 6 |
-| Shared | 3 |
-
-Shared priority: commodities medium mean reversion, then current-engine cells, then US short mean reversion. A tie inside one priority uses the existing seeded hash. UK and France long momentum are not placed: the executable k=1 re-test is a candidate, not a pass.
+UK long momentum and France long momentum are Experimental. Each month, on the first trading day after month-end, the book buys the top 12-1 name that is not already held, $30,000 or one lot if a lot costs more, and sells it six months later. There is no stop. The tag is `SETUP_BOOK:UK_LONG_MOMENTUM` or `SETUP_BOOK:FRANCE_LONG_MOMENTUM`, and the PnL view is against EWU or EWQ. After six monthly entries the book pauses new buys if it is more than 5 points behind its benchmark.
