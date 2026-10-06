@@ -44,6 +44,32 @@ const {
 } = require('./lib/strategy/price-action-short');
 const { COST_MODEL_VERSION, applyCosts } = require('./lib/research/cost-model');
 const { summarizeReturns, summarizeDatedPortfolio, promotionDecision } = require('./lib/research/performance');
+const {
+  setupBookEnabled,
+  setupBookPaperExecutionEnabled,
+  applyPaperFlagsFromDisk,
+} = require('./lib/strategy/feature-flags');
+applyPaperFlagsFromDisk();
+const {
+  SETUPS: EVIDENCE_SETUPS,
+  setupForCell,
+  setupEntryPlan,
+  setupExitDecision,
+  completedDailyBars,
+  rebaseSetupLevels,
+} = require('./lib/strategy/evidence-setup-book');
+const {
+  resolveSetupBookCell,
+} = require('./lib/strategy/setup-book');
+const { compareSetupEntries } = require('./lib/strategy/setup-book-execution');
+const { buildPublicationCellRecord, freezePublishedFields } = require('./lib/strategy/publication-record');
+const {
+  isSetupPaused,
+  evaluateSetupBookPauses,
+  setupBookPnlViews,
+  copyPublicationFields,
+  resumeSetup,
+} = require('./lib/strategy/setup-book-runtime');
 const { dailyToWeeklyBars, weeklyBarsVisibleAt } = require('./lib/research/weekly-bars');
 const { evaluateMtf, blendSignal } = require('./lib/research/mtf-supertrend');
 const { atomicWriteFileSync, atomicWriteJsonSync } = require('./lib/storage/atomic-json');
@@ -123,10 +149,13 @@ const {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+// Performance-program workers import the replay functions below, but must never
+// initialize server persistence or mutate the live dashboard/history state.
+const IS_PERFORMANCE_WORKER = process.env.PERFORMANCE_WORKER === '1';
 const durableStore = new PostgresStore(process.env.DATABASE_URL, {
   ssl: process.env.DATABASE_SSL !== '0'
 });
-const durableReady = durableStore.init()
+const durableReady = (IS_PERFORMANCE_WORKER ? Promise.resolve(false) : durableStore.init())
   .then(ready => console.log('Durable PostgreSQL store:', ready ? 'ready' : 'disabled'))
   .catch(error => {
     console.warn('Durable PostgreSQL init failed; atomic disk fallback active:', error.message);
@@ -1469,9 +1498,15 @@ function findTp1PrintMs(bars, entryMs, tp1, isSell) {
   return null;
 }
 
-async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund = null, markPrice = null, liveMark = false, partialFrac = 0.5) {
+async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund = null, markPrice = null, liveMark = false, partialFrac = 0.5, exitOpts = null) {
   partialFrac = normalizePartialFraction(partialFrac, 'short');
-  const holdDays = Math.min(15, horizonHoldDaysServer('short')); // banks quickly
+  // Research-only injection. Omitted by every live caller, preserving the
+  // existing short mean-reversion target, stop, runner, and 15-bar limit.
+  const researchExit = exitOpts?.researchExitVariant || null;
+  const injectedHoldDays = Number(researchExit?.timeBars);
+  const holdDays = Number.isInteger(injectedHoldDays) && injectedHoldDays > 0
+    ? injectedHoldDays
+    : Math.min(15, horizonHoldDaysServer('short')); // banks quickly
   const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
   const lastIdx = data.length - 1;
   // Only a GENUINELY elapsed hold period is a time-limit exit. If we merely ran
@@ -1483,8 +1518,19 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
   const markAt = (idx, fallback) => (markPrice && idx >= lastIdx) ? markPrice : fallback;
   const eTech = signalTechAtEntry(data, weeklyAll, entryIdx);
   const lv = computeMeanReversionLevels(eTech, entry, isSell) || {};
-  const target = lv.target;
   let trailingSl = lv.stop;
+  const stopCapPct = Number(researchExit?.stopCapPct);
+  if (trailingSl > 0 && Number.isFinite(stopCapPct) && stopCapPct > 0) {
+    const capped = isSell ? entry * (1 + stopCapPct) : entry * (1 - stopCapPct);
+    trailingSl = roundPrice(isSell ? Math.min(trailingSl, capped) : Math.max(trailingSl, capped));
+  }
+  const liveTarget = lv.target;
+  const tp1R = Number(researchExit?.tp1R);
+  const target = Number.isFinite(tp1R) && tp1R > 0 && trailingSl > 0
+    ? roundPrice(isSell
+      ? entry - tp1R * Math.abs(entry - trailingSl)
+      : entry + tp1R * Math.abs(entry - trailingSl))
+    : liveTarget;
   // CANONICAL EXIT SPEC: TP1 books the PARTIAL; remainder exits at TP2 (TSL is backup).
   const PARTIAL = (Number.isFinite(partialFrac) && partialFrac >= 0 && partialFrac < 1) ? partialFrac : 0.5;
   let tp2 = computeSecondTargetFromTech(eTech, entry, 'short', isSell, target);
@@ -1506,6 +1552,7 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
         realized += PARTIAL * ret(target);
         remaining -= PARTIAL;
         tp1Hit = true;
+        if (researchExit?.tp1Only) return finish('tp1_hit', j, target);
         trailingSl = tslAfterTp1({ entry, tp1: target, sl: trailingSl, isSell })
           || (trailingSl == null ? entry : (isSell ? Math.min(trailingSl, entry) : Math.max(trailingSl, entry)));
       } else {
@@ -1557,8 +1604,14 @@ async function simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAl
 async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, fund = null, markPrice = null, liveMark = false, partialFrac = 0.5, exitOpts = null) {
   if (!data || entryIdx == null || !(entry > 0)) return null;
   partialFrac = normalizePartialFraction(partialFrac, hz);
-  if (hz === 'short') return simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund, markPrice, liveMark, partialFrac);
-  const holdDays = horizonHoldDaysServer(hz);
+  if (hz === 'short') return simulateMeanReversionExit(data, entryIdx, entry, isSell, weeklyAll, fund, markPrice, liveMark, partialFrac, exitOpts);
+  // Research-only exit-grid injection. Undefined values retain the production
+  // path exactly; live callers do not supply researchExitVariant.
+  const researchExit = exitOpts?.researchExitVariant || null;
+  const injectedHoldDays = Number(researchExit?.timeBars);
+  const holdDays = Number.isInteger(injectedHoldDays) && injectedHoldDays > 0
+    ? injectedHoldDays
+    : horizonHoldDaysServer(hz);
   const maxJ = Math.min(entryIdx + holdDays, data.length - 1);
   const lastIdx = data.length - 1;
   const markAt = (idx, fallback) => (markPrice && idx >= lastIdx) ? markPrice : fallback;
@@ -1569,7 +1622,19 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
   const entryTech = signalTechAtEntry(data, weeklyAll, entryIdx);
   const atrEntry = entryTech.atr || entry * 0.02;
   let trailingSl = computeTrailingStopFromTech(entryTech, entry, hz, isSell, fund);
-  const tp1 = computeFirstTargetFromTech(entryTech, entry, hz, isSell, trailingSl);
+  const stopCapPct = Number(researchExit?.stopCapPct);
+  if (trailingSl > 0 && Number.isFinite(stopCapPct) && stopCapPct > 0) {
+    const capped = isSell ? entry * (1 + stopCapPct) : entry * (1 - stopCapPct);
+    trailingSl = isSell ? Math.min(trailingSl, capped) : Math.max(trailingSl, capped);
+    trailingSl = roundPrice(trailingSl);
+  }
+  const liveTp1 = computeFirstTargetFromTech(entryTech, entry, hz, isSell, trailingSl);
+  const tp1R = Number(researchExit?.tp1R);
+  const tp1 = Number.isFinite(tp1R) && tp1R > 0 && trailingSl > 0
+    ? roundPrice(isSell
+      ? entry - tp1R * Math.abs(entry - trailingSl)
+      : entry + tp1R * Math.abs(entry - trailingSl))
+    : liveTp1;
   // TP2 = live runner take-profit (TSL is the backup).
   let tp2 = computeSecondTargetFromTech(entryTech, entry, hz, isSell, tp1);
   const PARTIAL = (Number.isFinite(partialFrac) && partialFrac >= 0 && partialFrac < 1) ? partialFrac : 0.5; // whole-share TP1 fraction (default fractional 50%)
@@ -1600,6 +1665,7 @@ async function simulateHybridExit(data, entryIdx, entry, hz, isSell, weeklyAll, 
       } else {
         realized += PARTIAL * shortRet(tp1); remaining -= PARTIAL; tp1Hit = true;
       }
+      if (researchExit?.tp1Only) return finish('tp1_hit', j, tp1);
       trailingSl = tslAfterTp1({ entry, tp1, sl: trailingSl, isSell })
         || (trailingSl == null ? entry : (isSell ? Math.min(trailingSl, entry) : Math.max(trailingSl, entry)));
     }
@@ -3144,8 +3210,57 @@ function lookbackReturn(bars, idx, lookback) {
   return now / prev - 1;
 }
 
+async function resolveBacktestDecisionFundamentals(opts, context, defaultFund) {
+  const provider = typeof opts.fundamentalsAt === 'function'
+    ? opts.fundamentalsAt
+    : (typeof opts.fundAt === 'function' ? opts.fundAt : null);
+  let fund = defaultFund;
+  let fmp;
+  let applyQualityOverlay = false;
+
+  if (provider) {
+    const provided = await provider({ ...context, defaultFund });
+    if (provided && typeof provided === 'object'
+      && (Object.prototype.hasOwnProperty.call(provided, 'fund')
+        || Object.prototype.hasOwnProperty.call(provided, 'fmp'))) {
+      fund = provided.fund == null ? defaultFund : provided.fund;
+      if (Object.prototype.hasOwnProperty.call(provided, 'fmp')) {
+        fmp = provided.fmp;
+        applyQualityOverlay = true;
+      }
+    } else if (provided != null) {
+      // Retain the original fundAt hook contract while allowing it to be async.
+      fund = provided;
+    }
+  }
+  if (typeof opts.fmpAt === 'function') {
+    fmp = await opts.fmpAt({ ...context, fund, defaultFund });
+    applyQualityOverlay = true;
+  }
+  return { fund, fmp, applyQualityOverlay };
+}
+
+/**
+ * Apply the same market/FMP post-processing used by the live board to one
+ * walk-forward decision signal. This is deliberately a thin adapter around
+ * the production overlay helpers: it does not recreate score or cap logic.
+ */
+function applyBacktestQualityOverlay(signal, symbol, hz, fmp) {
+  const dataShell = { quantSignal: { [hz]: signal } };
+  applyMarketTierOverlaySnapshot(symbol, dataShell, fmp);
+  return signal;
+}
+
 async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {}) {
   if (!data || data.length < BACKTEST_WARMUP + 30) return null;
+  // Optional research profiling only. Callers opt in with a mutable collector;
+  // normal and live replay output remains byte-for-byte unchanged.
+  const timingCollector = opts.timingCollector || null;
+  const recordTiming = (field, started) => {
+    if (!timingCollector || !started) return;
+    timingCollector[field] = (Number(timingCollector[field]) || 0)
+      + Number(process.hrtime.bigint() - started) / 1e6;
+  };
   const windowBars = opts.windowBars || BACKTEST_WINDOW_BARS;
   const entryStep = Math.max(1, opts.entryStep || 2);
   const windowStart = Math.max(BACKTEST_WARMUP, data.length - windowBars);
@@ -3158,6 +3273,14 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
   let grossWin = 0, grossLoss = 0, totalCostPct = 0;
   const tradeReturns = [];
   const tradeResults = [];
+  // Research executor only: expose an immutable entry ledger before exit
+  // simulation so exit-grid variants can replay the exact Part B entries.
+  // It is omitted from normal callers unless explicitly requested.
+  const entryCandidates = opts.captureEntryCandidates ? [] : null;
+  // Fidelity-audit-only ledger. This captures rejected decisions too, so an
+  // historical live pick can be traced through the current gate funnel without
+  // changing live recommendations or normal backtest output.
+  const decisionRecords = opts.captureDecisionRecords ? [] : null;
   let stWins = 0, stTrades = 0;
   let nextAllowed = windowStart;
   let _yc = 0;
@@ -3167,6 +3290,13 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
   for (let i = windowStart; i < data.length - 2; i += entryStep) {
     if (i < nextAllowed) continue;
     if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r));
+    const decisionStarted = timingCollector ? process.hrtime.bigint() : null;
+    let decisionTimingRecorded = false;
+    const finishDecisionTiming = () => {
+      if (decisionTimingRecorded) return;
+      decisionTimingRecorded = true;
+      recordTiming('signalEntryDecisionMs', decisionStarted);
+    };
     const tech = techAtBoundedIndex(data, weeklyAll, i, opts.symbol);
     let market = null;
     if (marketSeries) {
@@ -3175,7 +3305,34 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
     }
     // Historical peer-earnings tide at this bar (same decay math as live).
     if (earningsEvents) tech._earningsTide = earningsTideFromEvents(earningsEvents, data[i].t);
-    let sig = computeQuantSignal(tech, fund, hz, market);
+    // Research callers may inject causal fundamentals/FMP snapshots for this
+    // decision bar. With no provider, this branch preserves the original
+    // static-fund replay exactly.
+    const decisionInputs = await resolveBacktestDecisionFundamentals(opts, {
+      data,
+      bar: data[i],
+      index: i,
+      horizon: hz,
+      symbol: opts.symbol,
+      market,
+      decisionTs: data[i].t
+    }, fund);
+    const decisionFund = decisionInputs.fund;
+    let sig = computeQuantSignal(tech, decisionFund, hz, market);
+    // Fidelity-audit metadata only. Preserve the technical signal immediately
+    // before the production FMP/structural overlay, so research can attribute
+    // a rejected historical pick to an overlay/cap without altering the signal.
+    const preOverlay = opts.captureDecisionRecords ? {
+      buyScore: Number(sig.buyScore) || 0,
+      sellScore: Number(sig.sellScore) || 0,
+      action: sig.action || null,
+      rating: sig.rating || null,
+      confidence: Number(sig.winRateHint) || 0,
+      conditions: Array.isArray(sig.conditions) ? sig.conditions.slice() : [],
+    } : null;
+    if (decisionInputs.applyQualityOverlay) {
+      sig = applyBacktestQualityOverlay(sig, opts.symbol, hz, decisionInputs.fmp);
+    }
     // Research-only hook for causal entry overlays (for example multi-timeframe
     // Supertrend/SR/Fibonacci). Production callers do not supply this option.
     if (typeof opts.signalOverlay === 'function') {
@@ -3202,8 +3359,43 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
       dataFresh: true,
       bracketEnabled: true
     }, decisionPolicy);
+    const score = decision.side === 'sell' ? Number(sig.sellScore) : Number(sig.buyScore);
+    const decisionRecord = {
+      signalIndex: i,
+      signalTs: Number(data[i] && data[i].t) || null,
+      side: decision.side || null,
+      score: Number.isFinite(score) ? score : null,
+      confidence: Number.isFinite(Number(decision.confidence)) ? Number(decision.confidence) : null,
+      rating: decision.candidateRating || null,
+      supertrend: stHz ? {
+        direction: stHz.direction || null,
+        flippedBull: stHz.flippedBull === true,
+        flippedBear: stHz.flippedBear === true,
+      } : null,
+      marketTier: classifyMarket(opts.symbol).tier,
+      piotroski: Number.isFinite(decisionInputs.fmp?.piotroski) ? decisionInputs.fmp.piotroski : null,
+      altmanZ: Number.isFinite(decisionInputs.fmp?.altmanZ) ? decisionInputs.fmp.altmanZ : null,
+      qualityUsable: decisionInputs.fmp != null,
+      preOverlay,
+      postOverlay: {
+        buyScore: Number(sig.buyScore) || 0,
+        sellScore: Number(sig.sellScore) || 0,
+        action: sig.action || null,
+        rating: sig.rating || null,
+        confidence: Number(sig.winRateHint) || 0,
+        conditions: Array.isArray(sig.conditions) ? sig.conditions.slice() : [],
+      },
+      overlayConditions: Array.isArray(sig.conditions)
+        ? sig.conditions.filter(condition => /FMP|Supertrend|quality|Tier|company-quality/i.test(condition))
+        : [],
+    };
     if (!decision.eligible) {
       for (const reason of decision.rejectionReasons) reject(reason);
+      if (decisionRecords) decisionRecords.push({
+        ...decisionRecord, eligible: false, gate: 'canonicalPolicy',
+        rejectionReasons: decision.rejectionReasons,
+      });
+      finishDecisionTiming();
       continue;
     }
     const isBuy = decision.side === 'buy';
@@ -3212,6 +3404,7 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
       ? priceActionSetup(data, i, decision.side) : null;
     if (opts.priceActionShort && hz === 'short' && !paSetup?.eligible) {
       reject('priceActionSetup');
+      finishDecisionTiming();
       continue;
     }
     // Match the published/live market policy. Previously the replay admitted
@@ -3232,56 +3425,111 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
       && paSetup?.eligible && paScore >= Number(decisionPolicy.minScore || 62));
     if (!marketPolicy.ok && !paAngloOverride && !scoreOnlyAngloOverride) {
       reject('marketPolicy');
+      if (decisionRecords) decisionRecords.push({
+        ...decisionRecord, eligible: false, gate: 'marketPolicy',
+        rejectionReasons: [marketPolicy.reason],
+      });
+      finishDecisionTiming();
       continue;
     }
     // Optional side filter — lets the backtest endpoint measure ONE side in isolation
-    if (opts.side === 'sell' && !isSell) continue;
-    if (opts.side === 'buy' && !isBuy) continue;
+    if (opts.side === 'sell' && !isSell) { finishDecisionTiming(); continue; }
+    if (opts.side === 'buy' && !isBuy) { finishDecisionTiming(); continue; }
 
     const px = Number(tech.currentPrice || data[i].c);
     const atr = Number(tech.atr);
     const ma20 = Number(tech.ma20);
     if (hz === 'short' && isBuy && opts.shortStretchMinAtr != null) {
       const stretch = (ma20 > 0 && atr > 0 && px > 0) ? (ma20 - px) / atr : null;
-      if (!(stretch >= Number(opts.shortStretchMinAtr))) { reject('shortStretch'); continue; }
+      if (!(stretch >= Number(opts.shortStretchMinAtr))) { reject('shortStretch'); finishDecisionTiming(); continue; }
     }
     if (opts.rel20Min != null && opts.spyBars && i >= 20) {
       const stockRet = lookbackReturn(data, i, 20);
       const spyNow = closeAtOrBefore(opts.spyBars, data[i].t);
       const spyPrev = closeAtOrBefore(opts.spyBars, data[i - 20].t);
       const spyRet = spyNow > 0 && spyPrev > 0 ? spyNow / spyPrev - 1 : null;
-      if (stockRet == null || spyRet == null) { reject('relStrength'); continue; }
+      if (stockRet == null || spyRet == null) { reject('relStrength'); finishDecisionTiming(); continue; }
       const rel = stockRet - spyRet;
-      if (isBuy && rel < Number(opts.rel20Min)) { reject('relStrength'); continue; }
-      if (isSell && rel > -Number(opts.rel20Min || 0)) { reject('relStrength'); continue; }
+      if (isBuy && rel < Number(opts.rel20Min)) { reject('relStrength'); finishDecisionTiming(); continue; }
+      if (isSell && rel > -Number(opts.rel20Min || 0)) { reject('relStrength'); finishDecisionTiming(); continue; }
     }
 
     const entry = data[i + 1]?.o ?? data[i].c;
-    if (!entry || entry <= 0) continue;
+    if (!entry || entry <= 0) { finishDecisionTiming(); continue; }
 
     // Same hard TP1-vs-SL gate for every horizon as live recommendations.
     const paBracket = paSetup ? structuralBracket(entry, paSetup, decision.side) : null;
     if (paSetup && !paBracket) {
       reject('priceActionBracket');
+      finishDecisionTiming();
       continue;
     }
-    const gSl = paBracket ? paBracket.stop : computeTrailingStopFromTech(tech, entry, hz, isSell, fund);
+    const gSl = paBracket ? paBracket.stop : computeTrailingStopFromTech(tech, entry, hz, isSell, decisionFund);
     const gTp = paBracket ? paBracket.tp1 : computeFirstTargetFromTech(tech, entry, hz, isSell, gSl);
     if (!(gSl > 0) || !(gTp > 0)) {
       reject('missingLevels');
+      finishDecisionTiming();
       continue;
     }
     if (!levelsMeetMinRR(entry, gTp, gSl, isSell, minRrForSymbol(opts.symbol, PICKS_MIN_RR))) {
       reject('rewardRisk');
+      if (decisionRecords) decisionRecords.push({
+        ...decisionRecord, eligible: false, gate: 'rewardRisk',
+        entry, target1: gTp, stopLoss: gSl,
+        rewardRisk: Math.abs(gTp - entry) / Math.abs(entry - gSl),
+        rejectionReasons: ['rewardRisk'],
+      });
+      finishDecisionTiming();
       continue;
     }
+    if (decisionRecords) decisionRecords.push({
+      ...decisionRecord, eligible: true, gate: 'entryEligible',
+      entry, target1: gTp, stopLoss: gSl,
+      rewardRisk: Math.abs(gTp - entry) / Math.abs(entry - gSl),
+      rejectionReasons: [],
+    });
+    if (entryCandidates) {
+      entryCandidates.push({
+        signalIndex: i,
+        side: isSell ? 'sell' : 'buy',
+        signalTs: Number(data[i] && data[i].t) || null,
+        score: isSell ? Number(sig.sellScore) : Number(sig.buyScore),
+        confidence: Number(decision.confidence),
+        rating: decision.candidateRating || null,
+        entry,
+        target1: gTp,
+        stopLoss: gSl,
+        rewardRisk: Math.abs(gTp - entry) / Math.abs(entry - gSl),
+        supertrend: stHz ? {
+          direction: stHz.direction || null,
+          flippedBull: stHz.flippedBull === true,
+          flippedBear: stHz.flippedBear === true,
+        } : null,
+        marketTier: classifyMarket(opts.symbol).tier,
+        piotroski: Number.isFinite(decisionInputs.fmp?.piotroski) ? decisionInputs.fmp.piotroski : null,
+        altmanZ: Number.isFinite(decisionInputs.fmp?.altmanZ) ? decisionInputs.fmp.altmanZ : null,
+        qualityUsable: decisionInputs.fmp != null,
+        overlayConditions: Array.isArray(sig.conditions)
+          ? sig.conditions.filter(condition => /FMP|Supertrend|quality|Tier|company-quality/i.test(condition))
+          : [],
+      });
+    }
+    // The fidelity audit needs the production decision ledger, not simulated
+    // exits. Avoiding exit simulation makes a full-universe daily replay
+    // feasible while retaining the exact entry gates above.
+    if (opts.entryLedgerOnly) { finishDecisionTiming(); continue; }
+    if (opts.entryIndexes && !opts.entryIndexes.has(i)) { finishDecisionTiming(); continue; }
 
+    finishDecisionTiming();
+    const exitStarted = timingCollector ? process.hrtime.bigint() : null;
     const res = paBracket
       ? simulatePriceActionExit(data, i + 1, entry, decision.side, paBracket, 15)
-      : await simulateHybridExit(data, i + 1, entry, hz, isSell, weeklyAll, fund, null, false, 0.5, {
+      : await simulateHybridExit(data, i + 1, entry, hz, isSell, weeklyAll, decisionFund, null, false, 0.5, {
         disablePreTp1SignalExit: !!opts.disablePreTp1SignalExit,
-        stopFirst: !!opts.stopFirst
+        stopFirst: !!opts.stopFirst,
+        researchExitVariant: opts.researchExitVariant || null
       });
+    recordTiming('exitSimulationMs', exitStarted);
     if (!res || res.exitIdx == null) { reject('noClosedExit'); continue; }
     if (opts.closedOnly && (res.status === 'open' || res.status === 'tp1_open')) {
       reject('openMark');
@@ -3352,6 +3600,8 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
     rejectionCounts,
     tradeReturns,
     tradeResults,
+    ...(entryCandidates ? { entryCandidates } : {}),
+    ...(decisionRecords ? { decisionRecords } : {}),
     windowYears: 5
   };
 }
@@ -6680,17 +6930,18 @@ function applyDanelfinTierOverlay(dataShell, ds) {
   }
 }
 
-/** FMP + Danelfin tier overlays shared by dashboard batch, analyze, and history revalidation. */
-async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
+/**
+ * Apply one already-resolved FMP snapshot through the production market overlay.
+ * Shared by live analysis and causal backtests so score/cap behavior cannot drift.
+ */
+function applyMarketTierOverlaySnapshot(sym, dataShell, fmp, market = classifyMarket(sym)) {
   if (!dataShell?.quantSignal) return dataShell;
-  const batchMode = !!opts.batchMode;
-  const _mkt = classifyMarket(sym);
-  dataShell.marketTier = _mkt.tier;
-  dataShell.marketLabel = _mkt.label;
-  dataShell.marketRegion = _mkt.region;
-  dataShell.marketNote = _mkt.note;
+  dataShell.marketTier = market.tier;
+  dataShell.marketLabel = market.label;
+  dataShell.marketRegion = market.region;
+  dataShell.marketNote = market.note;
 
-  if (_mkt.tier === 'technical_only') {
+  if (market.tier === 'technical_only') {
     ['short', 'medium', 'long'].forEach(hz => {
       const q = dataShell.quantSignal[hz];
       if (!q) return;
@@ -6700,19 +6951,9 @@ async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
     });
   }
 
-  if (_mkt.fmp) {
-    try {
-      const _fk = fmpEnvKeyFund();
-      if (_fk) {
-        const _fmp = opts.fmpPre || (await fetchFmpScore(sym, { batchMode }));
-        if (_fmp) {
-          applyFmpTierOverlay(dataShell, sym, _fmp);
-          dataShell.qualitySource = 'fmp';
-        }
-      }
-    } catch (e) {
-      console.warn('FMP overlay', sym, e.message);
-    }
+  if (market.fmp && fmp) {
+    applyFmpTierOverlay(dataShell, sym, fmp);
+    dataShell.qualitySource = 'fmp';
   }
 
   if (isAngloSymbol(sym) && !fmpSnapshotUsable(dataShell.fmpScore)) {
@@ -6723,7 +6964,7 @@ async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
   ['short', 'medium', 'long'].forEach(hz => {
     const q = dataShell.quantSignal?.[hz];
     if (!q) return;
-    q.weighting = _mkt.tier === 'technical_only'
+    q.weighting = market.tier === 'technical_only'
       ? '100% technical'
       : HORIZON_WEIGHTING_LABELS[hz];
   });
@@ -6731,6 +6972,26 @@ async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
   applyTierScoreCaps(dataShell.quantSignal);
   rerateQuantSignals(dataShell.quantSignal);
   return dataShell;
+}
+
+/** FMP + Danelfin tier overlays shared by dashboard batch, analyze, and history revalidation. */
+async function applyMarketTierOverlays(sym, dataShell, opts = {}) {
+  if (!dataShell?.quantSignal) return dataShell;
+  const batchMode = !!opts.batchMode;
+  const market = classifyMarket(sym);
+  let fmp = null;
+
+  if (market.fmp) {
+    try {
+      const _fk = fmpEnvKeyFund();
+      if (_fk) {
+        fmp = opts.fmpPre || (await fetchFmpScore(sym, { batchMode }));
+      }
+    } catch (e) {
+      console.warn('FMP overlay', sym, e.message);
+    }
+  }
+  return applyMarketTierOverlaySnapshot(sym, dataShell, fmp, market);
 }
 
 // ── No-repeat filter: is this ticker ALREADY open in the given direction? ──────
@@ -7063,6 +7324,13 @@ function applyAnalyticsSnapshotToTrade(trade, shell, fund, hz) {
   if (!trade || !shell?.quantSignal) return;
   const q = shell.quantSignal[hz] || shell.quantSignal.short;
   if (!q) return;
+  if (trade.setupPublication || trade.setupId) {
+    trade.fmpScore = shell.fmpScore || trade.fmpScore || null;
+    trade.fundSnapshot = compactFundSnapshot(fund) || trade.fundSnapshot || null;
+    trade.revalidatedAt = new Date().toISOString();
+    trade.analyticsVersion = 2;
+    return;
+  }
   trade.fmpScore = shell.fmpScore || trade.fmpScore || null;
   trade.danelfin = shell.danelfin || trade.danelfin || null;
   trade.marketTier = shell.marketTier || trade.marketTier || null;
@@ -7088,6 +7356,7 @@ function applyAnalyticsSnapshotToTrade(trade, shell, fund, hz) {
 }
 
 function shouldRemoveOpenHistoryTrade(trade, shell, hz) {
+  if (trade && trade.setupId) return false;
   if (!isHistoryTradeFromToday(trade)) return false;
   const sig = shell?.quantSignal?.[hz];
   if (!sig || !trade) return false;
@@ -7332,7 +7601,9 @@ async function captureFmpCapabilityVerdict() {
 
 const HISTORY_FILE = (() => {
   const p = path.join(DATA_DIR, 'history_data.json');
-  try { if (!fs.existsSync(p)) fs.writeFileSync(p, '[]'); } catch (_) {}
+  if (!IS_PERFORMANCE_WORKER) {
+    try { if (!fs.existsSync(p)) fs.writeFileSync(p, '[]'); } catch (_) {}
+  }
   return p;
 })();
 console.log('History file:', HISTORY_FILE);
@@ -7364,7 +7635,7 @@ function saveCapitalPromotionState() {
 function currentCapitalScale() {
   return CAPITAL_SCALE[normalizeStage(capitalPromotionState.stage)];
 }
-if (!capitalPromotionLoadedFromDisk && !process.env.DATABASE_URL) saveCapitalPromotionState();
+if (!IS_PERFORMANCE_WORKER && !capitalPromotionLoadedFromDisk && !process.env.DATABASE_URL) saveCapitalPromotionState();
 function revertCapitalStage(reason) {
   const next = revertForIntegrityBreach(capitalPromotionState, reason);
   if (next.stage === capitalPromotionState.stage) return false;
@@ -7591,6 +7862,22 @@ app.get('/api/dashboard/picks', (req, res) => {
   });
 });
 
+app.get('/api/setup-book/status', (req, res) => {
+  res.json({
+    enabled: setupBookEnabled(),
+    paperExecution: setupBookPaperExecutionEnabled(),
+    cells: require('./lib/strategy/setup-book').CELLS,
+    pnl: setupBookPnlViews(tradeHistory),
+    runtime: evaluateSetupBookPauses(tradeHistory, { notify: false }).state,
+  });
+});
+
+app.post('/api/setup-book/resume', express.json(), (req, res) => {
+  const setupId = String(req.body?.setupId || '').trim();
+  if (!EVIDENCE_SETUPS[setupId]) return res.status(400).json({ error: 'unknown setup' });
+  res.json({ ok: true, state: resumeSetup(setupId) });
+});
+
 app.post('/api/dashboard/picks', express.json({ limit: '3mb' }), (req, res) => {
   const body = req.body;
   if (!body || typeof body !== 'object') return res.status(400).json({ error: 'body required' });
@@ -7673,8 +7960,65 @@ function saveUniverseShortlistFile(payload) {
 universeShortlist = loadUniverseShortlistFile();
 if (universeShortlist) console.log('Universe shortlist loaded:', universeShortlist.shortlist.length, 'names, ts=', universeShortlist.ts);
 
+const EVIDENCE_BENCHMARK = Object.freeze({
+  US: 'SPY',
+  Japan: 'EWJ',
+  Commodities: 'DBC',
+});
+const _evidenceBarsCache = new Map();
+
+function canonicalEvidenceMarket(raw, symbol) {
+  const value = String(raw || '');
+  if (/^US\b|S&P|NASDAQ/i.test(value)) return 'US';
+  if (/Japan|Nikkei/i.test(value)) return 'Japan';
+  if (/Hong Kong|Hang Seng|\bHSI\b/i.test(value)) return 'Hong Kong';
+  if (/\bUK\b|FTSE/i.test(value)) return 'UK';
+  if (/Germany|\bDAX\b/i.test(value)) return 'Germany';
+  if (/France|CAC/i.test(value)) return 'France';
+  if (/India|Nifty/i.test(value)) return 'India';
+  if (/Commodit/i.test(value) && !/-USD$/i.test(String(symbol || ''))) return 'Commodities';
+  return value;
+}
+
+async function evidenceBars(symbol) {
+  if (!_evidenceBarsCache.has(symbol)) {
+    _evidenceBarsCache.set(symbol, fetchOHLCV(symbol, '2y', '1d').catch(() => null));
+  }
+  return _evidenceBarsCache.get(symbol);
+}
+
+async function evidenceSetupPlans(sym, marketRaw, daily) {
+  if (!setupBookEnabled()) return [];
+  const market = canonicalEvidenceMarket(marketRaw, sym);
+  const setups = ['short', 'medium', 'long']
+    .map(horizon => setupForCell(market, horizon, 'buy'))
+    .filter(setup => setup && setup.kind !== 'current_engine' && !isSetupPaused(setup.id));
+  if (!setups.length || !Array.isArray(daily) || daily.length < 275) return [];
+  const benchmark = EVIDENCE_BENCHMARK[market];
+  const rawMarketBars = benchmark ? await evidenceBars(benchmark) : null;
+  const marketBars = completedDailyBars(rawMarketBars, market);
+  if (!Array.isArray(marketBars) || marketBars.length < 275) return [];
+  const sectorSymbol = sectorEtfForSymbol(sym);
+  const rawSectorBars = sectorSymbol && sectorSymbol !== sym
+    ? (await evidenceBars(sectorSymbol) || rawMarketBars)
+    : marketBars;
+  const sectorBars = completedDailyBars(rawSectorBars, market);
+  const completedBars = completedDailyBars(daily, market);
+  if (completedBars.length < 275) return [];
+  const context = {
+    bars: completedBars,
+    marketBars,
+    sectorBars,
+    marketRegime: buildMarketRegime(marketBars),
+  };
+  const signalIndex = completedBars.length - 1;
+  return setups
+    .map(setup => setupEntryPlan(setup.id, context, signalIndex))
+    .filter(Boolean);
+}
+
 /** Fast per-symbol quant: OHLCV → quantSignal ×3 → structural caps. No network overlays. */
-async function scanSymbolQuant(sym) {
+async function scanSymbolQuant(sym, marketRaw = '') {
   let daily = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
   if (!daily || daily.length < 100) daily = await fetchOHLCV(sym, '1y', '1d').catch(() => null);
   if (!daily || daily.length < 60) return null;
@@ -7690,7 +8034,8 @@ async function scanSymbolQuant(sym) {
     long: computeQuantSignal(data, fund, 'long')
   };
   applyTierScoreCaps(qs);
-  return { sym, cp: data.currentPrice, qs };
+  const setupPlans = await evidenceSetupPlans(sym, marketRaw, daily);
+  return { sym, cp: data.currentPrice, qs, setupPlans };
 }
 
 /** Pick top-N buy + top-N sell per horizon, union → shortlist (ranked by best score).
@@ -7698,6 +8043,48 @@ async function scanSymbolQuant(sym) {
  *  index, and the ~550 US names would otherwise crowd out internationals), we take
  *  BOTH a global top-N and a per-market top-M for every horizon/side. */
 function buildShortlistFromRows(rows, perSide = UNIVERSE_PER_HZ_SIDE) {
+  if (setupBookEnabled()) {
+    const entries = [];
+    for (const row of rows) {
+      const market = canonicalEvidenceMarket(row.market, row.sym);
+      const enginePlans = ['short', 'medium', 'long'].flatMap(horizon => {
+        const setup = setupForCell(market, horizon, 'buy');
+        const signal = row.qs?.[horizon];
+        if (!setup || setup.kind !== 'current_engine' || isSetupPaused(setup.id)) return [];
+        if (!signal || signal.action !== 'Buy' || !(Number(signal.buyScore) >= 62)) return [];
+        return [{
+          setupId: setup.id,
+          kind: 'current_engine',
+          tier: setup.tier,
+          experimental: true,
+          expectedPf: setup.expectedPf,
+          signalDate: singaporeDateKey(),
+        }];
+      });
+      const plans = [...(Array.isArray(row.setupPlans) ? row.setupPlans : []), ...enginePlans];
+      if (!plans.length) continue;
+      const ranked = plans
+        .map(plan => ({ ...plan, ticker: row.sym, signalDate: plan.signalDate || singaporeDateKey() }))
+        .sort(compareSetupEntries);
+      if (ranked.length > 1) {
+        console.log('Setup-book overlap skipped:', row.sym,
+          ranked.slice(1).map(plan => plan.setupId).join(','),
+          'kept', ranked[0].setupId);
+      }
+      entries.push({
+        ticker: row.sym,
+        market: row.market,
+        score: 100,
+        maxBuy: 100,
+        maxSell: 0,
+        setupPlan: ranked[0],
+        skippedSetupOverlaps: ranked.slice(1).map(plan => plan.setupId),
+      });
+    }
+    return entries.sort((a, b) =>
+      Number(b.setupPlan.expectedPf) - Number(a.setupPlan.expectedPf)
+      || a.ticker.localeCompare(b.ticker));
+  }
   const byS = new Map(rows.map(r => [r.sym, r]));
   const picked = new Set();
   const perMarketSide = Math.max(2, Number.parseInt(String(process.env.UNIVERSE_PER_MARKET_SIDE || '3'), 10) || 3);
@@ -7767,7 +8154,8 @@ async function runUniverseScan(opts = {}) {
     try {
       for (let off = 0; off < universe.length; off += conc) {
         const slice = universe.slice(off, off + conc);
-        const settled = await Promise.allSettled(slice.map(u => scanSymbolQuant(u.t)));
+        const settled = await Promise.allSettled(slice.map(u =>
+          scanSymbolQuant(u.t, UNIVERSE_MARKET_LABEL[u.market] || u.market)));
         settled.forEach((s, ix) => {
           universeScanState.done++;
           if (s.status === 'fulfilled' && s.value) {
@@ -7857,7 +8245,7 @@ function serverPicksToHistoryRecords(dashData) {
     const sl = parseFloat(s[hz + 'StopLoss'] || 0);
     if (!entry || !sl) return null;
     const rating = s[hz + 'Rating'] || (isSell ? 'Sell' : 'Buy');
-    return {
+    const record = {
       _v: 2,
       ticker: s.ticker, name: s.name || s.ticker, sector: s.sector || '', market: s.market || '',
       hz,
@@ -7881,6 +8269,13 @@ function serverPicksToHistoryRecords(dashData) {
       revalidatedAt: ts, analyticsVersion: 2,
       _fromServerScan: true
     };
+    if (s.setupId) {
+      copyPublicationFields(record, s);
+      record.setupId = s.setupId;
+      record.setupTag = s.setupTag || `SETUP_BOOK:${s.setupId}`;
+      record.ledgerNamespace = `SETUP_BOOK:${s.setupId}`;
+    }
+    return record;
   };
   const out = [];
   (dashData.short || []).forEach(s => out.push(mk(s, 'buy', 'short')));
@@ -7893,6 +8288,142 @@ function serverPicksToHistoryRecords(dashData) {
 }
 
 let serverPicksGenerating = false;
+
+function applyCurrentEnginePlan(row, setup) {
+  const hz = setup.horizon;
+  for (const horizon of ['short', 'medium', 'long']) {
+    if (horizon === hz) continue;
+    writeOpenRowAction(row, horizon, 'Hold');
+    row[horizon + 'Rating'] = 'No validated setup';
+    row[horizon + 'Score'] = 0;
+    row[horizon + 'SellScore'] = 0;
+    row[horizon + 'Conf'] = 0;
+    row[horizon + 'Analysis'] = 'No validated setup';
+  }
+  row[hz + 'Conf'] = setup.confidence;
+  row[hz + 'Rating'] = 'Strong Buy';
+  row[hz + 'Analysis'] = `Current engine — Experimental; ${setup.id}; n=${setup.sampleSize}; PF ${setup.expectedPf}; win ${setup.confidence}%`;
+  row.action = 'Buy';
+  row.hz = hz;
+  row.entry = row[hz + 'Entry'];
+  row.target1 = row[hz + 'Target1'];
+  row.target2 = row[hz + 'Target2'];
+  row.stopLoss = row[hz + 'StopLoss'];
+  row.setupId = setup.id;
+  row.setupTestedId = setup.testedId;
+  row.setupTier = setup.tier;
+  row.tierLabel = setup.tier;
+  row.experimental = true;
+  row.experimentalLabel = 'Current engine — Experimental';
+  row.source = 'Current engine';
+  row.expectedPf = setup.expectedPf;
+  row.backtestSampleSize = setup.sampleSize;
+  row.backtestBreakevenWinRate = setup.breakevenWinRate;
+  row.signalsOnly = setup.signalsOnly === true;
+  row.setupTag = `SETUP_BOOK:${setup.id}`;
+  row.setupPlanVersion = setup.testedId;
+  row.setupReplay = setup.replay;
+  row.setupPublication = buildPublicationCellRecord({
+    ticker: row.ticker,
+    market: setup.market,
+    horizon: hz,
+    side: 'buy',
+    asOfPublish: singaporeDateKey(),
+    signalDate: singaporeDateKey(),
+    score: Number(row[hz + 'Score']) || 0,
+    confidence: setup.confidence,
+    setupId: setup.id,
+    verdict: 'EXPERIMENTAL',
+    inputs: { source: 'Current engine', sectorOverlay: 'on' },
+    levels: {
+      entry: row[hz + 'Entry'] || null,
+      target1: row[hz + 'Target1'] || null,
+      target2: row[hz + 'Target2'] || null,
+      stop: row[hz + 'StopLoss'] || null,
+    },
+    exits: {
+      amended: setup.amendedExits === true,
+      partial: true,
+      timeExit: setup.amendedExits !== true,
+    },
+    policyVersions: {
+      setupBook: setup.testedId,
+      publication: 'immutable-v1',
+    },
+  });
+  return row;
+}
+
+function applyEvidenceSetupPlanToRow(row, plan, entryOverride = null) {
+  if (!row || !plan || !EVIDENCE_SETUPS[plan.setupId]) return row;
+  const setup = EVIDENCE_SETUPS[plan.setupId];
+  if (setup.kind === 'current_engine') return applyCurrentEnginePlan(row, setup);
+  const hz = setup.horizon;
+  const entry = Number(entryOverride ?? plan.levels?.entry);
+  const atr = Number(plan.levels?.atr);
+  if (!(entry > 0) || !(atr > 0)) return row;
+  const levels = rebaseSetupLevels(setup.id, entry, atr);
+  if (!levels) return row;
+  for (const horizon of ['short', 'medium', 'long']) {
+    const active = horizon === hz;
+    writeOpenRowAction(row, horizon, active ? 'Buy' : 'Hold');
+    row[horizon + 'Rating'] = active ? 'Strong Buy' : 'No validated setup';
+    row[horizon + 'Score'] = active ? 100 : 0;
+    row[horizon + 'SellScore'] = 0;
+    row[horizon + 'Conf'] = active ? setup.confidence : 0;
+    row[horizon + 'Entry'] = active ? String(roundPrice(levels.entry)) : '';
+    row[horizon + 'Target1'] = active && levels.target1 != null
+      ? String(roundPrice(levels.target1)) : '';
+    row[horizon + 'Target2'] = active && levels.target2 != null
+      ? String(roundPrice(levels.target2)) : '';
+    row[horizon + 'StopLoss'] = active ? String(roundPrice(levels.stop)) : '';
+    row[horizon + 'TrailingSL'] = false;
+    row[horizon + 'Analysis'] = active
+      ? `${setup.experimental ? 'Experimental; ' : ''}${setup.tier}; ${setup.id}; expected PF ${setup.expectedPf}; n=${setup.sampleSize}`
+      : 'No validated setup';
+  }
+  row.action = 'Buy';
+  row.hz = hz;
+  row.entry = row[hz + 'Entry'];
+  row.target1 = row[hz + 'Target1'];
+  row.target2 = row[hz + 'Target2'];
+  row.stopLoss = row[hz + 'StopLoss'];
+  row.setupId = setup.id;
+  row.setupTestedId = setup.testedId;
+  row.setupTier = setup.tier;
+  row.tierLabel = setup.tier;
+  row.experimental = setup.experimental === true;
+  row.expectedPf = setup.expectedPf;
+  row.backtestSampleSize = setup.sampleSize;
+  row.expectedPicksPerMonth = setup.picksPerMonth;
+  row.backtestBreakevenWinRate = setup.breakevenWinRate;
+  row.setupInputs = Object.freeze({ ...plan.inputs });
+  row.setupLevels = Object.freeze({ ...levels });
+  row.setupExits = Object.freeze({ ...plan.exits });
+  row.setupTag = `SETUP_BOOK:${setup.id}`;
+  row.setupPlanVersion = plan.testedId;
+  row.setupPublication = buildPublicationCellRecord({
+    ticker: row.ticker,
+    market: setup.market,
+    horizon: hz,
+    side: 'buy',
+    asOfPublish: singaporeDateKey(),
+    signalDate: plan.signalDate,
+    score: 100,
+    confidence: setup.confidence,
+    setupId: setup.id,
+    verdict: setup.experimental ? 'EXPERIMENTAL' : 'EVIDENCE_BACKED',
+    inputs: plan.inputs,
+    levels,
+    exits: plan.exits,
+    policyVersions: {
+      setupBook: plan.testedId,
+      publication: 'immutable-v1',
+    },
+  });
+  return row;
+}
+
 async function generateServerPicksFromShortlist(opts = {}) {
   if (!isAfterDailyRecommendationRelease() && !opts.allowBeforeRelease) {
     console.log('Server picks blocked until SGT recommendation release');
@@ -7907,8 +8438,14 @@ async function generateServerPicksFromShortlist(opts = {}) {
     await refreshSectorRegimes().catch(() => {}); // sector-level tide per name
     await refreshEarningsTides().catch(() => {}); // peer quarterly-results tide per group
     const marketOf = {};
-    list.forEach(x => { marketOf[x.ticker] = x.market; });
-    const tickers = list.map(x => x.ticker).slice(0, 120);
+    const shortlistByTicker = new Map();
+    list.forEach(x => {
+      marketOf[x.ticker] = x.market;
+      shortlistByTicker.set(x.ticker, x);
+    });
+    const tickers = setupBookEnabled()
+      ? list.map(x => x.ticker)
+      : list.map(x => x.ticker).slice(0, 120);
     const techMap = await getTechnicalsMapForSymbols(tickers, { maxMs: opts.maxMs || 240000 });
 
     const rows = [];
@@ -7973,6 +8510,12 @@ async function generateServerPicksFromShortlist(opts = {}) {
       row.longWeighting = row.longWeighting || HORIZON_WEIGHTING_LABELS.long;
       row.action = row.shortAction;
       applyServerPriceLevels(row, tech.currentPrice, tech, fund);
+      const setupPlan = shortlistByTicker.get(t)?.setupPlan || null;
+      if (setupBookEnabled()) {
+        if (!setupPlan) continue;
+        applyEvidenceSetupPlanToRow(row, setupPlan, tech.currentPrice);
+        row.skippedSetupOverlaps = shortlistByTicker.get(t)?.skippedSetupOverlaps || [];
+      }
       row.decisionSnapshots = {};
       for (const hz of ['short', 'medium', 'long']) {
         const sig = qs[hz] || {};
@@ -8032,23 +8575,31 @@ async function generateServerPicksFromShortlist(opts = {}) {
       for (const hz of HZS) {
         // Prefer Strong Buy/Sell (+1000 sort boost); plain Buy/Sell that meet
         // Conf≥62 still qualify for the board and IBKR (Strong is preference only).
+        const setupResolution = resolveSetupBookCell({
+          market: r.setupId ? EVIDENCE_SETUPS[r.setupId]?.market : r.market,
+          horizon: hz,
+          side: 'buy',
+        });
+        const evidencePick = setupBookEnabled()
+          && r.setupId
+          && setupResolution.setupId === r.setupId;
         const buyBase = bracketEnabled('buy', hz) && r[hz + 'Action'] === 'Buy'
-          && (r[hz + 'Score'] || 0) >= 62
-          && (Number(r[hz + 'Conf']) || 0) >= PICKS_MIN_CONF
+          && (evidencePick || ((r[hz + 'Score'] || 0) >= 62
+            && (Number(r[hz + 'Conf']) || 0) >= PICKS_MIN_CONF))
           && !/SL cooldown/i.test(r[hz + 'Rating'] || '') && hasPx(r, hz);
         if (buyBase && !alreadyLong
-          && angloPickAllowed(r.ticker, {
+          && (evidencePick || angloPickAllowed(r.ticker, {
             hz,
             side: 'buy',
             rating: r[hz + 'Rating'],
             mtfShortBuyConfirmed: r.shortMtfBuyConfirmed === true
-          }).ok
-          && angloFmpOk(r.ticker, r.fmpScore)) {
+          }).ok)
+          && (evidencePick || angloFmpOk(r.ticker, r.fmpScore))) {
           const buyRank = (r[hz + 'Score'] || 0)
             + (isStrongRecommendableRating(r[hz + 'Rating']) ? 1000 : 0);
           if (buyRank > bBuyScore) { bBuyScore = buyRank; bBuyHz = hz; }
         }
-        const sellBase = bracketEnabled('sell', hz)
+        const sellBase = !setupBookEnabled() && bracketEnabled('sell', hz)
           && sellRecommendationAllowed(r[hz + 'Rating'], r[hz + 'SellScore'], SELL_PICKS_ENABLED)
           && r[hz + 'Action'] === 'Sell'
           && (r[hz + 'SellScore'] || 0) >= 62
@@ -8122,7 +8673,11 @@ async function generateServerPicksFromShortlist(opts = {}) {
             const tech = techMap[r.ticker];
             const fEntry = fundCache.get(r.ticker);
             const fnd = fEntry && Date.now() - fEntry.ts < TECH_TTL * 4 ? fEntry.data : null;
-            applyServerPriceLevels(r, px, tech, fnd);
+            if (setupBookEnabled() && r.setupId) {
+              applyEvidenceSetupPlanToRow(r, shortlistByTicker.get(r.ticker)?.setupPlan, px);
+            } else {
+              applyServerPriceLevels(r, px, tech, fnd);
+            }
             for (const hz of ['short', 'medium', 'long']) {
               const prior = r.decisionSnapshots && r.decisionSnapshots[hz];
               const sig = (tech && tech.quantSignal && tech.quantSignal[hz]) || {};
@@ -8728,9 +9283,15 @@ async function addTradesToHistory(trades) {
     // New recommendations must clear the min R:R gate — never record a pick that
     // risks more than it can make at TP1 (imported CSV / settled recovery exempt).
     if (!prev && isToday && !trade._fromRecommendedCsv && !trade.legacyRecord) {
+      const setupTrade = setupBookEnabled() && trade.setupId && EVIDENCE_SETUPS[trade.setupId];
+      if (setupTrade && isSetupPaused(trade.setupId)) {
+        console.log('History add skipped (setup paused):', trade.ticker, hz, trade.setupId);
+        continue;
+      }
       const e = parseFloat(trade[hz + 'Entry'] || trade.entry);
       const tp1 = parseFloat(trade[hz + 'Target1'] || trade.target1);
       const sl = parseFloat(trade[hz + 'StopLoss'] || trade.stopLoss);
+      if (!setupTrade) {
       const angloHist = angloPickAllowed(trade.ticker, {
         hz, side: isSell ? 'sell' : 'buy',
         rating: trade[hz + 'Rating'] || trade.rating || '',
@@ -8765,6 +9326,7 @@ async function addTradesToHistory(trades) {
         console.log('History add skipped (not Buy/Sell):', trade.ticker, hz, 'rating=', rating, 'action=', action);
         auditLog('entry_blocked_not_buysell', { ticker: trade.ticker, hz, rating, action });
         continue;
+      }
       }
       // No-repeat: same name already open in this direction — only direction/regime
       // change (prior open closed) may re-enter.
@@ -8826,10 +9388,11 @@ async function addTradesToHistory(trades) {
         hz + 'Target1', hz + 'Target2', hz + 'StopLoss', hz + 'TrailingSL',
         hz + 'Status', hz + 'PnlDollar', hz + 'PnlPct', hz + 'ExitPrice', hz + 'ExitReason',
         hz + 'Tp1Hit', hz + 'ExitTs', hz + 'SettledTs', hz + 'CurrentPrice', 'status', 'pnlDollar', 'pnlPct', 'currentPrice',
-        'entryPending', 'entryFinalized' // entry-finalisation state must survive re-records
+        'entryPending', 'entryFinalized', 'setupOneLot' // entry-finalisation state must survive re-records
       ]) {
         if (prev[f] !== undefined) trade[f] = prev[f];
       }
+      freezePublishedFields(trade, prev);
       // FREEZE / LATCH ACTION: open Buy/Sell, or a live emitted IBKR entry with
       // no exit, must not be rewritten to Hold by Conf demote / board refresh.
       const prevAct = String(prev[hz + 'Action'] || prev.action || '').toLowerCase();
@@ -8870,6 +9433,9 @@ async function addTradesToHistory(trades) {
   if (tradeHistory.length > HISTORY_MAX_SERVER) tradeHistory = tradeHistory.slice(0, HISTORY_MAX_SERVER);
   
   saveHistoryFile(tradeHistory);
+  try { evaluateSetupBookPauses(tradeHistory); } catch (e) {
+    console.warn('Setup-book auto-pause evaluation failed:', e && e.message);
+  }
   return { accepted: accepted.length, skipped: trades.length - accepted.length, total: tradeHistory.length };
 }
 
@@ -11512,6 +12078,17 @@ function filterDashDataByMinRR(dashData, minRR = PICKS_MIN_RR) {
   for (const [pane, { hz, side }] of Object.entries(DASH_PANE_MAP)) {
     const isSell = side === 'sell';
     out[pane] = (dashData[pane] || []).filter(pick => {
+      if (setupBookEnabled() && pick.setupId) {
+        const setup = EVIDENCE_SETUPS[pick.setupId];
+        const entry = parseFloat(pick[hz + 'Entry'] || pick.entry);
+        const stop = parseFloat(pick[hz + 'StopLoss'] || pick.stopLoss);
+        const correctCell = setup && setup.horizon === hz && setup.market
+          && String(pick[hz + 'Action'] || pick.action).toLowerCase() === 'buy';
+        if (correctCell && entry > 0 && stop > 0 && stop < entry) return true;
+        dropped++;
+        console.log('Setup-book pick dropped (invalid frozen levels):', pick.ticker, hz);
+        return false;
+      }
       const entry = parseFloat(pick[hz + 'Entry'] || pick.entry);
       const tp1 = parseFloat(pick[hz + 'Target1'] || (isSell ? pick.sellTarget1 : pick.target1));
       const sl = parseFloat(pick[hz + 'StopLoss'] || (isSell ? pick.sellStopLoss : pick.stopLoss));
@@ -11552,6 +12129,7 @@ function filterDashDataByQuantTechMap(dashData, techMap, paneMap = DASH_PANE_MAP
   const out = {};
   for (const [pane, { hz, side }] of Object.entries(paneMap)) {
     out[pane] = (dashData[pane] || []).filter(pick => {
+      if (setupBookEnabled() && pick.setupId) return true;
       const tech = techMap[pick.ticker];
       const sig = tech?.quantSignal?.[hz];
       // CRITICAL: if we have NO fresh signal (OHLCV fetch failed or the re-scan
@@ -11863,12 +12441,14 @@ function scanHistoryForSLCooldowns() {
   }
 }
 
-loadSLCooldowns();
-loadDanelfinCache();
-scanHistoryForSLCooldowns();
-purgeOpenCooldownBuysFromHistory();
+if (!IS_PERFORMANCE_WORKER) {
+  loadSLCooldowns();
+  loadDanelfinCache();
+  scanHistoryForSLCooldowns();
+  purgeOpenCooldownBuysFromHistory();
+}
 
-if (process.env.RESEARCH_MODE !== '1') setTimeout(async function bootDashHistorySync() {
+async function bootDashHistorySync() {
   try {
     migrateLegacyTightStops();
     migrateOpenExitsForSlBounce();
@@ -11898,7 +12478,7 @@ if (process.env.RESEARCH_MODE !== '1') setTimeout(async function bootDashHistory
   } catch (e) {
     console.warn('Boot dash/history sync:', e.message);
   }
-}, 4000);
+}
 
 // ── Pick / universe scan scheduler ───────────────────────────────────────────
 // Cadence (Asia/Singapore — user local morning):
@@ -12029,7 +12609,8 @@ async function scanSchedulerTick(boot = false) {
 // Initial kick once the heavier boot sync has settled, then poll every 5 min
 // so the 05:00 SGT board lands by ~05:05 and failed attempts retry quickly
 // before the Tokyo open (08:00 SGT).
-if (process.env.RESEARCH_MODE !== '1') {
+if (require.main === module) {
+  setTimeout(bootDashHistorySync, 4000);
   setTimeout(() => scanSchedulerTick(true), 30000);
   setInterval(() => scanSchedulerTick(false), 5 * 60 * 1000);
 }
@@ -13365,7 +13946,7 @@ function horizonTimeLimitExceededServer(hz, entryDateOrIso) {
  * hysteresis signal-flip), so live trade outcomes match the backtest exactly.
  * Returns canonical status + blended return + representative exit price.
  */
-async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markPrice = null, liveMark = false, partialFrac = 0.5) {
+async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markPrice = null, liveMark = false, partialFrac = 0.5, exitOpts = null) {
   if (!Array.isArray(bars) || !bars.length || !entry) return null;
   const weeklyAll = dailyToWeeklyBars(bars);
   let startIdx = -1;
@@ -13373,7 +13954,7 @@ async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markP
     if ((bars[i].t || 0) * 1000 >= entryMs) { startIdx = i; break; }
   }
   if (startIdx < 0) return null;
-  const res = await simulateHybridExit(bars, startIdx, entry, hz, isSell, weeklyAll, null, markPrice, liveMark, partialFrac);
+  const res = await simulateHybridExit(bars, startIdx, entry, hz, isSell, weeklyAll, null, markPrice, liveMark, partialFrac, exitOpts);
   if (!res) return null;
   // Preserve the hybrid engine's native status. The UI needs to distinguish
   // TP1 runner-live, TP1-then-TSL, TP1-then-time, signal exits, and SL exits.
@@ -13388,6 +13969,102 @@ async function simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, markP
     tp2AltRet: res.tp2AltRet,
     exitIdx: res.exitIdx,
     open
+  };
+}
+
+function setupEntryBarIndex(bars, trade, entryMs) {
+  const sourceMatch = String(trade.entrySource || '').match(/(\d{4}-\d{2}-\d{2})/);
+  if (sourceMatch) {
+    const found = bars.findIndex(bar =>
+      new Date(Number(bar.t) * 1000).toISOString().slice(0, 10) === sourceMatch[1]);
+    if (found >= 0) return found;
+  }
+  return bars.findIndex(bar => Number(bar.t) * 1000 >= entryMs);
+}
+
+function simulateSetupHistoryExit(trade, bars, entryMs, markPrice = null) {
+  const setup = EVIDENCE_SETUPS[trade?.setupId];
+  if (!setup || !Array.isArray(bars) || !bars.length) return null;
+  const completed = completedDailyBars(bars, setup.market);
+  const entryIndex = setupEntryBarIndex(completed, trade, entryMs);
+  const hz = setup.horizon;
+  const entry = Number(trade[hz + 'Entry'] || trade.entry);
+  const atr = Number(trade.setupLevels?.atr || trade.setupInputs?.atr);
+  const levels = rebaseSetupLevels(setup.id, entry, atr);
+  if (entryIndex < 0 || !levels) return null;
+  if (trade.setupOneLot && levels.target2 == null) levels.target2 = entry + 2 * atr;
+  const state = {
+    entry,
+    entryIndex,
+    atr,
+    stop: levels.stop,
+    target1: levels.target1,
+    target2: levels.target2 || (trade.setupOneLot ? entry + 2 * atr : null),
+    tp1Hit: false,
+    oneLot: trade.setupOneLot === true,
+  };
+  let realised = 0;
+  let remaining = 1;
+  const lastIndex = setup.amendedExits
+    ? completed.length - 1
+    : Math.min(completed.length - 1, entryIndex + setup.timeStopBars - 1);
+  let decision = null;
+  for (let index = entryIndex; index <= lastIndex; index++) {
+    decision = setupExitDecision(setup.id, state, completed, index);
+    if (decision.action === 'arm') {
+      state.tp1Hit = true;
+      state.stop = entry;
+      continue;
+    }
+    if (decision.action === 'partial') {
+      realised += 0.5 * (decision.price / entry - 1);
+      remaining = 0.5;
+      state.tp1Hit = true;
+      continue;
+    }
+    if (decision.action === 'exit') {
+      realised += remaining * (decision.price / entry - 1);
+      const status = {
+        target: 'tp1_hit',
+        stop: 'sl_hit',
+        runner_stop: 'tp1_then_sl',
+        runner_target: 'tp2_hit',
+        time: 'time_limit',
+        time_after_tp1: 'tp1_then_time',
+      }[decision.reason] || decision.reason;
+      const net = applyCosts(realised, {
+        market: setup.market,
+        symbol: trade.ticker,
+        side: 'buy',
+        holdDays: index - entryIndex,
+      });
+      return {
+        status,
+        reason: decision.reason,
+        ret: net?.netReturn ?? realised,
+        exit: decision.price,
+        exitIdx: index,
+        tp1Hit: state.tp1Hit || decision.reason === 'target',
+        open: false,
+        levels,
+        timeExit: decision.reason === 'time' || decision.reason === 'time_after_tp1',
+      };
+    }
+  }
+  const current = Number(markPrice) > 0
+    ? Number(markPrice)
+    : Number(completed.at(-1)?.c);
+  const openRet = realised + remaining * (current / entry - 1);
+  return {
+    status: state.tp1Hit ? 'tp1_open' : 'open',
+    reason: 'open',
+    ret: openRet,
+    exit: null,
+    exitIdx: null,
+    tp1Hit: state.tp1Hit,
+    open: true,
+    levels,
+    timeExit: false,
   };
 }
 
@@ -13737,6 +14414,14 @@ function tradeEventSnapshot(h, hz, extra) {
     correlationCluster: h.sector || h._fmpSector || countryOfSymbol(h.ticker),
     advShares: Number(h.advShares || h.avgVolume20 || h.averageVolume) || null,
     key: `${h.ticker}|${z}|${keyDay}`,
+    setupId: h.setupId || null,
+    setupTag: h.setupTag || (h.setupId ? `SETUP_BOOK:${h.setupId}` : null),
+    ledgerNamespace: h.ledgerNamespace || (h.setupId ? `SETUP_BOOK:${h.setupId}` : null),
+    experimental: h.experimental === true,
+    setupAtr: Number(h.setupLevels?.atr || h.setupInputs?.atr) || null,
+    setupStopAtr: Number(h.setupExits?.stopAtr) || null,
+    setupPartial: h.setupExits?.partial === true,
+    setupTimeStopBars: Number(h.setupExits?.timeStopBars) || null,
     ...(extra || {})
   };
 }
@@ -13837,6 +14522,27 @@ function shouldEmitIbkrEntry(trade, hz) {
   if (!isExecutableRecommendRating(rating) && !isExecutableRecommendRating(action)) {
     console.log('IBKR entry skipped (not Buy/Sell):', snap.key, 'rating=', rating, 'action=', action);
     return false;
+  }
+  const setupId = trade.setupId;
+  const setup = setupBookEnabled() && setupId ? EVIDENCE_SETUPS[setupId] : null;
+  if (setup) {
+    if (isSetupPaused(setupId)) {
+      console.log('IBKR entry skipped (setup paused):', snap.key, setupId);
+      return false;
+    }
+    if (setup.signalsOnly === true || /India/i.test(String(setup.market || trade.market || ''))) {
+      console.log('IBKR entry skipped (setup signals-only):', snap.key, setupId);
+      return false;
+    }
+    if (String(process.env.IBKR_BRIDGE_ROLE || '').toLowerCase() === 'live') {
+      console.log('IBKR entry skipped (setup-book live role refuse):', snap.key, setupId);
+      return false;
+    }
+    if (ibkrHasOpenEntryFor(snap.ticker, snap.hz, snap.entryDate)) {
+      console.log('IBKR entry skipped (open alias/duplicate):', snap.key);
+      return false;
+    }
+    return true;
   }
   const conf = Number(trade[z + 'Conf'] || trade.conf || 0);
   if (!(conf >= PICKS_MIN_CONF)) {
@@ -13946,12 +14652,13 @@ function emitTradeEvent(type, payload) {
       console.log('IBKR entry skipped (missing levels):', payload && payload.key);
       return null;
     }
-    if (process.env.AUTH_TEST_BYPASS !== '1' && !scheduledEntryReleaseAllowed(payload)) {
+    const entryReleaseTestBypass = !IS_PRODUCTION && process.env.AUTH_TEST_BYPASS === '1';
+    if (!entryReleaseTestBypass && !scheduledEntryReleaseAllowed(payload)) {
       console.log('IBKR entry skipped (SGT release gate):', payload && payload.key,
         'entryDate=', payload && (payload.entryDate || payload.t));
       return null;
     }
-    if (process.env.AUTH_TEST_BYPASS !== '1' && !isManualEntryBypass(payload)
+    if (!entryReleaseTestBypass && !isManualEntryBypass(payload)
       && !boardPublishedAtRelease(dashboardPicksCache && dashboardPicksCache.dashTs)) {
       console.log('IBKR entry skipped (board is not the 06:00 SGT publish):', payload && payload.key);
       return null;
@@ -15620,6 +16327,26 @@ function ibkrFillSession(row, ticker, timeIso) {
   return ibkrSessionPhase(ticker, timeIso);
 }
 
+function historyRowEventKey(row) {
+  const hz = row?.hz || 'short';
+  return `${row?.ticker}|${hz}|${historyTradeEntryDay(row)}`;
+}
+
+/** One-lot status comes only from the bridge entry-fill flag, never from price. */
+function applySetupOneLotFlag(rows, reports) {
+  let stamped = 0;
+  for (const report of reports || []) {
+    if (!report || report.role !== 'entry' || report.setupOneLot !== true || !report.key) continue;
+    const key = String(report.key);
+    for (const row of rows || []) {
+      if (!row || historyRowEventKey(row) !== key || row.setupOneLot === true) continue;
+      row.setupOneLot = true;
+      stamped++;
+    }
+  }
+  return stamped;
+}
+
 app.post('/api/ibkr/report', (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   const reports = Array.isArray(req.body && req.body.reports) ? req.body.reports : [];
@@ -15794,6 +16521,11 @@ app.post('/api/ibkr/report', (req, res) => {
   if (stored || commissionsPatched) {
     try { quarantineGhostFlatsAsErrorTrades(); } catch (_) {}
     auditLog('ibkr_fills', { stored, skipped, commissionsPatched });
+  }
+  try {
+    if (applySetupOneLotFlag(tradeHistory, reports)) saveHistoryFile(tradeHistory);
+  } catch (e) {
+    console.warn('setup one-lot history stamp failed:', e.message);
   }
   res.json({
     ok: true, stored, skipped, commissionsPatched,
@@ -18885,6 +19617,9 @@ function normalizeExtinctStatuses(rows, source) {
   let n = 0;
   for (const h of rows || []) {
     if (!h || !(h.action === 'Buy' || h.action === 'Sell')) continue;
+    // Setup-book target exits are the tested full close. Folding tp1_hit /
+    // tp2_hit back to open reopens a settled setup row on every refresh.
+    if (h.setupId) continue;
     const hzL = h.hz ? [h.hz] : ['short', 'medium', 'long'];
     for (const hz of hzL) {
       const s = h[hz + 'Status'];
@@ -19264,12 +19999,25 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
           h.entryFinalized = true;
           h.entryPending = false;
           h.entrySource = 'session open ' + new Date((entryBar.t || 0) * 1000).toISOString().slice(0, 10);
-          // Keep TP/SL consistent with the corrected entry: scale the stored
-          // levels by the entry ratio (full re-derivation happens on the next
-          // recalibrate-levels pass; this keeps RR sane in the meantime).
-          if (prevEntry && Math.abs(fixed - prevEntry) / prevEntry > 0.0005) {
+          const setupLevels = h.setupId
+            ? rebaseSetupLevels(
+              h.setupId,
+              fixed,
+              Number(h.setupLevels?.atr || h.setupInputs?.atr),
+            )
+            : null;
+          if (setupLevels) {
+            h[hz + 'Target1'] = roundPrice(setupLevels.target1);
+            h[hz + 'Target2'] = setupLevels.target2 == null
+              ? null : roundPrice(setupLevels.target2);
+            h[hz + 'StopLoss'] = roundPrice(setupLevels.stop);
+            h.target1 = h[hz + 'Target1'];
+            h.target2 = h[hz + 'Target2'];
+            h.stopLoss = h[hz + 'StopLoss'];
+            h.setupLevels = Object.freeze({ ...setupLevels });
+          } else if (prevEntry && Math.abs(fixed - prevEntry) / prevEntry > 0.0005) {
+            // Legacy composite rows retain their proportional level repair.
             const k = fixed / prevEntry;
-            // Target2 is the live runner take-profit — keep it scaled with entry.
             for (const lf of [hz + 'Target1', hz + 'Target2', hz + 'StopLoss']) {
               const v = parseFloat(h[lf] || 0);
               if (v > 0) h[lf] = roundPrice(v * k);
@@ -19376,6 +20124,74 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         }
       } catch (_) { /* exhaustion is best-effort */ }
 
+      // Setup-book rows use their frozen tested exits exclusively. They must
+      // never enter the generic signal-flip, 50/50 TSL, TP2, or horizon engine.
+      if (h.setupId && EVIDENCE_SETUPS[h.setupId]?.kind !== 'current_engine') {
+        const setupPath = simulateSetupHistoryExit(h, bars, entryMs, curr);
+        if (setupPath) {
+          const setupIbQty = ibkrModelOpenQtyForHistory(h, hz);
+          if (setupIbQty > 0 && !setupPath.open && !setupPath.timeExit) {
+            setupPath.open = true;
+            setupPath.status = setupPath.tp1Hit ? 'tp1_open' : 'open';
+            setupPath.exit = null;
+          }
+          const NOTIONAL = 10000;
+          h[hz + 'PnlPct'] = +(setupPath.ret * 100).toFixed(2);
+          h[hz + 'PnlDollar'] = +(setupPath.ret * NOTIONAL).toFixed(2);
+          h[hz + 'Status'] = setupPath.status;
+          h[hz + 'Tp1Hit'] = setupPath.tp1Hit;
+          h[hz + 'TslActivated'] = false;
+          h[hz + 'LiveTrailSL'] = setupPath.tp1Hit && setupPath.open
+            ? roundPrice(entry) : null;
+          h[hz + 'StopLoss'] = roundPrice(
+            setupPath.tp1Hit && setupPath.open ? entry : setupPath.levels.stop,
+          );
+          h[hz + 'Target1'] = roundPrice(setupPath.levels.target1);
+          h[hz + 'Target2'] = setupPath.levels.target2 == null
+            ? null : roundPrice(setupPath.levels.target2);
+          if (!setupPath.open) {
+            h[hz + 'ExitPrice'] = roundPrice(setupPath.exit);
+            h[hz + 'ExitReason'] = `Setup ${setupPath.reason}`;
+            const exitBar = bars?.[setupPath.exitIdx];
+            if (!h[hz + 'ExitTs']) {
+              h[hz + 'ExitTs'] = exitBar?.t
+                ? Number(exitBar.t) * 1000 : Date.now();
+            }
+            if (!h[hz + 'SettledTs']) {
+              h[hz + 'SettledTs'] = Date.now();
+              auditLog('trade_settled', {
+                ticker: h.ticker,
+                hz,
+                setupId: h.setupId,
+                status: setupPath.status,
+                pnl: h[hz + 'PnlDollar'],
+                exit: h[hz + 'ExitPrice'],
+              });
+              if (setupPath.timeExit) {
+                try {
+                  emitTradeEvent('exit', tradeEventSnapshot(h, hz, {
+                    status: setupPath.status,
+                    reason: 'setup-time-exit',
+                    exitReason: h[hz + 'ExitReason'],
+                    setupTimeExit: true,
+                  }));
+                } catch (_) {}
+              }
+            }
+          } else {
+            h[hz + 'ExitPrice'] = undefined;
+            h[hz + 'ExitReason'] = setupPath.tp1Hit
+              ? 'Setup TP1 banked; runner at entry stop' : '';
+          }
+          h[hz + 'CurrentPrice'] = curr;
+          rowChanged = true;
+        }
+        continue;
+      }
+
+      const amendedEngine = EVIDENCE_SETUPS[h.setupId]?.kind === 'current_engine'
+        && EVIDENCE_SETUPS[h.setupId]?.amendedExits === true;
+
       // Immediate exit if live signal has flipped against the open position.
       // Never flip on the SAME DAY as entry (enteredToday): a pick and its instant
       // same-price "Signal exit" ($0) is pure churn. Give every trade at least one
@@ -19385,10 +20201,10 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
       const asiaUnfilled = (yFlip.endsWith('.T') || yFlip.endsWith('.HK')) && !(ibLiveQty > 0);
       const flip = (!enteredToday && (st === 'open' || st === 'tp1_open' || !st || st === 'n/a'))
         ? liveSignalFlipExit(h.ticker, hz, isSell, techLiveMap) : null;
-      if (flip && asiaUnfilled) {
+      if (flip && !amendedEngine && asiaUnfilled) {
         // Unfilled TSE/SEHK (6098.T) must still print at the next cash open
         // even if Friday's 06:00 board drops the name.
-      } else if (flip) {
+      } else if (flip && !amendedEngine) {
         const pct = ((curr - entry) / entry) * dir;
         h[hz + 'PnlDollar'] = +(pct * 10000).toFixed(2);
         h[hz + 'PnlPct'] = +(pct * 100).toFixed(2);
@@ -19432,7 +20248,16 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
         h[hz + 'SharesRunner'] = shareSplit.runner;
         rowChanged = true;
       }
-      const pathExit = (bars && entry) ? await simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, curr, true, shareSplit.frac) : null;
+      const engineOneLot = amendedEngine && h.setupOneLot === true;
+      const enginePartial = amendedEngine ? (engineOneLot ? 0 : shareSplit.frac) : shareSplit.frac;
+      const engineExitOpts = amendedEngine ? {
+        disablePreTp1SignalExit: true,
+        stopFirst: true,
+        researchExitVariant: { timeBars: (bars?.length || 1) + 5 },
+      } : null;
+      const pathExit = (bars && entry)
+        ? await simulateTradeExitTrailing(bars, entryMs, entry, hz, isSell, curr, true, enginePartial, engineExitOpts)
+        : null;
       // Live IB still holds the runner: paper TSL/time must not settle History
       // or flatten the remainder. Keep TP1-banked + TSL/TP2 active.
       if (pathExit && ibLiveQty > 0 && !pathExit.open) {
@@ -19507,7 +20332,7 @@ app.post('/api/history/refresh-pnl', express.json(), async (req, res) => {
           }
         } catch (_) {}
         rowChanged = true;
-      } else if (horizonTimeLimitExceededServer(hz, h.entryDate || h.timestamp)) {
+      } else if (!amendedEngine && horizonTimeLimitExceededServer(hz, h.entryDate || h.timestamp)) {
         const pct = ((curr - entry) / entry) * dir;
         h[hz + 'PnlDollar'] = +(pct * NOTIONAL).toFixed(2);
         h[hz + 'PnlPct'] = +(pct * 100).toFixed(2);
@@ -19858,6 +20683,8 @@ module.exports = {
   rewardRiskRatio,
   computeTrailingStopFromTech,
   normalizeExtinctStatuses,
+  simulateSetupHistoryExit,
+  applySetupOneLotFlag,
   signalFlipped,
   horizonHoldDaysServer,
   fetchOHLCV,
@@ -19865,6 +20692,7 @@ module.exports = {
   fetchFmpScore,
   fundCache,
   simulateHybridExit,
+  simulateMeanReversionExit,
   TECH_TTL,
   techAtBoundedIndex,
   dailyToWeeklyBars,

@@ -1,0 +1,651 @@
+{
+  "generatedAt": "2026-10-06T06:07:42.154Z",
+  "rule": "PASS or CANDIDATE also needs a positive full-sample return that beats the benchmark",
+  "liveBehaviorChanged": false,
+  "rows": [
+    {
+      "id": "UK__long__k1",
+      "market": "UK",
+      "k": 1,
+      "slots": 6,
+      "strategy": "Executable 12-1 momentum, k=1, hold 6 months",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -2.33,
+          "pf": 1.074,
+          "win": 66.7,
+          "trades": 6,
+          "maxDrawdownPct": 10.18,
+          "benchmarkReturnPct": 0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 54.54,
+          "pf": 99,
+          "win": 100,
+          "trades": 6,
+          "maxDrawdownPct": 0.17,
+          "benchmarkReturnPct": 13.36,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 18.4,
+          "pf": 99,
+          "win": 100,
+          "trades": 6,
+          "maxDrawdownPct": 10.2,
+          "benchmarkReturnPct": 8.86,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 5.99,
+          "pf": 2.939,
+          "win": 50,
+          "trades": 6,
+          "maxDrawdownPct": 10.91,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 596.76,
+        "maxDrawdownPct": 23.97,
+        "sharpe": 0.73,
+        "n": 184,
+        "win": 63,
+        "pf": 2.55,
+        "benchmarkReturnPct": 40.91
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -2.79,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 25.74,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 53.71,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": 4.68,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": 11.27,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": 12.69,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 22.46,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": -15.56,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 26.4,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -1.26,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": -9.03,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -1.89,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": 14.39,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": 1.69,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 89.1,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 11.51,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2011-09-30",
+        "returnPct": -14.84
+      },
+      "maxDrawdownPct": 23.97,
+      "medianNames": 0,
+      "fullSampleBeat": true,
+      "verdict": "CANDIDATE"
+    },
+    {
+      "id": "UK__long__k2",
+      "market": "UK",
+      "k": 2,
+      "slots": 12,
+      "strategy": "Executable 12-1 momentum, k=2, hold 6 months",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -0.81,
+          "pf": 1.454,
+          "win": 50,
+          "trades": 12,
+          "maxDrawdownPct": 7.91,
+          "benchmarkReturnPct": 0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 39.02,
+          "pf": 75.288,
+          "win": 91.7,
+          "trades": 12,
+          "maxDrawdownPct": 0,
+          "benchmarkReturnPct": 13.36,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 11.8,
+          "pf": 11.529,
+          "win": 83.3,
+          "trades": 12,
+          "maxDrawdownPct": 10.71,
+          "benchmarkReturnPct": 8.86,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 12.06,
+          "pf": 6.331,
+          "win": 66.7,
+          "trades": 12,
+          "maxDrawdownPct": 4.69,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 277.05,
+        "maxDrawdownPct": 25.13,
+        "sharpe": 0.61,
+        "n": 368,
+        "win": 57.9,
+        "pf": 1.936,
+        "benchmarkReturnPct": 40.91
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -7.31,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 18.39,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 38.73,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": 5.78,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": 11.06,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": 1.63,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 16.65,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": -16.71,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 19.18,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": 2.28,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": -3.82,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -12.64,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": 9.62,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": 4.75,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 63.38,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 11.11,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -15.2
+      },
+      "maxDrawdownPct": 25.13,
+      "medianNames": 0,
+      "fullSampleBeat": true,
+      "verdict": "CANDIDATE"
+    },
+    {
+      "id": "France__long__k1",
+      "market": "France",
+      "k": 1,
+      "slots": 6,
+      "strategy": "Executable 12-1 momentum, k=1, hold 6 months",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": 7.04,
+          "pf": 0.854,
+          "win": 50,
+          "trades": 6,
+          "maxDrawdownPct": 5.08,
+          "benchmarkReturnPct": 0.95,
+          "beat": true
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 8.58,
+          "pf": 2.389,
+          "win": 83.3,
+          "trades": 6,
+          "maxDrawdownPct": 3.62,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 7.51,
+          "pf": 6.248,
+          "win": 83.3,
+          "trades": 6,
+          "maxDrawdownPct": 12.03,
+          "benchmarkReturnPct": -1.67,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 13.97,
+          "pf": 15.258,
+          "win": 66.7,
+          "trades": 6,
+          "maxDrawdownPct": 8.3,
+          "benchmarkReturnPct": -5.07,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 261.12,
+        "maxDrawdownPct": 32.51,
+        "sharpe": 0.519,
+        "n": 184,
+        "win": 61.4,
+        "pf": 2.036,
+        "benchmarkReturnPct": 59.13
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -26.35,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 35.38,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 27.19,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": 5.02,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": 27.47,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": -8.71,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 19.74,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -2.59,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 36.7,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -2.06,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 28.47,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -21.82,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 5.58,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": 3.21,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": 18.19,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": 15.34,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -20.41
+      },
+      "maxDrawdownPct": 32.51,
+      "medianNames": 0,
+      "fullSampleBeat": true,
+      "verdict": "CANDIDATE"
+    },
+    {
+      "id": "France__long__k2",
+      "market": "France",
+      "k": 2,
+      "slots": 12,
+      "strategy": "Executable 12-1 momentum, k=2, hold 6 months",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -1.01,
+          "pf": 0.27,
+          "win": 41.7,
+          "trades": 12,
+          "maxDrawdownPct": 6.97,
+          "benchmarkReturnPct": 0.95,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 1.57,
+          "pf": 2.108,
+          "win": 41.7,
+          "trades": 12,
+          "maxDrawdownPct": 4.73,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 10.3,
+          "pf": 11.285,
+          "win": 83.3,
+          "trades": 12,
+          "maxDrawdownPct": 9.32,
+          "benchmarkReturnPct": -1.67,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 5.87,
+          "pf": 10.989,
+          "win": 83.3,
+          "trades": 12,
+          "maxDrawdownPct": 7.31,
+          "benchmarkReturnPct": -5.07,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 156.01,
+        "maxDrawdownPct": 32.32,
+        "sharpe": 0.433,
+        "n": 368,
+        "win": 61.1,
+        "pf": 1.787,
+        "benchmarkReturnPct": 59.13
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -27.53,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 23.51,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 30.6,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": -1.36,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": 15.3,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": -3.32,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 17.96,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -8.51,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 24.12,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": 2.79,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 28.01,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -17.14,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 14.72,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -5.82,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": 13.87,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": 10.83,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -17.96
+      },
+      "maxDrawdownPct": 32.32,
+      "medianNames": 0,
+      "fullSampleBeat": true,
+      "verdict": "FAIL"
+    }
+  ]
+}

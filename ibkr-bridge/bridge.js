@@ -29,20 +29,26 @@
  *                      futures). Unsplittable lots are OCA with the stop so a TP1
  *                      fill exits the whole position and cancels the SL.
  *                    After the entry fill prints, TP1 and SL are rescaled off
- *                    the actual fill (same % as rec entry→TP1 / entry→SL).
+ *                    the actual fill. Generic rows preserve recommendation
+ *                    percentages; setup-book rows preserve tested ATR distances.
+ *                    Setup full exits use one 100% +1 ATR LMT OCA with the STP.
+ *                    Setup partial exits require splittable size: 50% at +1 ATR,
+ *                    then a +2 ATR runner target with its stop fixed at entry.
  *                    If the parent was sent standalone (HK/JP/LSE) or a child was
  *                    rejected, the fill handler parks TP1+SL immediately — it
  *                    does not wait for the 60s / 15-min sweep.
  *                    After TP1, the runner parks a LMT at TP2 plus the TSL.
- *     TP1 fill     → IB orderStatus on the TP1 child only. Stop resized to the
- *                    runner TSL; TP2 LMT parked for remaining shares.
+ *     TP1 fill     → IB orderStatus on the TP1 child only. Generic rows resize
+ *                    to the runner TSL; setup rows move the stop to exact entry.
+ *                    TP2 LMT is parked for remaining shares.
  *     tsl_update   → paper History may emit this; live authority is the bridge
  *                    daily catch-up after a real IB TP1 print (tp1Done).
  *                    Never loosen. Never apply if TP1 has not
- *                    actually been banked. Runner still exits at TP2 if it prints.
+ *                    actually been banked. Setup rows ignore TSL updates.
  *     exit         → flatten only on a live Buy↔Sell flip or an operational
- *                    close (unauthorized / abandon / IB-flat). Paper `tp1_then_sl`
- *                    / time-limit / simulated SL are ignored.
+ *                    close (unauthorized / abandon / IB-flat), plus explicit
+ *                    setup-book time exits after the tested session count.
+ *                    Generic paper `tp1_then_sl` / time-limit exits are ignored.
  *
  *   Venue routing is the bridge's job, not the operator's: HK→SEHK, JP→TSEJ,
  *   LSE→LSE, otherwise SMART (then listing venue on IB error 200). A reject
@@ -181,8 +187,23 @@ const {
   preferWorkerOpenOrder,
   runWithConcurrency
 } = require('../lib/ibkr/exec-client-pool');
+const {
+  compareSetupEntries,
+  setupOrderShape,
+  setupFillLevels,
+  evaluateSetupCapacity,
+  evaluateCapitalPool,
+  SETUP_TICKET_USD,
+} = require('../lib/strategy/setup-book-execution');
+const { instrumentFor } = require('../lib/research/exit-amendment');
+const { SETUPS: EVIDENCE_SETUPS } = require('../lib/strategy/evidence-setup-book');
 
 const LIVE_ROLE = process.argv.includes('live') || process.env.IBKR_BRIDGE_ROLE === 'live';
+if (!LIVE_ROLE) {
+  try { require('../lib/strategy/feature-flags').applyPaperFlagsFromDisk(); } catch (_) {}
+}
+const SETUP_BOOK_PAPER_EXECUTION = !LIVE_ROLE
+  && require('../lib/strategy/feature-flags').setupBookPaperExecutionEnabled();
 const LIVE_GOAHEAD = process.env.IBKR_LIVE_GOAHEAD === '1';
 const LIVE_ARM = process.env.IBKR_LIVE_ARM === '1';
 const BASE = String(process.env.ALPHASIGNAL_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
@@ -1304,6 +1325,7 @@ function placeableContract(contract, exchangeOverride) {
 async function main() {
   const state = loadState();
   log(`Bridge start | AlphaSignal=${BASE} | IB=${HOST}:${PORT} clientId=${CLIENT_ID} | execPool=${EXEC_POOL_SIZE} from ${EXEC_POOL_START} | dryRun=${DRY} | outsideRth=${ORDER_OUTSIDE_RTH} | risk/trade=${(RISK_SIZING_LIMITS.riskPct * 100).toFixed(2)}% NLV`);
+  log(`SETUP_BOOK_ENABLED=${process.env.SETUP_BOOK_ENABLED === '1' ? '1' : '0'} SETUP_BOOK_PAPER_EXECUTION=${SETUP_BOOK_PAPER_EXECUTION ? '1' : '0'} role=${LIVE_ROLE ? 'live' : 'paper'} account=${ACCOUNT || '(unset)'}`);
   log(`Reconcile every ${(SWEEP_MS / 60000).toFixed(0)}m | Telegram alerts=${telegramConfigured() ? 'ON' : 'OFF (set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)'}`
     + (telegramConfigured() && EOD_ALERTS ? ' | EOD summary after US post-close' : ''));
   if (!state.alertMeta || typeof state.alertMeta !== 'object') {
@@ -2018,6 +2040,7 @@ async function main() {
             sessionLabel: sessionLabel(phase),
             time: fillAt
           };
+          if (role === 'entry' && row.oneLotRunner === true) report.setupOneLot = true;
           if (row.rolledFrom && role === 'entry') report.recon = 'futures-roll';
           if (comm) {
             report.commission = comm.commission;
@@ -3412,7 +3435,28 @@ async function main() {
         return null;
       }
     }
+    if (evt.setupId && EVIDENCE_SETUPS[evt.setupId]?.signalsOnly) {
+      log('signals-only setup, not sent to IBKR:', evt.ticker, evt.setupId);
+      return null;
+    }
     let contract = toContract(evt.ticker);
+    if (evt.setupId && contract) {
+      const mapped = instrumentFor(evt.ticker, evt.entry);
+      if (mapped.kind === 'micro_future') {
+        log(`setup-book instrument ${evt.ticker} -> ${mapped.instrument} x${mapped.multiplier}`);
+        contract = {
+          ...contract,
+          symbol: mapped.instrument,
+          multiplier: mapped.multiplier,
+          secType: 'FUT',
+        };
+      } else if (mapped.kind === 'etf' && mapped.instrument) {
+        log(`setup-book instrument ${evt.ticker} -> ETF ${mapped.instrument}`);
+        contract = toContract(mapped.instrument) || contract;
+      } else if (mapped.kind === 'unmapped_future') {
+        log(`setup-book instrument ${evt.ticker} has no micro or ETF; using ${contract.symbol}`);
+      }
+    }
     if (!contract) {
       log('skip entry (unsupported instrument for IB paper):', evt.ticker);
       return null;
@@ -3458,7 +3502,8 @@ async function main() {
       spreadBps: Number.isFinite(liveSpreadBps) ? liveSpreadBps : evt.spreadBps,
       drawdownPct: Number(evt.drawdownPct) || 0,
       capitalScale: evt.capitalScale,
-      allowMinLot: boardEntry,
+      allowMinLot: boardEntry || !!evt.setupId,
+      ticketNotionalUsd: evt.setupId ? SETUP_TICKET_USD : undefined,
       netLiquidityAvailable: availLiq,
       liquidityFloorPct: 1 - MAX_CAPITAL_UTILIZATION_PCT
     });
@@ -3471,6 +3516,18 @@ async function main() {
         split.runner = Math.max(0, forceQty - split.sold);
       }
     }
+    let setupShape = null;
+    if (evt.setupId && !evt.userReentry) {
+      setupShape = setupOrderShape(evt.setupId, split.total, lot);
+      const shape = setupShape;
+      if (!shape || shape.executable === false) {
+        log('skip setup-book entry (unexecutable tested split):',
+          evt.ticker, evt.setupId, shape?.reason || 'invalid-shape');
+        return null;
+      }
+      split.sold = shape.targetQuantity;
+      split.runner = shape.runnerQuantity;
+    }
     if (!(split.total > 0)) {
       log('skip entry — zero size for', evt.ticker, 'entry', evt.entry, 'lot', lot);
       postJson('/api/ibkr/risk-decision', {
@@ -3481,6 +3538,47 @@ async function main() {
         sizing: split.risk || null
       }).catch(error => log('risk-decision report failed', error.message));
       return null;
+    }
+    if (evt.setupId) {
+      const lotUsd = Number(split.risk?.notionalUsd) && split.total > 0
+        ? Number(split.risk.notionalUsd) / (split.total / Math.max(1, lot))
+        : 0;
+      if (split.risk?.exceedsTicket) {
+        log('setup ticket exceeded by minimum lot', evt.ticker, evt.setupId,
+          `notional=${split.risk.notionalUsd} ticket=${SETUP_TICKET_USD}`);
+      }
+      const setupCapacity = evaluateSetupCapacity(
+        evt.setupId,
+        Object.values(state.byKey || {}),
+        split.risk?.notionalUsd,
+        nlv,
+        { minimumLot: split.risk?.exceedsTicket === true || (lotUsd > SETUP_TICKET_USD) },
+      );
+      const pool = evaluateCapitalPool(evt.setupId, Object.values(state.byKey || {}), split.risk?.notionalUsd, {
+        availableFunds: accountSnap.availableFunds,
+        buyingPower: accountSnap.buyingPower,
+      });
+      if (pool.applied && !pool.allowed) {
+        log(pool.log || 'skipped: slots', evt.ticker, evt.setupId, pool.reason,
+          `open=${pool.plan?.open ?? 0}/${pool.plan?.slots ?? 0}`);
+        return null;
+      }
+      if (!setupCapacity.allowed) {
+        log('skipped: capacity', evt.ticker, evt.setupId,
+          setupCapacity.reason,
+          `positions=${setupCapacity.openPositions ?? 0}/${setupCapacity.capacity?.maxPositions ?? 0}`,
+          `notional=${setupCapacity.openNotionalUsd ?? 0}+${setupCapacity.candidateNotionalUsd ?? 0}`
+            + `/${setupCapacity.maxNotionalUsd ?? 0}`);
+        postJson('/api/ibkr/risk-decision', {
+          decisionId: evt.decisionId || null,
+          ticker: evt.ticker,
+          setupId: evt.setupId,
+          allowed: false,
+          reasons: ['skipped: capacity', setupCapacity.reason],
+          setupCapacity,
+        }).catch(error => log('risk-decision report failed', error.message));
+        return null;
+      }
     }
     // Admission is governed solely by available-capital utilization. Position
     // sizing still enforces per-trade stop risk, liquidity, spread and lot size.
@@ -3531,6 +3629,18 @@ async function main() {
     let rawTp2 = Number(evt.tp2);
     if (!(rawTp2 > 0)) rawTp2 = synthesizeTp2Px(Number(evt.entry), evt.hz || 'short', isSell);
     const tp2Px = rawTp2 > 0 ? roundPx(rawTp2, contract, isSell ? 'down' : 'up') : 0;
+    const setupState = evt.setupId ? {
+      setupId: evt.setupId,
+      setupTag: evt.setupTag || `SETUP_BOOK:${evt.setupId}`,
+      ledgerNamespace: evt.ledgerNamespace || `SETUP_BOOK:${evt.setupId}`,
+      setupAtr: Number(evt.setupAtr) || null,
+      setupStopAtr: Number(evt.setupStopAtr) || null,
+      setupPartial: evt.setupPartial === true,
+      setupOneLot: setupShape?.oneLotRunner === true,
+      setupAmendedExits: EVIDENCE_SETUPS[evt.setupId]?.amendedExits === true,
+      setupTimeStopBars: EVIDENCE_SETUPS[evt.setupId]?.amendedExits ? null : (Number(evt.setupTimeStopBars) || null),
+      setupNotionalUsd: Number(split.risk?.notionalUsd) || null,
+    } : {};
     if (!(stopPx > 0)) { log('skip entry — no stop level for', evt.ticker); return null; }
     if (!DRY && contract.secType === 'STK' && !(Number(contract.conId) > 0)) {
       // Never manufacture order IDs for a contract IB could not qualify. This
@@ -3550,6 +3660,7 @@ async function main() {
         correlationCluster: evt.correlationCluster || evt.sector || contract.market,
         riskSizing: split.risk,
         portfolioAdmission: portfolioGate,
+        ...setupState,
         updated: evt.t || new Date().toISOString(), dry: DRY
       };
     }
@@ -3620,6 +3731,7 @@ async function main() {
         sector: evt.sector || null, country: evt.country || contract.market,
         correlationCluster: evt.correlationCluster || evt.sector || contract.market,
         riskSizing: split.risk, portfolioAdmission: portfolioGate,
+        ...setupState,
         userReentry: evt.userReentry === true,
         updated: evt.t || new Date().toISOString(), dry: DRY
       };
@@ -3628,12 +3740,14 @@ async function main() {
     const execClientId = execSlot ? execSlot.clientId : activeClientId;
     const parentId = nid(execClientId);
     const stopId = asiaStandalone ? null : nid(execClientId);
-    const tp1Id = (!asiaStandalone && tp1Px > 0 && split.sold > 0) ? nid(execClientId) : null;
+    const oneLotRunner = setupShape?.oneLotRunner === true;
+    const tp1Id = (!asiaStandalone && !oneLotRunner && tp1Px > 0 && split.sold > 0) ? nid(execClientId) : null;
+    const initialTp2Id = (!asiaStandalone && oneLotRunner && tp2Px > 0 && split.runner > 0) ? nid(execClientId) : null;
     const { entryStyle, defer, ...parentFields } = parentSpec;
     const parent = baseOrder({ orderId: parentId, ...parentFields });
     if (asiaStandalone) parent.transmit = true;
-    const fullTp1 = split.sold > 0 && !(split.runner > 0);
-    const oca = fullTp1 ? { ocaGroup: ocaGroupForKey(evt.key || evt.ticker), ocaType: 1 } : {};
+    const fullTp1 = !oneLotRunner && split.sold > 0 && !(split.runner > 0);
+    const oca = (fullTp1 || oneLotRunner) ? { ocaGroup: ocaGroupForKey(evt.key || evt.ticker), ocaType: 1 } : {};
     // Stop child: FULL quantity — pre-TP1 an SL hit closes the whole position
     // (identical to the simulator's sl_hit). GTC so it survives sessions.
     // 1-lot / 1-contract: OCA with TP1 so a TP1 fill cannot leave a live STP.
@@ -3651,6 +3765,12 @@ async function main() {
       parentId, outsideRth: ORDER_OUTSIDE_RTH, transmit: true,
       ...oca
     }) : null;
+    const initialTp2Order = (!asiaStandalone && initialTp2Id != null) ? baseOrder({
+      orderId: initialTp2Id, action: closeAction, orderType: 'LMT',
+      lmtPrice: tp2Px, totalQuantity: split.runner,
+      parentId, outsideRth: ORDER_OUTSIDE_RTH, transmit: true,
+      ...oca
+    }) : null;
     const placeEx = String(evt.placeExchange || '').toUpperCase() || undefined;
 
     if (DRY || !ib) {
@@ -3660,6 +3780,7 @@ async function main() {
       transmitOrder(parentId, contract, parent, 'entry ' + evt.ticker, placeEx);
       if (stopOrder) transmitOrder(stopId, contract, stopOrder, 'stop ' + evt.ticker, placeEx);
       if (tp1Order) transmitOrder(tp1Id, contract, tp1Order, 'tp1 ' + evt.ticker, placeEx);
+      if (initialTp2Order) transmitOrder(initialTp2Id, contract, initialTp2Order, 'setup tp2 ' + evt.ticker, placeEx);
       const gateNote = (contract.usRth && (sessionPhase(contract) === 'pre' || sessionPhase(contract) === 'post'))
         || ((contract.market === 'JP' || contract.market === 'LSE') && sessionPhase(contract) === 'rth')
         ? ` quote=${quotePx != null ? quotePx : 'n/a'}(${quoteSrc || 'none'}) vs entry=${roundPx(evt.entry, contract)} lmt=${parent.lmtPrice != null ? parent.lmtPrice : 'n/a'} → ${entryStyle}`
@@ -3674,13 +3795,15 @@ async function main() {
         `exch=${(oc && oc.exchange) || contract.primaryExch || contract.market || ''} style=${entryStyle} phase=${sessionPhase(contract)} qty=${split.total} sizePx=${roundPx(evt.entry, contract)} stop=${stopPx}(full) tp1=${tp1Px}x${split.sold} runner=${split.runner}${sizeNote}${gateNote}${jpNote}`);
     }
     return {
-      parentId, stopId, tp1Id, tp2Id: null,
+      parentId, stopId, tp1Id, tp2Id: initialTp2Id,
       ticker: evt.ticker, hz: evt.hz, side: evt.side,
       entry: evt.entry, stopPx, originalSl: stopPx, tp1Px, tp2Px, modelTp2: tp2Px, entryStyle,
       extLmt: parent.lmtPrice != null ? Number(parent.lmtPrice) : null,
       qtyTotal: split.total, qtySold: split.sold, qtyRunner: split.runner,
       contract, tp1Done: false, closed: false,
-      ocaLinked: !!(split.sold > 0 && !(split.runner > 0)),
+      oneLotRunner,
+      tp1Touched: false,
+      ocaLinked: oneLotRunner || !!(split.sold > 0 && !(split.runner > 0)),
       decisionId: evt.decisionId || null,
       rulesVersion: evt.rulesVersion || null,
       admittedAt: evt.admittedAt || evt.t || new Date().toISOString(),
@@ -3696,6 +3819,7 @@ async function main() {
       placeExchange: (placeEx || preferredExchange(contract) || '').toUpperCase() || null,
       riskSizing: split.risk,
       portfolioAdmission: portfolioGate,
+      ...setupState,
       userReentry: evt.userReentry === true,
       updated: evt.t || new Date().toISOString(), dry: DRY
     };
@@ -3703,6 +3827,14 @@ async function main() {
 
   // ── TP1 fill → resize stop to runner; SL shifts by the entry→TP1 % ───────
   function runnerStopPx(row, trail) {
+    if (row?.setupId && row.oneLotRunner && row.tp1Touched) {
+      const entryPx = Number(row.ibAvgFill || row.entry) || 0;
+      const raw = Number(trail) || entryPx;
+      return roundPx(Math.max(raw, entryPx), row.contract);
+    }
+    if (row?.setupId && EVIDENCE_SETUPS[row.setupId]?.kind !== 'current_engine') {
+      return roundPx(Number(row.ibAvgFill || row.entry), row.contract);
+    }
     const raw = Number(trail != null ? trail : row.stopPx) || 0;
     const entryPx = Number(row.ibAvgFill || row.entry) || 0;
     if (!(raw > 0) && !(entryPx > 0)) return 0;
@@ -3817,10 +3949,7 @@ async function main() {
     return true;
   }
 
-  /**
-   * After the entry prints, move working TP1 / SL so they keep the model's
-   * percentages off the actual fill (not the recommended entry).
-   */
+  /** Rebase setup rows by frozen ATR distances; legacy rows by percentages. */
   function applyFillRebase(key, row, fillPx) {
     if (!row || row.closed || row.tp1Done) return false;
     if (!(Number(fillPx) > 0) || !row.contract) return false;
@@ -3828,13 +3957,23 @@ async function main() {
     if (!(Number(row.modelTp1) > 0) && Number(row.tp1Px) > 0) row.modelTp1 = Number(row.tp1Px);
     if (!(Number(row.modelSl) > 0)) row.modelSl = Number(row.originalSl || row.stopPx);
     if (!(Number(row.modelTp2) > 0) && Number(row.tp2Px) > 0) row.modelTp2 = Number(row.tp2Px);
-    const planned = rebaseExitsFromFill({
-      modelEntry: row.modelEntry,
-      modelTp1: row.modelTp1,
-      modelSl: row.modelSl,
-      modelTp2: row.modelTp2,
-      fillPx
-    });
+    const setupLevels = row.setupId
+      ? setupFillLevels(row.setupId, fillPx, row.setupAtr)
+      : null;
+    const planned = setupLevels
+      ? {
+        fillPx: setupLevels.entry,
+        tp1: setupLevels.target1,
+        tp2: setupLevels.target2,
+        sl: setupLevels.stop,
+      }
+      : rebaseExitsFromFill({
+        modelEntry: row.modelEntry,
+        modelTp1: row.modelTp1,
+        modelSl: row.modelSl,
+        modelTp2: row.modelTp2,
+        fillPx
+      });
     if (!planned) return false;
     const isSell = row.side === 'sell';
     const tp1 = planned.tp1 > 0
@@ -3878,7 +4017,8 @@ async function main() {
         auxPrice: sl, totalQuantity: stopQty, transmit: true, ...oca
       }), 'SL rebase ' + key);
     }
-    log('REBASE exits from fill', key, 'fill=' + fillPx,
+    log(row.setupId ? 'REBASE setup ATR exits from fill' : 'REBASE exits from fill',
+      key, 'fill=' + fillPx,
       'model=' + row.modelEntry, 'tp1=' + (tp1 || row.tp1Px), 'sl=' + (sl || row.stopPx));
     saveState(state);
     return true;
@@ -3890,6 +4030,11 @@ async function main() {
       if (!row || row.closed || !row.entryFilled || row.tp1Done) continue;
       if (row.userReentry || row.openExitWidenDone) continue;
       const y = normalizeYahooTicker(row.ticker);
+      if (row.setupId) {
+        const setupFill = Number(row.ibAvgFill) || Number(portfolioAvgCost.get(y)) || 0;
+        if (setupFill > 0) applyFillRebase(key, row, setupFill);
+        continue;
+      }
       if (y === 'FAST' || y === 'DASH') continue;
       const submitted = Date.parse(row.orderSubmittedAt || 0);
       const recovered = !!row.recoveredFromPosition;
@@ -3944,6 +4089,7 @@ async function main() {
     let n = 0;
     for (const [key, row] of Object.entries(state.byKey || {})) {
       if (!row || row.closed || !row.entryFilled || row.tp1Done) continue;
+      if (row.setupId) continue;
       if (row.bracketFloorDone === BRACKET_FLOOR_STAMP) continue;
       const legacyWiden = recDayOnOrBeforeWidenCutoff(key)
         && row.openExitWidenDone !== OPEN_EXIT_WIDEN_STAMP;
@@ -4052,17 +4198,31 @@ async function main() {
     if (!(Number(row.originalSl) > 0)) row.originalSl = Number(row.stopPx) || 0;
     const isSell = row.side === 'sell';
     const fillEntry = Number(row.ibAvgFill) || Number(row.entry);
-    const tsl = tslAfterTp1({
-      entry: fillEntry,
-      tp1: Number(row.tp1Px),
-      sl: Number(row.originalSl) || Number(row.stopPx),
-      isSell
-    });
+    const freezeSetupStop = row.setupId
+      && EVIDENCE_SETUPS[row.setupId]?.kind !== 'current_engine';
+    const tsl = freezeSetupStop
+      ? fillEntry
+      : tslAfterTp1({
+        entry: fillEntry,
+        tp1: Number(row.tp1Px),
+        sl: Number(row.originalSl) || Number(row.stopPx),
+        isSell
+      });
     const beStop = isSell
       ? Math.min(row.stopPx, roundPx(fillEntry, row.contract))
       : Math.max(row.stopPx, roundPx(fillEntry, row.contract));
     const runnerStop = roundPx(tsl > 0 ? tsl : beStop, row.contract);
     row.stopPx = runnerStop;
+    if (row.setupId && !(Number(row.qtyRunner) > 0)) {
+      if (row.stopId != null) cancelOrder(row.stopId, 'stop after setup full target ' + key);
+      row.stopId = null;
+      row.closed = true;
+      row.setupTargetFilled = true;
+      row.tp1FilledAt = row.tp1FilledAt || new Date().toISOString();
+      log('Setup full target filled', key, '— position closed, no runner/TSL');
+      saveState(state);
+      return;
+    }
     if (row.qtyRunner > 0) {
       transmitOrder(row.stopId, row.contract, runnerStopOrder(row, key, {
         orderId: row.stopId, auxPrice: runnerStop, totalQuantity: row.qtyRunner,
@@ -4072,7 +4232,8 @@ async function main() {
       cancelOrder(row.stopId, 'stop (no runner) ' + key);
     }
     row.tp1FilledAt = row.tp1FilledAt || new Date().toISOString();
-    log('TP1 filled', key, '— stop resized to runner', row.qtyRunner, '@ TSL', runnerStop);
+    log('TP1 filled', key, '— stop resized to runner', row.qtyRunner,
+      row.setupId ? '@ ENTRY' : '@ TSL', runnerStop);
     cancelExtraStopsAfterTp1(key, row).catch(e => log('extra-stop cancel failed', key, e.message));
     // Consult the live order book before placing. This adopts an existing TP2
     // after reconnect/restart rather than creating a duplicate runner exit.
@@ -4115,7 +4276,9 @@ async function main() {
       || Number(portfolioMarks.get(row.ticker) && portfolioMarks.get(row.ticker).price)
       || 0;
     const isSell = row.side === 'sell';
-    let lmt = passiveCloseLimit(tp2Px, lastPx, isSell) || tp2Px;
+    let lmt = row.setupId
+      ? tp2Px
+      : (passiveCloseLimit(tp2Px, lastPx, isSell) || tp2Px);
     lmt = roundPx(lmt, row.contract, isSell ? 'down' : 'up');
     if (row.tp2Id != null) cancelOrder(row.tp2Id, 'TP2 replace ' + key);
     const oid = nidForRow(row);
@@ -4202,12 +4365,42 @@ async function main() {
    * Paper History `tsl_update` is not the authority — it almost never arrives
    * with tp1Done, so runners sat at the original SL until they were stopped out.
    */
+  function armSetupOneLotTargets() {
+    for (const [key, row] of Object.entries(state.byKey || {})) {
+      if (!row || row.closed || row.oneLotRunner !== true || row.tp1Touched || !row.entryFilled) continue;
+      const y = normalizeYahooTicker(row.ticker);
+      const last = Number(portfolioMarks.get(y) && portfolioMarks.get(y).price) || 0;
+      const trigger = Number(row.tp1Px);
+      if (!(last > 0) || !(trigger > 0) || last < trigger) continue;
+      const entryPx = roundPx(Number(row.ibAvgFill || row.entry), row.contract);
+      row.tp1Touched = true;
+      row.tp1FilledAt = row.tp1FilledAt || new Date().toISOString();
+      row.stopPx = entryPx;
+      if (row.stopId != null) {
+        transmitOrder(row.stopId, row.contract, runnerStopOrder(row, key, {
+          orderId: row.stopId,
+          auxPrice: entryPx,
+          totalQuantity: row.qtyRunner || row.qtyTotal,
+        }), 'setup one-lot stop to entry ' + key);
+      }
+      log('setup one-lot TP1 touch', key, 'last', last, 'trigger', trigger, 'stop', entryPx);
+      saveState(state);
+    }
+  }
+
   const _tslCatchUpAt = new Map();
   async function applyLiveRunnerTsl() {
+    armSetupOneLotTargets();
     const now = Date.now();
     let n = 0;
     for (const [key, row] of Object.entries(state.byKey || {})) {
-      if (!row || row.closed || row.tp1Done !== true || !row.entryFilled) continue;
+      if (!row || row.closed || !row.entryFilled) continue;
+      const oneLotArmed = row.oneLotRunner === true && row.tp1Touched === true;
+      if (!(row.tp1Done === true || oneLotArmed)) continue;
+      const engineRunner = row.setupId
+        && EVIDENCE_SETUPS[row.setupId]?.kind === 'current_engine'
+        && row.oneLotRunner !== true;
+      if (row.setupId && !oneLotArmed && !engineRunner) continue;
       if (!row.contract) continue;
       if (row.stopId == null) {
         const y = normalizeYahooTicker(row.ticker);
@@ -4241,7 +4434,7 @@ async function main() {
 
       const isSell = row.side === 'sell';
       const entryPx = Number(row.ibAvgFill || row.entry) || 0;
-      const floorTsl = tslAfterTp1({
+      const floorTsl = oneLotArmed ? entryPx : tslAfterTp1({
         entry: entryPx,
         tp1: Number(row.tp1Px),
         sl: Number(row.originalSl || row.stopPx),
@@ -4532,6 +4725,25 @@ async function main() {
         delete state.byKey[key];
         saveState(state);
       }
+      const setupBookOrder = !!(evt.setupId
+        || (evt.setupTag && String(evt.setupTag).startsWith('SETUP_BOOK:'))
+        || (evt.ledgerNamespace && String(evt.ledgerNamespace).startsWith('SETUP_BOOK:')));
+      if (setupBookOrder) {
+        if (LIVE_ROLE || liveOrdersAllowed() || !/^DU/i.test(String(ACCOUNT || ''))) {
+          log('LIVE REFUSE: setup-book order blocked on real-money path', key, evt.setupId || evt.setupTag);
+          return;
+        }
+        try {
+          const { setupBookPaperExecutionEnabled } = require('../lib/strategy/feature-flags');
+          if (!setupBookPaperExecutionEnabled()) {
+            log('skip setup-book entry (paper execution flag off)', key);
+            return;
+          }
+        } catch (e) {
+          log('LIVE REFUSE: setup-book flag check failed', e.message);
+          return;
+        }
+      }
       // Hard gate: only real Buy/Sell with levels. Hold must never trade
       // (server used to default Hold→buy and paper-bought FSLR/BMY/…).
       const side = String(evt.side || '').toLowerCase();
@@ -4621,6 +4833,11 @@ async function main() {
     }
     if (evt.type === 'tsl_update') {
       if (!row || row.closed) { log('tsl_update for unknown/closed key', key); return; }
+      if (row.setupId && (row.oneLotRunner === true
+        || EVIDENCE_SETUPS[row.setupId]?.kind !== 'current_engine')) {
+        log('tsl_update ignored (setup-book stop is frozen)', key, row.setupId);
+        return;
+      }
       if (!shouldApplyLiveTslUpdate(row)) {
         log('tsl_update ignored (runner TSL not active yet)', key);
         return;
@@ -5237,7 +5454,8 @@ async function main() {
           currency: (cMeta && cMeta.currency) || 'USD',
           ccyScale: cMeta && cMeta.penceQuoted ? 100 : 1,
           errorTrade: false, time: fillAt,
-          session: phase, sessionLabel: sessionLabel(phase)
+          session: phase, sessionLabel: sessionLabel(phase),
+          setupOneLot: row.oneLotRunner === true ? true : undefined
         };
         if (comm) {
           report.commission = comm.commission;
@@ -7997,15 +8215,22 @@ async function main() {
     }
     const data = await fetchJson(`/api/ibkr/events?since=${state.since}&limit=100`);
     const events = data.events || [];
-    for (const evt of events) {
+    const orderedEvents = [
+      ...events.filter(evt => evt.type !== 'entry'),
+      ...events.filter(evt => evt.type === 'entry').sort(compareSetupEntries),
+    ];
+    for (const evt of orderedEvents) {
       try {
         await handleEvent(evt);
         const store = getBridgeStore();
         if (store) store.appendEvent(`server-seq:${evt.seq}`, evt.type, evt);
       } catch (e) { log('event error', evt.type, evt.ticker, e.message); }
-      if (evt.seq > state.since) state.since = evt.seq;
     }
-    if (events.length) { saveState(state); log(`Processed ${events.length} event(s); since=${state.since}`); }
+    if (events.length) {
+      state.since = Math.max(Number(state.since) || 0,
+        ...events.map(evt => Number(evt.seq) || 0));
+    }
+    if (orderedEvents.length) { saveState(state); log(`Processed ${orderedEvents.length} event(s); since=${state.since}`); }
     await flushReports();
   }
 
