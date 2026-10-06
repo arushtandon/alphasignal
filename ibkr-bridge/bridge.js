@@ -801,6 +801,86 @@ function keepUnfilledWorking(row, key, nowMs = Date.now()) {
   return asiaUnfilledCarryActive(row, key, nowMs) || forceCashOpenActive(row, nowMs);
 }
 
+const REARM_SETUP_FIELDS = [
+  'setupId', 'setupTag', 'ledgerNamespace', 'setupAtr', 'setupStopAtr',
+  'setupPartial', 'setupTimeStopBars', 'tp2', 'noStop', 'momentumOpen', 'benchmark',
+];
+
+function rearmBracketEvent(key, row, src, reason) {
+  const source = src && typeof src === 'object' ? src : {};
+  const hasSource = Object.keys(source).length > 0;
+  const rowTp2 = row && (Number(row.tp2Px) > 0 ? Number(row.tp2Px) : (Number(row.modelTp2) > 0 ? Number(row.modelTp2) : null));
+  const fallback = {
+    key,
+    ticker: row && row.ticker,
+    hz: row && row.hz,
+    side: row && row.side,
+    entry: row && row.entry,
+    tp1: row && row.tp1Px,
+    tp2: rowTp2,
+    sl: row && (Number(row.originalSl) > 0 ? Number(row.originalSl) : row.stopPx),
+    entryDate: row && row.admittedAt,
+    setupId: row && row.setupId,
+    setupTag: row && row.setupTag,
+    ledgerNamespace: row && row.ledgerNamespace,
+    setupAtr: row && row.setupAtr,
+    setupStopAtr: row && row.setupStopAtr,
+    setupPartial: row && row.setupPartial === true,
+    setupTimeStopBars: row && row.setupTimeStopBars,
+    noStop: !!(row && row.momentumNoStop),
+    momentumOpen: !!(row && row.momentumNoStop),
+    benchmark: row && row.benchmark,
+  };
+  const base = hasSource ? { ...source } : { ...fallback };
+  const contract = (row && row.contract) || (row && row.ticker ? toContract(row.ticker) : null);
+  const market = (contract && (contract.market || (contract.usRth ? 'US' : ''))) || '';
+  const asia = market === 'HK' || market === 'JP';
+  const event = {
+    ...base,
+    key,
+    ticker: (row && row.ticker) || base.ticker,
+    hz: (row && row.hz) || base.hz,
+    side: (row && row.side) || base.side,
+    entry: source.entry != null ? source.entry : (row && row.entry),
+    tp1: source.tp1 != null ? source.tp1 : (row && row.tp1Px),
+    sl: Number(row && row.originalSl) > 0 ? Number(row.originalSl)
+      : (source.sl != null ? source.sl : (row && row.stopPx)),
+    trailSl: null,
+    entryDate: source.entryDate || source.t || (row && row.admittedAt),
+    reason: source.reason || (row && row.userReentry ? 'rearm-model-entry' : base.reason),
+    decisionId: source.decisionId || (row && row.decisionId),
+    admittedAt: (row && row.admittedAt) || base.admittedAt,
+    sector: source.sector || (row && row.sector),
+    country: source.country || (row && row.country),
+    correlationCluster: source.correlationCluster || (row && row.correlationCluster),
+    userReentry: !!((row && row.userReentry) || source.userReentry),
+    restoreMustPrint: !!(row && row.restoreMustPrint),
+    qtyTotal: Number(row && row.qtyTotal) || base.qtyTotal,
+    forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-pre-park-opg'
+      || reason === 'us-pre-unfavorable-to-opg'
+      || reason === 'asia-opg-refresh' || reason === 'asia-to-opg',
+    skipChase: (!!((row && row.userReentry) || source.userReentry) && !(row && row.restoreMustPrint))
+      || reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg',
+    carryUnfilled: ((asia || market === 'LSE') && row && !row.entryFilled) || forceCashOpenActive(row),
+    throughPct: (market === 'LSE' && (reason === 'asia-rth-reprice' || reason === 'asia-rth-retry'
+      || reason === 'eu-rth-after-opg' || reason === 'eu-rth-mkt-unfilled'))
+      ? LSE_THROUGH_PCT
+      : ((reason === 'asia-rth-reprice' || reason === 'asia-rth-retry'
+        || reason === 'eu-rth-after-opg' || reason === 'eu-rth-mkt-unfilled') ? 0.02 : undefined),
+    prevExtLmt: (market !== 'LSE' && (reason === 'asia-rth-reprice' || reason === 'asia-rth-retry'))
+      ? (Number(row && row.extLmt) || 0) : undefined,
+    placeExchange: (market === 'LSE' && (reason === 'asia-rth-retry' || reason === 'asia-rth-reprice'
+      || reason === 'eu-rth-mkt-unfilled' || reason === 'eu-rth-after-opg'))
+      ? nextLseVenue((row && row.placeExchange) || preferredExchange(contract), contract)
+      : ((row && row.placeExchange) || undefined),
+    t: new Date().toISOString(),
+  };
+  for (const field of REARM_SETUP_FIELDS) {
+    if (event[field] == null && fallback[field] != null) event[field] = fallback[field];
+  }
+  return event;
+}
+
 /** Keep OPG live through the opening auction; do not cancel at the bell. */
 const AUCTION_HOLD_MIN = 2;
 
@@ -3663,7 +3743,10 @@ async function main() {
         nlv,
         { minimumLot: split.risk?.exceedsTicket === true || (lotUsd > SETUP_TICKET_USD) },
       );
-      const pool = evaluateCapitalPool(evt.setupId, Object.values(state.byKey || {}), split.risk?.notionalUsd, {
+      const capitalRows = Object.entries(state.byKey || {}).map(([rowKey, capitalRow]) => (
+        capitalRow ? { ...capitalRow, key: rowKey } : capitalRow
+      ));
+      const pool = evaluateCapitalPool(evt.setupId, capitalRows, split.risk?.notionalUsd, {
         availableFunds: accountSnap.availableFunds,
         buyingPower: accountSnap.buyingPower,
         excessLiquidity: accountSnap.excessLiquidity,
@@ -3672,7 +3755,7 @@ async function main() {
         lookAheadAvailableFunds: accountSnap.lookAheadAvailableFunds,
         lookAheadExcessLiquidity: accountSnap.lookAheadExcessLiquidity,
         summaryAt: accountSnap.summaryAt,
-      }, { ticker: evt.ticker });
+      }, { ticker: evt.ticker, key: evt.key });
       if (pool.applied && !pool.allowed) {
         log(pool.log, evt.ticker, evt.setupId, pool.detail || pool.reason,
           `open=${pool.plan?.open ?? 0}/${pool.plan?.slots ?? 0}`);
@@ -7607,9 +7690,6 @@ async function main() {
       async function executeUnfilledRearm(key, reason) {
         const row = state.byKey[key];
         if (!row || row.closed) return;
-        const c0 = row.contract || toContract(row.ticker);
-        const market = (c0 && (c0.market || (c0.usRth ? 'US' : ''))) || '';
-        const asia = market === 'HK' || market === 'JP';
         try {
           const src = entryByKey.get(key) || {};
           const oldParent = row.parentId, oldStop = row.stopId, oldTp1 = row.tp1Id;
@@ -7648,42 +7728,7 @@ async function main() {
             row.rearmBlocked = null;
             saveState(state);
           }
-          const placed = await placeBracket({
-            key, ticker: row.ticker, hz: row.hz, side: row.side || src.side,
-            entry: src.entry != null ? src.entry : row.entry,
-            tp1: src.tp1 != null ? src.tp1 : row.tp1Px,
-            sl: Number(row.originalSl) > 0 ? Number(row.originalSl)
-              : (src.sl != null ? src.sl : row.stopPx),
-            trailSl: null,
-            entryDate: src.entryDate || src.t || row.admittedAt,
-            t: src.entryDate || src.t || row.admittedAt || new Date().toISOString(),
-            reason: src.reason || (row.userReentry ? 'rearm-model-entry' : undefined),
-            decisionId: src.decisionId || row.decisionId,
-            admittedAt: row.admittedAt,
-            sector: src.sector || row.sector,
-            country: src.country || row.country,
-            correlationCluster: src.correlationCluster || row.correlationCluster,
-            userReentry: !!(row.userReentry || src.userReentry),
-            restoreMustPrint: !!row.restoreMustPrint,
-            qtyTotal: Number(row.qtyTotal) || undefined,
-            forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-pre-park-opg'
-              || reason === 'us-pre-unfavorable-to-opg'
-              || reason === 'asia-opg-refresh' || reason === 'asia-to-opg',
-            skipChase: (!!(row.userReentry || src.userReentry) && !row.restoreMustPrint)
-              || reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg',
-            carryUnfilled: ((asia || market === 'LSE') && !row.entryFilled) || forceCashOpenActive(row),
-            throughPct: (market === 'LSE' && (reason === 'asia-rth-reprice' || reason === 'asia-rth-retry'
-              || reason === 'eu-rth-after-opg' || reason === 'eu-rth-mkt-unfilled'))
-              ? LSE_THROUGH_PCT
-              : ((reason === 'asia-rth-reprice' || reason === 'asia-rth-retry'
-                || reason === 'eu-rth-after-opg' || reason === 'eu-rth-mkt-unfilled') ? 0.02 : undefined),
-            prevExtLmt: (market !== 'LSE' && (reason === 'asia-rth-reprice' || reason === 'asia-rth-retry'))
-              ? (Number(row.extLmt) || 0) : undefined,
-            placeExchange: (market === 'LSE' && (reason === 'asia-rth-retry' || reason === 'asia-rth-reprice'
-              || reason === 'eu-rth-mkt-unfilled' || reason === 'eu-rth-after-opg'))
-              ? nextLseVenue(row.placeExchange || preferredExchange(row.contract), row.contract)
-              : (row.placeExchange || undefined)
-          });
+          const placed = await placeBracket(rearmBracketEvent(key, row, src, reason));
           if (placed) {
             placed.lastRearmAt = new Date().toISOString();
             placed.rearmReason = reason;
@@ -8582,6 +8627,7 @@ module.exports = {
   parentEntrySpec,
   momentumNoStopEntry,
   entryChildFlags,
+  rearmBracketEvent,
   correctiveExtExitSpec,
   sessionPhase,
   minutesUntilUsRth,
