@@ -15,6 +15,8 @@ const {
   addMonths,
   planMomentumBatch,
   commitMomentumAcceptances,
+  padBenchmarkCalendar,
+  previousWeekday,
 } = require('../lib/strategy/momentum-book');
 const { setupExitDecision, SETUPS } = require('../lib/strategy/evidence-setup-book');
 
@@ -84,6 +86,92 @@ test('momentum batch before 06:00 SGT writes nothing', async () => {
   fs.unlinkSync(file);
   if (prior == null) delete process.env.MOMENTUM_BOOK_STATE_FILE;
   else process.env.MOMENTUM_BOOK_STATE_FILE = prior;
+});
+
+test('a paused France book does not enter on 2 Nov and the UK book still can', async () => {
+  const momentumFile = path.join(os.tmpdir(), `momentum-nov2-${process.pid}.json`);
+  const runtimeFile = path.join(os.tmpdir(), `runtime-nov2-${process.pid}.json`);
+  const priorMomentum = process.env.MOMENTUM_BOOK_STATE_FILE;
+  const priorRuntime = process.env.SETUP_BOOK_RUNTIME_FILE;
+  process.env.MOMENTUM_BOOK_STATE_FILE = momentumFile;
+  process.env.SETUP_BOOK_RUNTIME_FILE = runtimeFile;
+  fs.writeFileSync(runtimeFile, JSON.stringify({
+    version: 1,
+    paused: {
+      FRANCE_LONG_MOMENTUM: {
+        at: '2026-10-07T00:00:00.000Z',
+        reason: 'alpha t 1.88 < 2 on 2026-10-07 check',
+      },
+    },
+    operatorResume: {},
+    alerts: [],
+  }));
+  fs.writeFileSync(momentumFile, '{}\n');
+  const dates = [];
+  for (let cursor = Date.parse('2025-01-02T00:00:00Z'); cursor <= Date.parse('2026-10-30T00:00:00Z'); cursor += 86400000) {
+    const day = new Date(cursor);
+    if (day.getUTCDay() === 0 || day.getUTCDay() === 6) continue;
+    dates.push({ date: day.toISOString().slice(0, 10), c: 100 + dates.length * 0.15, o: 100 });
+  }
+  const plan = await planMomentumBatch({
+    now: new Date('2026-11-02T02:00:00.000Z'),
+    held: [],
+    loadBars: async () => dates,
+  });
+  const france = plan.books.find(row => row.id === 'FRANCE_LONG_MOMENTUM');
+  const uk = plan.books.find(row => row.id === 'UK_LONG_MOMENTUM');
+  assert.equal(france.action, 'paused');
+  assert.equal(france.reason, 'alpha t 1.88 < 2 on 2026-10-07 check');
+  assert.equal(plan.orders.some(order => order.event && order.event.setupId === 'FRANCE_LONG_MOMENTUM' && order.action === 'buy'), false);
+  assert.equal(uk.action, 'buy');
+  assert.equal(plan.orders.filter(order => order.action === 'buy').every(order => order.event.setupId === 'UK_LONG_MOMENTUM'), true);
+  fs.unlinkSync(momentumFile);
+  fs.unlinkSync(runtimeFile);
+  if (priorMomentum == null) delete process.env.MOMENTUM_BOOK_STATE_FILE;
+  else process.env.MOMENTUM_BOOK_STATE_FILE = priorMomentum;
+  if (priorRuntime == null) delete process.env.SETUP_BOOK_RUNTIME_FILE;
+  else process.env.SETUP_BOOK_RUNTIME_FILE = priorRuntime;
+});
+
+test('a dry-run does not record the month or pause the book', async () => {
+  const momentumFile = path.join(os.tmpdir(), `momentum-dry-${process.pid}.json`);
+  const runtimeFile = path.join(os.tmpdir(), `runtime-dry-${process.pid}.json`);
+  const priorMomentum = process.env.MOMENTUM_BOOK_STATE_FILE;
+  const priorRuntime = process.env.SETUP_BOOK_RUNTIME_FILE;
+  process.env.MOMENTUM_BOOK_STATE_FILE = momentumFile;
+  process.env.SETUP_BOOK_RUNTIME_FILE = runtimeFile;
+  fs.writeFileSync(momentumFile, '{}\n');
+  fs.writeFileSync(runtimeFile, '{"version":1,"paused":{},"operatorResume":{},"alerts":[]}\n');
+  const dates = [];
+  for (let cursor = Date.parse('2025-01-02T00:00:00Z'); cursor <= Date.parse('2026-10-06T00:00:00Z'); cursor += 86400000) {
+    const day = new Date(cursor);
+    if (day.getUTCDay() === 0 || day.getUTCDay() === 6) continue;
+    dates.push({ date: day.toISOString().slice(0, 10), c: 100 + dates.length * 0.15, o: 100 });
+  }
+  const through = previousWeekday('2026-11-02');
+  const plan = await planMomentumBatch({
+    now: new Date('2026-11-02T02:00:00.000Z'),
+    held: [],
+    dryRun: true,
+    loadBars: async symbol => (symbol === 'EWU' || symbol === 'EWQ')
+      ? padBenchmarkCalendar(dates, through)
+      : dates,
+  });
+  assert.equal(plan.wrote, false);
+  assert.equal(plan.dryRun, true);
+  assert.equal(fs.readFileSync(momentumFile, 'utf8'), '{}\n');
+  const france = plan.books.find(row => row.id === 'FRANCE_LONG_MOMENTUM');
+  const uk = plan.books.find(row => row.id === 'UK_LONG_MOMENTUM');
+  assert.equal(france.action, 'paused');
+  assert.equal(france.reason, 'alpha t 1.88 < 2 on 2026-10-07 check');
+  assert.equal(uk.action, 'buy');
+  assert.equal(plan.orders.filter(order => order.action === 'buy').every(order => order.event.setupId === 'UK_LONG_MOMENTUM'), true);
+  fs.unlinkSync(momentumFile);
+  fs.unlinkSync(runtimeFile);
+  if (priorMomentum == null) delete process.env.MOMENTUM_BOOK_STATE_FILE;
+  else process.env.MOMENTUM_BOOK_STATE_FILE = priorMomentum;
+  if (priorRuntime == null) delete process.env.SETUP_BOOK_RUNTIME_FILE;
+  else process.env.SETUP_BOOK_RUNTIME_FILE = priorRuntime;
 });
 
 test('momentum month is recorded only after the emit is accepted', () => {

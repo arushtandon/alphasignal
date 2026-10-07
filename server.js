@@ -62,7 +62,7 @@ const {
   resolveSetupBookCell,
 } = require('./lib/strategy/setup-book');
 const { compareSetupEntries, capitalPoolEnabled, capitalDashboard } = require('./lib/strategy/setup-book-execution');
-const { planMomentumBatch, commitMomentumAcceptances } = require('./lib/strategy/momentum-book');
+const { planMomentumBatch, commitMomentumAcceptances, BOOKS: MOMENTUM_BOOKS, padBenchmarkCalendar, previousWeekday } = require('./lib/strategy/momentum-book');
 const { buildPublicationCellRecord, freezePublishedFields } = require('./lib/strategy/publication-record');
 const {
   isSetupPaused,
@@ -7945,13 +7945,31 @@ app.post('/api/setup-book/skip', express.json({ limit: '32kb' }), (req, res) => 
 
 app.post('/api/setup-book/momentum-run', express.json({ limit: '64kb' }), async (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
-  if (!capitalPoolEnabled()) return res.json({ ok: false, armed: false, reason: 'capital-pool-off' });
+  const dryRun = req.body && req.body.dryRun === true;
+  if (!dryRun && !capitalPoolEnabled()) return res.json({ ok: false, armed: false, reason: 'capital-pool-off' });
   try {
+    const now = dryRun && req.body && req.body.now ? new Date(req.body.now) : new Date();
+    const benchmarks = new Set(Object.values(MOMENTUM_BOOKS).map(book => book.benchmark));
+    const paddedThrough = dryRun ? previousWeekday(now.toISOString().slice(0, 10)) : null;
     const plan = await planMomentumBatch({
-      now: new Date(),
+      now,
       held: Array.isArray(req.body && req.body.held) ? req.body.held : [],
-      loadBars: symbol => fetchOHLCV(symbol, '2y', '1d'),
+      dryRun,
+      loadBars: async symbol => {
+        const bars = await fetchOHLCV(symbol, '2y', '1d');
+        if (!dryRun || !benchmarks.has(symbol)) return bars;
+        return padBenchmarkCalendar(bars, paddedThrough);
+      },
     });
+    if (dryRun) {
+      return res.json({
+        ...plan,
+        dryRun: true,
+        emitted: [],
+        capitalPool: capitalPoolEnabled(),
+        benchmarkCalendarPaddedThrough: paddedThrough,
+      });
+    }
     const accepted = [];
     for (const order of plan.orders || []) {
       const evt = emitTradeEvent(order.action === 'sell' ? 'exit' : 'entry', order.event);
@@ -8395,10 +8413,17 @@ function applyCurrentEnginePlan(row, setup) {
     row[horizon + 'Conf'] = 0;
     row[horizon + 'Analysis'] = 'No validated setup';
   }
+  const levelsIntact = row[hz + 'Action'] === 'Buy'
+    && Number(row[hz + 'Entry']) > 0
+    && Number(row[hz + 'StopLoss']) > 0;
   row[hz + 'Conf'] = setup.confidence;
-  row[hz + 'Rating'] = 'Strong Buy';
+  if (levelsIntact) {
+    row[hz + 'Rating'] = 'Strong Buy';
+    row.action = 'Buy';
+  } else {
+    row.action = row[hz + 'Action'] || row.action;
+  }
   row[hz + 'Analysis'] = `Current engine — Experimental; ${setup.id}; n=${setup.sampleSize}; PF ${setup.expectedPf}; win ${setup.confidence}%`;
-  row.action = 'Buy';
   row.hz = hz;
   row.entry = row[hz + 'Entry'];
   row.target1 = row[hz + 'Target1'];
@@ -14754,6 +14779,10 @@ function emitTradeEvent(type, payload) {
     }
     const momentumEntry = payload.noStop === true && payload.momentumOpen === true
       && (payload.setupId === 'UK_LONG_MOMENTUM' || payload.setupId === 'FRANCE_LONG_MOMENTUM');
+    if (momentumEntry && isSetupPaused(payload.setupId)) {
+      console.log('IBKR entry skipped (setup paused):', payload && payload.key, payload.setupId);
+      return null;
+    }
     if (!(payload.entry > 0) || (!(payload.sl > 0) && !momentumEntry)) {
       console.log('IBKR entry skipped (missing levels):', payload && payload.key);
       return null;
