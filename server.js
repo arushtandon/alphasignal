@@ -57,15 +57,18 @@ const {
   setupExitDecision,
   completedDailyBars,
   rebaseSetupLevels,
+  evidenceMissGate,
 } = require('./lib/strategy/evidence-setup-book');
 const {
   resolveSetupBookCell,
 } = require('./lib/strategy/setup-book');
 const { compareSetupEntries, capitalPoolEnabled, capitalDashboard } = require('./lib/strategy/setup-book-execution');
 const { planMomentumBatch, commitMomentumAcceptances, BOOKS: MOMENTUM_BOOKS, padBenchmarkCalendar, previousWeekday } = require('./lib/strategy/momentum-book');
+const { createScanDiagnostic } = require('./lib/strategy/scan-diagnostic');
 const { buildPublicationCellRecord, freezePublishedFields } = require('./lib/strategy/publication-record');
 const {
   isSetupPaused,
+  pauseReason,
   evaluateSetupBookPauses,
   setupBookPnlViews,
   copyPublicationFields,
@@ -7923,7 +7926,15 @@ app.get('/api/setup-book/status', (req, res) => {
     pnl: setupBookPnlViews(tradeHistory),
     runtime: evaluateSetupBookPauses(tradeHistory, { notify: false }).state,
     capital: setupBookCapitalView(),
+    scanDiagnostic: lastScanDiagnostic,
   });
+});
+
+app.post('/api/setup-book/scan-diagnostic', (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const started = runUniverseScan({ reason: 'diagnostic-dry-run', dryRun: true });
+  Promise.resolve(started).then(out => res.json({ ok: true, dryRun: true, ...out }))
+    .catch(error => res.status(500).json({ ok: false, error: error.message }));
 });
 
 app.post('/api/setup-book/skip', express.json({ limit: '32kb' }), (req, res) => {
@@ -8054,6 +8065,99 @@ const UNIVERSE_PER_HZ_SIDE = Number.parseInt(String(process.env.UNIVERSE_PER_HZ_
 
 let universeShortlist = null;
 let universeScanState = { running: false, startedAt: 0, total: 0, done: 0, ok: 0, lastError: null, lastFinishedAt: 0 };
+let lastScanDiagnostic = null;
+let activeScanDiagnostic = null;
+
+function beginScanDiagnostic(meta) {
+  activeScanDiagnostic = createScanDiagnostic(meta, EVIDENCE_SETUPS, setupId => ({
+    paused: isSetupPaused(setupId),
+    reason: pauseReason(setupId),
+  }));
+  return activeScanDiagnostic;
+}
+
+function finishScanDiagnostic(extra) {
+  if (!activeScanDiagnostic) return null;
+  lastScanDiagnostic = activeScanDiagnostic.snapshot(extra);
+  activeScanDiagnostic = null;
+  console.log('Scan diagnostic', JSON.stringify({
+    reason: lastScanDiagnostic.reason,
+    dryRun: lastScanDiagnostic.dryRun === true,
+    markets: lastScanDiagnostic.markets,
+    setups: Object.fromEntries(Object.entries(lastScanDiagnostic.setups).map(([id, row]) => [id, {
+      paused: row.paused,
+      reason: row.reason,
+      symbolsScanned: row.symbolsScanned,
+      dailyUnder275: row.dailyUnder275,
+      triggers: row.triggers,
+      plans: row.plans,
+      shortlist: row.shortlist,
+      board: row.board,
+      drops: row.drops.map(drop => ({ gate: drop.gate, n: drop.symbols.length })),
+    }])),
+  }));
+  return lastScanDiagnostic;
+}
+
+function dashPaneTickers(data) {
+  const tickers = new Set();
+  for (const pane of ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell']) {
+    for (const row of data?.[pane] || []) if (row?.ticker) tickers.add(row.ticker);
+  }
+  return tickers;
+}
+
+function recordScanBoard(list, builtRows, dashData, marks) {
+  if (!activeScanDiagnostic) return;
+  const onBoard = dashPaneTickers(dashData);
+  const byTicker = new Map((builtRows || []).filter(row => row?.ticker).map(row => [row.ticker, row]));
+  for (const pane of ['short', 'medium', 'long', 'shortSell', 'medSell', 'longSell']) {
+    for (const row of dashData?.[pane] || []) {
+      if (row?.ticker && row.setupId) activeScanDiagnostic.board(row.setupId, row.ticker);
+    }
+  }
+  for (const entry of list || []) {
+    const setupId = entry?.setupPlan?.setupId;
+    if (!setupId || onBoard.has(entry.ticker)) continue;
+    const row = byTicker.get(entry.ticker);
+    let gate = 'no technicals';
+    if (row) {
+      const hz = row.hz || (row.setupId && EVIDENCE_SETUPS[row.setupId]?.horizon) || 'short';
+      const resolution = resolveSetupBookCell({
+        market: row.setupId ? EVIDENCE_SETUPS[row.setupId]?.market : row.market,
+        horizon: hz,
+        side: 'buy',
+      });
+      const evidencePick = setupBookEnabled() && row.setupId && resolution.setupId === row.setupId;
+      if (setupBookEnabled() && row.setupId && !evidencePick) gate = 'resolveSetupBookCell';
+      else if ((Number(row[hz + 'Conf']) || 0) < PICKS_MIN_CONF && row[hz + 'Action'] !== 'Buy') gate = '62% conf floor';
+      else if (!bracketEnabled('buy', hz)) gate = 'bracketEnabled';
+      else if (marks.tickersBeforeMinRr?.has(entry.ticker) && !marks.tickersBeforeEarnings?.has(entry.ticker)) gate = 'filterDashDataByMinRR';
+      else if (marks.tickersBeforeEarnings?.has(entry.ticker) && !marks.tickersBeforePriorDay?.has(entry.ticker)) gate = 'earnings blackout';
+      else if (marks.tickersBeforePriorDay?.has(entry.ticker) && !onBoard.has(entry.ticker)) gate = 'prior-day open';
+      else if (row[hz + 'Action'] !== 'Buy') gate = 'signal not buy';
+      else if (!(row[hz + 'Entry'] && row[hz + 'StopLoss'])) gate = 'filterDashDataByMinRR';
+      else if (hasOpenTradeInDirection(entry.ticker, false)) gate = 'already open';
+      else if (marks.cooldown?.has(normalizeHistoryTicker(entry.ticker))) gate = 'cooldown';
+      else gate = 'top 5 pane';
+    }
+    activeScanDiagnostic.drop(setupId, entry.ticker, gate);
+  }
+}
+
+function noteScanSymbol(sym, marketRaw, dailyBars) {
+  if (!activeScanDiagnostic) return;
+  const market = canonicalEvidenceMarket(marketRaw, sym);
+  for (const horizon of ['short', 'medium', 'long']) {
+    const setup = setupForCell(market, horizon, 'buy');
+    if (!setup || setup.kind === 'momentum') continue;
+    activeScanDiagnostic.scanned(setup.id, sym, dailyBars);
+    if (isSetupPaused(setup.id)) activeScanDiagnostic.drop(setup.id, sym, 'paused');
+    else if (setup.kind !== 'current_engine' && !(Number(dailyBars) >= 275)) {
+      activeScanDiagnostic.drop(setup.id, sym, Number(dailyBars) > 0 ? 'daily < 275' : 'no bars');
+    }
+  }
+}
 
 function loadUniverseShortlistFile() {
   try {
@@ -8103,6 +8207,8 @@ async function evidenceBars(symbol) {
 async function evidenceSetupPlans(sym, marketRaw, daily) {
   if (!setupBookEnabled()) return [];
   const market = canonicalEvidenceMarket(marketRaw, sym);
+  const dailyBars = Array.isArray(daily) ? daily.length : 0;
+  noteScanSymbol(sym, marketRaw, dailyBars);
   const setups = ['short', 'medium', 'long']
     .map(horizon => setupForCell(market, horizon, 'buy'))
     .filter(setup => setup && setup.kind !== 'current_engine' && !isSetupPaused(setup.id));
@@ -8110,14 +8216,28 @@ async function evidenceSetupPlans(sym, marketRaw, daily) {
   const benchmark = EVIDENCE_BENCHMARK[market];
   const rawMarketBars = benchmark ? await evidenceBars(benchmark) : null;
   const marketBars = completedDailyBars(rawMarketBars, market);
-  if (!Array.isArray(marketBars) || marketBars.length < 275) return [];
+  if (activeScanDiagnostic) {
+    activeScanDiagnostic.noteMarket(market, benchmark, rawMarketBars, marketBars);
+  }
+  if (!Array.isArray(marketBars) || marketBars.length < 275) {
+    if (activeScanDiagnostic) {
+      const gate = benchmark ? 'benchmark < 275' : 'no benchmark';
+      for (const setup of setups) activeScanDiagnostic.drop(setup.id, sym, gate);
+    }
+    return [];
+  }
   const sectorSymbol = sectorEtfForSymbol(sym);
   const rawSectorBars = sectorSymbol && sectorSymbol !== sym
     ? (await evidenceBars(sectorSymbol) || rawMarketBars)
     : marketBars;
   const sectorBars = completedDailyBars(rawSectorBars, market);
   const completedBars = completedDailyBars(daily, market);
-  if (completedBars.length < 275) return [];
+  if (completedBars.length < 275) {
+    if (activeScanDiagnostic) {
+      for (const setup of setups) activeScanDiagnostic.drop(setup.id, sym, 'completed daily < 275');
+    }
+    return [];
+  }
   const context = {
     bars: completedBars,
     marketBars,
@@ -8125,16 +8245,34 @@ async function evidenceSetupPlans(sym, marketRaw, daily) {
     marketRegime: buildMarketRegime(marketBars),
   };
   const signalIndex = completedBars.length - 1;
-  return setups
-    .map(setup => setupEntryPlan(setup.id, context, signalIndex))
-    .filter(Boolean);
+  const plans = [];
+  for (const setup of setups) {
+    const plan = setupEntryPlan(setup.id, context, signalIndex);
+    if (plan) {
+      if (activeScanDiagnostic) {
+        activeScanDiagnostic.trigger(setup.id, sym);
+        activeScanDiagnostic.plan(setup.id, sym);
+      }
+      plans.push(plan);
+    } else if (activeScanDiagnostic) {
+      const gate = evidenceMissGate(setup.id, context, signalIndex);
+      if (gate !== 'trigger' && gate !== 'regime' && gate !== 'no completed bar') {
+        activeScanDiagnostic.trigger(setup.id, sym);
+      }
+      activeScanDiagnostic.drop(setup.id, sym, gate);
+    }
+  }
+  return plans;
 }
 
 /** Fast per-symbol quant: OHLCV → quantSignal ×3 → structural caps. No network overlays. */
 async function scanSymbolQuant(sym, marketRaw = '') {
   let daily = await fetchOHLCV(sym, '2y', '1d').catch(() => null);
   if (!daily || daily.length < 100) daily = await fetchOHLCV(sym, '1y', '1d').catch(() => null);
-  if (!daily || daily.length < 60) return null;
+  if (!daily || daily.length < 60) {
+    noteScanSymbol(sym, marketRaw, Array.isArray(daily) ? daily.length : 0);
+    return null;
+  }
   const weekly = await fetchOHLCV(sym, '2y', '1wk').catch(() => null);
   const data = buildFullTechResult(sym, daily, weekly);
   const fundEntry = fundCache.get(sym);
@@ -8164,7 +8302,17 @@ function buildShortlistFromRows(rows, perSide = UNIVERSE_PER_HZ_SIDE) {
         const setup = setupForCell(market, horizon, 'buy');
         const signal = row.qs?.[horizon];
         if (!setup || setup.kind !== 'current_engine' || isSetupPaused(setup.id)) return [];
-        if (!signal || signal.action !== 'Buy' || !(Number(signal.buyScore) >= 62)) return [];
+        if (!signal || signal.action !== 'Buy' || !(Number(signal.buyScore) >= 62)) {
+          if (activeScanDiagnostic) {
+            const gate = !signal ? 'no quant signal' : signal.action !== 'Buy' ? 'action not Buy' : 'buyScore < 62';
+            activeScanDiagnostic.drop(setup.id, row.sym, gate);
+          }
+          return [];
+        }
+        if (activeScanDiagnostic) {
+          activeScanDiagnostic.trigger(setup.id, row.sym);
+          activeScanDiagnostic.plan(setup.id, row.sym);
+        }
         return [{
           setupId: setup.id,
           kind: 'current_engine',
@@ -8183,6 +8331,12 @@ function buildShortlistFromRows(rows, perSide = UNIVERSE_PER_HZ_SIDE) {
         console.log('Setup-book overlap skipped:', row.sym,
           ranked.slice(1).map(plan => plan.setupId).join(','),
           'kept', ranked[0].setupId);
+        if (activeScanDiagnostic) {
+          for (const plan of ranked.slice(1)) activeScanDiagnostic.drop(plan.setupId, row.sym, 'overlap');
+        }
+      }
+      if (activeScanDiagnostic && ranked[0]) {
+        activeScanDiagnostic.shortlist(ranked[0].setupId, row.sym);
       }
       entries.push({
         ticker: row.sym,
@@ -8265,6 +8419,19 @@ async function runUniverseScan(opts = {}) {
 
   (async () => {
     try {
+      beginScanDiagnostic({
+        at: new Date().toISOString(),
+        reason,
+        dryRun: opts.dryRun === true,
+      });
+      for (const [market, symbol] of Object.entries(EVIDENCE_BENCHMARK)) {
+        const rawBars = await evidenceBars(symbol);
+        activeScanDiagnostic.noteMarket(market, symbol, rawBars, completedDailyBars(rawBars, market));
+      }
+      for (const name of universe) {
+        const market = canonicalEvidenceMarket(UNIVERSE_MARKET_LABEL[name.market] || name.market, name.t);
+        if (!EVIDENCE_BENCHMARK[market]) activeScanDiagnostic.noteMarket(market, null, null, null);
+      }
       for (let off = 0; off < universe.length; off += conc) {
         const slice = universe.slice(off, off + conc);
         const settled = await Promise.allSettled(slice.map(u =>
@@ -8282,7 +8449,7 @@ async function runUniverseScan(opts = {}) {
       const shortlist = buildShortlistFromRows(rows);
       const byMarket = {};
       shortlist.forEach(s => { byMarket[s.market] = (byMarket[s.market] || 0) + 1; });
-      universeShortlist = {
+      const shortlistPayload = {
         version: UNIVERSE_SHORTLIST_VERSION,
         ts: Date.now(),
         reason,
@@ -8292,8 +8459,19 @@ async function runUniverseScan(opts = {}) {
         byMarket,
         shortlist
       };
-      saveUniverseShortlistFile(universeShortlist);
       console.log(`Universe scan DONE: scored ${rows.length}/${universe.length}, shortlist ${shortlist.length} →`, JSON.stringify(byMarket));
+      if (opts.dryRun === true) {
+        await generateServerPicksFromShortlist({
+          dryRun: true,
+          allowBeforeRelease: true,
+          shortlistOverride: shortlist,
+        }).catch(e => {
+          console.warn('diagnostic board pass:', e.message);
+          return { ok: false, error: e.message };
+        });
+      } else {
+      universeShortlist = shortlistPayload;
+      saveUniverseShortlistFile(universeShortlist);
       // Overnight shortlist rebuilds must not publish a Friday board at 02:00 SGT
       // (NWG.L 21 Aug: 20h TTL scan emitted IBKR entries before the 06:00 board).
       if (!isAfterDailyRecommendationRelease()) {
@@ -8310,10 +8488,12 @@ async function runUniverseScan(opts = {}) {
         });
         if (picksResult && picksResult.ok) _lastPicksDateKey = singaporeDateKey();
       }
+      }
     } catch (e) {
       universeScanState.lastError = e.message;
       console.warn('Universe scan error:', e.message);
     } finally {
+      finishScanDiagnostic({ finishedAt: new Date().toISOString() });
       universeScanState.running = false;
       universeScanState.lastFinishedAt = Date.now();
     }
@@ -8550,7 +8730,9 @@ async function generateServerPicksFromShortlist(opts = {}) {
     return { ok: false, reason: 'before-daily-release' };
   }
   if (serverPicksGenerating) return { ok: false, reason: 'already generating' };
-  const list = universeShortlist && Array.isArray(universeShortlist.shortlist) ? universeShortlist.shortlist : [];
+  const list = Array.isArray(opts.shortlistOverride)
+    ? opts.shortlistOverride
+    : (universeShortlist && Array.isArray(universeShortlist.shortlist) ? universeShortlist.shortlist : []);
   if (!list.length) return { ok: false, reason: 'no shortlist' };
   serverPicksGenerating = true;
   try {
@@ -8829,7 +9011,9 @@ async function generateServerPicksFromShortlist(opts = {}) {
 
     // Drop any pane row whose ATR/structure levels fail the minimum R:R gate.
     // Never invent TP to pass — undersized reward setups are simply not recommended.
+    const tickersBeforeMinRr = activeScanDiagnostic ? dashPaneTickers(dashData) : null;
     dashData = filterDashDataByMinRR(dashData);
+    const tickersBeforeEarnings = activeScanDiagnostic ? dashPaneTickers(dashData) : null;
 
     // EARNINGS BLACKOUT: never open a brand-new position within 5 days of the
     // company's own quarterly report — a binary gap event no stop can protect
@@ -8856,7 +9040,25 @@ async function generateServerPicksFromShortlist(opts = {}) {
 
     // Only TODAY's opens may stay on the board (same SGT day). Prior-day opens
     // (DHL yesterday, KHC last week) stay on History — never as recycled picks.
+    const tickersBeforePriorDay = activeScanDiagnostic ? dashPaneTickers(dashData) : null;
     dashData = stripPriorDayOpenPicksFromDashData(dashData);
+    if (activeScanDiagnostic) {
+      recordScanBoard(list, rows, dashData, {
+        tickersBeforeMinRr,
+        tickersBeforeEarnings,
+        tickersBeforePriorDay,
+        cooldown,
+      });
+    }
+    if (opts.dryRun === true) {
+      return {
+        ok: true,
+        dryRun: true,
+        wroteBoard: false,
+        emitted: [],
+        summary: dashboardPicksSummary(dashData),
+      };
+    }
 
     // Never clobber a good board with an empty/sparse one (open-trade + rotation
     // race, or a thin shortlist after deploy). Compare against a prior board that
