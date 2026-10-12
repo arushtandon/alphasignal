@@ -1,5 +1,7 @@
 'use strict';
 
+const { accountReadingFresh } = require('../lib/strategy/setup-book-execution');
+
 const SUMMARY_TIMEOUT_MS = 20000;
 const SUMMARY_ATTEMPTS = 2;
 
@@ -31,9 +33,14 @@ function waitForAccountSummary(ib, options) {
     const onEnd = (id) => {
       if (!armed || Number(id) !== reqId || !sawNlv) return;
       if (options.accept && !options.accept()) return;
-      finish({ ok: true, summaryAt: new Date(now()).toISOString() });
+      const summaryAt = new Date(now()).toISOString();
+      try { ib.cancelAccountSummary(reqId); } catch (_) {}
+      finish({ ok: true, summaryAt });
     };
-    const timer = setTimer(() => finish({ ok: false }), timeoutMs);
+    const timer = setTimer(() => {
+      try { ib.cancelAccountSummary(reqId); } catch (_) {}
+      finish({ ok: false });
+    }, timeoutMs);
     ib.on(summaryEvent, onSummary);
     ib.on(endEvent, onEnd);
     if (options.onAttempt) options.onAttempt();
@@ -63,6 +70,17 @@ async function refreshAccountSummaryForEntries(ib, accountSnap, options = {}) {
 async function admitSetupEntries(ib, accountSnap, entries, options = {}) {
   const batch = Array.isArray(entries) ? entries : [];
   if (!batch.length) return { proceed: [], skipped: [], alerted: false, summaryAt: accountSnap.summaryAt || null };
+  const now = options.now ? options.now() : Date.now();
+  const fresh = accountReadingFresh(accountSnap, now);
+  if (fresh.fresh) {
+    return {
+      proceed: batch.slice(),
+      skipped: [],
+      alerted: false,
+      summaryAt: accountSnap.summaryAt,
+      reused: true,
+    };
+  }
   const refresh = await refreshAccountSummaryForEntries(ib, accountSnap, options);
   if (refresh.ok) {
     return { proceed: batch.slice(), skipped: [], alerted: false, summaryAt: refresh.summaryAt };

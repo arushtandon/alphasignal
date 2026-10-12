@@ -27,4 +27,24 @@ assert.strictEqual(boardPublishedAtRelease(overnightBoard, friday5pm), false,
 assert.strictEqual(boardPublishedAtRelease(sixAmBoard, friday5pm), true);
 assert.strictEqual(boardPublishedAtRelease(sixAmBoard, friday3am), false);
 
+const restart = Date.parse('2026-10-12T09:24:00.000Z'); // 17:24 SGT 12 Oct
+for (const ticker of ['INTC', 'BBY', 'PFG']) {
+  assert.strictEqual(scheduledEntryReleaseAllowed({
+    ticker,
+    setupId: 'US_SHORT_MR',
+    side: 'buy',
+    entryDate: '2026-10-07T08:00:35.054Z',
+    t: '2026-10-07T08:00:35.054Z',
+  }, restart), false, ticker + ' from 7 Oct must not place on the 12 Oct restart');
+}
+assert.strictEqual(scheduledEntryReleaseAllowed({
+  entryDate: '2026-10-11T02:00:00.000Z',
+  t: '2026-10-11T02:00:00.000Z',
+}, Date.parse('2026-10-12T00:30:00.000Z')), false,
+  'an entry from the previous Singapore day is older than today\'s release');
+assert.strictEqual(scheduledEntryReleaseAllowed({
+  entryDate: '2026-10-11T22:00:00.000Z',
+  t: '2026-10-11T22:00:00.000Z',
+}, restart), true, 'today\'s 06:00 SGT release stays eligible');
+
 console.log('PASS entry-release gate');

@@ -132,6 +132,7 @@ const { BridgeSqliteStore } = require('../lib/storage/bridge-sqlite');
 const { atomicWriteJsonSync } = require('../lib/storage/atomic-json');
 const {
   ENTRY_RELEASE_HOUR_SGT,
+  entryReleaseBlock,
   scheduledEntryReleaseAllowed,
   boardPublishedAtRelease,
   isManualEntryBypass
@@ -3552,8 +3553,9 @@ async function main() {
   async function placeBracket(evt) {
     // Hard choke: poll, seed, and re-arm all go through here. A 02:10 SGT emit
     // must not place even if reconcile thinks state is missing.
-    if (!scheduledEntryReleaseAllowed(evt) && !evt.carryUnfilled) {
-      log('placeBracket blocked (SGT release gate):', evt && (evt.key || evt.ticker),
+    const releaseBlock = entryReleaseBlock(evt);
+    if (releaseBlock && !evt.carryUnfilled) {
+      log('placeBracket blocked (' + releaseBlock + '):', evt && (evt.key || evt.ticker),
         'entryDate=', evt && (evt.entryDate || evt.t) || 'missing',
         'releaseHour=', ENTRY_RELEASE_HOUR_SGT);
       return null;
@@ -4942,8 +4944,9 @@ async function main() {
         log('skip entry (error-trade key):', key);
         return;
       }
-      if (!scheduledEntryReleaseAllowed(evt)) {
-        log('skip entry (before configured SGT recommendation release):', key,
+      const releaseBlock = entryReleaseBlock(evt);
+      if (releaseBlock) {
+        log('skip entry (' + releaseBlock + '):', key,
           'entryDate=', evt.entryDate || evt.t || 'missing',
           'releaseHour=', ENTRY_RELEASE_HOUR_SGT);
         return;

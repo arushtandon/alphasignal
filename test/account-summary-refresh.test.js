@@ -106,6 +106,53 @@ test('stale reading plus a summary 3s later lets the entries proceed', async () 
   assert.notEqual(account.summaryAt, new Date(Date.parse('2026-10-12T08:00:00.000Z') - 30 * 60 * 1000).toISOString());
 });
 
+test('a fresh reading is reused and ten entries send one summary request', async () => {
+  const clock = manualClock();
+  const calls = [];
+  const listeners = {};
+  const ib = {
+    on(name, fn) { (listeners[name] = listeners[name] || []).push(fn); },
+    off(name, fn) { listeners[name] = (listeners[name] || []).filter(item => item !== fn); },
+    cancelAccountSummary() { calls.push('cancel'); },
+    reqAccountSummary(reqId) {
+      calls.push('req');
+      clock.setTimeout(() => {
+        calls.push('end');
+        for (const fn of (listeners.accountSummary || []).slice()) {
+          fn(reqId, 'DU1764495', 'NetLiquidation', '100000', 'USD');
+        }
+        for (const fn of (listeners.accountSummaryEnd || []).slice()) fn(reqId);
+      }, 1000);
+    },
+  };
+  const freshAccount = {
+    summaryAt: new Date(clock.now() - 5 * 60 * 1000).toISOString(),
+    netLiquidation: 100000,
+  };
+  const burst = Array.from({ length: 10 }, (_, index) => ({
+    ticker: 'N' + index,
+    setupId: 'US_SHORT_MR',
+  }));
+  const reused = await admitSetupEntries(ib, freshAccount, burst, options(clock, freshAccount));
+  assert.equal(reused.reused, true);
+  assert.equal(reused.proceed.length, 10);
+  assert.deepEqual(calls, []);
+  assert.equal(freshAccount.summaryAt, new Date(clock.now() - 5 * 60 * 1000).toISOString());
+
+  const staleAccount = {
+    summaryAt: new Date(clock.now() - 30 * 60 * 1000).toISOString(),
+    netLiquidation: 100000,
+  };
+  const pending = admitSetupEntries(ib, staleAccount, burst, options(clock, staleAccount));
+  clock.advance(1000);
+  const decision = await pending;
+  assert.equal(decision.proceed.length, 10);
+  assert.equal(calls.filter(call => call === 'req').length, 1);
+  const endAt = calls.indexOf('end');
+  assert.ok(endAt >= 0);
+  assert.ok(calls.indexOf('cancel', endAt + 1) > endAt);
+});
+
 test('no summary response skips the entries and alerts once', async () => {
   const clock = manualClock();
   const ib = fakeIb(clock, null);
