@@ -94,6 +94,7 @@ const https = require('https');
 const crypto = require('crypto');
 const Holidays = require('date-holidays');
 const { telegramConfigured, sendTelegramAlert } = require('./telegram');
+const { admitSetupEntries } = require('./account-summary-refresh');
 const {
   gatewayDownDecision,
   gatewayRecoverDecision,
@@ -1866,7 +1867,6 @@ async function main() {
     activeClientId = Number(state.clientId);
   }
 
-  let refreshAccountSummary = async () => false;
 
   if (!DRY) {
     const stoqey = require('@stoqey/ib');
@@ -2441,53 +2441,6 @@ async function main() {
       ib.reqAccountSummary(ACC_SUMMARY_REQ, 'All', ACC_SUMMARY_TAGS);
       log('reqAccountSummary subscribed');
     } catch (e) { log('reqAccountSummary failed', e.message); }
-    ib.on(EventName.accountSummaryEnd, (reqId) => {
-      if (Number(reqId) !== ACC_SUMMARY_REQ) return;
-      if (accountSnap.netLiquidation == null) return;
-      accountSnap.summaryAt = new Date().toISOString();
-      const nlv = Number(accountSnap.netLiquidation);
-      const gross = Number(accountSnap.grossPositionValue);
-      log('account summary fresh',
-        'NLV=' + accountSnap.netLiquidation,
-        'Gross=' + accountSnap.grossPositionValue,
-        'Leverage=' + (nlv > 0 && Number.isFinite(gross) ? (gross / nlv).toFixed(3) : 'n/a'),
-        'BP=' + accountSnap.buyingPower,
-        'Excess=' + accountSnap.excessLiquidity,
-        'LAFunds=' + accountSnap.lookAheadAvailableFunds,
-        'LAExcess=' + accountSnap.lookAheadExcessLiquidity);
-    });
-    refreshAccountSummary = async function refreshAccountSummary() {
-      let accepting = false;
-      let sawFreshNlv = false;
-      const onSummary = (reqId, account, tag) => {
-        if (!accepting || Number(reqId) !== ACC_SUMMARY_REQ) return;
-        if (tag === 'NetLiquidation') sawFreshNlv = true;
-      };
-      ib.on(EventName.accountSummary, onSummary);
-      accountSnap.lookAheadAvailableFunds = null;
-      accountSnap.lookAheadExcessLiquidity = null;
-      try {
-        try { ib.cancelAccountSummary(ACC_SUMMARY_REQ); } catch (_) {}
-        ib.reqAccountSummary(ACC_SUMMARY_REQ, 'All', ACC_SUMMARY_TAGS);
-        accepting = true;
-      } catch (error) {
-        try { ib.off(EventName.accountSummary, onSummary); } catch (_) {}
-        log('reqAccountSummary refresh failed', error.message);
-        return false;
-      }
-      const arrived = await new Promise((resolve) => {
-        const timer = setTimeout(() => resolve(false), 10000);
-        const onEnd = (reqId) => {
-          if (Number(reqId) !== ACC_SUMMARY_REQ || !sawFreshNlv) return;
-          clearTimeout(timer);
-          try { ib.off(EventName.accountSummaryEnd, onEnd); } catch (_) {}
-          resolve(true);
-        };
-        ib.on(EventName.accountSummaryEnd, onEnd);
-      });
-      try { ib.off(EventName.accountSummary, onSummary); } catch (_) {}
-      return arrived;
-    };
     ib.on(EventName.accountSummary, (reqId, account, tag, value, currency) => {
       try {
         if (ACCOUNT && account && account !== ACCOUNT) return;
@@ -8441,12 +8394,31 @@ async function main() {
     const entries = events.filter(evt => evt.type === 'entry');
     let entryEvents = entries;
     if (capitalPoolEnabled() && entries.length) {
-      const fresh = await refreshAccountSummary();
-      if (!fresh) {
-        accountSnap.summaryAt = null;
-        log('skipped: margin data stale', entries.length, 'entry event(s); account summary did not arrive');
+      const decision = await admitSetupEntries(ib, accountSnap, entries, {
+        reqId: ACC_SUMMARY_REQ,
+        tags: ACC_SUMMARY_TAGS,
+        summaryEvent: EventName.accountSummary,
+        endEvent: EventName.accountSummaryEnd,
+        accept: () => accountSnap.netLiquidation != null,
+        onAttempt: () => {
+          accountSnap.lookAheadAvailableFunds = null;
+          accountSnap.lookAheadExcessLiquidity = null;
+        },
+        alert: async () => {
+          if (accountSnap._staleSummaryAlerted) return;
+          accountSnap._staleSummaryAlerted = true;
+          const text = 'MARGIN DATA STALE: account summary did not arrive after 2 attempts (20s each). Setup-book entries skipped.';
+          log(text);
+          try { await sendTelegramAlert(text); }
+          catch (error) { log('TELEGRAM margin stale alert failed', error.message); }
+        },
+      });
+      if (!decision.proceed.length) {
+        log('skipped: margin data stale', entries.length, 'entry event(s); account summary did not arrive',
+          'summaryAt=' + (accountSnap.summaryAt || 'none'));
         for (const evt of entries) {
-          log('skipped: margin data stale', evt.ticker || '', evt.setupId || '');
+          log('skipped: margin data stale', evt.ticker || '', evt.setupId || '',
+            'summaryAt=' + (accountSnap.summaryAt || 'none'));
           if (!evt.setupId) continue;
           postJson('/api/setup-book/skip', {
             ticker: evt.ticker,
@@ -8456,6 +8428,19 @@ async function main() {
           }).catch(error => log('skip report failed', error.message));
         }
         entryEvents = [];
+      } else {
+        accountSnap._staleSummaryAlerted = false;
+        const nlv = Number(accountSnap.netLiquidation);
+        const gross = Number(accountSnap.grossPositionValue);
+        log('account summary fresh',
+          'summaryAt=' + accountSnap.summaryAt,
+          'NLV=' + accountSnap.netLiquidation,
+          'Gross=' + accountSnap.grossPositionValue,
+          'Leverage=' + (nlv > 0 && Number.isFinite(gross) ? (gross / nlv).toFixed(3) : 'n/a'),
+          'BP=' + accountSnap.buyingPower,
+          'Excess=' + accountSnap.excessLiquidity,
+          'LAFunds=' + accountSnap.lookAheadAvailableFunds,
+          'LAExcess=' + accountSnap.lookAheadExcessLiquidity);
       }
     }
     const orderedEvents = [
