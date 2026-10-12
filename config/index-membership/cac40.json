@@ -1,0 +1,418 @@
+{
+  "index": "CAC40",
+  "source": "Public CAC 40 admission and removal archive at bnains.org/archives/histocac, which cites the Euronext index notices. Current names start from the Wikipedia CAC 40 table (September 2024) and then apply the 2025 notices.",
+  "asOf": "2025-12-22",
+  "currentSymbols": [
+    "AC.PA",
+    "ACA.PA",
+    "AI.PA",
+    "AIR.PA",
+    "BN.PA",
+    "BNP.PA",
+    "BVI.PA",
+    "CA.PA",
+    "CAP.PA",
+    "CS.PA",
+    "DG.PA",
+    "DSY.PA",
+    "EL.PA",
+    "EN.PA",
+    "ENGI.PA",
+    "ENX.PA",
+    "ERF.PA",
+    "FGR.PA",
+    "GLE.PA",
+    "HO.PA",
+    "KER.PA",
+    "LR.PA",
+    "MC.PA",
+    "ML.PA",
+    "MT.AS",
+    "OR.PA",
+    "ORA.PA",
+    "PUB.PA",
+    "RI.PA",
+    "RMS.PA",
+    "RNO.PA",
+    "SAF.PA",
+    "SAN.PA",
+    "SGO.PA",
+    "STLAP.PA",
+    "STMPA.PA",
+    "SU.PA",
+    "TTE.PA",
+    "URW.PA",
+    "VIE.PA"
+  ],
+  "historicalMembership": {
+    "available": true,
+    "changes": [
+      {
+        "date": "2025-12-22",
+        "added": "FGR.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2025-12-19",
+        "added": null,
+        "removed": "EDEN.PA",
+        "name": null
+      },
+      {
+        "date": "2025-09-22",
+        "added": "ENX.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2025-09-19",
+        "added": null,
+        "removed": "TEP.PA",
+        "name": null
+      },
+      {
+        "date": "2024-12-23",
+        "added": "BVI.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2024-12-20",
+        "added": null,
+        "removed": "VIV.PA",
+        "name": null
+      },
+      {
+        "date": "2024-03-18",
+        "added": "AC.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2024-03-15",
+        "added": null,
+        "removed": "ALO.PA",
+        "name": null
+      },
+      {
+        "date": "2023-12-18",
+        "added": "VIV.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2023-12-15",
+        "added": null,
+        "removed": "WLN.PA",
+        "name": null
+      },
+      {
+        "date": "2023-06-19",
+        "added": "EDEN.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2023-06-16",
+        "added": null,
+        "removed": "VIV.PA",
+        "name": null
+      },
+      {
+        "date": "2021-09-20",
+        "added": "ERF.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2021-09-17",
+        "added": null,
+        "removed": "ATO.PA",
+        "name": null
+      },
+      {
+        "date": "2021-01-18",
+        "added": "STLAP.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2021-01-15",
+        "added": null,
+        "removed": "UG.PA",
+        "name": null
+      },
+      {
+        "date": "2020-09-21",
+        "added": null,
+        "removed": "AC.PA",
+        "name": null
+      },
+      {
+        "date": "2020-09-21",
+        "added": "ALO.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2020-06-22",
+        "added": null,
+        "removed": "SW.PA",
+        "name": null
+      },
+      {
+        "date": "2020-06-22",
+        "added": "TEP.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2020-03-23",
+        "added": null,
+        "removed": "FTI.PA",
+        "name": null
+      },
+      {
+        "date": "2020-03-23",
+        "added": "WLN.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2019-06-24",
+        "added": null,
+        "removed": "WLN.PA",
+        "name": null
+      },
+      {
+        "date": "2019-06-24",
+        "added": null,
+        "removed": "FR.PA",
+        "name": null
+      },
+      {
+        "date": "2019-06-24",
+        "added": "HO.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2019-05-03",
+        "added": "WLN.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2018-09-24",
+        "added": null,
+        "removed": "SOLB.BR",
+        "name": null
+      },
+      {
+        "date": "2018-09-24",
+        "added": "DSY.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2018-06-18",
+        "added": null,
+        "removed": "LHN.PA",
+        "name": null
+      },
+      {
+        "date": "2018-06-18",
+        "added": "RMS.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2017-09-18",
+        "added": null,
+        "removed": "NOKIA.PA",
+        "name": null
+      },
+      {
+        "date": "2017-09-18",
+        "added": "STMPA.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2017-03-20",
+        "added": null,
+        "removed": "LI.PA",
+        "name": null
+      },
+      {
+        "date": "2017-03-20",
+        "added": "ATO.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2016-03-21",
+        "added": "SW.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2016-03-18",
+        "added": null,
+        "removed": "ALO.PA",
+        "name": null
+      },
+      {
+        "date": "2016-01-07",
+        "added": "NOKIA.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2016-01-06",
+        "added": null,
+        "removed": "ALU.PA",
+        "name": null
+      },
+      {
+        "date": "2015-12-21",
+        "added": "LI.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2015-12-18",
+        "added": null,
+        "removed": "EDF.PA",
+        "name": null
+      },
+      {
+        "date": "2015-03-21",
+        "added": "UG.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2015-03-18",
+        "added": null,
+        "removed": "GTO.PA",
+        "name": null
+      },
+      {
+        "date": "2014-06-21",
+        "added": "FR.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2014-06-18",
+        "added": null,
+        "removed": "VK.PA",
+        "name": null
+      },
+      {
+        "date": "2013-12-23",
+        "added": "ALU.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2013-12-20",
+        "added": null,
+        "removed": "STMPA.PA",
+        "name": null
+      },
+      {
+        "date": "2012-12-24",
+        "added": "GTO.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2012-12-21",
+        "added": null,
+        "removed": "ALU.PA",
+        "name": null
+      },
+      {
+        "date": "2012-09-24",
+        "added": "SOLB.BR",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2012-09-21",
+        "added": null,
+        "removed": "UG.PA",
+        "name": null
+      },
+      {
+        "date": "2011-12-19",
+        "added": "LR.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2011-12-16",
+        "added": null,
+        "removed": "SEV.PA",
+        "name": null
+      },
+      {
+        "date": "2011-09-19",
+        "added": "SAF.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2011-09-16",
+        "added": null,
+        "removed": "KN.PA",
+        "name": null
+      },
+      {
+        "date": "2010-09-20",
+        "added": null,
+        "removed": "DXB.BR",
+        "name": null
+      },
+      {
+        "date": "2010-09-20",
+        "added": "KN.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2010-09-20",
+        "added": null,
+        "removed": "MMB.PA",
+        "name": null
+      },
+      {
+        "date": "2010-09-20",
+        "added": "PUB.PA",
+        "removed": null,
+        "name": null
+      },
+      {
+        "date": "2010-07-05",
+        "added": null,
+        "removed": "EDEN.PA",
+        "name": null
+      },
+      {
+        "date": "2010-07-02",
+        "added": "EDEN.PA",
+        "removed": null,
+        "name": null
+      }
+    ]
+  },
+  "notes": [
+    "Thales admission is dated 2019-06-24 from the notice text, not the 2018 date printed on that row.",
+    "Alstom’s 2020 return is dated 2020-09-21 with Accor’s removal. The archive row prints 22 June.",
+    "Edenred’s 2023 admission row is missing its date. It is dated 2023-06-19, the session after Vivendi’s 16 June removal.",
+    "Nokia’s removal and STMicroelectronics’ return use 18 September 2017 from the notice text."
+  ]
+}

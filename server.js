@@ -8130,6 +8130,7 @@ function recordScanBoard(list, builtRows, dashData, marks) {
       });
       const evidencePick = setupBookEnabled() && row.setupId && resolution.setupId === row.setupId;
       if (setupBookEnabled() && row.setupId && !evidencePick) gate = 'resolveSetupBookCell';
+      else if (row[hz + 'GateReason']) gate = row[hz + 'GateReason'];
       else if ((Number(row[hz + 'Conf']) || 0) < PICKS_MIN_CONF && row[hz + 'Action'] !== 'Buy') gate = '62% conf floor';
       else if (!bracketEnabled('buy', hz)) gate = 'bracketEnabled';
       else if (marks.tickersBeforeMinRr?.has(entry.ticker) && !marks.tickersBeforeEarnings?.has(entry.ticker)) gate = 'filterDashDataByMinRR';
@@ -8286,7 +8287,27 @@ async function scanSymbolQuant(sym, marketRaw = '') {
   };
   applyTierScoreCaps(qs);
   const setupPlans = await evidenceSetupPlans(sym, marketRaw, daily);
-  return { sym, cp: data.currentPrice, qs, setupPlans };
+  const engineGate = {};
+  if (Number(data.currentPrice) > 0) {
+    for (const hz of ['short', 'medium', 'long']) {
+      const sig = qs[hz];
+      if (!sig || sig.action !== 'Buy' || !(Number(sig.buyScore) >= 62)) continue;
+      const probe = { ticker: sym };
+      probe[hz + 'Action'] = 'Buy';
+      probe[hz + 'Conf'] = Number(sig.winRateHint) || 0;
+      probe[hz + 'Rating'] = sig.rating || 'Buy';
+      probe[hz + 'Score'] = sig.buyScore;
+      try {
+        applyServerPriceLevels(probe, data.currentPrice, data, fund);
+        engineGate[hz] = probe[hz + 'Action'] === 'Buy'
+          && Number(probe[hz + 'Entry']) > 0
+          && Number(probe[hz + 'StopLoss']) > 0;
+      } catch (_) {
+        engineGate[hz] = false;
+      }
+    }
+  }
+  return { sym, cp: data.currentPrice, qs, setupPlans, engineGate };
 }
 
 /** Pick top-N buy + top-N sell per horizon, union → shortlist (ranked by best score).
@@ -8320,6 +8341,7 @@ function buildShortlistFromRows(rows, perSide = UNIVERSE_PER_HZ_SIDE) {
           experimental: true,
           expectedPf: setup.expectedPf,
           signalDate: singaporeDateKey(),
+          passesPublishGate: row.engineGate?.[horizon] === true,
         }];
       });
       const plans = [...(Array.isArray(row.setupPlans) ? row.setupPlans : []), ...enginePlans];
@@ -8593,10 +8615,20 @@ function applyCurrentEnginePlan(row, setup) {
     row[horizon + 'Conf'] = 0;
     row[horizon + 'Analysis'] = 'No validated setup';
   }
-  const levelsIntact = row[hz + 'Action'] === 'Buy'
-    && Number(row[hz + 'Entry']) > 0
-    && Number(row[hz + 'StopLoss']) > 0;
-  row[hz + 'Conf'] = setup.confidence;
+  const entry = Number(row[hz + 'Entry']);
+  const target = Number(row[hz + 'Target1']);
+  const stop = Number(row[hz + 'StopLoss']);
+  const engineConf = Number(row[hz + 'Conf']) || 0;
+  row.cellWinRate = setup.confidence;
+  row[hz + 'Conf'] = engineConf;
+  const confOk = engineConf >= PICKS_MIN_CONF;
+  const rrOk = levelsMeetMinRR(entry, target, stop, false, minRrForSymbol(row.ticker, PICKS_MIN_RR));
+  const levelsIntact = row[hz + 'Action'] === 'Buy' && entry > 0 && stop > 0 && confOk && rrOk;
+  if (row[hz + 'Action'] === 'Buy' && !levelsIntact) {
+    if (writeOpenRowAction(row, hz, 'Hold')) row[hz + 'Rating'] = 'Hold';
+    if (!confOk) row[hz + 'GateReason'] = `Conf ${engineConf}% < ${PICKS_MIN_CONF}%`;
+    else if (!rrOk) row[hz + 'GateReason'] = 'RR < 1.1';
+  }
   if (levelsIntact) {
     row[hz + 'Rating'] = 'Strong Buy';
     row.action = 'Buy';
@@ -8631,10 +8663,10 @@ function applyCurrentEnginePlan(row, setup) {
     asOfPublish: singaporeDateKey(),
     signalDate: singaporeDateKey(),
     score: Number(row[hz + 'Score']) || 0,
-    confidence: setup.confidence,
+    confidence: engineConf > 0 ? engineConf : setup.confidence,
     setupId: setup.id,
     verdict: 'EXPERIMENTAL',
-    inputs: { source: 'Current engine', sectorOverlay: 'on' },
+    inputs: { source: 'Current engine', sectorOverlay: 'on', cellWinRate: setup.confidence },
     levels: {
       entry: row[hz + 'Entry'] || null,
       target1: row[hz + 'Target1'] || null,
@@ -13402,7 +13434,11 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
     }
     const minRr = minRrForSymbol(row.ticker, PICKS_MIN_RR);
     const conf = Number(row[hz + 'Conf'] || row.conf || 0);
-    if (conf > 0 && conf < PICKS_MIN_CONF) { clearHz(); continue; }
+    if (conf > 0 && conf < PICKS_MIN_CONF) {
+      row[hz + 'GateReason'] = `Conf ${conf}% < ${PICKS_MIN_CONF}%`;
+      clearHz();
+      continue;
+    }
     const sl = hz === 'short'
       ? (computeMeanReversionLevels(tech, e, isSell) || {}).stop
       : computeTrailingStopFromTech(tech, e, hz, isSell, fund);
@@ -13423,11 +13459,16 @@ function applyServerPriceLevels(row, livePrice, tech = null, fund = null) {
         row[hz + 'TrailingSL'] = false;
         continue;
       }
+      row[hz + 'GateReason'] = 'missing stop or target';
       clearHz();
       continue;
     }
     const fl = applyHorizonMinPctFloors(e, targets.tp1, targets.tp2, sl, isSell, hz);
-    if (!levelsMeetMinRR(e, fl.tp1, fl.sl, isSell, minRr)) { clearHz(); continue; }
+    if (!levelsMeetMinRR(e, fl.tp1, fl.sl, isSell, minRr)) {
+      row[hz + 'GateReason'] = 'RR < 1.1';
+      clearHz();
+      continue;
+    }
     row[hz + 'Entry'] = String(roundPrice(e));
     row[hz + 'Target1'] = fl.tp1 != null ? String(fl.tp1) : '';
     row[hz + 'Target2'] = fl.tp2 != null ? String(fl.tp2) : '';
@@ -21027,6 +21068,7 @@ module.exports = {
   horizonHoldDaysServer,
   fetchOHLCV,
   fetchFundamentals,
+  applyCurrentEnginePlan,
   fetchFmpScore,
   fundCache,
   simulateHybridExit,

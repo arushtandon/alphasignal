@@ -200,3 +200,50 @@ test('momentum month is recorded only after the emit is accepted', () => {
   if (prior == null) delete process.env.MOMENTUM_BOOK_STATE_FILE;
   else process.env.MOMENTUM_BOOK_STATE_FILE = prior;
 });
+
+test('2 Nov dry-run buys the cached 12-1 leader and does not record the month', async () => {
+  const priceDir = path.join(__dirname, '..', 'data', 'research', 'strategy-amendment-prices');
+  const ccc = path.join(priceDir, 'CCC.L.json');
+  if (!fs.existsSync(ccc)) return;
+  const momentumFile = path.join(os.tmpdir(), `momentum-cached-${process.pid}.json`);
+  const runtimeFile = path.join(os.tmpdir(), `runtime-cached-${process.pid}.json`);
+  const priorMomentum = process.env.MOMENTUM_BOOK_STATE_FILE;
+  const priorRuntime = process.env.SETUP_BOOK_RUNTIME_FILE;
+  process.env.MOMENTUM_BOOK_STATE_FILE = momentumFile;
+  process.env.SETUP_BOOK_RUNTIME_FILE = runtimeFile;
+  fs.writeFileSync(momentumFile, '{}\n');
+  fs.writeFileSync(runtimeFile, '{"version":1,"paused":{},"operatorResume":{},"alerts":[]}\n');
+  const through = previousWeekday('2026-11-02');
+  const loadCached = symbol => {
+    const file = path.join(priceDir, `${String(symbol).replace(/[\\/]/g, '_')}.json`);
+    if (!fs.existsSync(file)) return [];
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return parsed.bars || [];
+  };
+  const plan = await planMomentumBatch({
+    now: new Date('2026-11-02T02:00:00.000Z'),
+    held: [],
+    dryRun: true,
+    loadBars: async symbol => {
+      const bars = loadCached(symbol);
+      return symbol === 'EWU' || symbol === 'EWQ' ? padBenchmarkCalendar(bars, through) : bars;
+    },
+  });
+  assert.equal(plan.wrote, false);
+  assert.equal(plan.dryRun, true);
+  assert.equal(fs.readFileSync(momentumFile, 'utf8'), '{}\n');
+  const france = plan.books.find(row => row.id === 'FRANCE_LONG_MOMENTUM');
+  const uk = plan.books.find(row => row.id === 'UK_LONG_MOMENTUM');
+  assert.equal(france.action, 'paused');
+  assert.equal(france.reason, 'alpha t 1.88 < 2 on 2026-10-07 check');
+  assert.equal(uk.action, 'buy');
+  assert.equal(uk.ticker, 'CCC.L');
+  assert.equal(plan.orders.some(order => order.action === 'buy' && order.event.ticker === 'CCC.L'), true);
+  assert.equal(plan.orders.some(order => order.action === 'buy' && order.event.setupId === 'FRANCE_LONG_MOMENTUM'), false);
+  fs.unlinkSync(momentumFile);
+  fs.unlinkSync(runtimeFile);
+  if (priorMomentum == null) delete process.env.MOMENTUM_BOOK_STATE_FILE;
+  else process.env.MOMENTUM_BOOK_STATE_FILE = priorMomentum;
+  if (priorRuntime == null) delete process.env.SETUP_BOOK_RUNTIME_FILE;
+  else process.env.SETUP_BOOK_RUNTIME_FILE = priorRuntime;
+});

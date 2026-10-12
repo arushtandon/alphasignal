@@ -1,0 +1,2041 @@
+{
+  "index": "FTSE100",
+  "source": "FTSE Russell, FTSE 100 Historic Additions and Deletions, August 2026. Current names from the Wikipedia FTSE 100 constituent table after the 1 October 2026 changes.",
+  "asOf": "2026-10-01",
+  "currentSymbols": [
+    "AAF.L",
+    "AAL.L",
+    "ABDN.L",
+    "ABF.L",
+    "ADM.L",
+    "ALW.L",
+    "ANTO.L",
+    "AUTO.L",
+    "AV.L",
+    "AZN.L",
+    "BA.L",
+    "BAB.L",
+    "BARC.L",
+    "BATS.L",
+    "BBOX.L",
+    "BBY.L",
+    "BGEO.L",
+    "BLND.L",
+    "BNZL.L",
+    "BP.L",
+    "BRBY.L",
+    "BT-A.L",
+    "BTRW.L",
+    "CCC.L",
+    "CCEP.L",
+    "CCH.L",
+    "CNA.L",
+    "CPG.L",
+    "CRDA.L",
+    "CTEC.L",
+    "DCC.L",
+    "DGE.L",
+    "DPLM.L",
+    "EDV.L",
+    "EXPN.L",
+    "EZJ.L",
+    "FCIT.L",
+    "FRES.L",
+    "GAW.L",
+    "GLEN.L",
+    "GSK.L",
+    "HLMA.L",
+    "HLN.L",
+    "HSBA.L",
+    "HSX.L",
+    "HWDN.L",
+    "IAG.L",
+    "ICG.L",
+    "IGG.L",
+    "IHG.L",
+    "III.L",
+    "IMB.L",
+    "IMI.L",
+    "INF.L",
+    "INVP.L",
+    "ITH.L",
+    "ITRK.L",
+    "JD.L",
+    "KGF.L",
+    "LAND.L",
+    "LGEN.L",
+    "LLOY.L",
+    "LMP.L",
+    "LSEG.L",
+    "MKS.L",
+    "MNG.L",
+    "MRO.L",
+    "MTLN.L",
+    "NG.L",
+    "NWG.L",
+    "NXT.L",
+    "PCT.L",
+    "PRU.L",
+    "PSH.L",
+    "PSON.L",
+    "REL.L",
+    "RIO.L",
+    "RKT.L",
+    "RR.L",
+    "RTO.L",
+    "SBRY.L",
+    "SDLF.L",
+    "SGE.L",
+    "SGRO.L",
+    "SHEL.L",
+    "SMIN.L",
+    "SMT.L",
+    "SN.L",
+    "SPX.L",
+    "SSE.L",
+    "STAN.L",
+    "STJ.L",
+    "SVT.L",
+    "TSCO.L",
+    "ULVR.L",
+    "UU.L",
+    "VOD.L",
+    "WEIR.L",
+    "WPP.L",
+    "WTB.L"
+  ],
+  "historicalMembership": {
+    "available": true,
+    "changes": [
+      {
+        "date": "2026-06-22",
+        "added": "ABDN.L",
+        "removed": null,
+        "name": "Aberdeen Group"
+      },
+      {
+        "date": "2026-06-22",
+        "added": null,
+        "removed": "BKG.L",
+        "name": "Berkeley Group Holdings"
+      },
+      {
+        "date": "2026-06-22",
+        "added": "CCC.L",
+        "removed": null,
+        "name": "Computacenter"
+      },
+      {
+        "date": "2026-06-22",
+        "added": null,
+        "removed": "MNDI.L",
+        "name": "Mondi"
+      },
+      {
+        "date": "2026-06-22",
+        "added": "INVP.L",
+        "removed": null,
+        "name": "Investec"
+      },
+      {
+        "date": "2026-06-22",
+        "added": null,
+        "removed": "RMV.L",
+        "name": "Rightmove"
+      },
+      {
+        "date": "2026-03-23",
+        "added": "IGG.L",
+        "removed": null,
+        "name": "IG Group Holdings"
+      },
+      {
+        "date": "2026-03-23",
+        "added": null,
+        "removed": "EZJ.L",
+        "name": "Easyjet"
+      },
+      {
+        "date": "2026-03-23",
+        "added": "BGEO.L",
+        "removed": null,
+        "name": "Lion Finance Group"
+      },
+      {
+        "date": "2026-03-23",
+        "added": null,
+        "removed": "HIK.L",
+        "name": "Hikma Pharmaceuticals"
+      },
+      {
+        "date": "2026-03-02",
+        "added": "BBOX.L",
+        "removed": null,
+        "name": "Tritax Big Box REIT"
+      },
+      {
+        "date": "2026-03-02",
+        "added": null,
+        "removed": "AHT.L",
+        "name": "Ashtead Group"
+      },
+      {
+        "date": "2025-12-22",
+        "added": "BLND.L",
+        "removed": null,
+        "name": "British Land Co"
+      },
+      {
+        "date": "2025-12-22",
+        "added": null,
+        "removed": "WPP.L",
+        "name": "WPP"
+      },
+      {
+        "date": "2025-09-22",
+        "added": "BRBY.L",
+        "removed": null,
+        "name": "Burberry Group"
+      },
+      {
+        "date": "2025-09-22",
+        "added": null,
+        "removed": "TW.L",
+        "name": "Taylor Wimpey"
+      },
+      {
+        "date": "2025-09-22",
+        "added": "MTLN.L",
+        "removed": null,
+        "name": "Metlen Energy & Metals"
+      },
+      {
+        "date": "2025-09-22",
+        "added": null,
+        "removed": "UTG.L",
+        "name": "Unite Group"
+      },
+      {
+        "date": "2025-03-24",
+        "added": "CCEP.L",
+        "removed": null,
+        "name": "Coca-Cola Europacific Partners"
+      },
+      {
+        "date": "2025-03-24",
+        "added": null,
+        "removed": "BLND.L",
+        "name": "British Land Co"
+      },
+      {
+        "date": "2025-03-24",
+        "added": "BAB.L",
+        "removed": null,
+        "name": "Babcock International Group"
+      },
+      {
+        "date": "2025-03-24",
+        "added": null,
+        "removed": "HL.L",
+        "name": "Hargreaves Lansdown"
+      },
+      {
+        "date": "2025-02-03",
+        "added": "PCT.L",
+        "removed": null,
+        "name": "Polar Capital Technology Trust"
+      },
+      {
+        "date": "2025-02-03",
+        "added": null,
+        "removed": "SMDS.L",
+        "name": "Smith (DS)"
+      },
+      {
+        "date": "2024-12-23",
+        "added": "ALW.L",
+        "removed": null,
+        "name": "Alliance Witan"
+      },
+      {
+        "date": "2024-12-23",
+        "added": null,
+        "removed": "BME.L",
+        "name": "B&M European Value Retail"
+      },
+      {
+        "date": "2024-12-23",
+        "added": "GAW.L",
+        "removed": null,
+        "name": "Games Workshop Group"
+      },
+      {
+        "date": "2024-12-23",
+        "added": null,
+        "removed": "FRAS.L",
+        "name": "Frasers Group"
+      },
+      {
+        "date": "2024-12-23",
+        "added": "STJ.L",
+        "removed": null,
+        "name": "St. James's Place"
+      },
+      {
+        "date": "2024-12-23",
+        "added": null,
+        "removed": "VTY.L",
+        "name": "Vistry Group"
+      },
+      {
+        "date": "2024-10-01",
+        "added": "BLND.L",
+        "removed": null,
+        "name": "British Land Co."
+      },
+      {
+        "date": "2024-10-01",
+        "added": null,
+        "removed": "DARK.L",
+        "name": "Darktrace"
+      },
+      {
+        "date": "2024-09-23",
+        "added": "HSX.L",
+        "removed": null,
+        "name": "Hiscox"
+      },
+      {
+        "date": "2024-09-23",
+        "added": null,
+        "removed": "BRBY.L",
+        "name": "Burberry Group"
+      },
+      {
+        "date": "2024-07-08",
+        "added": "EDV.L",
+        "removed": null,
+        "name": "Endeavour Mining"
+      },
+      {
+        "date": "2024-07-08",
+        "added": null,
+        "removed": "SKG.L",
+        "name": "Smufit Kappa Group"
+      },
+      {
+        "date": "2024-06-24",
+        "added": "DARK.L",
+        "removed": null,
+        "name": "Darktrace"
+      },
+      {
+        "date": "2024-06-24",
+        "added": null,
+        "removed": "OCDO.L",
+        "name": "Ocado Group"
+      },
+      {
+        "date": "2024-06-24",
+        "added": "LMP.L",
+        "removed": null,
+        "name": "LondonMetric Property"
+      },
+      {
+        "date": "2024-06-24",
+        "added": null,
+        "removed": "RS1.L",
+        "name": "RS Group"
+      },
+      {
+        "date": "2024-06-24",
+        "added": "VTY.L",
+        "removed": null,
+        "name": "Vistry Group"
+      },
+      {
+        "date": "2024-06-24",
+        "added": null,
+        "removed": "STJ.L",
+        "name": "St. James's Place"
+      },
+      {
+        "date": "2024-05-31",
+        "added": "HL.L",
+        "removed": null,
+        "name": "Hargreaves Lansdown"
+      },
+      {
+        "date": "2024-05-31",
+        "added": null,
+        "removed": "FLTR.L",
+        "name": "Flutter Entertainment"
+      },
+      {
+        "date": "2024-03-18",
+        "added": "EZJ.L",
+        "removed": null,
+        "name": "Easyjet"
+      },
+      {
+        "date": "2024-03-18",
+        "added": null,
+        "removed": "EDV.L",
+        "name": "Endeavour Mining"
+      },
+      {
+        "date": "2024-01-16",
+        "added": "PSN.L",
+        "removed": null,
+        "name": "Persimmon"
+      },
+      {
+        "date": "2024-01-16",
+        "added": null,
+        "removed": "DPH.L",
+        "name": "Dechra Pharmaceuticals"
+      },
+      {
+        "date": "2023-12-18",
+        "added": "ICG.L",
+        "removed": null,
+        "name": "Intermediate Capital Group"
+      },
+      {
+        "date": "2023-12-18",
+        "added": null,
+        "removed": "HL.L",
+        "name": "Hargreaves Lansdown"
+      },
+      {
+        "date": "2023-09-25",
+        "added": "HWDN.L",
+        "removed": null,
+        "name": "Howden Joinery Group"
+      },
+      {
+        "date": "2023-09-25",
+        "added": null,
+        "removed": "CRH.L",
+        "name": "CRH"
+      },
+      {
+        "date": "2023-09-18",
+        "added": "DPH.L",
+        "removed": null,
+        "name": "Dechra Pharmaceuticals"
+      },
+      {
+        "date": "2023-09-18",
+        "added": null,
+        "removed": "ABDN.L",
+        "name": "Abrdn"
+      },
+      {
+        "date": "2023-09-18",
+        "added": "DPLM.L",
+        "removed": null,
+        "name": "Diploma"
+      },
+      {
+        "date": "2023-09-18",
+        "added": null,
+        "removed": "HSX.L",
+        "name": "Hiscox"
+      },
+      {
+        "date": "2023-09-18",
+        "added": "HIK.L",
+        "removed": null,
+        "name": "Hikma Pharmaceuticals"
+      },
+      {
+        "date": "2023-09-18",
+        "added": null,
+        "removed": "JMAT.L",
+        "name": "Johnson Matthey"
+      },
+      {
+        "date": "2023-09-18",
+        "added": "MKS.L",
+        "removed": null,
+        "name": "Marks & Spencer Group"
+      },
+      {
+        "date": "2023-09-18",
+        "added": null,
+        "removed": "PSN.L",
+        "name": "Persimmon"
+      },
+      {
+        "date": "2023-06-19",
+        "added": "IMI.L",
+        "removed": null,
+        "name": "IMI"
+      },
+      {
+        "date": "2023-06-19",
+        "added": null,
+        "removed": "BLND.L",
+        "name": "British Land Co"
+      },
+      {
+        "date": "2023-04-25",
+        "added": "DWL.L",
+        "removed": null,
+        "name": "Dowlais Group"
+      },
+      {
+        "date": "2023-04-20",
+        "added": "DWL.L",
+        "removed": null,
+        "name": "Dowlais Group"
+      },
+      {
+        "date": "2023-04-20",
+        "added": null,
+        "removed": "MRO.L",
+        "name": "Melrose Industries"
+      },
+      {
+        "date": "2023-01-18",
+        "added": "HSX.L",
+        "removed": null,
+        "name": "Hiscox"
+      },
+      {
+        "date": "2023-01-18",
+        "added": null,
+        "removed": "AVV.L",
+        "name": "Aveva Group"
+      },
+      {
+        "date": "2023-01-04",
+        "added": "JMAT.L",
+        "removed": null,
+        "name": "Johnson Matthey"
+      },
+      {
+        "date": "2023-01-04",
+        "added": null,
+        "removed": "HSV.L",
+        "name": "Homeserve"
+      },
+      {
+        "date": "2022-12-19",
+        "added": "ABDN.L",
+        "removed": null,
+        "name": "Abrdn"
+      },
+      {
+        "date": "2022-12-19",
+        "added": null,
+        "removed": "DPH.L",
+        "name": "Dechra Pharmaceuticals"
+      },
+      {
+        "date": "2022-12-19",
+        "added": "BEZ.L",
+        "removed": null,
+        "name": "Beazley"
+      },
+      {
+        "date": "2022-12-19",
+        "added": null,
+        "removed": "HBR.L",
+        "name": "Harbour Energy"
+      },
+      {
+        "date": "2022-12-19",
+        "added": "WEIR.L",
+        "removed": null,
+        "name": "Weir Group"
+      },
+      {
+        "date": "2022-12-19",
+        "added": null,
+        "removed": "ICG.L",
+        "name": "Intermediate Capital Grup"
+      },
+      {
+        "date": "2022-09-19",
+        "added": "CTEC.L",
+        "removed": null,
+        "name": "ConvaTec Group"
+      },
+      {
+        "date": "2022-09-19",
+        "added": null,
+        "removed": "ABDN.L",
+        "name": "Abrdn"
+      },
+      {
+        "date": "2022-09-19",
+        "added": "FCIT.L",
+        "removed": null,
+        "name": "F&C Investment Trust"
+      },
+      {
+        "date": "2022-09-19",
+        "added": null,
+        "removed": "HIK.L",
+        "name": "Hikma Pharmaceuticals"
+      },
+      {
+        "date": "2022-09-19",
+        "added": "HBR.L",
+        "removed": null,
+        "name": "Harbour Energy"
+      },
+      {
+        "date": "2022-09-19",
+        "added": null,
+        "removed": "HWDN.L",
+        "name": "Howden Joinery Group"
+      },
+      {
+        "date": "2022-09-13",
+        "added": "FRAS.L",
+        "removed": null,
+        "name": "Frasers Group"
+      },
+      {
+        "date": "2022-09-13",
+        "added": null,
+        "removed": "MGGT.L",
+        "name": "Meggitt"
+      },
+      {
+        "date": "2022-09-12",
+        "added": "HSV.L",
+        "removed": null,
+        "name": "Homeserve"
+      },
+      {
+        "date": "2022-09-12",
+        "added": null,
+        "removed": "AVST.L",
+        "name": "Avast"
+      },
+      {
+        "date": "2022-07-21",
+        "added": null,
+        "removed": "HBR.L",
+        "name": "Harbour Energy"
+      },
+      {
+        "date": "2022-07-18",
+        "added": "HLN.L",
+        "removed": null,
+        "name": "Haleon"
+      },
+      {
+        "date": "2022-06-20",
+        "added": "CNA.L",
+        "removed": null,
+        "name": "Centrica"
+      },
+      {
+        "date": "2022-06-20",
+        "added": null,
+        "removed": "ITV.L",
+        "name": "ITV"
+      },
+      {
+        "date": "2022-06-20",
+        "added": "UTG.L",
+        "removed": null,
+        "name": "Unite Group"
+      },
+      {
+        "date": "2022-06-20",
+        "added": null,
+        "removed": "RMG.L",
+        "name": "Royal Mail"
+      },
+      {
+        "date": "2022-05-12",
+        "added": "HBR.L",
+        "removed": null,
+        "name": "Harbour Energy"
+      },
+      {
+        "date": "2022-05-12",
+        "added": null,
+        "removed": "FERG.L",
+        "name": "Ferguson"
+      },
+      {
+        "date": "2022-03-21",
+        "added": "EDV.L",
+        "removed": null,
+        "name": "Endeavour Mining"
+      },
+      {
+        "date": "2022-03-21",
+        "added": null,
+        "removed": "EVR.L",
+        "name": "Evraz"
+      },
+      {
+        "date": "2022-03-21",
+        "added": "HWDN.L",
+        "removed": null,
+        "name": "Howden Joinery Group"
+      },
+      {
+        "date": "2022-03-21",
+        "added": null,
+        "removed": "POLY.L",
+        "name": "Polymetal International"
+      },
+      {
+        "date": "2022-01-31",
+        "added": "AAF.L",
+        "removed": null,
+        "name": "Airtel Africa"
+      },
+      {
+        "date": "2022-01-31",
+        "added": null,
+        "removed": "BHP.L",
+        "name": "BHP Group Plc"
+      },
+      {
+        "date": "2022-01-31",
+        "added": null,
+        "removed": "RDSB.L",
+        "name": "Royal Dutch Shell B"
+      },
+      {
+        "date": "2021-12-20",
+        "added": "DPH.L",
+        "removed": null,
+        "name": "Dechra Pharmaceuticals"
+      },
+      {
+        "date": "2021-12-20",
+        "added": null,
+        "removed": "DARK.L",
+        "name": "Darktrace"
+      },
+      {
+        "date": "2021-12-20",
+        "added": "RS1.L",
+        "removed": null,
+        "name": "Electrocomponents"
+      },
+      {
+        "date": "2021-12-20",
+        "added": null,
+        "removed": "JMAT.L",
+        "name": "Johnson Matthey"
+      },
+      {
+        "date": "2021-10-27",
+        "added": "DARK.L",
+        "removed": null,
+        "name": "Darktrace"
+      },
+      {
+        "date": "2021-10-27",
+        "added": null,
+        "removed": "MRW.L",
+        "name": "Morrison"
+      },
+      {
+        "date": "2021-09-20",
+        "added": "MRW.L",
+        "removed": null,
+        "name": "Morrison (Wm) Supermarkets"
+      },
+      {
+        "date": "2021-09-20",
+        "added": null,
+        "removed": "JET.L",
+        "name": "Just Eat Takeaway.com*"
+      },
+      {
+        "date": "2021-09-20",
+        "added": "MGGT.L",
+        "removed": null,
+        "name": "Meggitt"
+      },
+      {
+        "date": "2021-09-20",
+        "added": null,
+        "removed": "WEIR.L",
+        "name": "Weir Group"
+      },
+      {
+        "date": "2021-06-21",
+        "added": "ITV.L",
+        "removed": null,
+        "name": "ITV"
+      },
+      {
+        "date": "2021-06-21",
+        "added": null,
+        "removed": "RSW.L",
+        "name": "Reinshaw"
+      },
+      {
+        "date": "2021-06-11",
+        "added": null,
+        "removed": "TGA.L",
+        "name": "Thungela Resources"
+      },
+      {
+        "date": "2021-06-07",
+        "added": "TGA.L",
+        "removed": null,
+        "name": "Thungela Resources"
+      },
+      {
+        "date": "2021-05-28",
+        "added": "RMG.L",
+        "removed": null,
+        "name": "Royal Mail"
+      },
+      {
+        "date": "2021-05-28",
+        "added": null,
+        "removed": "RSA.L",
+        "name": "RSA Insurance Group"
+      },
+      {
+        "date": "2021-03-22",
+        "added": "WEIR.L",
+        "removed": null,
+        "name": "Weir Group"
+      },
+      {
+        "date": "2021-03-22",
+        "added": null,
+        "removed": "MRW.L",
+        "name": "Morrison (Wm) Supermarkets"
+      },
+      {
+        "date": "2021-03-22",
+        "added": "RSW.L",
+        "removed": null,
+        "name": "Reinshaw"
+      },
+      {
+        "date": "2021-03-22",
+        "added": null,
+        "removed": "PNN.L",
+        "name": "Pennon Group"
+      },
+      {
+        "date": "2020-12-21",
+        "added": "PSH.L",
+        "removed": null,
+        "name": "Pershing Square Holdings"
+      },
+      {
+        "date": "2020-12-21",
+        "added": null,
+        "removed": "HSV.L",
+        "name": "Homeserve"
+      },
+      {
+        "date": "2020-09-21",
+        "added": "BME.L",
+        "removed": null,
+        "name": "B8M European Value Retail"
+      },
+      {
+        "date": "2020-09-21",
+        "added": null,
+        "removed": "ITV.L",
+        "name": "ITV"
+      },
+      {
+        "date": "2020-06-22",
+        "added": "AVST.L",
+        "removed": null,
+        "name": "Avast"
+      },
+      {
+        "date": "2020-06-22",
+        "added": null,
+        "removed": "EZJ.L",
+        "name": "Easyjet"
+      },
+      {
+        "date": "2020-06-22",
+        "added": "ENT.L",
+        "removed": null,
+        "name": "GVC Holdings"
+      },
+      {
+        "date": "2020-06-22",
+        "added": null,
+        "removed": "MGGT.L",
+        "name": "Meggitt"
+      },
+      {
+        "date": "2020-06-22",
+        "added": "KGF.L",
+        "removed": null,
+        "name": "Kingfisher"
+      },
+      {
+        "date": "2020-06-22",
+        "added": null,
+        "removed": "CNA.L",
+        "name": "Centrica"
+      },
+      {
+        "date": "2020-06-22",
+        "added": "HSV.L",
+        "removed": null,
+        "name": "Homeserve"
+      },
+      {
+        "date": "2020-06-22",
+        "added": null,
+        "removed": "CCL.L",
+        "name": "Carnival"
+      },
+      {
+        "date": "2020-04-27",
+        "added": null,
+        "removed": "NMC.L",
+        "name": "NMC Health"
+      },
+      {
+        "date": "2020-03-23",
+        "added": "ICG.L",
+        "removed": null,
+        "name": "Intermediate Capital Group"
+      },
+      {
+        "date": "2020-03-23",
+        "added": null,
+        "removed": "KGF.L",
+        "name": "Kingfisher"
+      },
+      {
+        "date": "2020-03-23",
+        "added": "PNN.L",
+        "removed": null,
+        "name": "Pennon Group"
+      },
+      {
+        "date": "2020-03-23",
+        "added": null,
+        "removed": "TUI.L",
+        "name": "TUI AG"
+      },
+      {
+        "date": "2020-03-23",
+        "added": "FRES.L",
+        "removed": null,
+        "name": "Fresnillo"
+      },
+      {
+        "date": "2020-03-23",
+        "added": null,
+        "removed": "NMC.L",
+        "name": "NMC Health*"
+      },
+      {
+        "date": "2020-02-05",
+        "added": "JET.L",
+        "removed": null,
+        "name": "Just Eat Takeaway.com"
+      },
+      {
+        "date": "2020-02-05",
+        "added": null,
+        "removed": "JET.L",
+        "name": "Just Eat"
+      },
+      {
+        "date": "2019-12-23",
+        "added": "JET.L",
+        "removed": null,
+        "name": "Just Eat"
+      },
+      {
+        "date": "2019-12-23",
+        "added": null,
+        "removed": "FRES.L",
+        "name": "Fresnillo"
+      },
+      {
+        "date": "2019-12-23",
+        "added": "EZJ.L",
+        "removed": null,
+        "name": "Easyjet"
+      },
+      {
+        "date": "2019-12-23",
+        "added": null,
+        "removed": "HSX.L",
+        "name": "Hiscox"
+      },
+      {
+        "date": "2019-09-23",
+        "added": "POLY.L",
+        "removed": null,
+        "name": "Polymetal International"
+      },
+      {
+        "date": "2019-09-23",
+        "added": null,
+        "removed": "MKS.L",
+        "name": "Marks and Spencer Group"
+      },
+      {
+        "date": "2019-09-23",
+        "added": "HIK.L",
+        "removed": null,
+        "name": "Hikma Pharmaceuticals"
+      },
+      {
+        "date": "2019-09-23",
+        "added": null,
+        "removed": "MCRO.L",
+        "name": "Micro Focus International"
+      },
+      {
+        "date": "2019-09-23",
+        "added": "MGGT.L",
+        "removed": null,
+        "name": "Meggitt"
+      },
+      {
+        "date": "2019-09-23",
+        "added": null,
+        "removed": "DLG.L",
+        "name": "Direct Line Insurance Group"
+      },
+      {
+        "date": "2019-06-24",
+        "added": "JD.L",
+        "removed": null,
+        "name": "JD Sports Fashion"
+      },
+      {
+        "date": "2019-06-24",
+        "added": null,
+        "removed": "HIK.L",
+        "name": "Hikma Pharmaceuticals"
+      },
+      {
+        "date": "2019-06-24",
+        "added": "AVV.L",
+        "removed": null,
+        "name": "Aveva Group"
+      },
+      {
+        "date": "2019-06-24",
+        "added": null,
+        "removed": "EZJ.L",
+        "name": "Easyjet"
+      },
+      {
+        "date": "2019-03-18",
+        "added": "PHNX.L",
+        "removed": null,
+        "name": "Phoenix Group Holdings"
+      },
+      {
+        "date": "2019-03-18",
+        "added": null,
+        "removed": "ENT.L",
+        "name": "GVC Holdings"
+      },
+      {
+        "date": "2019-03-18",
+        "added": "JET.L",
+        "removed": null,
+        "name": "Just Eat"
+      },
+      {
+        "date": "2019-03-18",
+        "added": null,
+        "removed": "WG.L",
+        "name": "Wood Group (John)"
+      },
+      {
+        "date": "2018-12-31",
+        "added": "AUTO.L",
+        "removed": null,
+        "name": "Auto Trader Group"
+      },
+      {
+        "date": "2018-12-31",
+        "added": null,
+        "removed": "RRS.L",
+        "name": "Randgold Resources"
+      },
+      {
+        "date": "2018-12-24",
+        "added": "HSX.L",
+        "removed": null,
+        "name": "Hiscox"
+      },
+      {
+        "date": "2018-12-24",
+        "added": null,
+        "removed": "JET.L",
+        "name": "Just Eat"
+      },
+      {
+        "date": "2018-12-24",
+        "added": "SPX.L",
+        "removed": null,
+        "name": "Spirax-Sarco Engineering"
+      },
+      {
+        "date": "2018-12-24",
+        "added": null,
+        "removed": "RMG.L",
+        "name": "Royal Mail"
+      },
+      {
+        "date": "2018-12-24",
+        "added": "HIK.L",
+        "removed": null,
+        "name": "Hikma Pharmaceuticals"
+      },
+      {
+        "date": "2018-12-24",
+        "added": null,
+        "removed": "SHP.L",
+        "name": "Shire"
+      },
+      {
+        "date": "2018-10-12",
+        "added": "WG.L",
+        "removed": null,
+        "name": "Wood Group (John)"
+      },
+      {
+        "date": "2018-10-12",
+        "added": null,
+        "removed": "SKY.L",
+        "name": "Sky"
+      },
+      {
+        "date": "2018-06-28",
+        "added": "RMV.L",
+        "removed": null,
+        "name": "Rightmove"
+      },
+      {
+        "date": "2018-06-28",
+        "added": null,
+        "removed": "OML.L",
+        "name": "Old Mutual"
+      },
+      {
+        "date": "2018-06-18",
+        "added": "OCDO.L",
+        "removed": null,
+        "name": "Ocado Group"
+      },
+      {
+        "date": "2018-06-18",
+        "added": null,
+        "removed": "MDC.L",
+        "name": "Mediclinic International"
+      },
+      {
+        "date": "2018-06-18",
+        "added": "ENT.L",
+        "removed": null,
+        "name": "GVC Holdings"
+      },
+      {
+        "date": "2018-06-18",
+        "added": null,
+        "removed": "GFS.L",
+        "name": "G4S"
+      },
+      {
+        "date": "2018-04-24",
+        "added": "MRO.L",
+        "removed": null,
+        "name": "Melrose Industries"
+      },
+      {
+        "date": "2018-04-24",
+        "added": null,
+        "removed": "GKN.L",
+        "name": "GKN"
+      },
+      {
+        "date": "2018-03-19",
+        "added": "RMG.L",
+        "removed": null,
+        "name": "Royal Mail"
+      },
+      {
+        "date": "2018-03-19",
+        "added": null,
+        "removed": "HMSO.L",
+        "name": "Hammerson"
+      },
+      {
+        "date": "2018-01-15",
+        "added": "EVR.L",
+        "removed": null,
+        "name": "Evraz"
+      },
+      {
+        "date": "2018-01-15",
+        "added": null,
+        "removed": "WPG.L",
+        "name": "Worldpay Group"
+      },
+      {
+        "date": "2017-12-18",
+        "added": "SMDS.L",
+        "removed": null,
+        "name": "Smith (DS)"
+      },
+      {
+        "date": "2017-12-18",
+        "added": null,
+        "removed": "CTEC.L",
+        "name": "ConvaTec Group"
+      },
+      {
+        "date": "2017-12-18",
+        "added": "JET.L",
+        "removed": null,
+        "name": "Just Eat"
+      },
+      {
+        "date": "2017-12-18",
+        "added": null,
+        "removed": "MERL.L",
+        "name": "Merlin Entertainments"
+      },
+      {
+        "date": "2017-12-18",
+        "added": "HLMA.L",
+        "removed": null,
+        "name": "Halma"
+      },
+      {
+        "date": "2017-12-18",
+        "added": null,
+        "removed": "BAB.L",
+        "name": "Babcock International Group"
+      },
+      {
+        "date": "2017-09-18",
+        "added": "NMC.L",
+        "removed": null,
+        "name": "NMC Health"
+      },
+      {
+        "date": "2017-09-18",
+        "added": null,
+        "removed": "RMG.L",
+        "name": "Royal Mail"
+      },
+      {
+        "date": "2017-09-18",
+        "added": "BKG.L",
+        "removed": null,
+        "name": "Berkeley Group Holdings"
+      },
+      {
+        "date": "2017-09-18",
+        "added": null,
+        "removed": "PFG.L",
+        "name": "Provident Financial"
+      },
+      {
+        "date": "2017-06-19",
+        "added": "GFS.L",
+        "removed": null,
+        "name": "G4S"
+      },
+      {
+        "date": "2017-06-19",
+        "added": null,
+        "removed": "HIK.L",
+        "name": "Hikma Pharmaceuticals"
+      },
+      {
+        "date": "2017-06-19",
+        "added": "SGRO.L",
+        "removed": null,
+        "name": "Segro"
+      },
+      {
+        "date": "2017-06-19",
+        "added": null,
+        "removed": "INTU.L",
+        "name": "Intu Properties"
+      },
+      {
+        "date": "2017-03-20",
+        "added": "SMT.L",
+        "removed": null,
+        "name": "Scottish Mortgage Investment Trust"
+      },
+      {
+        "date": "2017-03-20",
+        "added": null,
+        "removed": "CPI.L",
+        "name": "Capita"
+      },
+      {
+        "date": "2017-03-20",
+        "added": "RTO.L",
+        "removed": null,
+        "name": "Rentokil Initial"
+      },
+      {
+        "date": "2017-03-20",
+        "added": null,
+        "removed": "DC.L",
+        "name": "Dixons Carphone"
+      },
+      {
+        "date": "2016-12-19",
+        "added": "CTEC.L",
+        "removed": null,
+        "name": "ConvaTec Group"
+      },
+      {
+        "date": "2016-12-19",
+        "added": null,
+        "removed": "TPK.L",
+        "name": "Travis Perkins"
+      },
+      {
+        "date": "2016-12-19",
+        "added": "SKG.L",
+        "removed": null,
+        "name": "Smurfit Kappa Group"
+      },
+      {
+        "date": "2016-12-19",
+        "added": null,
+        "removed": "POLY.L",
+        "name": "Polymetal International"
+      },
+      {
+        "date": "2016-09-19",
+        "added": "POLY.L",
+        "removed": null,
+        "name": "Polymetal International"
+      },
+      {
+        "date": "2016-09-19",
+        "added": null,
+        "removed": "BKG.L",
+        "name": "Berkeley Group Holdings"
+      },
+      {
+        "date": "2016-09-05",
+        "added": "MCRO.L",
+        "removed": null,
+        "name": "Micro Focus International"
+      },
+      {
+        "date": "2016-09-05",
+        "added": null,
+        "removed": "ARM.L",
+        "name": "ARM Holdings"
+      },
+      {
+        "date": "2016-06-27",
+        "added": "SMIN.L",
+        "removed": null,
+        "name": "Smiths Group"
+      },
+      {
+        "date": "2016-06-27",
+        "added": null,
+        "removed": "REX.L",
+        "name": "Rexam"
+      },
+      {
+        "date": "2016-06-20",
+        "added": "HIK.L",
+        "removed": null,
+        "name": "Hikma Pharmaceuticals"
+      },
+      {
+        "date": "2016-06-20",
+        "added": null,
+        "removed": "ISAT.L",
+        "name": "Inmarsat"
+      },
+      {
+        "date": "2016-03-21",
+        "added": "FLTR.L",
+        "removed": null,
+        "name": "Paddy Power Betfair"
+      },
+      {
+        "date": "2016-03-21",
+        "added": null,
+        "removed": "SMIN.L",
+        "name": "Smiths Group"
+      },
+      {
+        "date": "2016-03-21",
+        "added": "MDC.L",
+        "removed": null,
+        "name": "Mediclinic International plc"
+      },
+      {
+        "date": "2016-03-21",
+        "added": null,
+        "removed": "HIK.L",
+        "name": "Hikma Pharmaceuticals"
+      },
+      {
+        "date": "2016-03-21",
+        "added": "MRW.L",
+        "removed": null,
+        "name": "Morrison (Wm) Supermarkets"
+      },
+      {
+        "date": "2016-03-21",
+        "added": null,
+        "removed": "ABDN.L",
+        "name": "Aberdeen Asset Management"
+      },
+      {
+        "date": "2016-03-21",
+        "added": "INF.L",
+        "removed": null,
+        "name": "Informa"
+      },
+      {
+        "date": "2016-03-21",
+        "added": null,
+        "removed": "FRAS.L",
+        "name": "Sports Direct International"
+      },
+      {
+        "date": "2016-02-15",
+        "added": "REX.L",
+        "removed": null,
+        "name": "Rexam"
+      },
+      {
+        "date": "2016-02-15",
+        "added": null,
+        "removed": "BG.L",
+        "name": "BG Group"
+      },
+      {
+        "date": "2015-12-21",
+        "added": "WPG.L",
+        "removed": null,
+        "name": "Worldpay Group"
+      },
+      {
+        "date": "2015-12-21",
+        "added": null,
+        "removed": "GFS.L",
+        "name": "G4S"
+      },
+      {
+        "date": "2015-12-21",
+        "added": "PFG.L",
+        "removed": null,
+        "name": "Provident Financial"
+      },
+      {
+        "date": "2015-12-21",
+        "added": null,
+        "removed": "MRW.L",
+        "name": "Morrison (Wm) Supermarkets"
+      },
+      {
+        "date": "2015-12-21",
+        "added": "DCC.L",
+        "removed": null,
+        "name": "DCC"
+      },
+      {
+        "date": "2015-12-21",
+        "added": null,
+        "removed": "MGGT.L",
+        "name": "Meggitt"
+      },
+      {
+        "date": "2015-09-21",
+        "added": "BKG.L",
+        "removed": null,
+        "name": "Berkeley Group Holdings"
+      },
+      {
+        "date": "2015-09-21",
+        "added": null,
+        "removed": "WEIR.L",
+        "name": "Weir Group"
+      },
+      {
+        "date": "2015-06-22",
+        "added": "ISAT.L",
+        "removed": null,
+        "name": "Inmarsat"
+      },
+      {
+        "date": "2015-06-22",
+        "added": null,
+        "removed": "AGK.L",
+        "name": "Aggreko"
+      },
+      {
+        "date": "2015-04-13",
+        "added": "MERL.L",
+        "removed": null,
+        "name": "Merlin Entertainments"
+      },
+      {
+        "date": "2015-04-13",
+        "added": null,
+        "removed": "FLG.L",
+        "name": "Friends Life Group"
+      },
+      {
+        "date": "2015-03-20",
+        "added": "HIK.L",
+        "removed": null,
+        "name": "Hikma Pharmaceuticals"
+      },
+      {
+        "date": "2015-03-20",
+        "added": null,
+        "removed": "TLW.L",
+        "name": "Tullow Oil"
+      },
+      {
+        "date": "2014-12-22",
+        "added": "BTRW.L",
+        "removed": null,
+        "name": "Barratt Developments"
+      },
+      {
+        "date": "2014-12-22",
+        "added": null,
+        "removed": "IMI.L",
+        "name": "IMI"
+      },
+      {
+        "date": "2014-12-22",
+        "added": "TW.L",
+        "removed": null,
+        "name": "Taylor Wimpey"
+      },
+      {
+        "date": "2014-12-22",
+        "added": null,
+        "removed": "PFC.L",
+        "name": "Petrofac"
+      },
+      {
+        "date": "2014-12-17",
+        "added": "TUI.L",
+        "removed": null,
+        "name": "TUI AG"
+      },
+      {
+        "date": "2014-12-17",
+        "added": null,
+        "removed": "TT.L",
+        "name": "TUI Travel"
+      },
+      {
+        "date": "2014-09-22",
+        "added": "DLG.L",
+        "removed": null,
+        "name": "Direct Line Insurance Group"
+      },
+      {
+        "date": "2014-09-22",
+        "added": null,
+        "removed": "BTRW.L",
+        "name": "Barratt Developments"
+      },
+      {
+        "date": "2014-09-22",
+        "added": "DC.L",
+        "removed": null,
+        "name": "Dixons Carphone"
+      },
+      {
+        "date": "2014-09-22",
+        "added": null,
+        "removed": "REX.L",
+        "name": "Rexam"
+      },
+      {
+        "date": "2014-06-23",
+        "added": "III.L",
+        "removed": null,
+        "name": "3i Group"
+      },
+      {
+        "date": "2014-06-23",
+        "added": null,
+        "removed": "MRO.L",
+        "name": "Melrose Industries"
+      },
+      {
+        "date": "2014-06-23",
+        "added": "INTU.L",
+        "removed": null,
+        "name": "Intu Properties"
+      },
+      {
+        "date": "2014-06-23",
+        "added": null,
+        "removed": "WMH.L",
+        "name": "William Hill"
+      },
+      {
+        "date": "2014-03-24",
+        "added": "BTRW.L",
+        "removed": null,
+        "name": "Barratt Developments"
+      },
+      {
+        "date": "2014-03-24",
+        "added": null,
+        "removed": "AMEC.L",
+        "name": "Amec"
+      },
+      {
+        "date": "2014-03-24",
+        "added": "STJ.L",
+        "removed": null,
+        "name": "St. James’s Place"
+      },
+      {
+        "date": "2014-03-24",
+        "added": null,
+        "removed": "TATE.L",
+        "name": "Tate & Lyle"
+      },
+      {
+        "date": "2013-12-23",
+        "added": "RMG.L",
+        "removed": null,
+        "name": "Royal Mail"
+      },
+      {
+        "date": "2013-12-23",
+        "added": null,
+        "removed": "CRDA.L",
+        "name": "Croda International"
+      },
+      {
+        "date": "2013-12-23",
+        "added": "AHT.L",
+        "removed": null,
+        "name": "Ashtead Group"
+      },
+      {
+        "date": "2013-12-23",
+        "added": null,
+        "removed": "VED.L",
+        "name": "Vedanta Resources"
+      },
+      {
+        "date": "2013-09-23",
+        "added": "CCH.L",
+        "removed": null,
+        "name": "Coca-Cola HBC AG"
+      },
+      {
+        "date": "2013-09-23",
+        "added": null,
+        "removed": "WG.L",
+        "name": "Wood Group (John)"
+      },
+      {
+        "date": "2013-09-23",
+        "added": "FRAS.L",
+        "removed": null,
+        "name": "Sports Direct International"
+      },
+      {
+        "date": "2013-09-23",
+        "added": null,
+        "removed": "ENRC.L",
+        "name": "Eurasian Natural Resources Corporation"
+      },
+      {
+        "date": "2013-09-23",
+        "added": "MNDI.L",
+        "removed": null,
+        "name": "Mondi"
+      },
+      {
+        "date": "2013-09-23",
+        "added": null,
+        "removed": "SRP.L",
+        "name": "Serco Group"
+      },
+      {
+        "date": "2013-06-24",
+        "added": "PSN.L",
+        "removed": null,
+        "name": "Persimmon"
+      },
+      {
+        "date": "2013-06-24",
+        "added": null,
+        "removed": "EVR.L",
+        "name": "Evraz"
+      },
+      {
+        "date": "2013-06-24",
+        "added": "TPK.L",
+        "removed": null,
+        "name": "Travis Perkins"
+      },
+      {
+        "date": "2013-06-24",
+        "added": null,
+        "removed": "POLY.L",
+        "name": "Polymetal"
+      },
+      {
+        "date": "2013-03-18",
+        "added": "EZJ.L",
+        "removed": null,
+        "name": "Easyjet"
+      },
+      {
+        "date": "2013-03-18",
+        "added": null,
+        "removed": "INTU.L",
+        "name": "Intu Properties"
+      },
+      {
+        "date": "2013-03-18",
+        "added": "LSEG.L",
+        "removed": null,
+        "name": "London Stock Exchange Group"
+      },
+      {
+        "date": "2013-03-18",
+        "added": null,
+        "removed": "KAZ.L",
+        "name": "Kazakhmys"
+      },
+      {
+        "date": "2012-12-24",
+        "added": "TT.L",
+        "removed": null,
+        "name": "TUI Travel"
+      },
+      {
+        "date": "2012-12-24",
+        "added": null,
+        "removed": "PNN.L",
+        "name": "Pennon Group"
+      },
+      {
+        "date": "2012-09-24",
+        "added": "MRO.L",
+        "removed": null,
+        "name": "Melrose"
+      },
+      {
+        "date": "2012-09-24",
+        "added": null,
+        "removed": "IAP.L",
+        "name": "ICAP"
+      },
+      {
+        "date": "2012-09-24",
+        "added": "WG.L",
+        "removed": null,
+        "name": "Wood Group (John)"
+      },
+      {
+        "date": "2012-09-24",
+        "added": null,
+        "removed": "ASHM.L",
+        "name": "Ashmore Group"
+      },
+      {
+        "date": "2012-06-29",
+        "added": "PNN.L",
+        "removed": null,
+        "name": "Pennon Group"
+      },
+      {
+        "date": "2012-06-29",
+        "added": null,
+        "removed": "IPR.L",
+        "name": "International Power"
+      },
+      {
+        "date": "2012-06-18",
+        "added": "BAB.L",
+        "removed": null,
+        "name": "Babcock International Group"
+      },
+      {
+        "date": "2012-06-18",
+        "added": null,
+        "removed": "EMG.L",
+        "name": "Man Group"
+      },
+      {
+        "date": "2012-03-19",
+        "added": "CRDA.L",
+        "removed": null,
+        "name": "Croda International"
+      },
+      {
+        "date": "2012-03-19",
+        "added": null,
+        "removed": "CNE.L",
+        "name": "Cairn Energy"
+      },
+      {
+        "date": "2012-03-19",
+        "added": "ABDN.L",
+        "removed": null,
+        "name": "Aberdeen Asset Management"
+      },
+      {
+        "date": "2012-03-19",
+        "added": null,
+        "removed": "ESSR.L",
+        "name": "Essar Energy"
+      },
+      {
+        "date": "2011-12-19",
+        "added": "CRH.L",
+        "removed": null,
+        "name": "CRH"
+      },
+      {
+        "date": "2011-12-19",
+        "added": null,
+        "removed": "ISAT.L",
+        "name": "Inmarsat"
+      },
+      {
+        "date": "2011-12-19",
+        "added": "EVR.L",
+        "removed": null,
+        "name": "Evraz"
+      },
+      {
+        "date": "2011-12-19",
+        "added": null,
+        "removed": "INVP.L",
+        "name": "Investec"
+      },
+      {
+        "date": "2011-12-19",
+        "added": "POLY.L",
+        "removed": null,
+        "name": "Polymetal International"
+      },
+      {
+        "date": "2011-12-19",
+        "added": null,
+        "removed": "LMI.L",
+        "name": "Lonmin"
+      },
+      {
+        "date": "2011-10-07",
+        "added": "MGGT.L",
+        "removed": null,
+        "name": "Meggitt"
+      },
+      {
+        "date": "2011-10-07",
+        "added": null,
+        "removed": "AU.L",
+        "name": "Autonomy Corporation"
+      },
+      {
+        "date": "2011-09-19",
+        "added": "ASHM.L",
+        "removed": null,
+        "name": "Ashmore Group"
+      },
+      {
+        "date": "2011-09-19",
+        "added": null,
+        "removed": "WG.L",
+        "name": "Wood Group (John)"
+      },
+      {
+        "date": "2011-09-19",
+        "added": "BNZL.L",
+        "removed": null,
+        "name": "Bunzl"
+      },
+      {
+        "date": "2011-09-19",
+        "added": null,
+        "removed": "III.L",
+        "name": "3i Group"
+      },
+      {
+        "date": "2011-06-20",
+        "added": "TATE.L",
+        "removed": null,
+        "name": "Tate & Lyle"
+      },
+      {
+        "date": "2011-06-20",
+        "added": null,
+        "removed": "TT.L",
+        "name": "TUI Travel"
+      },
+      {
+        "date": "2011-05-25",
+        "added": "GLEN.L",
+        "removed": null,
+        "name": "Glencore"
+      },
+      {
+        "date": "2011-05-25",
+        "added": null,
+        "removed": "ISYS.L",
+        "name": "Invensys"
+      },
+      {
+        "date": "2011-03-21",
+        "added": "WG.L",
+        "removed": null,
+        "name": "Wood Group (John)"
+      },
+      {
+        "date": "2011-03-21",
+        "added": null,
+        "removed": "BNZL.L",
+        "name": "Bunzl"
+      },
+      {
+        "date": "2011-03-21",
+        "added": "ITV.L",
+        "removed": null,
+        "name": "ITV"
+      },
+      {
+        "date": "2011-03-21",
+        "added": null,
+        "removed": "ATST.L",
+        "name": "Alliance Trust"
+      },
+      {
+        "date": "2011-03-21",
+        "added": "HL.L",
+        "removed": null,
+        "name": "Hargreaves Lansdown"
+      },
+      {
+        "date": "2011-03-21",
+        "added": null,
+        "removed": "ABG.L",
+        "name": "African Barrick Gold"
+      },
+      {
+        "date": "2010-12-20",
+        "added": "IMI.L",
+        "removed": null,
+        "name": "IMI"
+      },
+      {
+        "date": "2010-12-20",
+        "added": null,
+        "removed": "COB.L",
+        "name": "Cobham"
+      },
+      {
+        "date": "2010-09-20",
+        "added": "RSL.L",
+        "removed": null,
+        "name": "Resolution"
+      },
+      {
+        "date": "2010-09-20",
+        "added": null,
+        "removed": "CWW.L",
+        "name": "Cable and Wireless Worldwide"
+      },
+      {
+        "date": "2010-09-20",
+        "added": "TOMK.L",
+        "removed": null,
+        "name": "Tomkins"
+      },
+      {
+        "date": "2010-09-20",
+        "added": null,
+        "removed": "HOME.L",
+        "name": "Home Retail Group"
+      },
+      {
+        "date": "2010-09-20",
+        "added": "WEIR.L",
+        "removed": null,
+        "name": "Weir Group"
+      },
+      {
+        "date": "2010-09-20",
+        "added": null,
+        "removed": "SGRO.L",
+        "name": "Segro"
+      },
+      {
+        "date": "2010-06-21",
+        "added": "ABG.L",
+        "removed": null,
+        "name": "African Barrick Gold"
+      },
+      {
+        "date": "2010-06-21",
+        "added": null,
+        "removed": "LSEG.L",
+        "name": "London Stock Exchange Group"
+      },
+      {
+        "date": "2010-06-21",
+        "added": "ESSR.L",
+        "removed": null,
+        "name": "Essar energy"
+      },
+      {
+        "date": "2010-06-21",
+        "added": null,
+        "removed": "TCG.L",
+        "name": "Thomas Cook Group"
+      },
+      {
+        "date": "2010-03-22",
+        "added": "INVP.L",
+        "removed": null,
+        "name": "Investec"
+      },
+      {
+        "date": "2010-03-22",
+        "added": null,
+        "removed": "RSL.L",
+        "name": "Resolution"
+      }
+    ]
+  },
+  "notes": [
+    "Temporary demerger lines (Magnum, Valterra, Jackson) are omitted because they are added and deleted within days."
+  ]
+}

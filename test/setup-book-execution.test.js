@@ -245,6 +245,16 @@ test('per-setup caps are off unless an env override is set', () => {
   assert.equal(evidenceTier('UK_LONG_MOMENTUM'), 3);
 });
 
+test('MTX.DE overlap keeps the engine cell that passes and otherwise the date hash', () => {
+  const plans = (signalDate, mediumPasses) => [
+    { setupId: 'GERMANY_MEDIUM_ENGINE', ticker: 'MTX.DE', signalDate, key: 'medium', passesPublishGate: mediumPasses },
+    { setupId: 'GERMANY_LONG_ENGINE', ticker: 'MTX.DE', signalDate, key: 'long', passesPublishGate: false },
+  ].sort(compareSetupEntries);
+  assert.equal(plans('2026-10-09', false)[0].setupId, 'GERMANY_LONG_ENGINE');
+  assert.equal(plans('2026-10-12', false)[0].setupId, 'GERMANY_MEDIUM_ENGINE');
+  assert.equal(plans('2026-10-09', true)[0].setupId, 'GERMANY_MEDIUM_ENGINE');
+});
+
 test('one 50-slot pool and the margin floor', () => {
   const prior = process.env.CAPITAL_POOL_ENABLED;
   const role = process.env.IBKR_BRIDGE_ROLE;
