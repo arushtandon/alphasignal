@@ -203,6 +203,11 @@ const {
 const { sendTelegram } = require('../lib/strategy/setup-book-runtime');
 const { instrumentFor } = require('../lib/research/exit-amendment');
 const { SETUPS: EVIDENCE_SETUPS } = require('../lib/strategy/evidence-setup-book');
+const {
+  isUsSetupBookBuy,
+  usPremarketParentDecision,
+  noteOfficialOpen,
+} = require('../lib/strategy/us-premarket-entry');
 
 const LIVE_ROLE = process.argv.includes('live') || process.env.IBKR_BRIDGE_ROLE === 'live';
 if (!LIVE_ROLE) {
@@ -859,8 +864,12 @@ function rearmBracketEvent(key, row, src, reason) {
     restoreMustPrint: !!(row && row.restoreMustPrint),
     qtyTotal: Number(row && row.qtyTotal) || base.qtyTotal,
     forceOpg: reason === 'us-pre-handoff-opg' || reason === 'us-pre-park-opg'
-      || reason === 'us-pre-unfavorable-to-opg'
+      || reason === 'us-pre-unfavorable-to-opg' || reason === 'us-setup-pre-to-open'
       || reason === 'asia-opg-refresh' || reason === 'asia-to-opg',
+    usPremarketEntry: !!(row && (row.usPremarketEntry || row.entryStyle === 'LMT-PRE')),
+    remainderQty: reason === 'us-setup-pre-to-open' && Number(row && row.qtyFilled) > 0
+      ? Math.max(0, Number(row.qtyTotal) - Number(row.qtyFilled)) : undefined,
+    positionQty: reason === 'us-setup-pre-to-open' ? Number(row && row.qtyTotal) || undefined : undefined,
     skipChase: (!!((row && row.userReentry) || source.userReentry) && !(row && row.restoreMustPrint))
       || reason === 'us-rth-after-opg' || reason === 'eu-rth-after-opg',
     carryUnfilled: ((asia || market === 'LSE') && row && !row.entryFilled) || forceCashOpenActive(row),
@@ -1005,6 +1014,21 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
     // US cash entries print at the 09:30 auction / RTH only. outsideRth on
     // MKT+OPG let FDS fill at 288.72 in Sep 9 pre — above that day's 287.95 high.
     const usCash = false;
+    if (opts.usSetupPremarket && isUsSetupBookBuy({
+      side: opts.side, setupId: opts.setupId, market: 'US',
+    })) {
+      const decision = usPremarketParentDecision(opts.nowMs || Date.now());
+      if (decision === 'defer') {
+        return { defer: true, entryStyle: 'DEFER-US-UNTIL-PRE', action, totalQuantity: qty };
+      }
+      if (decision === 'limit' && entryPx > 0) {
+        return {
+          orderType: 'LMT', action, totalQuantity: qty,
+          lmtPrice: roundPx(entryPx, contract, side === 'sell' ? 'down' : 'up'),
+          tif: 'DAY', outsideRth: true, transmit: true, entryStyle: 'LMT-PRE',
+        };
+      }
+    }
     if (opts.forceOpg && phase === 'pre') {
       return { orderType: 'MKT', action, totalQuantity: qty, tif: 'OPG', outsideRth: usCash, transmit: false, entryStyle: 'OPG' };
     }
@@ -2123,6 +2147,19 @@ async function main() {
             } else if (Number(px) > 0) {
               row.ibAvgFill = px;
             }
+            if (row.entryStyle === 'LMT-PRE' || row.usPremarketEntry) {
+              row.usPremarketEntry = true;
+              const add = Number(exec.shares) || 0;
+              if (add > 0) row.qtyFilled = (Number(row.qtyFilled) || 0) + add;
+              const lotNow = Number(row.contract && row.contract.lotHint) || 1;
+              const shapeNow = row.setupId
+                ? setupOrderShape(row.setupId, row.qtyFilled || row.qtyTotal, lotNow)
+                : null;
+              if (shapeNow && shapeNow.executable !== false) {
+                row.qtySold = shapeNow.targetQuantity;
+                row.qtyRunner = shapeNow.runnerQuantity;
+              }
+            }
             applyFillRebase(key, row, row.ibAvgFill);
             scheduleProtectiveBracket(key);
             if (firstEntry) notifyFillTelegram('entry', key, row, row.ibAvgFill || px, exec.shares);
@@ -2133,6 +2170,22 @@ async function main() {
           const fillAt = new Date().toISOString();
           const cMeta = enrichSessionMeta(row.contract || contract || toContract(row.ticker));
           const phase = sessionPhase(cMeta || {}, Date.parse(fillAt));
+          if (role === 'entry' && row.usPremarketEntry) {
+            if (phase === 'pre' && Number(row.ibAvgFill) > 0) {
+              row.premarketFillPx = Number(row.ibAvgFill);
+              row.premarketFillAt = fillAt;
+              log('US pre-market fill', row.ticker,
+                'px=' + row.premarketFillPx, 'at=' + fillAt, 'qty=' + (row.qtyFilled || exec.shares));
+            }
+            if (phase !== 'pre' && Number(px) > 0) {
+              state.usPremarketVsOpen = state.usPremarketVsOpen || [];
+              const noted = noteOfficialOpen(state.usPremarketVsOpen, row, px);
+              if (noted) {
+                log(noted.entryLine);
+                log(noted.statusLine);
+              }
+            }
+          }
           state.pendingReports = state.pendingReports || [];
           const comm = commissionByExec.get(String(exec.execId));
           const report = {
@@ -3672,6 +3725,21 @@ async function main() {
       split.sold = shape.targetQuantity;
       split.runner = shape.runnerQuantity;
     }
+    if (Number(evt.remainderQty) > 0 && split.total > 0) {
+      const ordered = Number(evt.remainderQty);
+      const base = Number(evt.positionQty) > 0 ? Number(evt.positionQty) : split.total;
+      if (split.risk && Number(split.risk.notionalUsd) > 0 && base > 0) {
+        split.risk.notionalUsd = Number(split.risk.notionalUsd) * (ordered / base);
+      }
+      split.total = ordered;
+      if (evt.setupId && !evt.userReentry) {
+        setupShape = setupOrderShape(evt.setupId, ordered, lot);
+        if (setupShape && setupShape.executable !== false) {
+          split.sold = setupShape.targetQuantity;
+          split.runner = setupShape.runnerQuantity;
+        }
+      }
+    }
     if (!(split.total > 0)) {
       log('skip entry — zero size for', evt.ticker, 'entry', evt.entry, 'lot', lot);
       postJson('/api/ibkr/risk-decision', {
@@ -3870,6 +3938,9 @@ async function main() {
     }
     const parentSpec = parentEntrySpec(contract, openAction, split.total, {
       side: evt.side, entryPx: evt.entry, quotePx,
+      setupId: evt.setupId,
+      usSetupPremarket: isUsSetupBookBuy(evt),
+      nowMs: Date.now(),
       forceOpg: !!evt.forceOpg,
       momentumOpen: !!evt.momentumOpen,
       forceExt: String(evt.reason || '') === 'rearm-model-entry',
@@ -3910,14 +3981,15 @@ async function main() {
     const tp1Id = children.tp1 ? nid(execClientId) : null;
     const initialTp2Id = children.tp2 ? nid(execClientId) : null;
     const { entryStyle, defer, ...parentFields } = parentSpec;
+    const usPremarketAlone = entryStyle === 'LMT-PRE' || evt.usPremarketEntry === true;
     const parent = baseOrder({ orderId: parentId, ...parentFields });
-    if (asiaStandalone || momentumNoStop) parent.transmit = true;
+    if (asiaStandalone || momentumNoStop || usPremarketAlone) parent.transmit = true;
     const fullTp1 = !oneLotRunner && split.sold > 0 && !(split.runner > 0);
     const oca = (fullTp1 || oneLotRunner) ? { ocaGroup: ocaGroupForKey(evt.key || evt.ticker), ocaType: 1 } : {};
     // Stop child: FULL quantity — pre-TP1 an SL hit closes the whole position
     // (identical to the simulator's sl_hit). GTC so it survives sessions.
     // 1-lot / 1-contract: OCA with TP1 so a TP1 fill cannot leave a live STP.
-    const stopOrder = (!asiaStandalone && stopId != null) ? baseOrder({
+    const stopOrder = (!asiaStandalone && !usPremarketAlone && stopId != null) ? baseOrder({
       orderId: stopId, action: closeAction, orderType: 'STP',
       auxPrice: stopPx, totalQuantity: split.total,
       parentId, transmit: tp1Id == null,
@@ -3925,13 +3997,13 @@ async function main() {
       ...oca
     }) : null;
     // TP1 child: 50% on splittable names; 100% (OCA with stop) when unsplittable.
-    const tp1Order = (!asiaStandalone && tp1Id != null) ? baseOrder({
+    const tp1Order = (!asiaStandalone && !usPremarketAlone && tp1Id != null) ? baseOrder({
       orderId: tp1Id, action: closeAction, orderType: 'LMT',
       lmtPrice: tp1Px, totalQuantity: split.sold,
       parentId, outsideRth: ORDER_OUTSIDE_RTH, transmit: true,
       ...oca
     }) : null;
-    const initialTp2Order = (!asiaStandalone && initialTp2Id != null) ? baseOrder({
+    const initialTp2Order = (!asiaStandalone && !usPremarketAlone && initialTp2Id != null) ? baseOrder({
       orderId: initialTp2Id, action: closeAction, orderType: 'LMT',
       lmtPrice: tp2Px, totalQuantity: split.runner,
       parentId, outsideRth: ORDER_OUTSIDE_RTH, transmit: true,
@@ -3960,8 +4032,11 @@ async function main() {
       log('Placed bracket', evt.ticker + listingNote, evt.side,
         `exch=${(oc && oc.exchange) || contract.primaryExch || contract.market || ''} style=${entryStyle} phase=${sessionPhase(contract)} qty=${split.total} sizePx=${roundPx(evt.entry, contract)} stop=${stopPx}(full) tp1=${tp1Px}x${split.sold} runner=${split.runner}${sizeNote}${gateNote}${jpNote}`);
     }
+    const parkedStopId = usPremarketAlone ? null : stopId;
+    const parkedTp1Id = usPremarketAlone ? null : tp1Id;
+    const parkedTp2Id = usPremarketAlone ? null : initialTp2Id;
     return {
-      parentId, stopId, tp1Id, tp2Id: initialTp2Id,
+      parentId, stopId: parkedStopId, tp1Id: parkedTp1Id, tp2Id: parkedTp2Id,
       ticker: evt.ticker, hz: evt.hz, side: evt.side,
       entry: evt.entry, stopPx, originalSl: stopPx, tp1Px, tp2Px, modelTp2: tp2Px, entryStyle,
       extLmt: parent.lmtPrice != null ? Number(parent.lmtPrice) : null,
@@ -3987,6 +4062,7 @@ async function main() {
       portfolioAdmission: portfolioGate,
       ...setupState,
       userReentry: evt.userReentry === true,
+      usPremarketEntry: usPremarketAlone,
       updated: evt.t || new Date().toISOString(), dry: DRY
     };
   }
@@ -4037,9 +4113,10 @@ async function main() {
   }
 
   function protectiveStopOrder(row, key, fields) {
+    const stopFields = row && row.usPremarketEntry ? { ...fields, outsideRth: false } : fields;
     return row.tp1Done === true
-      ? runnerStopOrder(row, key, fields)
-      : baseOrder({ ...fields, orderType: 'STP' });
+      ? runnerStopOrder(row, key, stopFields)
+      : baseOrder({ ...stopFields, orderType: 'STP' });
   }
 
   const RUNNER_STOP_ACK_GRACE_MS = 10 * 60 * 1000;
@@ -4151,7 +4228,12 @@ async function main() {
     if (!(sl > 0) && !(tp1 > 0)) return false;
     const tp1Same = !(tp1 > 0) || Math.abs(tp1 - Number(row.tp1Px || 0)) < 1e-9;
     const slSame = !(sl > 0) || Math.abs(sl - Number(row.stopPx || 0)) < 1e-9;
-    if (tp1Same && slSame) return false;
+    const filledQty = Number(row.qtyFilled) || 0;
+    const stopQty = row.usPremarketEntry && filledQty > 0
+      ? filledQty
+      : (Number(row.qtyTotal) || 0);
+    const qtyChanged = row.usPremarketEntry && Number(row.stopQtyLive) !== stopQty;
+    if (tp1Same && slSame && !qtyChanged) return false;
     if (tp1 > 0) row.tp1Px = tp1;
     if (sl > 0) {
       row.stopPx = sl;
@@ -4162,7 +4244,7 @@ async function main() {
     const closeAction = isSell ? 'BUY' : 'SELL';
     const oca = (!(Number(row.qtyRunner) > 0) && Number(row.qtySold) > 0)
       ? { ocaGroup: ocaGroupForKey(key), ocaType: 1 } : {};
-    if (!tp1Same && Number(row.qtySold) > 0) {
+    if ((!tp1Same || qtyChanged) && Number(row.qtySold) > 0) {
       if (row.tp1Id != null) cancelOrder(row.tp1Id, 'TP1 rebase replace ' + key);
       const tp1Id = nidForRow(row);
       row.tp1Id = tp1Id;
@@ -4172,16 +4254,18 @@ async function main() {
         lmtPrice: tp1, totalQuantity: row.qtySold, transmit: true, ...oca
       }), 'TP1 rebase ' + key);
     }
-    const stopQty = Number(row.qtyTotal) || 0;
-    if (!slSame && stopQty > 0) {
+    if ((!slSame || qtyChanged) && stopQty > 0) {
       if (row.stopId != null) cancelOrder(row.stopId, 'SL rebase replace ' + key);
       const sid = nidForRow(row);
       row.stopId = sid;
       row.stopClientId = state.orderClients[sid] || row.placeClientId;
-      transmitOrder(sid, row.contract, baseOrder({
+      row.stopQtyLive = stopQty;
+      const stopFields = {
         orderId: sid, action: closeAction, orderType: 'STP',
         auxPrice: sl, totalQuantity: stopQty, transmit: true, ...oca
-      }), 'SL rebase ' + key);
+      };
+      if (row.usPremarketEntry) stopFields.outsideRth = false;
+      transmitOrder(sid, row.contract, baseOrder(stopFields), 'SL rebase ' + key);
     }
     log(row.setupId ? 'REBASE setup ATR exits from fill' : 'REBASE exits from fill',
       key, 'fill=' + fillPx,
@@ -7654,11 +7738,12 @@ async function main() {
             cancelWaits.push(waitCancel(oldParent, 3500));
             cancelOrder(oldParent, 'rearm parent ' + key);
           }
-          if (oldStop != null) {
+          const keepChildren = reason === 'us-setup-pre-to-open' && Number(row.qtyFilled) > 0;
+          if (oldStop != null && !keepChildren) {
             cancelWaits.push(waitCancel(oldStop, 3500));
             cancelOrder(oldStop, 'rearm stop ' + key);
           }
-          if (oldTp1 != null) {
+          if (oldTp1 != null && !keepChildren) {
             cancelWaits.push(waitCancel(oldTp1, 3500));
             cancelOrder(oldTp1, 'rearm tp1 ' + key);
           }
@@ -7690,6 +7775,23 @@ async function main() {
             placed.rearmReason = reason;
             placed.rearmCount = (Number(row.rearmCount) || 0) + 1;
             placed.entryFilled = false;
+            if (reason === 'us-setup-pre-to-open') {
+              placed.usPremarketEntry = true;
+              placed.qtyFilled = Number(row.qtyFilled) || 0;
+              placed.premarketFillPx = row.premarketFillPx;
+              placed.premarketFillAt = row.premarketFillAt;
+              placed.officialOpen = row.officialOpen;
+              if (Number(row.qtyTotal) > Number(placed.qtyTotal)) placed.qtyTotal = Number(row.qtyTotal);
+              if (keepChildren) {
+                placed.stopId = row.stopId;
+                placed.tp1Id = row.tp1Id;
+                placed.tp2Id = row.tp2Id;
+                placed.stopQtyLive = row.stopQtyLive;
+                placed.qtySold = row.qtySold;
+                placed.qtyRunner = row.qtyRunner;
+                placed.entryFilled = placed.qtyFilled > 0;
+              }
+            }
             if (row.userReentry) placed.userReentry = true;
             state.byKey[key] = placed;
             log('RECONCILE: re-armed', key, 'reason=' + reason, '→', placed.entryStyle,
@@ -7723,6 +7825,19 @@ async function main() {
         // Only attribute fills to THIS parent — sibling horizons share a symbol
         // (e.g. 2914.T short filled must not mark 2914.T long filled).
         const parentFilledQty = orderFills[row.parentId] || 0;
+        const handoffPartial = row.entryStyle === 'LMT-PRE'
+          && isUsSetupBookBuy(row)
+          && parentFilledQty > 0
+          && parentFilledQty + 1e-9 < (Number(row.qtyTotal) || 0)
+          && usPremarketParentDecision(Date.now()) !== 'limit';
+        if (handoffPartial) {
+          row.qtyFilled = parentFilledQty;
+          row.usPremarketEntry = true;
+          if (!(Number(row.premarketFillPx) > 0) && Number(row.ibAvgFill) > 0) {
+            row.premarketFillPx = Number(row.ibAvgFill);
+          }
+          if (!row.premarketFillAt) row.premarketFillAt = new Date().toISOString();
+        }
         // False fill: sibling horizon stamped entryFilled while this OPG never
         // filled. Only clear when THIS parent has zero fills — otherwise we
         // re-arm and double-buy (2914.T long entered twice today).
@@ -7743,7 +7858,7 @@ async function main() {
           row.restoreAfterFalseOrphan = true;
           row.entryStyle = 'OPG';
           saveState(state);
-        } else if (row.entryFilled || parentFilledQty > 0) {
+        } else if ((row.entryFilled || parentFilledQty > 0) && !handoffPartial) {
           if (!row.entryFilled && parentFilledQty > 0) {
             row.entryFilled = true;
             notifyFillTelegram('entry', key, row, row.ibAvgFill, parentFilledQty);
@@ -7751,7 +7866,7 @@ async function main() {
           }
           continue;
         }
-        if (posInDir > 0) {
+        if (posInDir > 0 && !handoffPartial) {
           if (!row.entryFilled) {
             row.entryFilled = true;
             notifyFillTelegram('entry', key, row, row.ibAvgFill, posInDir);
@@ -7881,7 +7996,30 @@ async function main() {
         } else if (eu && phase === 'rth' && row.contractRejected) {
           reason = 'contract-retry';
         } else if (us) {
-          if (phase === 'pre') {
+          if (row.usPremarketEntry && Number(row.premarketFillPx) > 0 && !(Number(row.officialOpen) > 0)
+            && phase === 'rth' && minutesSinceUsRth() >= 0 && minutesSinceUsRth() <= 15) {
+            const openPx = Number(ibQuoteForTicker(row.ticker)) || 0;
+            if (openPx > 0) {
+              state.usPremarketVsOpen = state.usPremarketVsOpen || [];
+              const noted = noteOfficialOpen(state.usPremarketVsOpen, row, openPx);
+              if (noted) {
+                log(noted.entryLine);
+                log(noted.statusLine);
+                saveState(state);
+              }
+            }
+          }
+          if (phase === 'pre' && row.entryStyle === 'LMT-PRE' && isUsSetupBookBuy(row)) {
+            if (usPremarketParentDecision(Date.now()) !== 'limit') {
+              const filledNow = parentFilledQty || Number(row.qtyFilled) || 0;
+              const totalNow = Number(row.qtyTotal) || 0;
+              if (!(filledNow > 0) || filledNow + 1e-9 < totalNow) {
+                reason = 'us-setup-pre-to-open';
+                log('RECONCILE: US setup pre-market handoff at 09:25 NY', key,
+                  'filled=', filledNow, 'qty=', totalNow);
+              }
+            }
+          } else if (phase === 'pre') {
             ensureMktData(row.ticker, contract);
             const sourceEntry = entryByKey.get(key) || {};
             const forceCorrectiveExt = String(sourceEntry.reason || '') === 'rearm-model-entry';
@@ -7928,6 +8066,14 @@ async function main() {
               log('RECONCILE: US pre first fire', key, 'quote=', gatePx, 'fav=', fav, '→', reason);
             }
             }
+          } else if (phase === 'rth' && row.entryStyle === 'LMT-PRE' && isUsSetupBookBuy(row)) {
+            const filledNow = parentFilledQty || Number(row.qtyFilled) || 0;
+            const totalNow = Number(row.qtyTotal) || 0;
+            if (!(filledNow > 0) || filledNow + 1e-9 < totalNow) {
+              reason = 'us-setup-pre-to-open';
+              log('RECONCILE: US setup pre-market limit still working after 09:25 NY', key,
+                'filled=', filledNow, 'qty=', totalNow);
+            }
           } else if (phase === 'rth' && (row.entryStyle === 'OPG' || isUsExtStyle(row.entryStyle))) {
             if (row.entryStyle === 'OPG' && minutesSinceUsRth() < AUCTION_HOLD_MIN) {
               log('RECONCILE: hold US OPG through auction', key, 'minsSinceRth=', minutesSinceUsRth());
@@ -7936,7 +8082,7 @@ async function main() {
             }
           } else if (phase === 'post' || phase === 'closed') {
             // Do not submit overnight. Cancel leftover extended parents and wait for pre.
-            if (row.parentId != null && (isUsExtStyle(row.entryStyle) || row.entryStyle === 'MKT')) {
+            if (row.parentId != null && (isUsExtStyle(row.entryStyle) || row.entryStyle === 'MKT' || row.entryStyle === 'LMT-PRE')) {
               cancelOrder(row.parentId, 'US overnight wait-for-pre parent ' + key);
               if (row.stopId != null) cancelOrder(row.stopId, 'US overnight wait-for-pre stop ' + key);
               if (row.tp1Id != null) cancelOrder(row.tp1Id, 'US overnight wait-for-pre tp1 ' + key);
