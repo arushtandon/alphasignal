@@ -2,7 +2,8 @@
 const assert = require('assert');
 const {
   scheduledEntryReleaseAllowed,
-  boardPublishedAtRelease
+  boardPublishedAtRelease,
+  entryReleaseBlock,
 } = require('../lib/schedule/entry-release');
 
 const friday3am = Date.parse('2026-08-20T19:00:00.000Z'); // 03:00 SGT 21 Aug
@@ -46,5 +47,26 @@ assert.strictEqual(scheduledEntryReleaseAllowed({
   entryDate: '2026-10-11T22:00:00.000Z',
   t: '2026-10-11T22:00:00.000Z',
 }, restart), true, 'today\'s 06:00 SGT release stays eligible');
+
+const { accountReadingFresh } = require('../lib/strategy/setup-book-execution');
+const released = Date.parse('2026-10-13T08:00:00.000Z'); // 16:00 SGT day D, 04:00 ET
+const rearm = Date.parse('2026-10-13T16:30:00.000Z'); // 00:30 SGT D+1, 12:30 ET day D
+const usEntry = {
+  ticker: 'INTC',
+  setupId: 'US_SHORT_MR',
+  market: 'US',
+  side: 'buy',
+  entryDate: new Date(released).toISOString(),
+  t: new Date(released).toISOString(),
+};
+assert.strictEqual(entryReleaseBlock(usEntry, rearm), null,
+  'US re-arm at 00:30 SGT stays on the US session date');
+const marginNow = Date.parse('2026-10-13T16:10:00.000Z'); // 00:10 SGT D+1, 12:10 ET
+const margin = accountReadingFresh({
+  summaryAt: new Date(marginNow - 12 * 60 * 1000).toISOString(),
+  netLiquidation: 100000,
+}, marginNow, 'US');
+assert.strictEqual(margin.fresh, true);
+assert.notStrictEqual(margin.detail, 'previous-day');
 
 console.log('PASS entry-release gate');

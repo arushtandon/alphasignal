@@ -1,6 +1,7 @@
 'use strict';
 
 const { accountReadingFresh } = require('../lib/strategy/setup-book-execution');
+const { isUsSetupEntry } = require('../lib/schedule/entry-release');
 
 const SUMMARY_TIMEOUT_MS = 20000;
 const SUMMARY_ATTEMPTS = 2;
@@ -71,7 +72,8 @@ async function admitSetupEntries(ib, accountSnap, entries, options = {}) {
   const batch = Array.isArray(entries) ? entries : [];
   if (!batch.length) return { proceed: [], skipped: [], alerted: false, summaryAt: accountSnap.summaryAt || null };
   const now = options.now ? options.now() : Date.now();
-  const fresh = accountReadingFresh(accountSnap, now);
+  const session = options.session || (batch.every(isUsSetupEntry) ? 'US' : undefined);
+  const fresh = accountReadingFresh(accountSnap, now, session);
   if (fresh.fresh) {
     return {
       proceed: batch.slice(),

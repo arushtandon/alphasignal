@@ -3710,7 +3710,7 @@ async function main() {
         lookAheadAvailableFunds: accountSnap.lookAheadAvailableFunds,
         lookAheadExcessLiquidity: accountSnap.lookAheadExcessLiquidity,
         summaryAt: accountSnap.summaryAt,
-      }, { ticker: evt.ticker, key: evt.key });
+      }, { ticker: evt.ticker, key: evt.key, session: contract && contract.usRth ? 'US' : undefined });
       if (pool.applied && !pool.allowed) {
         log(pool.log, evt.ticker, evt.setupId, pool.detail || pool.reason,
           `open=${pool.plan?.open ?? 0}/${pool.plan?.slots ?? 0}`);
