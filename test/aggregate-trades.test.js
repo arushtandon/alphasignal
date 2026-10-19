@@ -77,3 +77,42 @@ test('aggregateTrades golden fixture retains endpoint lot and PnL semantics', as
   assert.deepEqual(actual, fixture.expected);
   assert.deepEqual(accounting.totals, fixture.totals);
 });
+
+test('LSE reconciliation mark in pounds is normalized to the pence fill unit', () => {
+  const rows = [
+    {
+      key: 'SHEL.L|medium|Tue Sep 08 2026',
+      ticker: 'SHEL.L',
+      hz: 'medium',
+      side: 'buy',
+      role: 'entry',
+      qty: 744,
+      price: 3523,
+      ccyScale: 100,
+      currency: 'GBP',
+      time: '2026-09-08T09:01:46.118Z',
+      execId: 'entry',
+    },
+    {
+      key: 'SHEL.L|medium|Tue Sep 08 2026',
+      ticker: 'SHEL.L',
+      hz: 'medium',
+      side: 'buy',
+      role: 'flatten',
+      qty: 372,
+      price: 37.873549,
+      ccyScale: 100,
+      currency: 'GBP',
+      time: '2026-10-13T14:53:43.658Z',
+      execId: 'recon-trim',
+      synthetic: true,
+      recon: 'qty-trim',
+    },
+  ];
+
+  const [trade] = aggregateTrades(rows, context()).trades;
+  assert.equal(trade.avgEntry, 3523);
+  assert.equal(trade.avgExit, 3787.3549);
+  assert.ok(trade.realizedLocal > 0, 'a profitable pence exit must not become a five-figure loss');
+  assert.ok(Math.abs(trade.realizedLocal - 983.400228) < 1e-6);
+});

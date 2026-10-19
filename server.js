@@ -63,6 +63,7 @@ const {
   resolveSetupBookCell,
 } = require('./lib/strategy/setup-book');
 const { compareSetupEntries, capitalPoolEnabled, capitalDashboard } = require('./lib/strategy/setup-book-execution');
+const { cachedEvidenceBars } = require('./lib/strategy/evidence-bars-cache');
 const { planMomentumBatch, commitMomentumAcceptances, BOOKS: MOMENTUM_BOOKS, padBenchmarkCalendar, previousWeekday } = require('./lib/strategy/momentum-book');
 const { createScanDiagnostic } = require('./lib/strategy/scan-diagnostic');
 const { buildPublicationCellRecord, freezePublishedFields } = require('./lib/strategy/publication-record');
@@ -8199,10 +8200,11 @@ function canonicalEvidenceMarket(raw, symbol) {
 }
 
 async function evidenceBars(symbol) {
-  if (!_evidenceBarsCache.has(symbol)) {
-    _evidenceBarsCache.set(symbol, fetchOHLCV(symbol, '2y', '1d').catch(() => null));
-  }
-  return _evidenceBarsCache.get(symbol);
+  return cachedEvidenceBars(
+    _evidenceBarsCache,
+    symbol,
+    ticker => fetchOHLCV(ticker, '2y', '1d').catch(() => null),
+  );
 }
 
 async function evidenceSetupPlans(sym, marketRaw, daily) {
@@ -18057,12 +18059,23 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
       if (!asByTicker.has(o.ticker)) asByTicker.set(o.ticker, []);
       asByTicker.get(o.ticker).push(o);
       const mk = Number(marksIn[o.ticker] || marksIn[o.rawTicker]);
-      if (mk > 0) { o.mark = mk; o.markSrc = o.markSrc || 'ib-bridge'; }
+      if (mk > 0) {
+        o.mark = ibkrAvgToFillUnit(mk, o.ccyScale, o.avgEntry, {
+          ticker: o.rawTicker || o.ticker
+        }) || mk;
+        o.markSrc = o.markSrc || 'ib-bridge';
+      }
       // Dual-list marks: AIR.PA can use AIR.DE mark and vice versa
       if (!(o.mark > 0)) {
         for (const a of ibkrYahooAliases(o.ticker)) {
           const am = Number(marksIn[a]);
-          if (am > 0) { o.mark = am; o.markSrc = 'ib-bridge-alias'; break; }
+          if (am > 0) {
+            o.mark = ibkrAvgToFillUnit(am, o.ccyScale, o.avgEntry, {
+              ticker: o.rawTicker || o.ticker
+            }) || am;
+            o.markSrc = 'ib-bridge-alias';
+            break;
+          }
         }
       }
     }

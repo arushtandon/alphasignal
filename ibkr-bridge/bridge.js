@@ -234,6 +234,16 @@ const MAX_EVENT_AGE_MS = Math.max(1, parseFloat(process.env.IBKR_MAX_EVENT_AGE_H
 const ALLOW_NSE = process.env.IBKR_ALLOW_NSE === '1';
 /** Trial: send outsideRth on every order. IB accepts, ignores (2109), or rejects per venue. */
 const ORDER_OUTSIDE_RTH = process.env.IBKR_OUTSIDE_RTH !== '0';
+const ACC_SUMMARY_REQ = 870001;
+const ACC_SUMMARY_TAGS = [
+  'NetLiquidation', 'AvailableFunds', 'FullAvailableFunds', 'BuyingPower',
+  'TotalCashValue', 'PreviousDayEquityWithLoanValue', 'EquityWithLoanValue',
+  'GrossPositionValue', 'ExcessLiquidity', 'LookAheadAvailableFunds',
+  'LookAheadExcessLiquidity', 'InitMarginReq', 'MaintMarginReq',
+  'FullInitMarginReq', 'FullMaintMarginReq',
+  'RealizedPnL', 'UnrealizedPnL', 'AccruedCash', 'AccruedDividend',
+  'DividendReceivable', 'Cushion'
+].join(',');
 const EXEC_POOL_SIZE = Math.max(1, Math.min(25, parseInt(process.env.IBKR_EXEC_POOL_SIZE || '20', 10) || 20));
 const EXEC_POOL_START = Math.max(1, parseInt(process.env.IBKR_EXEC_POOL_START || '30', 10) || 30);
 const STATE_FILE = process.env.STATE_FILE || path.join(__dirname, 'bridge-state.json');
@@ -2481,16 +2491,6 @@ async function main() {
       } catch (_) { /* ignore */ }
     });
     // AccountSummary is a second path — some Gateway sessions only fill this.
-    const ACC_SUMMARY_REQ = 870001;
-    const ACC_SUMMARY_TAGS = [
-      'NetLiquidation', 'AvailableFunds', 'FullAvailableFunds', 'BuyingPower',
-      'TotalCashValue', 'PreviousDayEquityWithLoanValue', 'EquityWithLoanValue',
-      'GrossPositionValue', 'ExcessLiquidity', 'LookAheadAvailableFunds',
-      'LookAheadExcessLiquidity', 'InitMarginReq', 'MaintMarginReq',
-      'FullInitMarginReq', 'FullMaintMarginReq',
-      'RealizedPnL', 'UnrealizedPnL', 'AccruedCash', 'AccruedDividend',
-      'DividendReceivable', 'Cushion'
-    ].join(',');
     try {
       ib.reqAccountSummary(ACC_SUMMARY_REQ, 'All', ACC_SUMMARY_TAGS);
       log('reqAccountSummary subscribed');
