@@ -45,6 +45,7 @@ test('aggregateTrades golden fixture retains endpoint lot and PnL semantics', as
     fillExitPnlUsd,
     fillDailyPnlUsd,
     futuresMultiplierFor,
+    ibkrAvgToFillUnit,
     liveMarks: {},
     futuresStillTradable: () => true,
     markMap: { AAPL: { price: 120, src: 'fixture' } },
@@ -115,4 +116,41 @@ test('LSE reconciliation mark in pounds is normalized to the pence fill unit', (
   assert.equal(trade.avgExit, 3787.3549);
   assert.ok(trade.realizedLocal > 0, 'a profitable pence exit must not become a five-figure loss');
   assert.ok(Math.abs(trade.realizedLocal - 983.400228) < 1e-6);
+});
+
+test('LSE pence mark is normalized to a restored pound-denominated entry', async () => {
+  const rows = [{
+    key: 'SGRO.L|long|Fri Sep 04 2026',
+    ticker: 'SGRO.L',
+    hz: 'long',
+    side: 'buy',
+    role: 'entry',
+    qty: 919,
+    price: 9.501244,
+    ccyScale: 1,
+    currency: 'GBP',
+    time: '2026-09-04T08:00:00.000Z',
+    execId: 'entry',
+  }];
+
+  const trades = aggregateTrades(rows, context()).trades;
+  const accounting = await calculateTradePnl(trades, {
+    usdPerCcy: async () => 1.3,
+    fillTax,
+    bookedExitPnlUsd,
+    fillExitPnlUsd,
+    fillDailyPnlUsd,
+    futuresMultiplierFor,
+    ibkrAvgToFillUnit,
+    liveMarks: {},
+    futuresStillTradable: () => true,
+    markMap: { 'SGRO.L': { price: 900, src: 'yahoo' } },
+    accumulateLotDaily,
+    toDailyArray
+  });
+
+  const [trade] = accounting.trades;
+  assert.equal(trade.mark, 9);
+  assert.ok(Math.abs(trade.unrealizedUsd) < 1000);
+  assert.equal(accounting.totals.totUnrealUsd, trade.unrealizedUsd);
 });

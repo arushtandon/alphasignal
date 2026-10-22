@@ -19310,6 +19310,7 @@ app.get('/api/ibkr/trades', async (req, res) => {
       fillExitPnlUsd,
       fillDailyPnlUsd,
       futuresMultiplierFor,
+      ibkrAvgToFillUnit,
       liveMarks: _ibkrLiveMarks,
       futuresStillTradable,
       markMap,
