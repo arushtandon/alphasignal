@@ -158,6 +158,20 @@ const PORT = process.env.PORT || 3000;
 // Performance-program workers import the replay functions below, but must never
 // initialize server persistence or mutate the live dashboard/history state.
 const IS_PERFORMANCE_WORKER = process.env.PERFORMANCE_WORKER === '1';
+// Boot-time ledger/history/risk-state repairs may only run in the process that
+// actually serves traffic (`node server.js`). Anything that merely requires this
+// module — research runners, forked workers, tests — must never write data/.
+const IS_MAIN_PROCESS = require.main === module;
+const BOOT_WRITES_ENABLED = IS_MAIN_PROCESS && !IS_PERFORMANCE_WORKER;
+function bootRepair(label, fn) {
+  if (!BOOT_WRITES_ENABLED) return;
+  try {
+    const out = fn();
+    if (out && typeof out.catch === 'function') out.catch(e => console.warn(label, e.message));
+  } catch (e) {
+    console.warn(label, e.message);
+  }
+}
 const durableStore = new PostgresStore(process.env.DATABASE_URL, {
   ssl: process.env.DATABASE_SSL !== '0'
 });
@@ -7572,6 +7586,9 @@ const DATA_DIR = (() => {
     path.join(__dirname, 'data'),
     '/tmp'
   ].filter(Boolean);
+  // Non-serving processes (research runners, workers, tests) only read: pick
+  // the first candidate that exists without probing writability.
+  if (!BOOT_WRITES_ENABLED) return candidates.find(dir => fs.existsSync(dir)) || candidates[0] || '/tmp';
   for (const dir of candidates) {
     try {
       fs.mkdirSync(dir, { recursive: true });
@@ -7607,7 +7624,7 @@ async function captureFmpCapabilityVerdict() {
 
 const HISTORY_FILE = (() => {
   const p = path.join(DATA_DIR, 'history_data.json');
-  if (!IS_PERFORMANCE_WORKER) {
+  if (BOOT_WRITES_ENABLED) {
     try { if (!fs.existsSync(p)) fs.writeFileSync(p, '[]'); } catch (_) {}
   }
   return p;
@@ -7641,7 +7658,7 @@ function saveCapitalPromotionState() {
 function currentCapitalScale() {
   return CAPITAL_SCALE[normalizeStage(capitalPromotionState.stage)];
 }
-if (!IS_PERFORMANCE_WORKER && !capitalPromotionLoadedFromDisk && !process.env.DATABASE_URL) saveCapitalPromotionState();
+if (BOOT_WRITES_ENABLED && !capitalPromotionLoadedFromDisk && !process.env.DATABASE_URL) saveCapitalPromotionState();
 function revertCapitalStage(reason) {
   const next = revertForIntegrityBreach(capitalPromotionState, reason);
   if (next.stage === capitalPromotionState.stage) return false;
@@ -14564,6 +14581,7 @@ try { _rrRefloored = fs.existsSync(RR_REFLOOR_FLAG); } catch (_) {}
 // concrete answer. Read back via GET /api/history/audit?limit=200.
 const AUDIT_LOG_FILE = path.join(path.dirname(HISTORY_FILE), 'history_audit.log');
 function auditLog(event, details) {
+  if (!BOOT_WRITES_ENABLED) return;
   try {
     fs.appendFileSync(AUDIT_LOG_FILE, JSON.stringify({ t: new Date().toISOString(), event, ...(details || {}) }) + '\n');
   } catch (_) {}
@@ -15132,9 +15150,7 @@ function repairOpenHistoryActionsFromIbkrEvents() {
   return n;
 }
 
-try { repairOpenHistoryActionsFromIbkrEvents(); } catch (e) {
-  console.warn('history action repair failed:', e.message);
-}
+bootRepair('history action repair failed:', repairOpenHistoryActionsFromIbkrEvents);
 
 /**
  * Restore open history rows wrongly demoted to Hold (levels wiped) when the
@@ -15175,9 +15191,7 @@ function repairDemotedOpenHistoryFromReason() {
   }
   return n;
 }
-try { repairDemotedOpenHistoryFromReason(); } catch (e) {
-  console.warn('history reason repair failed:', e.message);
-}
+bootRepair('history reason repair failed:', repairDemotedOpenHistoryFromReason);
 
 function readTradeEvents(sinceSeq, limit, tail) {
   const since = Math.max(0, Number(sinceSeq) || 0);
@@ -17079,6 +17093,9 @@ function readIbkrFillRows() {
 }
 
 function writeIbkrFillRows(rows) {
+  // Hard stop: research runners, forked workers and tests that require this
+  // module can never rewrite the broker fill ledger.
+  if (!BOOT_WRITES_ENABLED) throw new Error('IBKR fill ledger writes are disabled outside the serving process');
   rows = dedupeIbkrFillsByExecId(rows || []);
   atomicWriteFileSync(IBKR_FILLS_FILE, rows.map(r => JSON.stringify(r)).join('\n') + (rows.length ? '\n' : ''));
   _ibkrExecIds = new Set(rows.map(r => r.execId).filter(Boolean));
@@ -17181,34 +17198,21 @@ function isZeroEdgeGhostFlatFill(row, allRows) {
   return Math.abs(px - avg) / avg < 0.0005; // < 5 bps with no quote src → invented
 }
 
-// Boot ledger repairs — must run after mutateFillLedger / _ibkrExecIds exist.
-stampLegacyIbkrErrorFills();
-unstampModelIbkrFills();
-emitExitsForLegacyUnauthorizedKeys();
-try { emitExitsForAbandonedUnfilledEntries(); } catch (e) {
-  console.warn('boot abandon-unfilled exits failed:', e.message);
-}
-try { repairErroneousGhostFlats(); } catch (e) {
-  console.warn('boot ghost-flat repair failed:', e.message);
-}
-try { stampGhostFlatFillsAsErrorTrade(); } catch (e) {
-  console.warn('boot ghost-flat error stamp failed:', e.message);
-}
-try { restoreUserReentryGhostLots(); } catch (e) {
-  console.warn('boot user-restore ghost void failed:', e.message);
-}
-try { quarantineErrorFillsOffModelKeys(); } catch (e) {
-  console.warn('boot quarantine error-off-model failed:', e.message);
-}
-try { restoreFilledEntriesFalselyAbandoned(); } catch (e) {
-  console.warn('boot restore false stale-abandon failed:', e.message);
-}
-try {
+// Boot ledger repairs — must run after mutateFillLedger / _ibkrExecIds exist,
+// and only in the serving process (bootRepair is a no-op otherwise).
+bootRepair('boot legacy error-fill stamp failed:', stampLegacyIbkrErrorFills);
+bootRepair('boot model-fill unstamp failed:', unstampModelIbkrFills);
+bootRepair('boot legacy unauthorized exits failed:', emitExitsForLegacyUnauthorizedKeys);
+bootRepair('boot abandon-unfilled exits failed:', emitExitsForAbandonedUnfilledEntries);
+bootRepair('boot ghost-flat repair failed:', repairErroneousGhostFlats);
+bootRepair('boot ghost-flat error stamp failed:', stampGhostFlatFillsAsErrorTrade);
+bootRepair('boot user-restore ghost void failed:', restoreUserReentryGhostLots);
+bootRepair('boot quarantine error-off-model failed:', quarantineErrorFillsOffModelKeys);
+bootRepair('boot restore false stale-abandon failed:', restoreFilledEntriesFalselyAbandoned);
+bootRepair('boot fill execId dedupe failed:', () => {
   const { after, before } = mutateFillLedger('dedupe_execids', (rows) => dedupeIbkrFillsByExecId(rows));
   if (after < before) console.log('Collapsed', before - after, 'duplicate IBKR fill row(s) by execId');
-} catch (e) {
-  console.warn('boot fill execId dedupe failed:', e.message);
-}
+});
 // Re-arm is on-demand only: POST /api/ibkr/rearm { key } — never auto at boot.
 // excess-vs-ib runs after loadIbkrReconReport is defined (below).
 
@@ -17709,9 +17713,7 @@ function saveIbkrReconReport(r, acct) {
     durableStore.saveSnapshot('ibkr-reconciliation', payload, 1);
   } catch (_) {}
 }
-try { quarantineExcessModelEntriesVsIb(); } catch (e) {
-  console.warn('boot quarantine excess-vs-ib failed:', e.message);
-}
+bootRepair('boot quarantine excess-vs-ib failed:', quarantineExcessModelEntriesVsIb);
 function backfillMissingIbkrCommissions() {
   let n = 0;
   mutateFillLedger('backfill_missing_commissions', (rows) => {
@@ -17768,31 +17770,17 @@ function restoreStampInflatedAvgFills() {
   if (n) console.log('Restored', n, 'LSE fill(s) off stamp-inflated IB averageCost');
   return n;
 }
-try { restoreStampInflatedAvgFills(); } catch (e) {
-  console.warn('boot stamp-restore failed:', e.message);
-}
-try { restoreOpenModelFillsFromCursorErr(); } catch (e) {
-  console.warn('boot restore open-model fills failed:', e.message);
-}
-try { repairFuturesRollLedger(); } catch (e) {
-  console.warn('boot futures-roll repair failed:', e.message);
-}
-try {
+bootRepair('boot stamp-restore failed:', restoreStampInflatedAvgFills);
+bootRepair('boot restore open-model fills failed:', restoreOpenModelFillsFromCursorErr);
+bootRepair('boot futures-roll repair failed:', repairFuturesRollLedger);
+bootRepair('boot AFL stop-loss book failed:', () => {
   if (process.env.AUTH_TEST_BYPASS !== '1') bookAflStopLossFromIbPrint();
-} catch (e) {
-  console.warn('boot AFL stop-loss book failed:', e.message);
-}
-try {
+});
+bootRepair('boot restored futures exits failed:', () => {
   if (process.env.AUTH_TEST_BYPASS !== '1') bookRestoredFuturesPostRollExits();
-} catch (e) {
-  console.warn('boot restored futures exits failed:', e.message);
-}
-try { backfillMissingIbkrCommissions(); } catch (e) {
-  console.warn('boot backfill missing commissions failed:', e.message);
-}
-try { stripEstimatedHkStampFromLedger(); } catch (e) {
-  console.warn('boot HK stamp split failed:', e.message);
-}
+});
+bootRepair('boot backfill missing commissions failed:', backfillMissingIbkrCommissions);
+bootRepair('boot HK stamp split failed:', stripEstimatedHkStampFromLedger);
 /** Qty matches IB — do not rewrite the expired-month fill to the new-month avgCost. */
 function ibkrKeyHasFuturesRoll(key) {
   const live = liveIbkrKey(key);
@@ -19800,9 +19788,7 @@ void RISK_STATE_FILE_DUP_REMOVED;
 
 // After risk state is live: emit Buy/Sell board picks that never got IBKR events
 // (e.g. previously Strong-only gated). Safe no-op when board empty / already emitted.
-try { backfillIbkrEntriesFromOpenBoard().catch(e => console.warn('IBKR board backfill failed:', e.message)); } catch (e) {
-  console.warn('IBKR board backfill failed:', e.message);
-}
+bootRepair('IBKR board backfill failed:', backfillIbkrEntriesFromOpenBoard);
 
 /**
  * Pause new trades when available liquidity ≤15% of account equity; resume only
@@ -19973,6 +19959,7 @@ function resetRiskGuard(reason) {
 
 // Heal a corrupt risk_state left by the old "peak=0 + equity=pnl" formula.
 (function healRiskStateOnBoot() {
+  if (!BOOT_WRITES_ENABLED) return;
   try {
     const peak = Number(riskState.peakEquity) || 0;
     const eq = Number(riskState.equity) || 0;
