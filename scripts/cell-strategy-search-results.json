@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-22T08:34:53.185Z",
+  "generatedAt": "2026-10-26T05:02:24.196Z",
   "study": "cell-strategy-search-v1",
   "mode": "BACKTEST_ONLY",
   "preregistration": "docs/cell-strategy-search-preregistration.md",
@@ -69,6 +69,7 @@
     "scripts/backtest-omitted-geo-rescue-results.json (reference only)"
   ],
   "rowsScored": 1276,
+  "staleRows": 816,
   "cells": [
     {
       "market": "Hong Kong",
@@ -148,8 +149,11 @@
         "bhQValue": 1,
         "bhPass": false,
         "benchmarkBeat": null,
+        "stale": true,
+        "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+        "frameworkConsistent": false,
         "consistent": false,
-        "failReason": "window 1 lost money",
+        "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
         "worstWindowPf": 0.659,
         "averageLossMagnitude": 3.293,
         "emptyWindows": 0
@@ -227,8 +231,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.659,
           "averageLossMagnitude": 3.293,
           "emptyWindows": 0
@@ -305,8 +312,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.653,
           "averageLossMagnitude": 3.145,
           "emptyWindows": 0
@@ -383,8 +393,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.614,
           "averageLossMagnitude": 3.519,
           "emptyWindows": 0
@@ -461,8 +474,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.609,
           "averageLossMagnitude": 3.311,
           "emptyWindows": 0
@@ -539,8 +555,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.605,
           "averageLossMagnitude": 5.422,
           "emptyWindows": 0
@@ -553,11 +572,12 @@
           "consistent": 0,
           "best": {
             "id": "B__Hong_Kong__short__sector_off",
+            "stale": true,
             "worstWindowPf": 0,
             "pooledTrades": 4,
             "pooledWinRate": 75,
             "pooledProfitFactor": 43.54,
-            "failReason": "window 4 has no trades"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         },
         {
@@ -566,11 +586,12 @@
           "consistent": 0,
           "best": {
             "id": "A__Hong_Kong__short__close_below_lower_bb20_2__vol_skip_top30_and_ma50_flat_or_up__sl2.5__t5__full",
+            "stale": true,
             "worstWindowPf": 0.659,
             "pooledTrades": 184,
             "pooledWinRate": 49.5,
             "pooledProfitFactor": 0.706,
-            "failReason": "window 1 lost money"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         },
         {
@@ -579,11 +600,12 @@
           "consistent": 0,
           "best": {
             "id": "C__Hong_Kong__short__worst5__regimeoff",
+            "stale": true,
             "worstWindowPf": 0.501,
             "pooledTrades": 2310,
             "pooledWinRate": 45.3,
             "pooledProfitFactor": 0.88,
-            "failReason": "window 1 lost money"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         }
       ],
@@ -678,8 +700,11 @@
         "bhQValue": null,
         "bhPass": null,
         "benchmarkBeat": 1,
+        "stale": true,
+        "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+        "frameworkConsistent": false,
         "consistent": false,
-        "failReason": "window 1 lost money",
+        "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
         "worstWindowPf": 0.555,
         "averageLossMagnitude": 0,
         "emptyWindows": 0
@@ -768,8 +793,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 1,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.555,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -857,8 +885,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 1,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.509,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -946,8 +977,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 1,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.461,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -1024,8 +1058,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.372,
           "averageLossMagnitude": 4.885,
           "emptyWindows": 0
@@ -1102,8 +1139,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.366,
           "averageLossMagnitude": 4.164,
           "emptyWindows": 0
@@ -1116,11 +1156,12 @@
           "consistent": 0,
           "best": {
             "id": "B__UK__short__sector_off",
+            "stale": true,
             "worstWindowPf": 0,
             "pooledTrades": 0,
             "pooledWinRate": 0,
             "pooledProfitFactor": 0,
-            "failReason": "window 1 has no trades"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         },
         {
@@ -1129,11 +1170,12 @@
           "consistent": 0,
           "best": {
             "id": "A__UK__short__close_below_lower_bb20_2__none__sl2__t10__full",
+            "stale": true,
             "worstWindowPf": 0.372,
             "pooledTrades": 340,
             "pooledWinRate": 64.1,
             "pooledProfitFactor": 0.536,
-            "failReason": "window 1 lost money"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         },
         {
@@ -1142,11 +1184,12 @@
           "consistent": 0,
           "best": {
             "id": "E__UK__short__worst5__regimeoff",
+            "stale": true,
             "worstWindowPf": 0.555,
             "pooledTrades": 2310,
             "pooledWinRate": 44.2,
             "pooledProfitFactor": 0.775,
-            "failReason": "window 1 lost money"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         }
       ],
@@ -1230,8 +1273,11 @@
         "bhQValue": 1,
         "bhPass": false,
         "benchmarkBeat": null,
+        "stale": true,
+        "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+        "frameworkConsistent": false,
         "consistent": false,
-        "failReason": "window 2 lost money",
+        "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
         "worstWindowPf": 0.802,
         "averageLossMagnitude": 3.387,
         "emptyWindows": 0
@@ -1309,8 +1355,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 2 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.802,
           "averageLossMagnitude": 3.387,
           "emptyWindows": 0
@@ -1387,8 +1436,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.778,
           "averageLossMagnitude": 3.051,
           "emptyWindows": 0
@@ -1465,8 +1517,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.756,
           "averageLossMagnitude": 2.824,
           "emptyWindows": 0
@@ -1543,8 +1598,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.747,
           "averageLossMagnitude": 2.756,
           "emptyWindows": 0
@@ -1621,8 +1679,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.741,
           "averageLossMagnitude": 4.375,
           "emptyWindows": 0
@@ -1635,11 +1696,12 @@
           "consistent": 0,
           "best": {
             "id": "B__Germany__short__sector_off",
+            "stale": true,
             "worstWindowPf": 0,
             "pooledTrades": 3,
             "pooledWinRate": 66.7,
             "pooledProfitFactor": 1.141,
-            "failReason": "window 3 lost money"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         },
         {
@@ -1648,11 +1710,12 @@
           "consistent": 0,
           "best": {
             "id": "A__Germany__short__williams_r10_lt_minus_95__vol_skip_top30_and_ma50_flat_or_up__sl1.5__t10__full",
+            "stale": true,
             "worstWindowPf": 0.802,
             "pooledTrades": 83,
             "pooledWinRate": 62.7,
             "pooledProfitFactor": 0.964,
-            "failReason": "window 2 lost money"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         }
       ],
@@ -1736,8 +1799,11 @@
         "bhQValue": 1,
         "bhPass": false,
         "benchmarkBeat": null,
+        "stale": true,
+        "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+        "frameworkConsistent": false,
         "consistent": false,
-        "failReason": "window 2 lost money",
+        "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
         "worstWindowPf": 0.664,
         "averageLossMagnitude": 4.111,
         "emptyWindows": 0
@@ -1815,8 +1881,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 2 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.664,
           "averageLossMagnitude": 4.111,
           "emptyWindows": 0
@@ -1893,8 +1962,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 2 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.664,
           "averageLossMagnitude": 4.157,
           "emptyWindows": 0
@@ -1971,8 +2043,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 2 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.637,
           "averageLossMagnitude": 4.177,
           "emptyWindows": 0
@@ -2049,8 +2124,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 2 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.637,
           "averageLossMagnitude": 4.212,
           "emptyWindows": 0
@@ -2138,8 +2216,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 1,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.629,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -2152,11 +2233,12 @@
           "consistent": 0,
           "best": {
             "id": "B__France__short__sector_off",
+            "stale": true,
             "worstWindowPf": 0,
             "pooledTrades": 1,
             "pooledWinRate": 100,
             "pooledProfitFactor": 99,
-            "failReason": "window 1 has no trades"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         },
         {
@@ -2165,11 +2247,12 @@
           "consistent": 0,
           "best": {
             "id": "A__France__short__rsi2_lt_5__vol_skip_top30_and_ma50_flat_or_up__sl2__t10__partial",
+            "stale": true,
             "worstWindowPf": 0.664,
             "pooledTrades": 407,
             "pooledWinRate": 63.6,
             "pooledProfitFactor": 0.725,
-            "failReason": "window 2 lost money"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         },
         {
@@ -2178,11 +2261,12 @@
           "consistent": 0,
           "best": {
             "id": "E__France__short__worst10__regimeon",
+            "stale": true,
             "worstWindowPf": 0.629,
             "pooledTrades": 3120,
             "pooledWinRate": 45.5,
             "pooledProfitFactor": 0.769,
-            "failReason": "window 1 lost money"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         }
       ],
@@ -2266,6 +2350,9 @@
         "bhQValue": 1,
         "bhPass": false,
         "benchmarkBeat": null,
+        "stale": false,
+        "staleReason": null,
+        "frameworkConsistent": false,
         "consistent": false,
         "failReason": "window 1 lost money",
         "worstWindowPf": 0.641,
@@ -2345,6 +2432,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 1 lost money",
           "worstWindowPf": 0.641,
@@ -2423,6 +2513,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 1 win rate 50% < 60%",
           "worstWindowPf": 0.628,
@@ -2501,6 +2594,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 1 win rate 50% < 60%",
           "worstWindowPf": 0.613,
@@ -2579,6 +2675,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 2 lost money",
           "worstWindowPf": 0.612,
@@ -2657,6 +2756,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 2 lost money",
           "worstWindowPf": 0.61,
@@ -2671,6 +2773,7 @@
           "consistent": 0,
           "best": {
             "id": "D__Commodities__short__breakout20",
+            "stale": false,
             "worstWindowPf": 0.113,
             "pooledTrades": 602,
             "pooledWinRate": 35.9,
@@ -2684,6 +2787,7 @@
           "consistent": 0,
           "best": {
             "id": "B__Commodities__short__sector_off",
+            "stale": false,
             "worstWindowPf": 0,
             "pooledTrades": 1,
             "pooledWinRate": 0,
@@ -2697,6 +2801,7 @@
           "consistent": 0,
           "best": {
             "id": "A__Commodities__short__close_below_lower_bb20_2__none__sl1.5__t10__full",
+            "stale": false,
             "worstWindowPf": 0.641,
             "pooledTrades": 43,
             "pooledWinRate": 67.4,
@@ -2796,6 +2901,9 @@
         "bhQValue": null,
         "bhPass": null,
         "benchmarkBeat": 4,
+        "stale": false,
+        "staleReason": null,
+        "frameworkConsistent": false,
         "consistent": false,
         "failReason": "window 2 PF 0.122 < 1.2",
         "worstWindowPf": 0.122,
@@ -2886,6 +2994,9 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 4,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 2 PF 0.122 < 1.2",
           "worstWindowPf": 0.122,
@@ -2964,6 +3075,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 3 has no trades",
           "worstWindowPf": 0,
@@ -3042,6 +3156,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 3 has no trades",
           "worstWindowPf": 0,
@@ -3120,6 +3237,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 3 has no trades",
           "worstWindowPf": 0,
@@ -3198,6 +3318,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 3 has no trades",
           "worstWindowPf": 0,
@@ -3212,6 +3335,7 @@
           "consistent": 0,
           "best": {
             "id": "D__Crypto__short__breakout20",
+            "stale": false,
             "worstWindowPf": 0.122,
             "pooledTrades": 1038,
             "pooledWinRate": 38.6,
@@ -3225,6 +3349,7 @@
           "consistent": 0,
           "best": {
             "id": "B__Crypto__short__sector_off",
+            "stale": false,
             "worstWindowPf": 0,
             "pooledTrades": 1,
             "pooledWinRate": 100,
@@ -3238,6 +3363,7 @@
           "consistent": 0,
           "best": {
             "id": "A__Crypto__short__williams_r10_lt_minus_95__none__sl1.5__t10__full",
+            "stale": false,
             "worstWindowPf": 0,
             "pooledTrades": 6,
             "pooledWinRate": 100,
@@ -3255,451 +3381,87 @@
       "variantsScored": 118,
       "verdict": "NONE",
       "best": {
-        "id": "A2__US__medium__react0.03_d2_h60__longsample",
-        "source": "strategy-amendment 2026-10-06",
-        "kind": "earnings",
+        "id": "A__US__medium__close_below_lower_bb20_2__vol_skip_top30_and_ma50_flat_or_up__sl1.5__t10__full",
+        "source": "consistency-study 2026-10-05",
+        "kind": "mean_reversion",
         "market": "US",
         "horizon": "medium",
-        "description": "Earnings reaction, excess ≥ 3%, enter +2 session, hold 60 or 2.5 ATR",
+        "description": "MR close_below_lower_bb20_2 · vol_skip_top30_and_ma50_flat_or_up · 1.5 ATR stop · t10 · full",
         "survivorship": "POINT_IN_TIME",
         "windows": [
           {
             "fold": 1,
             "final": false,
-            "from": "2024-10-01",
-            "to": "2025-04-02",
-            "trades": 240,
-            "winRate": 42.1,
-            "profitFactor": 1.053,
-            "pnlUsd": null,
-            "returnPct": -2.74,
-            "avgLossPct": null,
-            "benchmarkReturnPct": -0.72,
-            "beat": false
+            "from": "2024-09-30",
+            "to": "2025-04-01",
+            "trades": 633,
+            "winRate": 56.1,
+            "profitFactor": 0.746,
+            "pnlUsd": -23161.95,
+            "returnPct": null,
+            "avgLossPct": -3.286
           },
           {
             "fold": 2,
             "final": false,
-            "from": "2025-04-03",
-            "to": "2025-10-02",
-            "trades": 121,
-            "winRate": 44.6,
-            "profitFactor": 1.994,
-            "pnlUsd": null,
-            "returnPct": 10.47,
-            "avgLossPct": null,
-            "benchmarkReturnPct": 24.69,
-            "beat": false
+            "from": "2025-04-02",
+            "to": "2025-10-01",
+            "trades": 357,
+            "winRate": 61.9,
+            "profitFactor": 1.001,
+            "pnlUsd": 61.38,
+            "returnPct": null,
+            "avgLossPct": -3.221
           },
           {
             "fold": 3,
             "final": false,
-            "from": "2025-10-03",
-            "to": "2026-04-06",
-            "trades": 229,
-            "winRate": 38.9,
-            "profitFactor": 1.081,
-            "pnlUsd": null,
-            "returnPct": 0.57,
-            "avgLossPct": null,
-            "benchmarkReturnPct": -1.54,
-            "beat": true
+            "from": "2025-10-02",
+            "to": "2026-04-02",
+            "trades": 617,
+            "winRate": 62.1,
+            "profitFactor": 1.098,
+            "pnlUsd": 9361.8,
+            "returnPct": null,
+            "avgLossPct": -4.062
           },
           {
             "fold": 4,
             "final": true,
-            "from": "2026-04-07",
-            "to": "2026-10-05",
-            "trades": 245,
-            "winRate": 38,
-            "profitFactor": 1.147,
-            "pnlUsd": null,
-            "returnPct": 2.14,
-            "avgLossPct": null,
-            "benchmarkReturnPct": 17.54,
-            "beat": false
+            "from": "2026-04-06",
+            "to": "2026-10-02",
+            "trades": 439,
+            "winRate": 53.3,
+            "profitFactor": 0.902,
+            "pnlUsd": -7259.52,
+            "returnPct": null,
+            "avgLossPct": -3.623
           }
         ],
         "pooled": {
-          "trades": 3591,
-          "winRate": 41.8,
-          "profitFactor": 1.313,
-          "pnlUsd": null,
-          "returnPct": 241.13,
-          "maxDrawdownPct": 24.95,
-          "avgWinPct": null,
-          "avgLossPct": null,
-          "breakevenWinRate": null,
-          "picksPerMonth": null
+          "trades": 1607,
+          "winRate": 59.7,
+          "profitFactor": 0.94,
+          "pnlUsd": -13738.77,
+          "avgWinPct": 2.257,
+          "avgLossPct": -3.552,
+          "breakevenWinRate": 61.148,
+          "picksPerMonth": 73.045
         },
-        "sourceVerdict": "FAIL",
-        "sourceReason": null,
-        "bhQValue": null,
-        "bhPass": null,
-        "benchmarkBeat": 1,
+        "sourceVerdict": "NOT_CONSISTENT",
+        "bhQValue": 1,
+        "bhPass": false,
+        "benchmarkBeat": null,
+        "stale": false,
+        "staleReason": null,
+        "frameworkConsistent": false,
         "consistent": false,
         "failReason": "window 1 lost money",
-        "worstWindowPf": 1.053,
-        "averageLossMagnitude": 0,
+        "worstWindowPf": 0.746,
+        "averageLossMagnitude": 3.548,
         "emptyWindows": 0
       },
       "top": [
-        {
-          "id": "A2__US__medium__react0.03_d2_h60__longsample",
-          "source": "strategy-amendment 2026-10-06",
-          "kind": "earnings",
-          "market": "US",
-          "horizon": "medium",
-          "description": "Earnings reaction, excess ≥ 3%, enter +2 session, hold 60 or 2.5 ATR",
-          "survivorship": "POINT_IN_TIME",
-          "windows": [
-            {
-              "fold": 1,
-              "final": false,
-              "from": "2024-10-01",
-              "to": "2025-04-02",
-              "trades": 240,
-              "winRate": 42.1,
-              "profitFactor": 1.053,
-              "pnlUsd": null,
-              "returnPct": -2.74,
-              "avgLossPct": null,
-              "benchmarkReturnPct": -0.72,
-              "beat": false
-            },
-            {
-              "fold": 2,
-              "final": false,
-              "from": "2025-04-03",
-              "to": "2025-10-02",
-              "trades": 121,
-              "winRate": 44.6,
-              "profitFactor": 1.994,
-              "pnlUsd": null,
-              "returnPct": 10.47,
-              "avgLossPct": null,
-              "benchmarkReturnPct": 24.69,
-              "beat": false
-            },
-            {
-              "fold": 3,
-              "final": false,
-              "from": "2025-10-03",
-              "to": "2026-04-06",
-              "trades": 229,
-              "winRate": 38.9,
-              "profitFactor": 1.081,
-              "pnlUsd": null,
-              "returnPct": 0.57,
-              "avgLossPct": null,
-              "benchmarkReturnPct": -1.54,
-              "beat": true
-            },
-            {
-              "fold": 4,
-              "final": true,
-              "from": "2026-04-07",
-              "to": "2026-10-05",
-              "trades": 245,
-              "winRate": 38,
-              "profitFactor": 1.147,
-              "pnlUsd": null,
-              "returnPct": 2.14,
-              "avgLossPct": null,
-              "benchmarkReturnPct": 17.54,
-              "beat": false
-            }
-          ],
-          "pooled": {
-            "trades": 3591,
-            "winRate": 41.8,
-            "profitFactor": 1.313,
-            "pnlUsd": null,
-            "returnPct": 241.13,
-            "maxDrawdownPct": 24.95,
-            "avgWinPct": null,
-            "avgLossPct": null,
-            "breakevenWinRate": null,
-            "picksPerMonth": null
-          },
-          "sourceVerdict": "FAIL",
-          "sourceReason": null,
-          "bhQValue": null,
-          "bhPass": null,
-          "benchmarkBeat": 1,
-          "consistent": false,
-          "failReason": "window 1 lost money",
-          "worstWindowPf": 1.053,
-          "averageLossMagnitude": 0,
-          "emptyWindows": 0
-        },
-        {
-          "id": "A2__US__medium__react0.05_d2_h60__longsample",
-          "source": "strategy-amendment 2026-10-06",
-          "kind": "earnings",
-          "market": "US",
-          "horizon": "medium",
-          "description": "Earnings reaction, excess ≥ 5%, enter +2 session, hold 60 or 2.5 ATR",
-          "survivorship": "POINT_IN_TIME",
-          "windows": [
-            {
-              "fold": 1,
-              "final": false,
-              "from": "2024-10-01",
-              "to": "2025-04-02",
-              "trades": 144,
-              "winRate": 43.8,
-              "profitFactor": 1.062,
-              "pnlUsd": null,
-              "returnPct": -1.51,
-              "avgLossPct": null,
-              "benchmarkReturnPct": -0.72,
-              "beat": false
-            },
-            {
-              "fold": 2,
-              "final": false,
-              "from": "2025-04-03",
-              "to": "2025-10-02",
-              "trades": 68,
-              "winRate": 41.2,
-              "profitFactor": 1.615,
-              "pnlUsd": null,
-              "returnPct": 10.46,
-              "avgLossPct": null,
-              "benchmarkReturnPct": 24.69,
-              "beat": false
-            },
-            {
-              "fold": 3,
-              "final": false,
-              "from": "2025-10-03",
-              "to": "2026-04-06",
-              "trades": 133,
-              "winRate": 40.6,
-              "profitFactor": 0.949,
-              "pnlUsd": null,
-              "returnPct": -2.8,
-              "avgLossPct": null,
-              "benchmarkReturnPct": -1.54,
-              "beat": false
-            },
-            {
-              "fold": 4,
-              "final": true,
-              "from": "2026-04-07",
-              "to": "2026-10-05",
-              "trades": 135,
-              "winRate": 41.5,
-              "profitFactor": 1.295,
-              "pnlUsd": null,
-              "returnPct": 5.29,
-              "avgLossPct": null,
-              "benchmarkReturnPct": 17.54,
-              "beat": false
-            }
-          ],
-          "pooled": {
-            "trades": 1838,
-            "winRate": 43.1,
-            "profitFactor": 1.341,
-            "pnlUsd": null,
-            "returnPct": 247.82,
-            "maxDrawdownPct": 28.03,
-            "avgWinPct": null,
-            "avgLossPct": null,
-            "breakevenWinRate": null,
-            "picksPerMonth": null
-          },
-          "sourceVerdict": "FAIL",
-          "sourceReason": null,
-          "bhQValue": null,
-          "bhPass": null,
-          "benchmarkBeat": 0,
-          "consistent": false,
-          "failReason": "window 1 lost money",
-          "worstWindowPf": 0.949,
-          "averageLossMagnitude": 0,
-          "emptyWindows": 0
-        },
-        {
-          "id": "A2__US__medium__react0.03_d1_h60__longsample",
-          "source": "strategy-amendment 2026-10-06",
-          "kind": "earnings",
-          "market": "US",
-          "horizon": "medium",
-          "description": "Earnings reaction, excess ≥ 3%, enter +1 session, hold 60 or 2.5 ATR",
-          "survivorship": "POINT_IN_TIME",
-          "windows": [
-            {
-              "fold": 1,
-              "final": false,
-              "from": "2024-10-01",
-              "to": "2025-04-02",
-              "trades": 230,
-              "winRate": 37,
-              "profitFactor": 0.911,
-              "pnlUsd": null,
-              "returnPct": -4.93,
-              "avgLossPct": null,
-              "benchmarkReturnPct": -0.72,
-              "beat": false
-            },
-            {
-              "fold": 2,
-              "final": false,
-              "from": "2025-04-03",
-              "to": "2025-10-02",
-              "trades": 124,
-              "winRate": 45.2,
-              "profitFactor": 2.325,
-              "pnlUsd": null,
-              "returnPct": 10.99,
-              "avgLossPct": null,
-              "benchmarkReturnPct": 24.69,
-              "beat": false
-            },
-            {
-              "fold": 3,
-              "final": false,
-              "from": "2025-10-03",
-              "to": "2026-04-06",
-              "trades": 224,
-              "winRate": 37.5,
-              "profitFactor": 1.088,
-              "pnlUsd": null,
-              "returnPct": 2.89,
-              "avgLossPct": null,
-              "benchmarkReturnPct": -1.54,
-              "beat": true
-            },
-            {
-              "fold": 4,
-              "final": true,
-              "from": "2026-04-07",
-              "to": "2026-10-05",
-              "trades": 244,
-              "winRate": 39.8,
-              "profitFactor": 1.219,
-              "pnlUsd": null,
-              "returnPct": 2.51,
-              "avgLossPct": null,
-              "benchmarkReturnPct": 17.54,
-              "beat": false
-            }
-          ],
-          "pooled": {
-            "trades": 3591,
-            "winRate": 40.1,
-            "profitFactor": 1.266,
-            "pnlUsd": null,
-            "returnPct": 257.15,
-            "maxDrawdownPct": 24.63,
-            "avgWinPct": null,
-            "avgLossPct": null,
-            "breakevenWinRate": null,
-            "picksPerMonth": null
-          },
-          "sourceVerdict": "FAIL",
-          "sourceReason": null,
-          "bhQValue": null,
-          "bhPass": null,
-          "benchmarkBeat": 1,
-          "consistent": false,
-          "failReason": "window 1 lost money",
-          "worstWindowPf": 0.911,
-          "averageLossMagnitude": 0,
-          "emptyWindows": 0
-        },
-        {
-          "id": "A2__US__medium__react0.05_d1_h60__longsample",
-          "source": "strategy-amendment 2026-10-06",
-          "kind": "earnings",
-          "market": "US",
-          "horizon": "medium",
-          "description": "Earnings reaction, excess ≥ 5%, enter +1 session, hold 60 or 2.5 ATR",
-          "survivorship": "POINT_IN_TIME",
-          "windows": [
-            {
-              "fold": 1,
-              "final": false,
-              "from": "2024-10-01",
-              "to": "2025-04-02",
-              "trades": 140,
-              "winRate": 37.1,
-              "profitFactor": 0.871,
-              "pnlUsd": null,
-              "returnPct": -3.13,
-              "avgLossPct": null,
-              "benchmarkReturnPct": -0.72,
-              "beat": false
-            },
-            {
-              "fold": 2,
-              "final": false,
-              "from": "2025-04-03",
-              "to": "2025-10-02",
-              "trades": 70,
-              "winRate": 44.3,
-              "profitFactor": 1.84,
-              "pnlUsd": null,
-              "returnPct": 9.78,
-              "avgLossPct": null,
-              "benchmarkReturnPct": 24.69,
-              "beat": false
-            },
-            {
-              "fold": 3,
-              "final": false,
-              "from": "2025-10-03",
-              "to": "2026-04-06",
-              "trades": 130,
-              "winRate": 40.8,
-              "profitFactor": 1.089,
-              "pnlUsd": null,
-              "returnPct": 0.25,
-              "avgLossPct": null,
-              "benchmarkReturnPct": -1.54,
-              "beat": true
-            },
-            {
-              "fold": 4,
-              "final": true,
-              "from": "2026-04-07",
-              "to": "2026-10-05",
-              "trades": 133,
-              "winRate": 39.1,
-              "profitFactor": 1.298,
-              "pnlUsd": null,
-              "returnPct": 4.93,
-              "avgLossPct": null,
-              "benchmarkReturnPct": 17.54,
-              "beat": false
-            }
-          ],
-          "pooled": {
-            "trades": 1838,
-            "winRate": 42,
-            "profitFactor": 1.351,
-            "pnlUsd": null,
-            "returnPct": 286.62,
-            "maxDrawdownPct": 29.74,
-            "avgWinPct": null,
-            "avgLossPct": null,
-            "breakevenWinRate": null,
-            "picksPerMonth": null
-          },
-          "sourceVerdict": "FAIL",
-          "sourceReason": null,
-          "bhQValue": null,
-          "bhPass": null,
-          "benchmarkBeat": 1,
-          "consistent": false,
-          "failReason": "window 1 lost money",
-          "worstWindowPf": 0.871,
-          "averageLossMagnitude": 0,
-          "emptyWindows": 0
-        },
         {
           "id": "A__US__medium__close_below_lower_bb20_2__vol_skip_top30_and_ma50_flat_or_up__sl1.5__t10__full",
           "source": "consistency-study 2026-10-05",
@@ -3772,10 +3534,337 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 1 lost money",
           "worstWindowPf": 0.746,
           "averageLossMagnitude": 3.548,
+          "emptyWindows": 0
+        },
+        {
+          "id": "A__US__medium__close_below_lower_bb20_2__vol_skip_top30_and_ma50_flat_or_up__sl1.5__t21__full",
+          "source": "consistency-study 2026-10-05",
+          "kind": "mean_reversion",
+          "market": "US",
+          "horizon": "medium",
+          "description": "MR close_below_lower_bb20_2 · vol_skip_top30_and_ma50_flat_or_up · 1.5 ATR stop · t21 · full",
+          "survivorship": "POINT_IN_TIME",
+          "windows": [
+            {
+              "fold": 1,
+              "final": false,
+              "from": "2024-09-30",
+              "to": "2025-04-01",
+              "trades": 633,
+              "winRate": 57.5,
+              "profitFactor": 0.732,
+              "pnlUsd": -26331.54,
+              "returnPct": null,
+              "avgLossPct": -3.654
+            },
+            {
+              "fold": 2,
+              "final": false,
+              "from": "2025-04-02",
+              "to": "2025-10-01",
+              "trades": 356,
+              "winRate": 64.9,
+              "profitFactor": 1.06,
+              "pnlUsd": 2682.52,
+              "returnPct": null,
+              "avgLossPct": -3.567
+            },
+            {
+              "fold": 3,
+              "final": false,
+              "from": "2025-10-02",
+              "to": "2026-04-02",
+              "trades": 615,
+              "winRate": 62.8,
+              "profitFactor": 1.083,
+              "pnlUsd": 8223.56,
+              "returnPct": null,
+              "avgLossPct": -4.336
+            },
+            {
+              "fold": 4,
+              "final": true,
+              "from": "2026-04-06",
+              "to": "2026-10-02",
+              "trades": 439,
+              "winRate": 52.6,
+              "profitFactor": 0.855,
+              "pnlUsd": -11606.44,
+              "returnPct": null,
+              "avgLossPct": -3.842
+            }
+          ],
+          "pooled": {
+            "trades": 1604,
+            "winRate": 61.2,
+            "profitFactor": 0.936,
+            "pnlUsd": -15425.46,
+            "avgWinPct": 2.311,
+            "avgLossPct": -3.887,
+            "breakevenWinRate": 62.711,
+            "picksPerMonth": 72.909
+          },
+          "sourceVerdict": "NOT_CONSISTENT",
+          "bhQValue": 1,
+          "bhPass": false,
+          "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
+          "consistent": false,
+          "failReason": "window 1 lost money",
+          "worstWindowPf": 0.732,
+          "averageLossMagnitude": 3.85,
+          "emptyWindows": 0
+        },
+        {
+          "id": "A__US__medium__close_below_lower_bb20_2__vol_skip_top30__sl1.5__t10__full",
+          "source": "consistency-study 2026-10-05",
+          "kind": "mean_reversion",
+          "market": "US",
+          "horizon": "medium",
+          "description": "MR close_below_lower_bb20_2 · vol_skip_top30 · 1.5 ATR stop · t10 · full",
+          "survivorship": "POINT_IN_TIME",
+          "windows": [
+            {
+              "fold": 1,
+              "final": false,
+              "from": "2024-09-30",
+              "to": "2025-04-01",
+              "trades": 649,
+              "winRate": 55.6,
+              "profitFactor": 0.724,
+              "pnlUsd": -26815.01,
+              "returnPct": null,
+              "avgLossPct": -3.374
+            },
+            {
+              "fold": 2,
+              "final": false,
+              "from": "2025-04-02",
+              "to": "2025-10-01",
+              "trades": 357,
+              "winRate": 61.9,
+              "profitFactor": 1.001,
+              "pnlUsd": 61.38,
+              "returnPct": null,
+              "avgLossPct": -3.221
+            },
+            {
+              "fold": 3,
+              "final": false,
+              "from": "2025-10-02",
+              "to": "2026-04-02",
+              "trades": 678,
+              "winRate": 60.3,
+              "profitFactor": 1.01,
+              "pnlUsd": 1126.97,
+              "returnPct": null,
+              "avgLossPct": -4.105
+            },
+            {
+              "fold": 4,
+              "final": true,
+              "from": "2026-04-06",
+              "to": "2026-10-02",
+              "trades": 439,
+              "winRate": 53.3,
+              "profitFactor": 0.902,
+              "pnlUsd": -7259.52,
+              "returnPct": null,
+              "avgLossPct": -3.623
+            }
+          ],
+          "pooled": {
+            "trades": 1684,
+            "winRate": 58.8,
+            "profitFactor": 0.898,
+            "pnlUsd": -25626.66,
+            "avgWinPct": 2.278,
+            "avgLossPct": -3.628,
+            "breakevenWinRate": 61.425,
+            "picksPerMonth": 76.545
+          },
+          "sourceVerdict": "NOT_CONSISTENT",
+          "bhQValue": 1,
+          "bhPass": false,
+          "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
+          "consistent": false,
+          "failReason": "window 1 lost money",
+          "worstWindowPf": 0.724,
+          "averageLossMagnitude": 3.581,
+          "emptyWindows": 0
+        },
+        {
+          "id": "A__US__medium__rsi2_lt_5__none__sl2__t21__partial",
+          "source": "consistency-study 2026-10-05",
+          "kind": "mean_reversion",
+          "market": "US",
+          "horizon": "medium",
+          "description": "MR rsi2_lt_5 · none · 2 ATR stop · t21 · 50/50 partial",
+          "survivorship": "POINT_IN_TIME",
+          "windows": [
+            {
+              "fold": 1,
+              "final": false,
+              "from": "2024-09-30",
+              "to": "2025-04-01",
+              "trades": 3397,
+              "winRate": 61.6,
+              "profitFactor": 0.722,
+              "pnlUsd": -175125.34,
+              "returnPct": null,
+              "avgLossPct": -4.828
+            },
+            {
+              "fold": 2,
+              "final": false,
+              "from": "2025-04-02",
+              "to": "2025-10-01",
+              "trades": 2458,
+              "winRate": 72,
+              "profitFactor": 1.195,
+              "pnlUsd": 60847.4,
+              "returnPct": null,
+              "avgLossPct": -4.525
+            },
+            {
+              "fold": 3,
+              "final": false,
+              "from": "2025-10-02",
+              "to": "2026-04-02",
+              "trades": 3155,
+              "winRate": 66.2,
+              "profitFactor": 0.924,
+              "pnlUsd": -44791.85,
+              "returnPct": null,
+              "avgLossPct": -5.545
+            },
+            {
+              "fold": 4,
+              "final": true,
+              "from": "2026-04-06",
+              "to": "2026-10-02",
+              "trades": 3212,
+              "winRate": 64.1,
+              "profitFactor": 0.888,
+              "pnlUsd": -77288.14,
+              "returnPct": null,
+              "avgLossPct": -5.967
+            }
+          ],
+          "pooled": {
+            "trades": 9010,
+            "winRate": 66.1,
+            "profitFactor": 0.896,
+            "pnlUsd": -159069.79,
+            "avgWinPct": 2.305,
+            "avgLossPct": -5.009,
+            "breakevenWinRate": 68.485,
+            "picksPerMonth": 409.545
+          },
+          "sourceVerdict": "NOT_CONSISTENT",
+          "bhQValue": 1,
+          "bhPass": false,
+          "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
+          "consistent": false,
+          "failReason": "window 1 lost money",
+          "worstWindowPf": 0.722,
+          "averageLossMagnitude": 5.216,
+          "emptyWindows": 0
+        },
+        {
+          "id": "A__US__medium__rsi2_lt_5__none__sl1.5__t21__partial",
+          "source": "consistency-study 2026-10-05",
+          "kind": "mean_reversion",
+          "market": "US",
+          "horizon": "medium",
+          "description": "MR rsi2_lt_5 · none · 1.5 ATR stop · t21 · 50/50 partial",
+          "survivorship": "POINT_IN_TIME",
+          "windows": [
+            {
+              "fold": 1,
+              "final": false,
+              "from": "2024-09-30",
+              "to": "2025-04-01",
+              "trades": 3845,
+              "winRate": 55.2,
+              "profitFactor": 0.721,
+              "pnlUsd": -178931.04,
+              "returnPct": null,
+              "avgLossPct": -3.717
+            },
+            {
+              "fold": 2,
+              "final": false,
+              "from": "2025-04-02",
+              "to": "2025-10-01",
+              "trades": 2704,
+              "winRate": 65.9,
+              "profitFactor": 1.146,
+              "pnlUsd": 47949.82,
+              "returnPct": null,
+              "avgLossPct": -3.557
+            },
+            {
+              "fold": 3,
+              "final": false,
+              "from": "2025-10-02",
+              "to": "2026-04-02",
+              "trades": 3580,
+              "winRate": 60.3,
+              "profitFactor": 0.916,
+              "pnlUsd": -52096.19,
+              "returnPct": null,
+              "avgLossPct": -4.349
+            },
+            {
+              "fold": 4,
+              "final": true,
+              "from": "2026-04-06",
+              "to": "2026-10-02",
+              "trades": 3655,
+              "winRate": 58.4,
+              "profitFactor": 0.885,
+              "pnlUsd": -84172.12,
+              "returnPct": null,
+              "avgLossPct": -4.813
+            }
+          ],
+          "pooled": {
+            "trades": 10129,
+            "winRate": 59.8,
+            "profitFactor": 0.885,
+            "pnlUsd": -183077.41,
+            "avgWinPct": 2.317,
+            "avgLossPct": -3.902,
+            "breakevenWinRate": 62.745,
+            "picksPerMonth": 460.409
+          },
+          "sourceVerdict": "NOT_CONSISTENT",
+          "bhQValue": 1,
+          "bhPass": false,
+          "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
+          "consistent": false,
+          "failReason": "window 1 lost money",
+          "worstWindowPf": 0.721,
+          "averageLossMagnitude": 4.109,
           "emptyWindows": 0
         }
       ],
@@ -3786,6 +3875,7 @@
           "consistent": 0,
           "best": {
             "id": "B__US__medium__sector_off",
+            "stale": false,
             "worstWindowPf": 0,
             "pooledTrades": 9,
             "pooledWinRate": 55.6,
@@ -3799,11 +3889,12 @@
           "consistent": 0,
           "best": {
             "id": "A2__US__medium__react0.03_d2_h60__longsample",
+            "stale": true,
             "worstWindowPf": 1.053,
             "pooledTrades": 3591,
             "pooledWinRate": 41.8,
             "pooledProfitFactor": 1.313,
-            "failReason": "window 1 lost money"
+            "failReason": "STALE — old earnings event window (pre strategy-gaps amendment §3)"
           }
         },
         {
@@ -3812,6 +3903,7 @@
           "consistent": 0,
           "best": {
             "id": "A__US__medium__close_below_lower_bb20_2__vol_skip_top30_and_ma50_flat_or_up__sl1.5__t10__full",
+            "stale": false,
             "worstWindowPf": 0.746,
             "pooledTrades": 1607,
             "pooledWinRate": 59.7,
@@ -3913,8 +4005,11 @@
         "bhQValue": null,
         "bhPass": null,
         "benchmarkBeat": 4,
+        "stale": true,
+        "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+        "frameworkConsistent": false,
         "consistent": false,
-        "failReason": "window 4 PF 1.149 < 1.2",
+        "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
         "worstWindowPf": 1.149,
         "averageLossMagnitude": 0,
         "emptyWindows": 0
@@ -4003,8 +4098,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 4,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 4 PF 1.149 < 1.2",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 1.149,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -4092,8 +4190,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 3,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 PF 1.111 < 1.2",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 1.111,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -4181,8 +4282,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 3,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 PF 1.156 < 1.2",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.949,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -4270,8 +4374,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 1,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.938,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -4359,8 +4466,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 2,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.626,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -4373,11 +4483,12 @@
           "consistent": 0,
           "best": {
             "id": "B__UK__medium__sector_off",
+            "stale": true,
             "worstWindowPf": 0,
             "pooledTrades": 1,
             "pooledWinRate": 0,
             "pooledProfitFactor": 0,
-            "failReason": "window 1 has no trades"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         },
         {
@@ -4386,11 +4497,12 @@
           "consistent": 0,
           "best": {
             "id": "A__UK__medium__williams_r10_lt_minus_95__none__sl1.5__t21__full",
+            "stale": true,
             "worstWindowPf": 0.372,
             "pooledTrades": 396,
             "pooledWinRate": 62.9,
             "pooledProfitFactor": 0.532,
-            "failReason": "window 1 lost money"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         },
         {
@@ -4399,11 +4511,12 @@
           "consistent": 0,
           "best": {
             "id": "B__UK__medium__momentum__regimeoff",
+            "stale": true,
             "worstWindowPf": 1.149,
             "pooledTrades": 1060,
             "pooledWinRate": 51.2,
             "pooledProfitFactor": 1.105,
-            "failReason": "window 4 PF 1.149 < 1.2"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         }
       ],
@@ -4487,8 +4600,11 @@
         "bhQValue": 1,
         "bhPass": false,
         "benchmarkBeat": null,
+        "stale": true,
+        "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+        "frameworkConsistent": false,
         "consistent": false,
-        "failReason": "window 2 lost money",
+        "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
         "worstWindowPf": 0.939,
         "averageLossMagnitude": 3.65,
         "emptyWindows": 0
@@ -4566,8 +4682,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 2 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.939,
           "averageLossMagnitude": 3.65,
           "emptyWindows": 0
@@ -4644,8 +4763,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 2 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.802,
           "averageLossMagnitude": 3.387,
           "emptyWindows": 0
@@ -4722,8 +4844,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.787,
           "averageLossMagnitude": 4.712,
           "emptyWindows": 0
@@ -4800,8 +4925,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.771,
           "averageLossMagnitude": 5.7,
           "emptyWindows": 0
@@ -4878,8 +5006,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.769,
           "averageLossMagnitude": 3.904,
           "emptyWindows": 0
@@ -4892,11 +5023,12 @@
           "consistent": 0,
           "best": {
             "id": "B__Germany__medium__sector_off",
+            "stale": true,
             "worstWindowPf": 0,
             "pooledTrades": 4,
             "pooledWinRate": 75,
             "pooledProfitFactor": 6.306,
-            "failReason": "window 1 has no trades"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         },
         {
@@ -4905,11 +5037,12 @@
           "consistent": 0,
           "best": {
             "id": "A__Germany__medium__williams_r10_lt_minus_95__vol_skip_top30_and_ma50_flat_or_up__sl1.5__t21__full",
+            "stale": true,
             "worstWindowPf": 0.939,
             "pooledTrades": 82,
             "pooledWinRate": 64.6,
             "pooledProfitFactor": 0.986,
-            "failReason": "window 2 lost money"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         }
       ],
@@ -5004,8 +5137,11 @@
         "bhQValue": null,
         "bhPass": null,
         "benchmarkBeat": 2,
+        "stale": true,
+        "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+        "frameworkConsistent": false,
         "consistent": false,
-        "failReason": "window 3 lost money",
+        "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
         "worstWindowPf": 0.92,
         "averageLossMagnitude": 0,
         "emptyWindows": 0
@@ -5094,8 +5230,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 2,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 3 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.92,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -5183,8 +5322,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 3,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 2 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.705,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -5261,8 +5403,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 2 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.664,
           "averageLossMagnitude": 4.111,
           "emptyWindows": 0
@@ -5339,8 +5484,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 2 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.664,
           "averageLossMagnitude": 4.157,
           "emptyWindows": 0
@@ -5417,8 +5565,11 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 2 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 0.637,
           "averageLossMagnitude": 4.177,
           "emptyWindows": 0
@@ -5431,11 +5582,12 @@
           "consistent": 0,
           "best": {
             "id": "B__France__medium__sector_on",
+            "stale": true,
             "worstWindowPf": 0,
             "pooledTrades": 7,
             "pooledWinRate": 28.6,
             "pooledProfitFactor": 0.24,
-            "failReason": "window 1 lost money"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         },
         {
@@ -5444,11 +5596,12 @@
           "consistent": 0,
           "best": {
             "id": "A__France__medium__rsi2_lt_5__vol_skip_top30_and_ma50_flat_or_up__sl2__t10__partial",
+            "stale": true,
             "worstWindowPf": 0.664,
             "pooledTrades": 407,
             "pooledWinRate": 63.6,
             "pooledProfitFactor": 0.725,
-            "failReason": "window 2 lost money"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         },
         {
@@ -5457,11 +5610,12 @@
           "consistent": 0,
           "best": {
             "id": "B__France__medium__momentum__regimeoff__longsample",
+            "stale": true,
             "worstWindowPf": 0.92,
             "pooledTrades": 1890,
             "pooledWinRate": 50.6,
             "pooledProfitFactor": 1.145,
-            "failReason": "window 3 lost money"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         }
       ],
@@ -5556,6 +5710,9 @@
         "bhQValue": null,
         "bhPass": null,
         "benchmarkBeat": 4,
+        "stale": false,
+        "staleReason": null,
+        "frameworkConsistent": false,
         "consistent": false,
         "failReason": "window 2 PF 0.372 < 1.2",
         "worstWindowPf": 0.133,
@@ -5646,6 +5803,9 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 4,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 2 PF 0.372 < 1.2",
           "worstWindowPf": 0.133,
@@ -5735,6 +5895,9 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 4,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 1 PF 0.602 < 1.2",
           "worstWindowPf": 0.038,
@@ -5813,6 +5976,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 3 has no trades",
           "worstWindowPf": 0,
@@ -5891,6 +6057,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 3 has no trades",
           "worstWindowPf": 0,
@@ -5969,6 +6138,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 3 has no trades",
           "worstWindowPf": 0,
@@ -5983,6 +6155,7 @@
           "consistent": 0,
           "best": {
             "id": "B__Crypto__medium__sector_off",
+            "stale": false,
             "worstWindowPf": 0,
             "pooledTrades": 0,
             "pooledWinRate": 0,
@@ -5996,6 +6169,7 @@
           "consistent": 0,
           "best": {
             "id": "A__Crypto__medium__close_below_lower_bb20_2__none__sl1.5__t21__full",
+            "stale": false,
             "worstWindowPf": 0,
             "pooledTrades": 5,
             "pooledWinRate": 100,
@@ -6009,6 +6183,7 @@
           "consistent": 0,
           "best": {
             "id": "D__Crypto__medium__trend12m",
+            "stale": false,
             "worstWindowPf": 0.133,
             "pooledTrades": 712,
             "pooledWinRate": 20.8,
@@ -6108,6 +6283,9 @@
         "bhQValue": null,
         "bhPass": null,
         "benchmarkBeat": 3,
+        "stale": false,
+        "staleReason": null,
+        "frameworkConsistent": true,
         "consistent": true,
         "failReason": null,
         "worstWindowPf": 2.102,
@@ -6198,6 +6376,9 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 3,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": true,
           "consistent": true,
           "failReason": null,
           "worstWindowPf": 2.102,
@@ -6287,6 +6468,9 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 3,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": true,
           "consistent": true,
           "failReason": null,
           "worstWindowPf": 1.505,
@@ -6376,6 +6560,9 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 3,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 1 lost money",
           "worstWindowPf": 1.738,
@@ -6465,6 +6652,9 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 2,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 1 lost money",
           "worstWindowPf": 1.653,
@@ -6554,6 +6744,9 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 2,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 2 lost money",
           "worstWindowPf": 1.498,
@@ -6568,6 +6761,7 @@
           "consistent": 0,
           "best": {
             "id": "B__US__long__sector_off",
+            "stale": false,
             "worstWindowPf": 0,
             "pooledTrades": 2,
             "pooledWinRate": 50,
@@ -6581,6 +6775,7 @@
           "consistent": 2,
           "best": {
             "id": "B__US__long__piotroski6__regimeoff",
+            "stale": false,
             "worstWindowPf": 2.102,
             "pooledTrades": 2206,
             "pooledWinRate": 59.9,
@@ -6594,6 +6789,7 @@
           "consistent": 0,
           "best": {
             "id": "C__us__long__old68",
+            "stale": false,
             "worstWindowPf": 0.411,
             "pooledTrades": 505,
             "pooledWinRate": 27.3,
@@ -6609,7 +6805,7 @@
       "horizon": "long",
       "key": "UK|long",
       "variantsScored": 10,
-      "verdict": "CONSISTENT",
+      "verdict": "NONE",
       "best": {
         "id": "B__UK__long__piotroski6__regimeoff",
         "source": "new-strategy-types 2026-10-05",
@@ -6693,8 +6889,11 @@
         "bhQValue": null,
         "bhPass": null,
         "benchmarkBeat": 3,
-        "consistent": true,
-        "failReason": null,
+        "stale": true,
+        "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+        "frameworkConsistent": true,
+        "consistent": false,
+        "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
         "worstWindowPf": 1.478,
         "averageLossMagnitude": 0,
         "emptyWindows": 0
@@ -6783,8 +6982,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 3,
-          "consistent": true,
-          "failReason": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": true,
+          "consistent": false,
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 1.478,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -6872,8 +7074,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 4,
-          "consistent": true,
-          "failReason": null,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": true,
+          "consistent": false,
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 1.408,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -6961,8 +7166,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 2,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 1.395,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -7050,8 +7258,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 2,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 lost money",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 1.272,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -7139,8 +7350,11 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 4,
+          "stale": true,
+          "staleReason": "current-constituent universe (pre survivorship fix); re-score on the ever-member file",
+          "frameworkConsistent": false,
           "consistent": false,
-          "failReason": "window 1 PF 1.091 < 1.2",
+          "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file",
           "worstWindowPf": 1.091,
           "averageLossMagnitude": 0,
           "emptyWindows": 0
@@ -7153,24 +7367,26 @@
           "consistent": 0,
           "best": {
             "id": "B__UK__long__sector_off",
+            "stale": true,
             "worstWindowPf": 0,
             "pooledTrades": 0,
             "pooledWinRate": 0,
             "pooledProfitFactor": 0,
-            "failReason": "window 1 has no trades"
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         },
         {
           "kind": "momentum",
           "variants": 8,
-          "consistent": 2,
+          "consistent": 0,
           "best": {
             "id": "B__UK__long__piotroski6__regimeoff",
+            "stale": true,
             "worstWindowPf": 1.478,
             "pooledTrades": 975,
             "pooledWinRate": 52.4,
             "pooledProfitFactor": 1.478,
-            "failReason": null
+            "failReason": "STALE — current-constituent universe (pre survivorship fix); re-score on the ever-member file"
           }
         }
       ],
@@ -7265,6 +7481,9 @@
         "bhQValue": null,
         "bhPass": null,
         "benchmarkBeat": 4,
+        "stale": false,
+        "staleReason": null,
+        "frameworkConsistent": false,
         "consistent": false,
         "failReason": "window 2 PF 0.372 < 1.2",
         "worstWindowPf": 0.133,
@@ -7355,6 +7574,9 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 4,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 2 PF 0.372 < 1.2",
           "worstWindowPf": 0.133,
@@ -7444,6 +7666,9 @@
           "bhQValue": null,
           "bhPass": null,
           "benchmarkBeat": 4,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 1 PF 0.602 < 1.2",
           "worstWindowPf": 0.038,
@@ -7522,6 +7747,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 1 has no trades",
           "worstWindowPf": 0,
@@ -7600,6 +7828,9 @@
           "bhQValue": 1,
           "bhPass": false,
           "benchmarkBeat": null,
+          "stale": false,
+          "staleReason": null,
+          "frameworkConsistent": false,
           "consistent": false,
           "failReason": "window 1 has no trades",
           "worstWindowPf": 0,
@@ -7614,6 +7845,7 @@
           "consistent": 0,
           "best": {
             "id": "B__Crypto__long__sector_off",
+            "stale": false,
             "worstWindowPf": 0,
             "pooledTrades": 0,
             "pooledWinRate": 0,
@@ -7627,6 +7859,7 @@
           "consistent": 0,
           "best": {
             "id": "D__Crypto__long__trend12m",
+            "stale": false,
             "worstWindowPf": 0.133,
             "pooledTrades": 712,
             "pooledWinRate": 20.8,
@@ -7638,6 +7871,3520 @@
       "blockedFamilies": []
     }
   ],
+  "rescore": {
+    "generatedAt": "2026-10-26T04:16:50.943Z",
+    "researchOnly": true,
+    "liveBehaviorChanged": false,
+    "standards": "docs/strategy-gaps-amendment-2026-10-06.md (ever-member universe, PIT Piotroski filing+45d, monthly excess t, alpha t, k=1/k=2, QQQ hurdle)",
+    "passRule": {
+      "VALIDATION_PASS": "every window with trades profitable with PF ≥ 1.2; full sample beats benchmark; monthly excess t ≥ 3; alpha t ≥ 2 (US: SPY+QQQ two-factor; UK: EWU); US must beat QQQ",
+      "INCUBATION_ELIGIBLE": "positive full-sample net excess; ≥ 3 of 4 windows positive; excess t ≥ 1.5; max DD < 50%"
+    },
+    "trials": 12,
+    "cells": [
+      {
+        "id": "US__long__12-1__piotroski6",
+        "market": "US",
+        "horizon": "long",
+        "quality": true,
+        "membershipFile": "data\\research\\fmp\\us-universe.json",
+        "statementMarket": "US",
+        "universe": "ever",
+        "benchmark": "SPY",
+        "costMarket": "US",
+        "signalStart": "2014-01-23",
+        "strategy": "12-1 momentum among point-in-time Piotroski ≥ 6, top 10, six-month hold in six sleeves",
+        "cell": "US long",
+        "prior": [
+          "B__US__long__piotroski6__regimeoff (new-strategy-types PASS)",
+          "B__US__long__piotroski6__regimeoff__longsample (amendment CANDIDATE)"
+        ],
+        "liveNote": "Not live. docs/us-long-piotroski-paper-design.md is a paper design only; no setup-book cell, flag, or order exists.",
+        "coverage": {
+          "everMembers": 809,
+          "current": 517,
+          "former": 292,
+          "formerPriced": 126,
+          "candidates": 809,
+          "priced": 623,
+          "withStatements": 479,
+          "formerWithStatements": 88
+        },
+        "years": [
+          {
+            "year": 2014,
+            "members": 510,
+            "priced": 386,
+            "missing": 124
+          },
+          {
+            "year": 2015,
+            "members": 509,
+            "priced": 401,
+            "missing": 108
+          },
+          {
+            "year": 2016,
+            "members": 511,
+            "priced": 421,
+            "missing": 90
+          },
+          {
+            "year": 2017,
+            "members": 507,
+            "priced": 432,
+            "missing": 75
+          },
+          {
+            "year": 2018,
+            "members": 506,
+            "priced": 445,
+            "missing": 61
+          },
+          {
+            "year": 2019,
+            "members": 510,
+            "priced": 457,
+            "missing": 53
+          },
+          {
+            "year": 2020,
+            "members": 511,
+            "priced": 466,
+            "missing": 45
+          },
+          {
+            "year": 2021,
+            "members": 508,
+            "priced": 470,
+            "missing": 38
+          },
+          {
+            "year": 2022,
+            "members": 509,
+            "priced": 480,
+            "missing": 29
+          },
+          {
+            "year": 2023,
+            "members": 510,
+            "priced": 486,
+            "missing": 24
+          },
+          {
+            "year": 2024,
+            "members": 512,
+            "priced": 491,
+            "missing": 21
+          },
+          {
+            "year": 2025,
+            "members": 515,
+            "priced": 499,
+            "missing": 16
+          },
+          {
+            "year": 2026,
+            "members": 517,
+            "priced": 497,
+            "missing": 20
+          }
+        ],
+        "books": {
+          "research": {
+            "label": "research",
+            "months": 152,
+            "firstMonth": "2014-03-03",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 701.9,
+              "benchmarkReturnPct": 329.49,
+              "excessPp": 372.41,
+              "maxDrawdownPct": 25.79,
+              "benchmarkMaxDrawdownPct": 24.19,
+              "sharpeMonthly": 0.26,
+              "sharpeAnnual": 0.89,
+              "trades": 1470,
+              "win": 60.5,
+              "pf": 2.768,
+              "medianNames": 10,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": 1.69,
+              "n": 152,
+              "meanMonthlyPct": 0.5,
+              "sharpe": 0.14
+            },
+            "alpha": {
+              "model": "SPY+QQQ",
+              "alphaAnnualPct": 3.04,
+              "t": 0.83,
+              "betaSpy": 0.75,
+              "betaQqq": 0.33,
+              "n": 152
+            },
+            "qqq": {
+              "qqqReturnPct": 762.28,
+              "bookMinusQqqPp": -60.38,
+              "qqqMaxDrawdownPct": 32.68,
+              "bookSharpe": 0.26,
+              "qqqSharpe": 0.29,
+              "beatsQqq": false,
+              "windows": [
+                {
+                  "fold": 1,
+                  "excessPp": 0.01
+                },
+                {
+                  "fold": 2,
+                  "excessPp": 10.81
+                },
+                {
+                  "fold": 3,
+                  "excessPp": 6.99
+                },
+                {
+                  "fold": 4,
+                  "excessPp": 4.62
+                }
+              ],
+              "spyOnlyAlpha": {
+                "alphaAnnualPct": 4.52,
+                "t": 1.24,
+                "beta": 1.12
+              }
+            },
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": -1.23,
+                "benchmarkReturnPct": -0.54,
+                "excessPp": -0.7,
+                "trades": 70,
+                "win": 68.6,
+                "pf": 3.829,
+                "pfInfinite": false,
+                "maxDrawdownPct": 12.78
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 38.6,
+                "benchmarkReturnPct": 18.96,
+                "excessPp": 19.63,
+                "trades": 60,
+                "win": 71.7,
+                "pf": 4.511,
+                "pfInfinite": false,
+                "maxDrawdownPct": 0.63
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 4.36,
+                "benchmarkReturnPct": -1.4,
+                "excessPp": 5.76,
+                "trades": 60,
+                "win": 55,
+                "pf": 1.983,
+                "pfInfinite": false,
+                "maxDrawdownPct": 4.26
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": 32.31,
+                "benchmarkReturnPct": 16.89,
+                "excessPp": 15.42,
+                "trades": 60,
+                "win": 76.7,
+                "pf": 12.052,
+                "pfInfinite": false,
+                "maxDrawdownPct": 15.95
+              }
+            ],
+            "positiveWindows": 3,
+            "excessPositiveWindows": 3,
+            "verdict": "INCUBATION_ELIGIBLE",
+            "failReasons": [
+              "windows: -1.23%/PF 3.829, 38.6%/PF 4.511, 4.36%/PF 1.983, 32.31%/PF 12.052",
+              "excess t 1.69 < 3",
+              "alpha t 0.83 < 2",
+              "does not beat QQQ"
+            ],
+            "years": [
+              {
+                "year": "2014",
+                "returnPct": 4.35,
+                "benchmarkReturnPct": 15.97
+              },
+              {
+                "year": "2015",
+                "returnPct": 5.78,
+                "benchmarkReturnPct": 1.47
+              },
+              {
+                "year": "2016",
+                "returnPct": 2.49,
+                "benchmarkReturnPct": 5.39
+              },
+              {
+                "year": "2017",
+                "returnPct": 25.47,
+                "benchmarkReturnPct": 19.95
+              },
+              {
+                "year": "2018",
+                "returnPct": 2.31,
+                "benchmarkReturnPct": 5.86
+              },
+              {
+                "year": "2019",
+                "returnPct": 2.4,
+                "benchmarkReturnPct": 12.24
+              },
+              {
+                "year": "2020",
+                "returnPct": 45.27,
+                "benchmarkReturnPct": 16.21
+              },
+              {
+                "year": "2021",
+                "returnPct": 31.59,
+                "benchmarkReturnPct": 26.28
+              },
+              {
+                "year": "2022",
+                "returnPct": 13.17,
+                "benchmarkReturnPct": -11.45
+              },
+              {
+                "year": "2023",
+                "returnPct": -4.31,
+                "benchmarkReturnPct": 11.5
+              },
+              {
+                "year": "2024",
+                "returnPct": 56.05,
+                "benchmarkReturnPct": 32.3
+              },
+              {
+                "year": "2025",
+                "returnPct": 15.89,
+                "benchmarkReturnPct": 12.58
+              },
+              {
+                "year": "2026",
+                "returnPct": 44.03,
+                "benchmarkReturnPct": 12.6
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.568,
+              "annualized": 0.48
+            }
+          },
+          "k1": {
+            "label": "k1",
+            "months": 152,
+            "firstMonth": "2014-03-03",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 1295.15,
+              "benchmarkReturnPct": 329.49,
+              "excessPp": 965.66,
+              "maxDrawdownPct": 28.8,
+              "benchmarkMaxDrawdownPct": 24.19,
+              "sharpeMonthly": 0.26,
+              "sharpeAnnual": 0.9,
+              "trades": 147,
+              "win": 63.3,
+              "pf": 3.393,
+              "medianNames": 1,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": 2.17,
+              "n": 152,
+              "meanMonthlyPct": 0.99,
+              "sharpe": 0.18
+            },
+            "alpha": {
+              "model": "SPY+QQQ",
+              "alphaAnnualPct": 5.93,
+              "t": 1.07,
+              "betaSpy": 0.77,
+              "betaQqq": 0.48,
+              "n": 152
+            },
+            "qqq": {
+              "qqqReturnPct": 762.28,
+              "bookMinusQqqPp": 532.87,
+              "qqqMaxDrawdownPct": 32.68,
+              "bookSharpe": 0.26,
+              "qqqSharpe": 0.29,
+              "beatsQqq": true,
+              "windows": [
+                {
+                  "fold": 1,
+                  "excessPp": -1.74
+                },
+                {
+                  "fold": 2,
+                  "excessPp": 30.02
+                },
+                {
+                  "fold": 3,
+                  "excessPp": 16.58
+                },
+                {
+                  "fold": 4,
+                  "excessPp": 15.38
+                }
+              ],
+              "spyOnlyAlpha": {
+                "alphaAnnualPct": 8.09,
+                "t": 1.47,
+                "beta": 1.3
+              }
+            },
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": -2.98,
+                "benchmarkReturnPct": -0.54,
+                "excessPp": -2.44,
+                "trades": 7,
+                "win": 85.7,
+                "pf": 9.328,
+                "pfInfinite": false,
+                "maxDrawdownPct": 20.03
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 57.82,
+                "benchmarkReturnPct": 18.96,
+                "excessPp": 38.85,
+                "trades": 6,
+                "win": 83.3,
+                "pf": 6.498,
+                "pfInfinite": false,
+                "maxDrawdownPct": 0
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 13.95,
+                "benchmarkReturnPct": -1.4,
+                "excessPp": 15.35,
+                "trades": 6,
+                "win": 33.3,
+                "pf": 2.052,
+                "pfInfinite": false,
+                "maxDrawdownPct": 8.62
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": 43.07,
+                "benchmarkReturnPct": 16.89,
+                "excessPp": 26.18,
+                "trades": 6,
+                "win": 100,
+                "pf": null,
+                "pfInfinite": true,
+                "maxDrawdownPct": 21.65
+              }
+            ],
+            "positiveWindows": 3,
+            "excessPositiveWindows": 3,
+            "verdict": "INCUBATION_ELIGIBLE",
+            "failReasons": [
+              "windows: -2.98%/PF 9.328, 57.82%/PF 6.498, 13.95%/PF 2.052, 43.07%/PF ∞",
+              "excess t 2.17 < 3",
+              "alpha t 1.07 < 2"
+            ],
+            "years": [
+              {
+                "year": "2014",
+                "returnPct": 13.25,
+                "benchmarkReturnPct": 15.97
+              },
+              {
+                "year": "2015",
+                "returnPct": 6.73,
+                "benchmarkReturnPct": 1.47
+              },
+              {
+                "year": "2016",
+                "returnPct": 12.69,
+                "benchmarkReturnPct": 5.39
+              },
+              {
+                "year": "2017",
+                "returnPct": 12.2,
+                "benchmarkReturnPct": 19.95
+              },
+              {
+                "year": "2018",
+                "returnPct": 4.37,
+                "benchmarkReturnPct": 5.86
+              },
+              {
+                "year": "2019",
+                "returnPct": 4.19,
+                "benchmarkReturnPct": 12.24
+              },
+              {
+                "year": "2020",
+                "returnPct": 54.88,
+                "benchmarkReturnPct": 16.21
+              },
+              {
+                "year": "2021",
+                "returnPct": 33.11,
+                "benchmarkReturnPct": 26.28
+              },
+              {
+                "year": "2022",
+                "returnPct": 20.52,
+                "benchmarkReturnPct": -11.45
+              },
+              {
+                "year": "2023",
+                "returnPct": -12.04,
+                "benchmarkReturnPct": 11.5
+              },
+              {
+                "year": "2024",
+                "returnPct": 86.7,
+                "benchmarkReturnPct": 32.3
+              },
+              {
+                "year": "2025",
+                "returnPct": 15.33,
+                "benchmarkReturnPct": 12.58
+              },
+              {
+                "year": "2026",
+                "returnPct": 78.41,
+                "benchmarkReturnPct": 12.6
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.743,
+              "annualized": 0.61
+            }
+          },
+          "k2": {
+            "label": "k2",
+            "months": 152,
+            "firstMonth": "2014-03-03",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 625.38,
+              "benchmarkReturnPct": 329.49,
+              "excessPp": 295.89,
+              "maxDrawdownPct": 30.47,
+              "benchmarkMaxDrawdownPct": 24.19,
+              "sharpeMonthly": 0.23,
+              "sharpeAnnual": 0.8,
+              "trades": 294,
+              "win": 61.9,
+              "pf": 2.519,
+              "medianNames": 2,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": 1.38,
+              "n": 152,
+              "meanMonthlyPct": 0.47,
+              "sharpe": 0.11
+            },
+            "alpha": {
+              "model": "SPY+QQQ",
+              "alphaAnnualPct": 2.21,
+              "t": 0.53,
+              "betaSpy": 0.95,
+              "betaQqq": 0.22,
+              "n": 152
+            },
+            "qqq": {
+              "qqqReturnPct": 762.28,
+              "bookMinusQqqPp": -136.9,
+              "qqqMaxDrawdownPct": 32.68,
+              "bookSharpe": 0.23,
+              "qqqSharpe": 0.29,
+              "beatsQqq": false,
+              "windows": [
+                {
+                  "fold": 1,
+                  "excessPp": 1.26
+                },
+                {
+                  "fold": 2,
+                  "excessPp": 11.35
+                },
+                {
+                  "fold": 3,
+                  "excessPp": 21.13
+                },
+                {
+                  "fold": 4,
+                  "excessPp": 4.59
+                }
+              ],
+              "spyOnlyAlpha": {
+                "alphaAnnualPct": 3.2,
+                "t": 0.77,
+                "beta": 1.19
+              }
+            },
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": 0.02,
+                "benchmarkReturnPct": -0.54,
+                "excessPp": 0.55,
+                "trades": 14,
+                "win": 78.6,
+                "pf": 7.532,
+                "pfInfinite": false,
+                "maxDrawdownPct": 13.98
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 39.15,
+                "benchmarkReturnPct": 18.96,
+                "excessPp": 20.18,
+                "trades": 12,
+                "win": 66.7,
+                "pf": 5.128,
+                "pfInfinite": false,
+                "maxDrawdownPct": 0.27
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 18.51,
+                "benchmarkReturnPct": -1.4,
+                "excessPp": 19.9,
+                "trades": 12,
+                "win": 66.7,
+                "pf": 3.272,
+                "pfInfinite": false,
+                "maxDrawdownPct": 4.3
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": 32.29,
+                "benchmarkReturnPct": 16.89,
+                "excessPp": 15.39,
+                "trades": 12,
+                "win": 75,
+                "pf": 16.622,
+                "pfInfinite": false,
+                "maxDrawdownPct": 15.01
+              }
+            ],
+            "positiveWindows": 4,
+            "excessPositiveWindows": 4,
+            "verdict": "FAIL",
+            "failReasons": [
+              "excess t 1.38 < 3",
+              "alpha t 0.53 < 2",
+              "does not beat QQQ"
+            ],
+            "years": [
+              {
+                "year": "2014",
+                "returnPct": 0.18,
+                "benchmarkReturnPct": 15.97
+              },
+              {
+                "year": "2015",
+                "returnPct": 11.95,
+                "benchmarkReturnPct": 1.47
+              },
+              {
+                "year": "2016",
+                "returnPct": 2.56,
+                "benchmarkReturnPct": 5.39
+              },
+              {
+                "year": "2017",
+                "returnPct": 10.62,
+                "benchmarkReturnPct": 19.95
+              },
+              {
+                "year": "2018",
+                "returnPct": -5.72,
+                "benchmarkReturnPct": 5.86
+              },
+              {
+                "year": "2019",
+                "returnPct": 8.98,
+                "benchmarkReturnPct": 12.24
+              },
+              {
+                "year": "2020",
+                "returnPct": 23.28,
+                "benchmarkReturnPct": 16.21
+              },
+              {
+                "year": "2021",
+                "returnPct": 42.12,
+                "benchmarkReturnPct": 26.28
+              },
+              {
+                "year": "2022",
+                "returnPct": 12.8,
+                "benchmarkReturnPct": -11.45
+              },
+              {
+                "year": "2023",
+                "returnPct": -6.59,
+                "benchmarkReturnPct": 11.5
+              },
+              {
+                "year": "2024",
+                "returnPct": 60.16,
+                "benchmarkReturnPct": 32.3
+              },
+              {
+                "year": "2025",
+                "returnPct": 15.4,
+                "benchmarkReturnPct": 12.58
+              },
+              {
+                "year": "2026",
+                "returnPct": 62.61,
+                "benchmarkReturnPct": 12.6
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.447,
+              "annualized": 0.39
+            }
+          }
+        }
+      },
+      {
+        "id": "UK__long__12-1__piotroski6",
+        "market": "UK",
+        "horizon": "long",
+        "quality": true,
+        "membershipFile": "data\\research\\index-membership\\ftse100.json",
+        "statementMarket": "UK",
+        "universe": "ever",
+        "benchmark": "EWU",
+        "costMarket": "UK",
+        "signalStart": "2010-01-01",
+        "strategy": "12-1 momentum among point-in-time Piotroski ≥ 6, top 10, six-month hold in six sleeves",
+        "cell": "UK long",
+        "prior": [
+          "B__UK__long__piotroski6__regimeoff (new-strategy-types PASS, current constituents)"
+        ],
+        "liveNote": "Not live. The live UK_LONG_MOMENTUM is plain 12-1, k=1, no Piotroski screen.",
+        "coverage": {
+          "everMembers": 197,
+          "current": 100,
+          "former": 97,
+          "formerPriced": 32,
+          "candidates": 197,
+          "priced": 131,
+          "withStatements": 30,
+          "formerWithStatements": 3
+        },
+        "years": [
+          {
+            "year": 2010,
+            "members": 102,
+            "priced": 69,
+            "missing": 33
+          },
+          {
+            "year": 2011,
+            "members": 102,
+            "priced": 71,
+            "missing": 31
+          },
+          {
+            "year": 2012,
+            "members": 102,
+            "priced": 72,
+            "missing": 30
+          },
+          {
+            "year": 2013,
+            "members": 103,
+            "priced": 78,
+            "missing": 25
+          },
+          {
+            "year": 2014,
+            "members": 103,
+            "priced": 79,
+            "missing": 24
+          },
+          {
+            "year": 2015,
+            "members": 103,
+            "priced": 80,
+            "missing": 23
+          },
+          {
+            "year": 2016,
+            "members": 104,
+            "priced": 80,
+            "missing": 24
+          },
+          {
+            "year": 2017,
+            "members": 104,
+            "priced": 81,
+            "missing": 23
+          },
+          {
+            "year": 2018,
+            "members": 104,
+            "priced": 88,
+            "missing": 16
+          },
+          {
+            "year": 2019,
+            "members": 102,
+            "priced": 85,
+            "missing": 17
+          },
+          {
+            "year": 2020,
+            "members": 101,
+            "priced": 87,
+            "missing": 14
+          },
+          {
+            "year": 2021,
+            "members": 101,
+            "priced": 87,
+            "missing": 14
+          },
+          {
+            "year": 2022,
+            "members": 99,
+            "priced": 92,
+            "missing": 7
+          },
+          {
+            "year": 2023,
+            "members": 99,
+            "priced": 95,
+            "missing": 4
+          },
+          {
+            "year": 2024,
+            "members": 98,
+            "priced": 95,
+            "missing": 3
+          },
+          {
+            "year": 2025,
+            "members": 99,
+            "priced": 98,
+            "missing": 1
+          },
+          {
+            "year": 2026,
+            "members": 100,
+            "priced": 100,
+            "missing": 0
+          }
+        ],
+        "books": {
+          "research": {
+            "label": "research",
+            "months": 200,
+            "firstMonth": "2010-03-01",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 114.27,
+              "benchmarkReturnPct": 48.49,
+              "excessPp": 65.79,
+              "maxDrawdownPct": 32.8,
+              "benchmarkMaxDrawdownPct": 47.02,
+              "sharpeMonthly": 0.12,
+              "sharpeAnnual": 0.4,
+              "trades": 1665,
+              "win": 54.4,
+              "pf": 1.518,
+              "medianNames": 10,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": 0.61,
+              "n": 200,
+              "meanMonthlyPct": 0.14,
+              "sharpe": 0.04
+            },
+            "alpha": {
+              "model": "EWU",
+              "alphaAnnualPct": 3.26,
+              "t": 1.41,
+              "beta": 0.59,
+              "n": 200
+            },
+            "qqq": null,
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": 8.65,
+                "benchmarkReturnPct": 0.83,
+                "excessPp": 7.82,
+                "trades": 70,
+                "win": 55.7,
+                "pf": 2.078,
+                "pfInfinite": false,
+                "maxDrawdownPct": 3.44
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 12.4,
+                "benchmarkReturnPct": 13.24,
+                "excessPp": -0.84,
+                "trades": 60,
+                "win": 61.7,
+                "pf": 6.657,
+                "pfInfinite": false,
+                "maxDrawdownPct": 0
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 9.24,
+                "benchmarkReturnPct": 8.6,
+                "excessPp": 0.63,
+                "trades": 55,
+                "win": 70.9,
+                "pf": 5.474,
+                "pfInfinite": false,
+                "maxDrawdownPct": 4.2
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": -0.78,
+                "benchmarkReturnPct": 0.11,
+                "excessPp": -0.89,
+                "trades": 60,
+                "win": 53.3,
+                "pf": 1.201,
+                "pfInfinite": false,
+                "maxDrawdownPct": 2.49
+              }
+            ],
+            "positiveWindows": 3,
+            "excessPositiveWindows": 2,
+            "verdict": "FAIL",
+            "failReasons": [
+              "windows: 8.65%/PF 2.078, 12.4%/PF 6.657, 9.24%/PF 5.474, -0.78%/PF 1.201",
+              "excess t 0.61 < 3",
+              "alpha t 1.41 < 2"
+            ],
+            "years": [
+              {
+                "year": "2010",
+                "returnPct": 0,
+                "benchmarkReturnPct": 6.18
+              },
+              {
+                "year": "2011",
+                "returnPct": 1.29,
+                "benchmarkReturnPct": -0.55
+              },
+              {
+                "year": "2012",
+                "returnPct": 2.8,
+                "benchmarkReturnPct": 8.35
+              },
+              {
+                "year": "2013",
+                "returnPct": 14.23,
+                "benchmarkReturnPct": 14.86
+              },
+              {
+                "year": "2014",
+                "returnPct": -5.68,
+                "benchmarkReturnPct": -6.61
+              },
+              {
+                "year": "2015",
+                "returnPct": 2.26,
+                "benchmarkReturnPct": -9.39
+              },
+              {
+                "year": "2016",
+                "returnPct": -4.05,
+                "benchmarkReturnPct": -12.74
+              },
+              {
+                "year": "2017",
+                "returnPct": 13.22,
+                "benchmarkReturnPct": 15.89
+              },
+              {
+                "year": "2018",
+                "returnPct": -4.17,
+                "benchmarkReturnPct": -9.13
+              },
+              {
+                "year": "2019",
+                "returnPct": 3.66,
+                "benchmarkReturnPct": 3.59
+              },
+              {
+                "year": "2020",
+                "returnPct": -10.22,
+                "benchmarkReturnPct": -12.35
+              },
+              {
+                "year": "2021",
+                "returnPct": 18.25,
+                "benchmarkReturnPct": 12.6
+              },
+              {
+                "year": "2022",
+                "returnPct": 4.53,
+                "benchmarkReturnPct": -1.57
+              },
+              {
+                "year": "2023",
+                "returnPct": -2.16,
+                "benchmarkReturnPct": 1.69
+              },
+              {
+                "year": "2024",
+                "returnPct": 23.33,
+                "benchmarkReturnPct": 10.1
+              },
+              {
+                "year": "2025",
+                "returnPct": 22.19,
+                "benchmarkReturnPct": 20.72
+              },
+              {
+                "year": "2026",
+                "returnPct": 5.79,
+                "benchmarkReturnPct": 6.83
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.131,
+              "annualized": 0.15
+            }
+          },
+          "k1": {
+            "label": "k1",
+            "months": 200,
+            "firstMonth": "2010-03-01",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 230.66,
+              "benchmarkReturnPct": 48.49,
+              "excessPp": 182.17,
+              "maxDrawdownPct": 27.59,
+              "benchmarkMaxDrawdownPct": 47.02,
+              "sharpeMonthly": 0.17,
+              "sharpeAnnual": 0.58,
+              "trades": 183,
+              "win": 55.7,
+              "pf": 1.982,
+              "medianNames": 1,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": 1.31,
+              "n": 200,
+              "meanMonthlyPct": 0.36,
+              "sharpe": 0.09
+            },
+            "alpha": {
+              "model": "EWU",
+              "alphaAnnualPct": 6.2,
+              "t": 2.3,
+              "beta": 0.52,
+              "n": 200
+            },
+            "qqq": null,
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": 13.7,
+                "benchmarkReturnPct": 0.83,
+                "excessPp": 12.87,
+                "trades": 7,
+                "win": 71.4,
+                "pf": 3.455,
+                "pfInfinite": false,
+                "maxDrawdownPct": 5.27
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 8.78,
+                "benchmarkReturnPct": 13.24,
+                "excessPp": -4.46,
+                "trades": 6,
+                "win": 33.3,
+                "pf": 2.706,
+                "pfInfinite": false,
+                "maxDrawdownPct": 0.51
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 2.76,
+                "benchmarkReturnPct": 8.6,
+                "excessPp": -5.85,
+                "trades": 6,
+                "win": 50,
+                "pf": 4.146,
+                "pfInfinite": false,
+                "maxDrawdownPct": 11.03
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": 1.81,
+                "benchmarkReturnPct": 0.11,
+                "excessPp": 1.7,
+                "trades": 6,
+                "win": 33.3,
+                "pf": 0.73,
+                "pfInfinite": false,
+                "maxDrawdownPct": 1.84
+              }
+            ],
+            "positiveWindows": 4,
+            "excessPositiveWindows": 2,
+            "verdict": "FAIL",
+            "failReasons": [
+              "windows: 13.7%/PF 3.455, 8.78%/PF 2.706, 2.76%/PF 4.146, 1.81%/PF 0.73",
+              "excess t 1.31 < 3"
+            ],
+            "years": [
+              {
+                "year": "2010",
+                "returnPct": 0,
+                "benchmarkReturnPct": 6.18
+              },
+              {
+                "year": "2011",
+                "returnPct": 5.67,
+                "benchmarkReturnPct": -0.55
+              },
+              {
+                "year": "2012",
+                "returnPct": 8.67,
+                "benchmarkReturnPct": 8.35
+              },
+              {
+                "year": "2013",
+                "returnPct": 16.03,
+                "benchmarkReturnPct": 14.86
+              },
+              {
+                "year": "2014",
+                "returnPct": -3.87,
+                "benchmarkReturnPct": -6.61
+              },
+              {
+                "year": "2015",
+                "returnPct": 12.21,
+                "benchmarkReturnPct": -9.39
+              },
+              {
+                "year": "2016",
+                "returnPct": -14.76,
+                "benchmarkReturnPct": -12.74
+              },
+              {
+                "year": "2017",
+                "returnPct": 16.43,
+                "benchmarkReturnPct": 15.89
+              },
+              {
+                "year": "2018",
+                "returnPct": -4.03,
+                "benchmarkReturnPct": -9.13
+              },
+              {
+                "year": "2019",
+                "returnPct": 2.99,
+                "benchmarkReturnPct": 3.59
+              },
+              {
+                "year": "2020",
+                "returnPct": -2.09,
+                "benchmarkReturnPct": -12.35
+              },
+              {
+                "year": "2021",
+                "returnPct": 16.84,
+                "benchmarkReturnPct": 12.6
+              },
+              {
+                "year": "2022",
+                "returnPct": 18.48,
+                "benchmarkReturnPct": -1.57
+              },
+              {
+                "year": "2023",
+                "returnPct": 2.49,
+                "benchmarkReturnPct": 1.69
+              },
+              {
+                "year": "2024",
+                "returnPct": 42.05,
+                "benchmarkReturnPct": 10.1
+              },
+              {
+                "year": "2025",
+                "returnPct": 13.55,
+                "benchmarkReturnPct": 20.72
+              },
+              {
+                "year": "2026",
+                "returnPct": 4.67,
+                "benchmarkReturnPct": 6.83
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.336,
+              "annualized": 0.32
+            }
+          },
+          "k2": {
+            "label": "k2",
+            "months": 200,
+            "firstMonth": "2010-03-01",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 63.86,
+              "benchmarkReturnPct": 48.49,
+              "excessPp": 15.37,
+              "maxDrawdownPct": 30.23,
+              "benchmarkMaxDrawdownPct": 47.02,
+              "sharpeMonthly": 0.09,
+              "sharpeAnnual": 0.31,
+              "trades": 332,
+              "win": 53.6,
+              "pf": 1.333,
+              "medianNames": 2,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": -0.04,
+              "n": 200,
+              "meanMonthlyPct": -0.01,
+              "sharpe": 0
+            },
+            "alpha": {
+              "model": "EWU",
+              "alphaAnnualPct": 1.78,
+              "t": 0.84,
+              "beta": 0.5,
+              "n": 200
+            },
+            "qqq": null,
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": 10.22,
+                "benchmarkReturnPct": 0.83,
+                "excessPp": 9.39,
+                "trades": 14,
+                "win": 64.3,
+                "pf": 2.273,
+                "pfInfinite": false,
+                "maxDrawdownPct": 3.05
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 9.51,
+                "benchmarkReturnPct": 13.24,
+                "excessPp": -3.73,
+                "trades": 12,
+                "win": 41.7,
+                "pf": 1.871,
+                "pfInfinite": false,
+                "maxDrawdownPct": 1.19
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 5.74,
+                "benchmarkReturnPct": 8.6,
+                "excessPp": -2.86,
+                "trades": 11,
+                "win": 72.7,
+                "pf": 7.587,
+                "pfInfinite": false,
+                "maxDrawdownPct": 3.98
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": -2.24,
+                "benchmarkReturnPct": 0.11,
+                "excessPp": -2.35,
+                "trades": 12,
+                "win": 50,
+                "pf": 0.712,
+                "pfInfinite": false,
+                "maxDrawdownPct": 3.08
+              }
+            ],
+            "positiveWindows": 3,
+            "excessPositiveWindows": 1,
+            "verdict": "FAIL",
+            "failReasons": [
+              "windows: 10.22%/PF 2.273, 9.51%/PF 1.871, 5.74%/PF 7.587, -2.24%/PF 0.712",
+              "excess t -0.04 < 3",
+              "alpha t 0.84 < 2"
+            ],
+            "years": [
+              {
+                "year": "2010",
+                "returnPct": 0,
+                "benchmarkReturnPct": 6.18
+              },
+              {
+                "year": "2011",
+                "returnPct": 1.43,
+                "benchmarkReturnPct": -0.55
+              },
+              {
+                "year": "2012",
+                "returnPct": 0.71,
+                "benchmarkReturnPct": 8.35
+              },
+              {
+                "year": "2013",
+                "returnPct": 6.39,
+                "benchmarkReturnPct": 14.86
+              },
+              {
+                "year": "2014",
+                "returnPct": -5.96,
+                "benchmarkReturnPct": -6.61
+              },
+              {
+                "year": "2015",
+                "returnPct": 7.63,
+                "benchmarkReturnPct": -9.39
+              },
+              {
+                "year": "2016",
+                "returnPct": -6.62,
+                "benchmarkReturnPct": -12.74
+              },
+              {
+                "year": "2017",
+                "returnPct": 13.94,
+                "benchmarkReturnPct": 15.89
+              },
+              {
+                "year": "2018",
+                "returnPct": -1.19,
+                "benchmarkReturnPct": -9.13
+              },
+              {
+                "year": "2019",
+                "returnPct": -0.83,
+                "benchmarkReturnPct": 3.59
+              },
+              {
+                "year": "2020",
+                "returnPct": -7.48,
+                "benchmarkReturnPct": -12.35
+              },
+              {
+                "year": "2021",
+                "returnPct": 3.42,
+                "benchmarkReturnPct": 12.6
+              },
+              {
+                "year": "2022",
+                "returnPct": 4.46,
+                "benchmarkReturnPct": -1.57
+              },
+              {
+                "year": "2023",
+                "returnPct": -4.5,
+                "benchmarkReturnPct": 1.69
+              },
+              {
+                "year": "2024",
+                "returnPct": 25.34,
+                "benchmarkReturnPct": 10.1
+              },
+              {
+                "year": "2025",
+                "returnPct": 18.72,
+                "benchmarkReturnPct": 20.72
+              },
+              {
+                "year": "2026",
+                "returnPct": 0.59,
+                "benchmarkReturnPct": 6.83
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.038,
+              "annualized": -0.01
+            }
+          }
+        }
+      },
+      {
+        "id": "UK__long__12-1__plain",
+        "market": "UK",
+        "horizon": "long",
+        "quality": false,
+        "membershipFile": "data\\research\\index-membership\\ftse100.json",
+        "statementMarket": "UK",
+        "universe": "ever",
+        "benchmark": "EWU",
+        "costMarket": "UK",
+        "signalStart": "2010-01-01",
+        "strategy": "Plain 12-1 momentum, top 10, six-month hold in six sleeves (the live UK_LONG_MOMENTUM definition; k=1 row is the live book)",
+        "cell": "UK long",
+        "prior": [
+          "UK__long__k1 (executable-momentum 2026-10-06)",
+          "docs/momentum-check-2026-10-07.md"
+        ],
+        "liveNote": "LIVE as UK_LONG_MOMENTUM at k=1 (Experimental).",
+        "coverage": {
+          "everMembers": 197,
+          "current": 100,
+          "former": 97,
+          "formerPriced": 32,
+          "candidates": 197,
+          "priced": 131,
+          "withStatements": null,
+          "formerWithStatements": null
+        },
+        "years": [
+          {
+            "year": 2010,
+            "members": 102,
+            "priced": 69,
+            "missing": 33
+          },
+          {
+            "year": 2011,
+            "members": 102,
+            "priced": 71,
+            "missing": 31
+          },
+          {
+            "year": 2012,
+            "members": 102,
+            "priced": 72,
+            "missing": 30
+          },
+          {
+            "year": 2013,
+            "members": 103,
+            "priced": 78,
+            "missing": 25
+          },
+          {
+            "year": 2014,
+            "members": 103,
+            "priced": 79,
+            "missing": 24
+          },
+          {
+            "year": 2015,
+            "members": 103,
+            "priced": 80,
+            "missing": 23
+          },
+          {
+            "year": 2016,
+            "members": 104,
+            "priced": 80,
+            "missing": 24
+          },
+          {
+            "year": 2017,
+            "members": 104,
+            "priced": 81,
+            "missing": 23
+          },
+          {
+            "year": 2018,
+            "members": 104,
+            "priced": 88,
+            "missing": 16
+          },
+          {
+            "year": 2019,
+            "members": 102,
+            "priced": 85,
+            "missing": 17
+          },
+          {
+            "year": 2020,
+            "members": 101,
+            "priced": 87,
+            "missing": 14
+          },
+          {
+            "year": 2021,
+            "members": 101,
+            "priced": 87,
+            "missing": 14
+          },
+          {
+            "year": 2022,
+            "members": 99,
+            "priced": 92,
+            "missing": 7
+          },
+          {
+            "year": 2023,
+            "members": 99,
+            "priced": 95,
+            "missing": 4
+          },
+          {
+            "year": 2024,
+            "members": 98,
+            "priced": 95,
+            "missing": 3
+          },
+          {
+            "year": 2025,
+            "members": 99,
+            "priced": 98,
+            "missing": 1
+          },
+          {
+            "year": 2026,
+            "members": 100,
+            "priced": 100,
+            "missing": 0
+          }
+        ],
+        "books": {
+          "research": {
+            "label": "research",
+            "months": 200,
+            "firstMonth": "2010-03-01",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 226.18,
+              "benchmarkReturnPct": 48.49,
+              "excessPp": 177.69,
+              "maxDrawdownPct": 25.05,
+              "benchmarkMaxDrawdownPct": 47.02,
+              "sharpeMonthly": 0.16,
+              "sharpeAnnual": 0.54,
+              "trades": 1840,
+              "win": 56.8,
+              "pf": 1.825,
+              "medianNames": 10,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": 1.27,
+              "n": 200,
+              "meanMonthlyPct": 0.38,
+              "sharpe": 0.09
+            },
+            "alpha": {
+              "model": "EWU",
+              "alphaAnnualPct": 6.24,
+              "t": 2.06,
+              "beta": 0.54,
+              "n": 200
+            },
+            "qqq": null,
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": 6.42,
+                "benchmarkReturnPct": 0.83,
+                "excessPp": 5.58,
+                "trades": 70,
+                "win": 61.4,
+                "pf": 1.539,
+                "pfInfinite": false,
+                "maxDrawdownPct": 6.36
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 32.85,
+                "benchmarkReturnPct": 13.24,
+                "excessPp": 19.61,
+                "trades": 60,
+                "win": 81.7,
+                "pf": 10.427,
+                "pfInfinite": false,
+                "maxDrawdownPct": 0
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 16.56,
+                "benchmarkReturnPct": 8.6,
+                "excessPp": 7.96,
+                "trades": 60,
+                "win": 85,
+                "pf": 27.712,
+                "pfInfinite": false,
+                "maxDrawdownPct": 7.62
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": 2.2,
+                "benchmarkReturnPct": 0.11,
+                "excessPp": 2.09,
+                "trades": 60,
+                "win": 55,
+                "pf": 1.653,
+                "pfInfinite": false,
+                "maxDrawdownPct": 6.22
+              }
+            ],
+            "positiveWindows": 4,
+            "excessPositiveWindows": 4,
+            "verdict": "FAIL",
+            "failReasons": [
+              "excess t 1.27 < 3"
+            ],
+            "years": [
+              {
+                "year": "2010",
+                "returnPct": 0,
+                "benchmarkReturnPct": 6.18
+              },
+              {
+                "year": "2011",
+                "returnPct": -6.24,
+                "benchmarkReturnPct": -0.55
+              },
+              {
+                "year": "2012",
+                "returnPct": 16.73,
+                "benchmarkReturnPct": 8.35
+              },
+              {
+                "year": "2013",
+                "returnPct": 33.05,
+                "benchmarkReturnPct": 14.86
+              },
+              {
+                "year": "2014",
+                "returnPct": 7.1,
+                "benchmarkReturnPct": -6.61
+              },
+              {
+                "year": "2015",
+                "returnPct": 5.69,
+                "benchmarkReturnPct": -9.39
+              },
+              {
+                "year": "2016",
+                "returnPct": -7.89,
+                "benchmarkReturnPct": -12.74
+              },
+              {
+                "year": "2017",
+                "returnPct": 13.81,
+                "benchmarkReturnPct": 15.89
+              },
+              {
+                "year": "2018",
+                "returnPct": -3.04,
+                "benchmarkReturnPct": -9.13
+              },
+              {
+                "year": "2019",
+                "returnPct": 10.87,
+                "benchmarkReturnPct": 3.59
+              },
+              {
+                "year": "2020",
+                "returnPct": -1.49,
+                "benchmarkReturnPct": -12.35
+              },
+              {
+                "year": "2021",
+                "returnPct": -0.88,
+                "benchmarkReturnPct": 12.6
+              },
+              {
+                "year": "2022",
+                "returnPct": -7.75,
+                "benchmarkReturnPct": -1.57
+              },
+              {
+                "year": "2023",
+                "returnPct": 4.41,
+                "benchmarkReturnPct": 1.69
+              },
+              {
+                "year": "2024",
+                "returnPct": 13.5,
+                "benchmarkReturnPct": 10.1
+              },
+              {
+                "year": "2025",
+                "returnPct": 45.36,
+                "benchmarkReturnPct": 20.72
+              },
+              {
+                "year": "2026",
+                "returnPct": 13.17,
+                "benchmarkReturnPct": 6.83
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.324,
+              "annualized": 0.31
+            }
+          },
+          "k1": {
+            "label": "k1",
+            "months": 200,
+            "firstMonth": "2010-03-01",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 567.58,
+              "benchmarkReturnPct": 48.49,
+              "excessPp": 519.09,
+              "maxDrawdownPct": 27.13,
+              "benchmarkMaxDrawdownPct": 47.02,
+              "sharpeMonthly": 0.2,
+              "sharpeAnnual": 0.7,
+              "trades": 184,
+              "win": 63,
+              "pf": 2.496,
+              "medianNames": 1,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": 2.12,
+              "n": 200,
+              "meanMonthlyPct": 0.78,
+              "sharpe": 0.15
+            },
+            "alpha": {
+              "model": "EWU",
+              "alphaAnnualPct": 11.11,
+              "t": 2.75,
+              "beta": 0.55,
+              "n": 200
+            },
+            "qqq": null,
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": 3.37,
+                "benchmarkReturnPct": 0.83,
+                "excessPp": 2.54,
+                "trades": 7,
+                "win": 57.1,
+                "pf": 1.013,
+                "pfInfinite": false,
+                "maxDrawdownPct": 10.38
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 52.72,
+                "benchmarkReturnPct": 13.24,
+                "excessPp": 39.48,
+                "trades": 6,
+                "win": 100,
+                "pf": null,
+                "pfInfinite": true,
+                "maxDrawdownPct": 0.16
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 22.18,
+                "benchmarkReturnPct": 8.6,
+                "excessPp": 13.58,
+                "trades": 6,
+                "win": 100,
+                "pf": null,
+                "pfInfinite": true,
+                "maxDrawdownPct": 9.33
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": 0.89,
+                "benchmarkReturnPct": 0.11,
+                "excessPp": 0.78,
+                "trades": 6,
+                "win": 50,
+                "pf": 2.643,
+                "pfInfinite": false,
+                "maxDrawdownPct": 11.28
+              }
+            ],
+            "positiveWindows": 4,
+            "excessPositiveWindows": 4,
+            "verdict": "INCUBATION_ELIGIBLE",
+            "failReasons": [
+              "windows: 3.37%/PF 1.013, 52.72%/PF ∞, 22.18%/PF ∞, 0.89%/PF 2.643",
+              "excess t 2.12 < 3"
+            ],
+            "years": [
+              {
+                "year": "2010",
+                "returnPct": 0,
+                "benchmarkReturnPct": 6.18
+              },
+              {
+                "year": "2011",
+                "returnPct": -2.33,
+                "benchmarkReturnPct": -0.55
+              },
+              {
+                "year": "2012",
+                "returnPct": 22.67,
+                "benchmarkReturnPct": 8.35
+              },
+              {
+                "year": "2013",
+                "returnPct": 49,
+                "benchmarkReturnPct": 14.86
+              },
+              {
+                "year": "2014",
+                "returnPct": 8.19,
+                "benchmarkReturnPct": -6.61
+              },
+              {
+                "year": "2015",
+                "returnPct": 10.1,
+                "benchmarkReturnPct": -9.39
+              },
+              {
+                "year": "2016",
+                "returnPct": 17.33,
+                "benchmarkReturnPct": -12.74
+              },
+              {
+                "year": "2017",
+                "returnPct": 10.19,
+                "benchmarkReturnPct": 15.89
+              },
+              {
+                "year": "2018",
+                "returnPct": 1.45,
+                "benchmarkReturnPct": -9.13
+              },
+              {
+                "year": "2019",
+                "returnPct": 9.79,
+                "benchmarkReturnPct": 3.59
+              },
+              {
+                "year": "2020",
+                "returnPct": 2.19,
+                "benchmarkReturnPct": -12.35
+              },
+              {
+                "year": "2021",
+                "returnPct": -10.86,
+                "benchmarkReturnPct": 12.6
+              },
+              {
+                "year": "2022",
+                "returnPct": 3.32,
+                "benchmarkReturnPct": -1.57
+              },
+              {
+                "year": "2023",
+                "returnPct": 5.29,
+                "benchmarkReturnPct": 1.69
+              },
+              {
+                "year": "2024",
+                "returnPct": 8.96,
+                "benchmarkReturnPct": 10.1
+              },
+              {
+                "year": "2025",
+                "returnPct": 68.5,
+                "benchmarkReturnPct": 20.72
+              },
+              {
+                "year": "2026",
+                "returnPct": 19.81,
+                "benchmarkReturnPct": 6.83
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.642,
+              "annualized": 0.52
+            }
+          },
+          "k2": {
+            "label": "k2",
+            "months": 200,
+            "firstMonth": "2010-03-01",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 273.91,
+              "benchmarkReturnPct": 48.49,
+              "excessPp": 225.43,
+              "maxDrawdownPct": 27.16,
+              "benchmarkMaxDrawdownPct": 47.02,
+              "sharpeMonthly": 0.17,
+              "sharpeAnnual": 0.59,
+              "trades": 368,
+              "win": 58.4,
+              "pf": 1.923,
+              "medianNames": 2,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": 1.48,
+              "n": 200,
+              "meanMonthlyPct": 0.44,
+              "sharpe": 0.1
+            },
+            "alpha": {
+              "model": "EWU",
+              "alphaAnnualPct": 7.1,
+              "t": 2.31,
+              "beta": 0.53,
+              "n": 200
+            },
+            "qqq": null,
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": 2.08,
+                "benchmarkReturnPct": 0.83,
+                "excessPp": 1.24,
+                "trades": 14,
+                "win": 64.3,
+                "pf": 1.632,
+                "pfInfinite": false,
+                "maxDrawdownPct": 7.36
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 37.6,
+                "benchmarkReturnPct": 13.24,
+                "excessPp": 24.36,
+                "trades": 12,
+                "win": 91.7,
+                "pf": 72.198,
+                "pfInfinite": false,
+                "maxDrawdownPct": 0
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 16.56,
+                "benchmarkReturnPct": 8.6,
+                "excessPp": 7.95,
+                "trades": 12,
+                "win": 91.7,
+                "pf": 14.159,
+                "pfInfinite": false,
+                "maxDrawdownPct": 7.37
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": 7.19,
+                "benchmarkReturnPct": 0.11,
+                "excessPp": 7.09,
+                "trades": 12,
+                "win": 66.7,
+                "pf": 5.338,
+                "pfInfinite": false,
+                "maxDrawdownPct": 4.63
+              }
+            ],
+            "positiveWindows": 4,
+            "excessPositiveWindows": 4,
+            "verdict": "FAIL",
+            "failReasons": [
+              "excess t 1.48 < 3"
+            ],
+            "years": [
+              {
+                "year": "2010",
+                "returnPct": 0,
+                "benchmarkReturnPct": 6.18
+              },
+              {
+                "year": "2011",
+                "returnPct": -8.6,
+                "benchmarkReturnPct": -0.55
+              },
+              {
+                "year": "2012",
+                "returnPct": 17.61,
+                "benchmarkReturnPct": 8.35
+              },
+              {
+                "year": "2013",
+                "returnPct": 35.79,
+                "benchmarkReturnPct": 14.86
+              },
+              {
+                "year": "2014",
+                "returnPct": 9.24,
+                "benchmarkReturnPct": -6.61
+              },
+              {
+                "year": "2015",
+                "returnPct": 9.87,
+                "benchmarkReturnPct": -9.39
+              },
+              {
+                "year": "2016",
+                "returnPct": 2.96,
+                "benchmarkReturnPct": -12.74
+              },
+              {
+                "year": "2017",
+                "returnPct": 10.91,
+                "benchmarkReturnPct": 15.89
+              },
+              {
+                "year": "2018",
+                "returnPct": -6.2,
+                "benchmarkReturnPct": -9.13
+              },
+              {
+                "year": "2019",
+                "returnPct": 6.69,
+                "benchmarkReturnPct": 3.59
+              },
+              {
+                "year": "2020",
+                "returnPct": 2.83,
+                "benchmarkReturnPct": -12.35
+              },
+              {
+                "year": "2021",
+                "returnPct": -3.28,
+                "benchmarkReturnPct": 12.6
+              },
+              {
+                "year": "2022",
+                "returnPct": -6.95,
+                "benchmarkReturnPct": -1.57
+              },
+              {
+                "year": "2023",
+                "returnPct": 0.71,
+                "benchmarkReturnPct": 1.69
+              },
+              {
+                "year": "2024",
+                "returnPct": 14.04,
+                "benchmarkReturnPct": 10.1
+              },
+              {
+                "year": "2025",
+                "returnPct": 48.07,
+                "benchmarkReturnPct": 20.72
+              },
+              {
+                "year": "2026",
+                "returnPct": 18.66,
+                "benchmarkReturnPct": 6.83
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.4,
+              "annualized": 0.36
+            }
+          }
+        }
+      },
+      {
+        "id": "UK__medium__12-1__plain",
+        "market": "UK",
+        "horizon": "medium",
+        "quality": false,
+        "membershipFile": "data\\research\\index-membership\\ftse100.json",
+        "statementMarket": "UK",
+        "universe": "ever",
+        "benchmark": "EWU",
+        "costMarket": "UK",
+        "signalStart": "2010-01-01",
+        "strategy": "Plain 12-1 momentum, top 10, one-month hold, monthly rebalance",
+        "cell": "UK medium",
+        "prior": [
+          "B__UK__medium__momentum__regimeoff (new-strategy-types CANDIDATE, current constituents)"
+        ],
+        "liveNote": "Not live.",
+        "coverage": {
+          "everMembers": 197,
+          "current": 100,
+          "former": 97,
+          "formerPriced": 32,
+          "candidates": 197,
+          "priced": 131,
+          "withStatements": null,
+          "formerWithStatements": null
+        },
+        "years": [
+          {
+            "year": 2010,
+            "members": 102,
+            "priced": 69,
+            "missing": 33
+          },
+          {
+            "year": 2011,
+            "members": 102,
+            "priced": 71,
+            "missing": 31
+          },
+          {
+            "year": 2012,
+            "members": 102,
+            "priced": 72,
+            "missing": 30
+          },
+          {
+            "year": 2013,
+            "members": 103,
+            "priced": 78,
+            "missing": 25
+          },
+          {
+            "year": 2014,
+            "members": 103,
+            "priced": 79,
+            "missing": 24
+          },
+          {
+            "year": 2015,
+            "members": 103,
+            "priced": 80,
+            "missing": 23
+          },
+          {
+            "year": 2016,
+            "members": 104,
+            "priced": 80,
+            "missing": 24
+          },
+          {
+            "year": 2017,
+            "members": 104,
+            "priced": 81,
+            "missing": 23
+          },
+          {
+            "year": 2018,
+            "members": 104,
+            "priced": 88,
+            "missing": 16
+          },
+          {
+            "year": 2019,
+            "members": 102,
+            "priced": 85,
+            "missing": 17
+          },
+          {
+            "year": 2020,
+            "members": 101,
+            "priced": 87,
+            "missing": 14
+          },
+          {
+            "year": 2021,
+            "members": 101,
+            "priced": 87,
+            "missing": 14
+          },
+          {
+            "year": 2022,
+            "members": 99,
+            "priced": 92,
+            "missing": 7
+          },
+          {
+            "year": 2023,
+            "members": 99,
+            "priced": 95,
+            "missing": 4
+          },
+          {
+            "year": 2024,
+            "members": 98,
+            "priced": 95,
+            "missing": 3
+          },
+          {
+            "year": 2025,
+            "members": 99,
+            "priced": 98,
+            "missing": 1
+          },
+          {
+            "year": 2026,
+            "members": 100,
+            "priced": 100,
+            "missing": 0
+          }
+        ],
+        "books": {
+          "research": {
+            "label": "research",
+            "months": 200,
+            "firstMonth": "2010-03-01",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": -27.34,
+              "benchmarkReturnPct": 48.49,
+              "excessPp": -75.82,
+              "maxDrawdownPct": 63.91,
+              "benchmarkMaxDrawdownPct": 47.02,
+              "sharpeMonthly": -0.01,
+              "sharpeAnnual": -0.04,
+              "trades": 1890,
+              "win": 48.8,
+              "pf": 0.983,
+              "medianNames": 10,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": -1.1,
+              "n": 200,
+              "meanMonthlyPct": -0.37,
+              "sharpe": -0.08
+            },
+            "alpha": {
+              "model": "EWU",
+              "alphaAnnualPct": -2.42,
+              "t": -0.71,
+              "beta": 0.48,
+              "n": 200
+            },
+            "qqq": null,
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": 9.01,
+                "benchmarkReturnPct": 0.83,
+                "excessPp": 8.17,
+                "trades": 70,
+                "win": 61.4,
+                "pf": 1.492,
+                "pfInfinite": false,
+                "maxDrawdownPct": 5.37
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 31.82,
+                "benchmarkReturnPct": 13.24,
+                "excessPp": 18.58,
+                "trades": 60,
+                "win": 65,
+                "pf": 4.641,
+                "pfInfinite": false,
+                "maxDrawdownPct": 0
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 12.53,
+                "benchmarkReturnPct": 8.6,
+                "excessPp": 3.93,
+                "trades": 60,
+                "win": 53.3,
+                "pf": 1.571,
+                "pfInfinite": false,
+                "maxDrawdownPct": 8.62
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": -4.36,
+                "benchmarkReturnPct": 0.11,
+                "excessPp": -4.47,
+                "trades": 60,
+                "win": 43.3,
+                "pf": 0.858,
+                "pfInfinite": false,
+                "maxDrawdownPct": 9.72
+              }
+            ],
+            "positiveWindows": 3,
+            "excessPositiveWindows": 3,
+            "verdict": "FAIL",
+            "failReasons": [
+              "windows: 9.01%/PF 1.492, 31.82%/PF 4.641, 12.53%/PF 1.571, -4.36%/PF 0.858",
+              "full sample does not beat benchmark",
+              "excess t -1.1 < 3",
+              "alpha t -0.71 < 2"
+            ],
+            "years": [
+              {
+                "year": "2010",
+                "returnPct": 0,
+                "benchmarkReturnPct": 6.18
+              },
+              {
+                "year": "2011",
+                "returnPct": -17.84,
+                "benchmarkReturnPct": -0.55
+              },
+              {
+                "year": "2012",
+                "returnPct": 4.61,
+                "benchmarkReturnPct": 8.35
+              },
+              {
+                "year": "2013",
+                "returnPct": 20.22,
+                "benchmarkReturnPct": 14.86
+              },
+              {
+                "year": "2014",
+                "returnPct": -2.53,
+                "benchmarkReturnPct": -6.61
+              },
+              {
+                "year": "2015",
+                "returnPct": -2.68,
+                "benchmarkReturnPct": -9.39
+              },
+              {
+                "year": "2016",
+                "returnPct": 3.46,
+                "benchmarkReturnPct": -12.74
+              },
+              {
+                "year": "2017",
+                "returnPct": -2.42,
+                "benchmarkReturnPct": 15.89
+              },
+              {
+                "year": "2018",
+                "returnPct": -16.1,
+                "benchmarkReturnPct": -9.13
+              },
+              {
+                "year": "2019",
+                "returnPct": -0.55,
+                "benchmarkReturnPct": 3.59
+              },
+              {
+                "year": "2020",
+                "returnPct": -19.25,
+                "benchmarkReturnPct": -12.35
+              },
+              {
+                "year": "2021",
+                "returnPct": -11.38,
+                "benchmarkReturnPct": 12.6
+              },
+              {
+                "year": "2022",
+                "returnPct": -21.48,
+                "benchmarkReturnPct": -1.57
+              },
+              {
+                "year": "2023",
+                "returnPct": -4.84,
+                "benchmarkReturnPct": 1.69
+              },
+              {
+                "year": "2024",
+                "returnPct": 3.64,
+                "benchmarkReturnPct": 10.1
+              },
+              {
+                "year": "2025",
+                "returnPct": 50.82,
+                "benchmarkReturnPct": 20.72
+              },
+              {
+                "year": "2026",
+                "returnPct": 5.31,
+                "benchmarkReturnPct": 6.83
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.002,
+              "annualized": -0.27
+            }
+          },
+          "k1": {
+            "label": "k1",
+            "months": 200,
+            "firstMonth": "2010-03-01",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 3.83,
+              "benchmarkReturnPct": 48.49,
+              "excessPp": -44.66,
+              "maxDrawdownPct": 91.27,
+              "benchmarkMaxDrawdownPct": 47.02,
+              "sharpeMonthly": 0.05,
+              "sharpeAnnual": 0.19,
+              "trades": 189,
+              "win": 51.3,
+              "pf": 1.18,
+              "medianNames": 1,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": 0.37,
+              "n": 200,
+              "meanMonthlyPct": 0.27,
+              "sharpe": 0.03
+            },
+            "alpha": {
+              "model": "EWU",
+              "alphaAnnualPct": 4.59,
+              "t": 0.52,
+              "beta": 0.66,
+              "n": 200
+            },
+            "qqq": null,
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": -5.95,
+                "benchmarkReturnPct": 0.83,
+                "excessPp": -6.79,
+                "trades": 7,
+                "win": 85.7,
+                "pf": 0.953,
+                "pfInfinite": false,
+                "maxDrawdownPct": 26.14
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 85.08,
+                "benchmarkReturnPct": 13.24,
+                "excessPp": 71.84,
+                "trades": 6,
+                "win": 66.7,
+                "pf": 7.573,
+                "pfInfinite": false,
+                "maxDrawdownPct": 6.17
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 38.78,
+                "benchmarkReturnPct": 8.6,
+                "excessPp": 30.18,
+                "trades": 6,
+                "win": 50,
+                "pf": 2.543,
+                "pfInfinite": false,
+                "maxDrawdownPct": 20.38
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": -25.23,
+                "benchmarkReturnPct": 0.11,
+                "excessPp": -25.34,
+                "trades": 6,
+                "win": 33.3,
+                "pf": 0.26,
+                "pfInfinite": false,
+                "maxDrawdownPct": 27.28
+              }
+            ],
+            "positiveWindows": 2,
+            "excessPositiveWindows": 2,
+            "verdict": "FAIL",
+            "failReasons": [
+              "windows: -5.95%/PF 0.953, 85.08%/PF 7.573, 38.78%/PF 2.543, -25.23%/PF 0.26",
+              "full sample does not beat benchmark",
+              "excess t 0.37 < 3",
+              "alpha t 0.52 < 2"
+            ],
+            "years": [
+              {
+                "year": "2010",
+                "returnPct": 0,
+                "benchmarkReturnPct": 6.18
+              },
+              {
+                "year": "2011",
+                "returnPct": -16.17,
+                "benchmarkReturnPct": -0.55
+              },
+              {
+                "year": "2012",
+                "returnPct": 19.44,
+                "benchmarkReturnPct": 8.35
+              },
+              {
+                "year": "2013",
+                "returnPct": 34.15,
+                "benchmarkReturnPct": 14.86
+              },
+              {
+                "year": "2014",
+                "returnPct": -10.5,
+                "benchmarkReturnPct": -6.61
+              },
+              {
+                "year": "2015",
+                "returnPct": -5.55,
+                "benchmarkReturnPct": -9.39
+              },
+              {
+                "year": "2016",
+                "returnPct": 44.42,
+                "benchmarkReturnPct": -12.74
+              },
+              {
+                "year": "2017",
+                "returnPct": -13.87,
+                "benchmarkReturnPct": 15.89
+              },
+              {
+                "year": "2018",
+                "returnPct": -27.02,
+                "benchmarkReturnPct": -9.13
+              },
+              {
+                "year": "2019",
+                "returnPct": -9.09,
+                "benchmarkReturnPct": 3.59
+              },
+              {
+                "year": "2020",
+                "returnPct": -37.39,
+                "benchmarkReturnPct": -12.35
+              },
+              {
+                "year": "2021",
+                "returnPct": -34.31,
+                "benchmarkReturnPct": 12.6
+              },
+              {
+                "year": "2022",
+                "returnPct": -28.96,
+                "benchmarkReturnPct": -1.57
+              },
+              {
+                "year": "2023",
+                "returnPct": 30.31,
+                "benchmarkReturnPct": 1.69
+              },
+              {
+                "year": "2024",
+                "returnPct": 85.32,
+                "benchmarkReturnPct": 10.1
+              },
+              {
+                "year": "2025",
+                "returnPct": 65.71,
+                "benchmarkReturnPct": 20.72
+              },
+              {
+                "year": "2026",
+                "returnPct": -5.22,
+                "benchmarkReturnPct": 6.83
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.083,
+              "annualized": 0.09
+            }
+          },
+          "k2": {
+            "label": "k2",
+            "months": 200,
+            "firstMonth": "2010-03-01",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 9.9,
+              "benchmarkReturnPct": 48.49,
+              "excessPp": -38.59,
+              "maxDrawdownPct": 75.92,
+              "benchmarkMaxDrawdownPct": 47.02,
+              "sharpeMonthly": 0.05,
+              "sharpeAnnual": 0.16,
+              "trades": 378,
+              "win": 49.2,
+              "pf": 1.119,
+              "medianNames": 2,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": 0.12,
+              "n": 200,
+              "meanMonthlyPct": 0.07,
+              "sharpe": 0.01
+            },
+            "alpha": {
+              "model": "EWU",
+              "alphaAnnualPct": 2.27,
+              "t": 0.35,
+              "beta": 0.61,
+              "n": 200
+            },
+            "qqq": null,
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": 5.61,
+                "benchmarkReturnPct": 0.83,
+                "excessPp": 4.78,
+                "trades": 14,
+                "win": 64.3,
+                "pf": 1.36,
+                "pfInfinite": false,
+                "maxDrawdownPct": 17.13
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 56.85,
+                "benchmarkReturnPct": 13.24,
+                "excessPp": 43.61,
+                "trades": 12,
+                "win": 66.7,
+                "pf": 7.859,
+                "pfInfinite": false,
+                "maxDrawdownPct": 2.46
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 16.94,
+                "benchmarkReturnPct": 8.6,
+                "excessPp": 8.33,
+                "trades": 12,
+                "win": 50,
+                "pf": 1.66,
+                "pfInfinite": false,
+                "maxDrawdownPct": 18.58
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": -19.97,
+                "benchmarkReturnPct": 0.11,
+                "excessPp": -20.07,
+                "trades": 12,
+                "win": 33.3,
+                "pf": 0.462,
+                "pfInfinite": false,
+                "maxDrawdownPct": 25.56
+              }
+            ],
+            "positiveWindows": 3,
+            "excessPositiveWindows": 3,
+            "verdict": "FAIL",
+            "failReasons": [
+              "windows: 5.61%/PF 1.36, 56.85%/PF 7.859, 16.94%/PF 1.66, -19.97%/PF 0.462",
+              "full sample does not beat benchmark",
+              "excess t 0.12 < 3",
+              "alpha t 0.35 < 2"
+            ],
+            "years": [
+              {
+                "year": "2010",
+                "returnPct": 0,
+                "benchmarkReturnPct": 6.18
+              },
+              {
+                "year": "2011",
+                "returnPct": -15.42,
+                "benchmarkReturnPct": -0.55
+              },
+              {
+                "year": "2012",
+                "returnPct": 7.2,
+                "benchmarkReturnPct": 8.35
+              },
+              {
+                "year": "2013",
+                "returnPct": 39.84,
+                "benchmarkReturnPct": 14.86
+              },
+              {
+                "year": "2014",
+                "returnPct": -4.23,
+                "benchmarkReturnPct": -6.61
+              },
+              {
+                "year": "2015",
+                "returnPct": -1.72,
+                "benchmarkReturnPct": -9.39
+              },
+              {
+                "year": "2016",
+                "returnPct": 29.94,
+                "benchmarkReturnPct": -12.74
+              },
+              {
+                "year": "2017",
+                "returnPct": 2.52,
+                "benchmarkReturnPct": 15.89
+              },
+              {
+                "year": "2018",
+                "returnPct": -23.5,
+                "benchmarkReturnPct": -9.13
+              },
+              {
+                "year": "2019",
+                "returnPct": 3.4,
+                "benchmarkReturnPct": 3.59
+              },
+              {
+                "year": "2020",
+                "returnPct": -20.18,
+                "benchmarkReturnPct": -12.35
+              },
+              {
+                "year": "2021",
+                "returnPct": -22.95,
+                "benchmarkReturnPct": 12.6
+              },
+              {
+                "year": "2022",
+                "returnPct": -33.68,
+                "benchmarkReturnPct": -1.57
+              },
+              {
+                "year": "2023",
+                "returnPct": 15.22,
+                "benchmarkReturnPct": 1.69
+              },
+              {
+                "year": "2024",
+                "returnPct": 25.09,
+                "benchmarkReturnPct": 10.1
+              },
+              {
+                "year": "2025",
+                "returnPct": 68.9,
+                "benchmarkReturnPct": 20.72
+              },
+              {
+                "year": "2026",
+                "returnPct": -11.99,
+                "benchmarkReturnPct": 6.83
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.052,
+              "annualized": 0.03
+            }
+          }
+        }
+      },
+      {
+        "id": "UK__medium__12-1__plain__currentSymbols",
+        "market": "UK",
+        "horizon": "medium",
+        "quality": false,
+        "membershipFile": "data\\research\\index-membership\\ftse100.json",
+        "statementMarket": "UK",
+        "universe": "current",
+        "benchmark": "EWU",
+        "costMarket": "UK",
+        "signalStart": "2010-01-01",
+        "strategy": "Same book on the current-constituent universe (reconciliation row; not a candidate)",
+        "cell": "UK medium",
+        "prior": [],
+        "reconciliationOnly": true,
+        "liveNote": "Reconciliation only.",
+        "coverage": {
+          "everMembers": 197,
+          "current": 100,
+          "former": 97,
+          "formerPriced": 32,
+          "candidates": 100,
+          "priced": 100,
+          "withStatements": null,
+          "formerWithStatements": null
+        },
+        "years": [
+          {
+            "year": 2010,
+            "members": 102,
+            "priced": 69,
+            "missing": 33
+          },
+          {
+            "year": 2011,
+            "members": 102,
+            "priced": 71,
+            "missing": 31
+          },
+          {
+            "year": 2012,
+            "members": 102,
+            "priced": 72,
+            "missing": 30
+          },
+          {
+            "year": 2013,
+            "members": 103,
+            "priced": 78,
+            "missing": 25
+          },
+          {
+            "year": 2014,
+            "members": 103,
+            "priced": 79,
+            "missing": 24
+          },
+          {
+            "year": 2015,
+            "members": 103,
+            "priced": 80,
+            "missing": 23
+          },
+          {
+            "year": 2016,
+            "members": 104,
+            "priced": 80,
+            "missing": 24
+          },
+          {
+            "year": 2017,
+            "members": 104,
+            "priced": 81,
+            "missing": 23
+          },
+          {
+            "year": 2018,
+            "members": 104,
+            "priced": 88,
+            "missing": 16
+          },
+          {
+            "year": 2019,
+            "members": 102,
+            "priced": 85,
+            "missing": 17
+          },
+          {
+            "year": 2020,
+            "members": 101,
+            "priced": 87,
+            "missing": 14
+          },
+          {
+            "year": 2021,
+            "members": 101,
+            "priced": 87,
+            "missing": 14
+          },
+          {
+            "year": 2022,
+            "members": 99,
+            "priced": 92,
+            "missing": 7
+          },
+          {
+            "year": 2023,
+            "members": 99,
+            "priced": 95,
+            "missing": 4
+          },
+          {
+            "year": 2024,
+            "members": 98,
+            "priced": 95,
+            "missing": 3
+          },
+          {
+            "year": 2025,
+            "members": 99,
+            "priced": 98,
+            "missing": 1
+          },
+          {
+            "year": 2026,
+            "members": 100,
+            "priced": 100,
+            "missing": 0
+          }
+        ],
+        "books": {
+          "research": {
+            "label": "research",
+            "months": 200,
+            "firstMonth": "2010-03-01",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 2.39,
+              "benchmarkReturnPct": 48.49,
+              "excessPp": -46.1,
+              "maxDrawdownPct": 54.36,
+              "benchmarkMaxDrawdownPct": 47.02,
+              "sharpeMonthly": 0.03,
+              "sharpeAnnual": 0.09,
+              "trades": 1890,
+              "win": 49.6,
+              "pf": 1.046,
+              "medianNames": 10,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": -0.6,
+              "n": 200,
+              "meanMonthlyPct": -0.19,
+              "sharpe": -0.04
+            },
+            "alpha": {
+              "model": "EWU",
+              "alphaAnnualPct": -0.46,
+              "t": -0.14,
+              "beta": 0.51,
+              "n": 200
+            },
+            "qqq": null,
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": 17.6,
+                "benchmarkReturnPct": 0.83,
+                "excessPp": 16.77,
+                "trades": 70,
+                "win": 62.9,
+                "pf": 2.345,
+                "pfInfinite": false,
+                "maxDrawdownPct": 4.22
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 31.82,
+                "benchmarkReturnPct": 13.24,
+                "excessPp": 18.58,
+                "trades": 60,
+                "win": 65,
+                "pf": 4.641,
+                "pfInfinite": false,
+                "maxDrawdownPct": 0
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 12.53,
+                "benchmarkReturnPct": 8.6,
+                "excessPp": 3.93,
+                "trades": 60,
+                "win": 53.3,
+                "pf": 1.571,
+                "pfInfinite": false,
+                "maxDrawdownPct": 8.62
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": -4.36,
+                "benchmarkReturnPct": 0.11,
+                "excessPp": -4.47,
+                "trades": 60,
+                "win": 43.3,
+                "pf": 0.858,
+                "pfInfinite": false,
+                "maxDrawdownPct": 9.72
+              }
+            ],
+            "positiveWindows": 3,
+            "excessPositiveWindows": 3,
+            "verdict": "FAIL",
+            "failReasons": [
+              "windows: 17.6%/PF 2.345, 31.82%/PF 4.641, 12.53%/PF 1.571, -4.36%/PF 0.858",
+              "full sample does not beat benchmark",
+              "excess t -0.6 < 3",
+              "alpha t -0.14 < 2"
+            ],
+            "years": [
+              {
+                "year": "2010",
+                "returnPct": 0,
+                "benchmarkReturnPct": 6.18
+              },
+              {
+                "year": "2011",
+                "returnPct": -17.18,
+                "benchmarkReturnPct": -0.55
+              },
+              {
+                "year": "2012",
+                "returnPct": 5.65,
+                "benchmarkReturnPct": 8.35
+              },
+              {
+                "year": "2013",
+                "returnPct": 15.4,
+                "benchmarkReturnPct": 14.86
+              },
+              {
+                "year": "2014",
+                "returnPct": -1.79,
+                "benchmarkReturnPct": -6.61
+              },
+              {
+                "year": "2015",
+                "returnPct": -3.24,
+                "benchmarkReturnPct": -9.39
+              },
+              {
+                "year": "2016",
+                "returnPct": 8.16,
+                "benchmarkReturnPct": -12.74
+              },
+              {
+                "year": "2017",
+                "returnPct": 0.04,
+                "benchmarkReturnPct": 15.89
+              },
+              {
+                "year": "2018",
+                "returnPct": -13.8,
+                "benchmarkReturnPct": -9.13
+              },
+              {
+                "year": "2019",
+                "returnPct": -0.82,
+                "benchmarkReturnPct": 3.59
+              },
+              {
+                "year": "2020",
+                "returnPct": -20.1,
+                "benchmarkReturnPct": -12.35
+              },
+              {
+                "year": "2021",
+                "returnPct": -3.51,
+                "benchmarkReturnPct": 12.6
+              },
+              {
+                "year": "2022",
+                "returnPct": -14.7,
+                "benchmarkReturnPct": -1.57
+              },
+              {
+                "year": "2023",
+                "returnPct": -2.42,
+                "benchmarkReturnPct": 1.69
+              },
+              {
+                "year": "2024",
+                "returnPct": 13.18,
+                "benchmarkReturnPct": 10.1
+              },
+              {
+                "year": "2025",
+                "returnPct": 50.82,
+                "benchmarkReturnPct": 20.72
+              },
+              {
+                "year": "2026",
+                "returnPct": 5.31,
+                "benchmarkReturnPct": 6.83
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.009,
+              "annualized": -0.15
+            }
+          },
+          "k1": {
+            "label": "k1",
+            "months": 200,
+            "firstMonth": "2010-03-01",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 47.47,
+              "benchmarkReturnPct": 48.49,
+              "excessPp": -1.02,
+              "maxDrawdownPct": 87.58,
+              "benchmarkMaxDrawdownPct": 47.02,
+              "sharpeMonthly": 0.07,
+              "sharpeAnnual": 0.24,
+              "trades": 189,
+              "win": 53.4,
+              "pf": 1.24,
+              "medianNames": 1,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": 0.58,
+              "n": 200,
+              "meanMonthlyPct": 0.42,
+              "sharpe": 0.04
+            },
+            "alpha": {
+              "model": "EWU",
+              "alphaAnnualPct": 6.3,
+              "t": 0.74,
+              "beta": 0.66,
+              "n": 200
+            },
+            "qqq": null,
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": -5.95,
+                "benchmarkReturnPct": 0.83,
+                "excessPp": -6.79,
+                "trades": 7,
+                "win": 85.7,
+                "pf": 0.953,
+                "pfInfinite": false,
+                "maxDrawdownPct": 26.14
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 85.08,
+                "benchmarkReturnPct": 13.24,
+                "excessPp": 71.84,
+                "trades": 6,
+                "win": 66.7,
+                "pf": 7.573,
+                "pfInfinite": false,
+                "maxDrawdownPct": 6.17
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 38.78,
+                "benchmarkReturnPct": 8.6,
+                "excessPp": 30.18,
+                "trades": 6,
+                "win": 50,
+                "pf": 2.543,
+                "pfInfinite": false,
+                "maxDrawdownPct": 20.38
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": -25.23,
+                "benchmarkReturnPct": 0.11,
+                "excessPp": -25.34,
+                "trades": 6,
+                "win": 33.3,
+                "pf": 0.26,
+                "pfInfinite": false,
+                "maxDrawdownPct": 27.28
+              }
+            ],
+            "positiveWindows": 2,
+            "excessPositiveWindows": 2,
+            "verdict": "FAIL",
+            "failReasons": [
+              "windows: -5.95%/PF 0.953, 85.08%/PF 7.573, 38.78%/PF 2.543, -25.23%/PF 0.26",
+              "full sample does not beat benchmark",
+              "excess t 0.58 < 3",
+              "alpha t 0.74 < 2"
+            ],
+            "years": [
+              {
+                "year": "2010",
+                "returnPct": 0,
+                "benchmarkReturnPct": 6.18
+              },
+              {
+                "year": "2011",
+                "returnPct": -16.17,
+                "benchmarkReturnPct": -0.55
+              },
+              {
+                "year": "2012",
+                "returnPct": 19.44,
+                "benchmarkReturnPct": 8.35
+              },
+              {
+                "year": "2013",
+                "returnPct": 34.15,
+                "benchmarkReturnPct": 14.86
+              },
+              {
+                "year": "2014",
+                "returnPct": -2.12,
+                "benchmarkReturnPct": -6.61
+              },
+              {
+                "year": "2015",
+                "returnPct": -12.76,
+                "benchmarkReturnPct": -9.39
+              },
+              {
+                "year": "2016",
+                "returnPct": 42.67,
+                "benchmarkReturnPct": -12.74
+              },
+              {
+                "year": "2017",
+                "returnPct": -13.87,
+                "benchmarkReturnPct": 15.89
+              },
+              {
+                "year": "2018",
+                "returnPct": -20.98,
+                "benchmarkReturnPct": -9.13
+              },
+              {
+                "year": "2019",
+                "returnPct": -15.1,
+                "benchmarkReturnPct": 3.59
+              },
+              {
+                "year": "2020",
+                "returnPct": -22.69,
+                "benchmarkReturnPct": -12.35
+              },
+              {
+                "year": "2021",
+                "returnPct": -25.13,
+                "benchmarkReturnPct": 12.6
+              },
+              {
+                "year": "2022",
+                "returnPct": -28.96,
+                "benchmarkReturnPct": -1.57
+              },
+              {
+                "year": "2023",
+                "returnPct": 30.31,
+                "benchmarkReturnPct": 1.69
+              },
+              {
+                "year": "2024",
+                "returnPct": 85.32,
+                "benchmarkReturnPct": 10.1
+              },
+              {
+                "year": "2025",
+                "returnPct": 65.71,
+                "benchmarkReturnPct": 20.72
+              },
+              {
+                "year": "2026",
+                "returnPct": -5.22,
+                "benchmarkReturnPct": 6.83
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.118,
+              "annualized": 0.14
+            }
+          },
+          "k2": {
+            "label": "k2",
+            "months": 200,
+            "firstMonth": "2010-03-01",
+            "lastMonth": "2026-10-01",
+            "full": {
+              "returnPct": 47.98,
+              "benchmarkReturnPct": 48.49,
+              "excessPp": -0.51,
+              "maxDrawdownPct": 75.22,
+              "benchmarkMaxDrawdownPct": 47.02,
+              "sharpeMonthly": 0.06,
+              "sharpeAnnual": 0.22,
+              "trades": 378,
+              "win": 50.8,
+              "pf": 1.167,
+              "medianNames": 2,
+              "earlyExits": 0
+            },
+            "excess": {
+              "t": 0.34,
+              "n": 200,
+              "meanMonthlyPct": 0.19,
+              "sharpe": 0.02
+            },
+            "alpha": {
+              "model": "EWU",
+              "alphaAnnualPct": 3.85,
+              "t": 0.61,
+              "beta": 0.57,
+              "n": 200
+            },
+            "qqq": null,
+            "windows": [
+              {
+                "fold": 1,
+                "from": "2024-10-01",
+                "to": "2025-04-02",
+                "returnPct": 10.85,
+                "benchmarkReturnPct": 0.83,
+                "excessPp": 10.02,
+                "trades": 14,
+                "win": 71.4,
+                "pf": 1.631,
+                "pfInfinite": false,
+                "maxDrawdownPct": 17.13
+              },
+              {
+                "fold": 2,
+                "from": "2025-04-03",
+                "to": "2025-10-02",
+                "returnPct": 56.85,
+                "benchmarkReturnPct": 13.24,
+                "excessPp": 43.61,
+                "trades": 12,
+                "win": 66.7,
+                "pf": 7.859,
+                "pfInfinite": false,
+                "maxDrawdownPct": 2.46
+              },
+              {
+                "fold": 3,
+                "from": "2025-10-03",
+                "to": "2026-04-06",
+                "returnPct": 16.94,
+                "benchmarkReturnPct": 8.6,
+                "excessPp": 8.33,
+                "trades": 12,
+                "win": 50,
+                "pf": 1.66,
+                "pfInfinite": false,
+                "maxDrawdownPct": 18.58
+              },
+              {
+                "fold": 4,
+                "from": "2026-04-07",
+                "to": "2026-10-05",
+                "returnPct": -19.97,
+                "benchmarkReturnPct": 0.11,
+                "excessPp": -20.07,
+                "trades": 12,
+                "win": 33.3,
+                "pf": 0.462,
+                "pfInfinite": false,
+                "maxDrawdownPct": 25.56
+              }
+            ],
+            "positiveWindows": 3,
+            "excessPositiveWindows": 3,
+            "verdict": "FAIL",
+            "failReasons": [
+              "windows: 10.85%/PF 1.631, 56.85%/PF 7.859, 16.94%/PF 1.66, -19.97%/PF 0.462",
+              "full sample does not beat benchmark",
+              "excess t 0.34 < 3",
+              "alpha t 0.61 < 2"
+            ],
+            "years": [
+              {
+                "year": "2010",
+                "returnPct": 0,
+                "benchmarkReturnPct": 6.18
+              },
+              {
+                "year": "2011",
+                "returnPct": -16.8,
+                "benchmarkReturnPct": -0.55
+              },
+              {
+                "year": "2012",
+                "returnPct": 1.75,
+                "benchmarkReturnPct": 8.35
+              },
+              {
+                "year": "2013",
+                "returnPct": 47.6,
+                "benchmarkReturnPct": 14.86
+              },
+              {
+                "year": "2014",
+                "returnPct": 1.26,
+                "benchmarkReturnPct": -6.61
+              },
+              {
+                "year": "2015",
+                "returnPct": 2.8,
+                "benchmarkReturnPct": -9.39
+              },
+              {
+                "year": "2016",
+                "returnPct": 59.53,
+                "benchmarkReturnPct": -12.74
+              },
+              {
+                "year": "2017",
+                "returnPct": -0.8,
+                "benchmarkReturnPct": 15.89
+              },
+              {
+                "year": "2018",
+                "returnPct": -26.94,
+                "benchmarkReturnPct": -9.13
+              },
+              {
+                "year": "2019",
+                "returnPct": -20.63,
+                "benchmarkReturnPct": 3.59
+              },
+              {
+                "year": "2020",
+                "returnPct": -5.07,
+                "benchmarkReturnPct": -12.35
+              },
+              {
+                "year": "2021",
+                "returnPct": -6.02,
+                "benchmarkReturnPct": 12.6
+              },
+              {
+                "year": "2022",
+                "returnPct": -33.68,
+                "benchmarkReturnPct": -1.57
+              },
+              {
+                "year": "2023",
+                "returnPct": 15.22,
+                "benchmarkReturnPct": 1.69
+              },
+              {
+                "year": "2024",
+                "returnPct": 22.31,
+                "benchmarkReturnPct": 10.1
+              },
+              {
+                "year": "2025",
+                "returnPct": 68.9,
+                "benchmarkReturnPct": 20.72
+              },
+              {
+                "year": "2026",
+                "returnPct": -11.99,
+                "benchmarkReturnPct": 6.83
+              }
+            ],
+            "deflatedExcessSharpe": {
+              "nTrials": 12,
+              "probability": 0.08,
+              "annualized": 0.08
+            }
+          }
+        }
+      }
+    ]
+  },
   "engineShort": [
     {
       "id": "B__Hong_Kong__short__sector_off",

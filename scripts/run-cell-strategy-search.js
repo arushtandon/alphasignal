@@ -35,6 +35,7 @@ const CONSISTENCY = path.resolve(ROOT, 'scripts/consistency-study-results.json')
 const NEW_TYPES = path.resolve(ROOT, 'scripts/new-strategy-types-results.json');
 const AMENDMENT = path.resolve(ROOT, 'scripts/strategy-amendment-results.json');
 const RESCUE = path.resolve(ROOT, 'scripts/backtest-omitted-geo-rescue-results.json');
+const RESCORE = path.resolve(ROOT, 'scripts/momentum-rescore-results.json');
 const ENGINE_SHORT = path.resolve(ROOT, args.engineOutput || 'scripts/cell-strategy-search-engine-short.json');
 const OUTPUT = path.resolve(ROOT, args.output || 'scripts/cell-strategy-search-results.json');
 const READOUT = path.resolve(ROOT, args.readout || 'docs/cell-strategy-search-readout.md');
@@ -256,6 +257,38 @@ function rescueReference() {
 // ── Readout ────────────────────────────────────────────────────────────────
 const fmt = value => value == null ? '—' : value;
 const pct = value => value == null ? '—' : `${value}%`;
+function renderRescore(rescore) {
+  const lines = [
+    '## Re-scored under current standards (2026-10-25)',
+    '',
+    `Source: \`docs/momentum-rescore-2026-10-25.md\` / \`scripts/momentum-rescore-results.json\`. ${rescore.standards}. VALIDATION_PASS: ${rescore.passRule.VALIDATION_PASS}. INCUBATION_ELIGIBLE: ${rescore.passRule.INCUBATION_ELIGIBLE}.`,
+    '',
+    '| Book | Variant | Verdict | Months | Full | Benchmark | Excess t | Alpha ann. | Alpha t | Max DD | Windows + | Beats QQQ | Fails on |',
+    '| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |',
+  ];
+  for (const cell of rescore.cells) {
+    for (const book of Object.values(cell.books)) {
+      lines.push(`| \`${cell.id}\` | ${book.label} | ${book.verdict} | ${book.months} | ${pct(book.full.returnPct)} | ${pct(book.full.benchmarkReturnPct)} | ${fmt(book.excess.t)} | ${pct(book.alpha?.alphaAnnualPct)} | ${fmt(book.alpha?.t)} | ${pct(book.full.maxDrawdownPct)} | ${book.positiveWindows}/4 | ${book.qqq ? book.qqq.beatsQqq : 'n/a'} | ${book.failReasons.join('; ') || '—'} |`);
+    }
+  }
+  const ukMedium = rescore.cells.find(cell => cell.id === 'UK__medium__12-1__plain');
+  const ukMediumCurrent = rescore.cells.find(cell => cell.id === 'UK__medium__12-1__plain__currentSymbols');
+  const ukP6 = rescore.cells.find(cell => cell.id === 'UK__long__12-1__piotroski6');
+  lines.push('', '### Reconciliation — UK medium 12-1', '');
+  if (ukMedium && ukMediumCurrent) {
+    const r = ukMedium.books.research;
+    const c = ukMediumCurrent.books.research;
+    lines.push(`Same definition in both readouts: top 10 names by 12-1 momentum, one-month hold, monthly rebalance, equal weight, costs at entry. The new-strategy-types row (\`B__UK__medium__momentum__regimeoff\`, +21.5% "overall", "profitable in all 4 windows") was scored on the **current constituents** with close-to-close marks and its four windows cover only **${ukMedium.books.research.windows[0].from} → ${ukMedium.books.research.windows[3].to}** — the last two years, not the sample. The earlier momentum readout's −23% / 64% max DD was the **full 2010–2026 sample**. Both describe the same book; the 4-window lens was simply the wrong one for a monthly book.`);
+    lines.push('', `Re-scored here: ever-member universe, next-open entry — full sample **${pct(r.full.returnPct)}** vs EWU ${pct(r.full.benchmarkReturnPct)}, max DD **${pct(r.full.maxDrawdownPct)}**, excess t ${fmt(r.excess.t)}, alpha t ${fmt(r.alpha?.t)}; windows ${r.windows.map(w => pct(w.returnPct)).join(' · ')}. On the current-constituent universe the same book is ${pct(c.full.returnPct)} (max DD ${pct(c.full.maxDrawdownPct)}): survivorship adds about ${fmt(+(c.full.returnPct - r.full.returnPct).toFixed(1))} pp. Executable k=1 / k=2: ${pct(ukMedium.books.k1.full.returnPct)} / ${pct(ukMedium.books.k2.full.returnPct)} with max DD ${pct(ukMedium.books.k1.full.maxDrawdownPct)} / ${pct(ukMedium.books.k2.full.maxDrawdownPct)}.`);
+    lines.push('', '**Which is right:** the full-sample readout. UK medium 12-1 loses to EWU over the sample on either universe, with a drawdown that would breach any risk gate. It is not a candidate; the 2026-10-22 table\'s "near-miss" label is withdrawn.');
+  }
+  if (ukP6) {
+    const cov = ukP6.coverage;
+    lines.push('', '### UK long Piotroski ≥ 6 — coverage caveat', '');
+    lines.push(`Dated statements exist for ${cov.current} current FTSE 100 constituents only, and ${cov.withStatements} of the ${cov.priced} priced ever-members produce a Piotroski series (most UK filers report half-yearly, which the point-in-time builder rejects as an ineligible cadence). Former members with a score: ${cov.formerWithStatements}. The UK quality screen is therefore a ~${cov.withStatements}-name survivor book and cannot be validated under the ever-member standard. The plain 12-1 book has no such limit.`);
+  }
+  return lines;
+}
 function windowText(row) {
   return row.windows.map(window => {
     const money = window.pnlUsd != null ? `$${window.pnlUsd}` : pct(window.returnPct);
@@ -269,19 +302,32 @@ function renderReadout(report) {
     `Generated: ${report.generatedAt}`,
     '',
     'Research only. No live signal, setup-book cell, bracket, order, flag, or deployment setting changed.',
-    'Pre-registration: `docs/cell-strategy-search-preregistration.md`. Consistency rule: mean reversion needs every window profitable with win rate ≥ 60%; trend, momentum, breakout, reversal and earnings books need every window profitable with PF ≥ 1.2. Ranking: CONSISTENT first, then worst all-window PF, then smaller average loss. The fourth window is OVERLAP_RISK in every source.',
+    'Pre-registration: `docs/cell-strategy-search-preregistration.md`. Consistency rule: mean reversion needs every window profitable with win rate ≥ 60%; trend, momentum, breakout, reversal and earnings books need every window profitable with PF ≥ 1.2. Ranking: CONSISTENT first, fresh before STALE, then worst all-window PF, then smaller average loss. The fourth window is OVERLAP_RISK in every source.',
+    '',
+    '## What is live (corrected 2026-10-25)',
+    '',
+    '- `UK_LONG_MOMENTUM` is **plain 12-1 momentum, k=1** (one new name a month, six-month hold, six $30,000 slots), with **no Piotroski screen**. Experimental. `FRANCE_LONG_MOMENTUM` is the same design and is paused.',
+    '- The **US long Piotroski ≥ 6 book is not enabled**. `docs/us-long-piotroski-paper-design.md` is a paper design only; there is no setup-book cell, flag, tag, or order for it.',
+    '- The 2026-10-22 version of this readout said the two CONSISTENT rows were "already in the live book". That was wrong: `B__UK__long__piotroski6__regimeoff` is not the live UK definition, and `B__US__long__piotroski6__regimeoff` is not live at all.',
+    '',
+    '## STALE results',
+    '',
+    'Every reused frozen row computed on a **current-constituent universe** (survivorship label `SURVIVORSHIP_BIAS`: all UK, France, Germany, Hong Kong, Japan and India rows in the consistency study, new-strategy-types and amendment files, and the engine-short replay for those markets) or on the **old earnings event window** (the `A2__US__medium__react*` rows) is marked STALE. A STALE row stays in the tables but is never CONSISTENT, and it ranks behind fresh rows. The standards that replaced them are in `docs/strategy-gaps-amendment-2026-10-06.md` (ever-member universe; d0−1 → d0+1 abnormal-return window). The momentum rows surfaced by this search were re-scored under those standards in `docs/momentum-rescore-2026-10-25.md`; see the section below.',
     '',
     '## Best strategy by requested cell',
     '',
-    'A row is the best available strategy for the cell, not an endorsement: only CONSISTENT cells clear the framework. Rows from the trend/momentum books report per-window book return (%) rather than $ PnL; the crypto trend rows are the same monthly-rebalanced book scored under the medium and long labels in the source study.',
+    'A row is the best available strategy for the cell, not an endorsement: only CONSISTENT cells clear the framework. Rows from the trend/momentum books report per-window book return (%) rather than $ PnL; the crypto trend rows are the same monthly-rebalanced book scored under the medium and long labels in the source study. "Fresh best" is the best row that is not STALE (US point-in-time rows, commodity and crypto rows).',
     '',
-    '| Market | Horizon | Verdict | Best row | Family | Worst PF | Pooled n | Pooled WR | Pooled PF | Why not consistent | Source | Membership |',
-    '| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |',
+    '| Market | Horizon | Verdict | Best row | Stale | Family | Worst PF | Pooled n | Pooled WR | Pooled PF | Why not consistent | Source | Membership |',
+    '| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- | --- |',
   ];
   for (const cell of report.cells) {
     const best = cell.best;
-    lines.push(`| ${cell.market} | ${cell.horizon} | ${cell.verdict} | ${best ? `\`${best.id}\`` : '—'} | ${best ? best.kind : '—'} | ${best ? fmt(best.worstWindowPf) : '—'} | ${best ? best.pooled.trades : '—'} | ${best ? pct(best.pooled.winRate) : '—'} | ${best ? fmt(best.pooled.profitFactor) : '—'} | ${best ? (best.failReason || '—') : 'no variant in any source'} | ${best ? best.source : '—'} | ${best ? fmt(best.survivorship) : '—'} |`);
+    lines.push(`| ${cell.market} | ${cell.horizon} | ${cell.verdict} | ${best ? `\`${best.id}\`` : '—'} | ${best ? (best.stale ? 'STALE' : 'fresh') : '—'} | ${best ? best.kind : '—'} | ${best ? fmt(best.worstWindowPf) : '—'} | ${best ? best.pooled.trades : '—'} | ${best ? pct(best.pooled.winRate) : '—'} | ${best ? fmt(best.pooled.profitFactor) : '—'} | ${best ? (best.failReason || '—') : 'no variant in any source'} | ${best ? best.source : '—'} | ${best ? fmt(best.survivorship) : '—'} |`);
   }
+  lines.push('', 'The one remaining CONSISTENT cell (US long, `B__US__long__piotroski6__regimeoff`) passes the four-window framework rule on a point-in-time universe, but under the current standards it is **not validated**: re-scored on the ever-member file with next-open entry it is INCUBATION_ELIGIBLE at k=1 (excess t 2.17, alpha t 1.07 on SPY+QQQ, beats QQQ) and fails as the research book (excess t 1.69, alpha t 0.83, does not beat QQQ). See the re-score section.');
+  lines.push('', `Stale rows: ${report.staleRows} of ${report.rowsScored}. Cells whose every row is STALE: ${report.cells.filter(cell => cell.variantsScored > 0 && cell.top.every(row => row.stale)).map(cell => `${cell.market} ${cell.horizon}`).join(', ') || 'none'}.`);
+  if (report.rescore) lines.push('', ...renderRescore(report.rescore));
   lines.push('', '## Per-cell detail', '');
   for (const cell of report.cells) {
     lines.push(`### ${cell.market} · ${cell.horizon} — ${cell.verdict}`, '');
@@ -290,11 +336,11 @@ function renderReadout(report) {
     lines.push('| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- |');
     for (const family of cell.families) {
       const b = family.best;
-      lines.push(`| ${family.kind} | ${family.variants} | ${family.consistent} | ${b ? `\`${b.id}\`` : '—'} | ${b ? fmt(b.worstWindowPf) : '—'} | ${b ? fmt(b.pooledTrades) : '—'} | ${b ? pct(b.pooledWinRate) : '—'} | ${b ? fmt(b.pooledProfitFactor) : '—'} | ${b ? (b.failReason || '—') : '—'} |`);
+      lines.push(`| ${family.kind} | ${family.variants} | ${family.consistent} | ${b ? `\`${b.id}\`${b.stale ? ' (STALE)' : ''}` : '—'} | ${b ? fmt(b.worstWindowPf) : '—'} | ${b ? fmt(b.pooledTrades) : '—'} | ${b ? pct(b.pooledWinRate) : '—'} | ${b ? fmt(b.pooledProfitFactor) : '—'} | ${b ? (b.failReason || '—') : '—'} |`);
     }
     lines.push('', 'Top five rows (window 1 · 2 · 3 · 4, PnL or book return / PF / trades):', '');
     for (const row of cell.top) {
-      lines.push(`- \`${row.id}\` — ${row.description}. ${windowText(row)}.${row.sourceVerdict ? ` Source verdict: ${row.sourceVerdict}.` : ''}${row.benchmarkBeat != null ? ` Beat benchmark in ${row.benchmarkBeat}/4 windows.` : ''}${row.bhQValue != null ? ` BH q ${row.bhQValue}.` : ''}`);
+      lines.push(`- \`${row.id}\`${row.stale ? ' **STALE**' : ''} — ${row.description}. ${windowText(row)}.${row.sourceVerdict ? ` Source verdict: ${row.sourceVerdict}.` : ''}${row.benchmarkBeat != null ? ` Beat benchmark in ${row.benchmarkBeat}/4 windows.` : ''}${row.bhQValue != null ? ` BH q ${row.bhQValue}.` : ''}${row.stale && row.frameworkConsistent ? ' Framework rule alone would pass; STALE because of the universe/window.' : ''}`);
     }
     lines.push('');
   }
@@ -371,7 +417,9 @@ async function main() {
       'scripts/backtest-omitted-geo-rescue-results.json (reference only)',
     ],
     rowsScored: rows.length,
+    staleRows: rows.filter(row => row.stale).length,
     cells,
+    rescore: fs.existsSync(RESCORE) ? readJson(RESCORE) : null,
     engineShort,
     reference: rescueReference(),
     liveBehaviorChanged: false,

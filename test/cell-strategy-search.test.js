@@ -18,7 +18,7 @@ function consistencyCell(overrides = {}) {
   return {
     id: 'A__UK__short__rsi2_lt_5__none__sl2__t5__full',
     part: 'A', market: 'UK', horizon: 'short', trigger: 'rsi2_lt_5', regime: 'none',
-    stopAtr: 2, timeStopBars: 5, partial: false, survivorship: 'SURVIVORSHIP_BIAS',
+    stopAtr: 2, timeStopBars: 5, partial: false, survivorship: 'POINT_IN_TIME',
     windows: [
       window(1, { trades: 20, winRate: 65, profitFactor: 1.4, pnlUsd: 500, avgLossPct: -2 }),
       window(2, { trades: 18, winRate: 61, profitFactor: 1.3, pnlUsd: 300, avgLossPct: -2.5 }),
@@ -63,7 +63,7 @@ test('trend and momentum books use the PF 1.2 rule on window returns', () => {
   const row = normalizeBookRow({
     id: 'B__UK__long__piotroski6__regimeoff',
     market: 'UK', horizon: 'long', strategy: '12-1 momentum among Piotroski >= 6',
-    survivorship: 'SURVIVORSHIP_BIAS', verdict: 'PASS',
+    survivorship: 'POINT_IN_TIME', verdict: 'PASS',
     windows: [
       { fold: 1, returnPct: 10.15, pf: 2.013, win: 51.7, trades: 60, beat: true },
       { fold: 2, returnPct: 5.93, pf: 5.41, win: 55, trades: 60, beat: true },
@@ -100,6 +100,35 @@ test('ranking puts consistent rows first, then worst-window PF, then smaller los
   }));
   const ranked = rankCell([inconsistent, consistentLowPf, rescored]);
   assert.deepEqual(ranked.map(row => row.id), ['high', 'low', 'bleeder']);
+});
+
+test('current-constituent and old-earnings-window rows are STALE and never make a cell consistent', () => {
+  const stale = normalizeConsistencyCell(consistencyCell({ id: 'stale', survivorship: 'SURVIVORSHIP_BIAS' }));
+  assert.equal(stale.stale, true);
+  assert.equal(stale.frameworkConsistent, true, 'the framework rule alone would pass it');
+  assert.equal(stale.consistent, false);
+  assert.match(stale.failReason, /^STALE — current-constituent universe/);
+
+  const earnings = normalizeBookRow({
+    id: 'A2__US__medium__react0.03_d2_h60', market: 'US', horizon: 'medium', survivorship: 'POINT_IN_TIME',
+    strategy: 'Earnings reaction', verdict: 'FAIL',
+    windows: [1, 2, 3, 4].map(fold => ({ fold, returnPct: 5, pf: 1.5, win: 55, trades: 100, beat: true })),
+    overall: { returnPct: 20, pf: 1.3, win: 50, trades: 400 },
+  }, 'strategy-amendment');
+  assert.equal(earnings.kind, 'earnings');
+  assert.equal(earnings.stale, true);
+  assert.match(earnings.staleReason, /old earnings event window/);
+
+  const freshFinished = normalizeConsistencyCell({
+    ...consistencyCell({ id: 'fresh' }),
+    windows: consistencyCell().windows.map((window, index) => (
+      index === 0 ? { ...window, metrics: { ...window.metrics, pnlUsd: -1 } } : window
+    )),
+  });
+  const ranked = rankCell([stale, freshFinished]);
+  assert.deepEqual(ranked.map(row => row.id), ['fresh', 'stale'], 'fresh rows rank before stale ones');
+  const table = buildCellTable([stale], {});
+  assert.equal(table.find(cell => cell.key === 'UK|short').verdict, 'NONE');
 });
 
 test('rows with an empty window rank behind populated rows and cells report verdicts', () => {
