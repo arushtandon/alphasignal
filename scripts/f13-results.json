@@ -1,0 +1,5451 @@
+{
+  "generatedAt": "2026-10-26T05:45:14.074Z",
+  "trials": 4,
+  "instruments": [
+    {
+      "symbol": "ES=F",
+      "ibkr": "MES",
+      "assetClass": "equity",
+      "first": "2005-01-03"
+    },
+    {
+      "symbol": "NQ=F",
+      "ibkr": "MNQ",
+      "assetClass": "equity",
+      "first": "2005-01-03"
+    },
+    {
+      "symbol": "YM=F",
+      "ibkr": "MYM",
+      "assetClass": "equity",
+      "first": "2005-01-03"
+    },
+    {
+      "symbol": "RTY=F",
+      "ibkr": "M2K",
+      "assetClass": "equity",
+      "first": "2017-07-10"
+    },
+    {
+      "symbol": "^STOXX50E",
+      "ibkr": "FSXE",
+      "assetClass": "equity",
+      "first": "2007-03-30"
+    },
+    {
+      "symbol": "^GDAXI",
+      "ibkr": "FDXS",
+      "assetClass": "equity",
+      "first": "2016-10-05"
+    },
+    {
+      "symbol": "^FTSE",
+      "ibkr": "Z (ICE EU) — no micro; ISF.L ETF for TOM",
+      "assetClass": "equity",
+      "first": "1990-01-02"
+    },
+    {
+      "symbol": "^N225",
+      "ibkr": "MNK (OSE Micro Nikkei 225)",
+      "assetClass": "equity",
+      "first": "2016-10-05"
+    },
+    {
+      "symbol": "^HSI",
+      "ibkr": "MHI (HKFE Mini Hang Seng)",
+      "assetClass": "equity",
+      "first": "2016-10-05"
+    },
+    {
+      "symbol": "^FCHI",
+      "ibkr": "CAC40 (Euronext mini; no micro)",
+      "assetClass": "equity",
+      "first": "2016-10-05"
+    },
+    {
+      "symbol": "ZN=F",
+      "ibkr": "10Y (CBOT Micro 10-Year Yield) — price proxy ZN",
+      "assetClass": "rates",
+      "first": "2005-01-03"
+    },
+    {
+      "symbol": "ZB=F",
+      "ibkr": "30Y (CBOT Micro 30-Year Yield) — price proxy ZB",
+      "assetClass": "rates",
+      "first": "2005-01-03"
+    },
+    {
+      "symbol": "ZF=F",
+      "ibkr": "5YY (CBOT Micro 5-Year Yield) — price proxy ZF",
+      "assetClass": "rates",
+      "first": "2005-01-03"
+    },
+    {
+      "symbol": "6E=F",
+      "ibkr": "M6E",
+      "assetClass": "fx",
+      "first": "2005-01-03"
+    },
+    {
+      "symbol": "6J=F",
+      "ibkr": "M6J",
+      "assetClass": "fx",
+      "first": "2005-01-03"
+    },
+    {
+      "symbol": "6B=F",
+      "ibkr": "M6B",
+      "assetClass": "fx",
+      "first": "2005-01-03"
+    },
+    {
+      "symbol": "6A=F",
+      "ibkr": "M6A",
+      "assetClass": "fx",
+      "first": "2005-01-03"
+    },
+    {
+      "symbol": "6C=F",
+      "ibkr": "MCD",
+      "assetClass": "fx",
+      "first": "2005-01-03"
+    },
+    {
+      "symbol": "GC=F",
+      "ibkr": "MGC",
+      "assetClass": "commodity",
+      "first": "2016-10-05"
+    },
+    {
+      "symbol": "SI=F",
+      "ibkr": "SIL",
+      "assetClass": "commodity",
+      "first": "2016-10-05"
+    },
+    {
+      "symbol": "CL=F",
+      "ibkr": "MCL",
+      "assetClass": "commodity",
+      "first": "2016-10-05"
+    },
+    {
+      "symbol": "HG=F",
+      "ibkr": "MHG",
+      "assetClass": "commodity",
+      "first": "2016-10-05"
+    },
+    {
+      "symbol": "PL=F",
+      "ibkr": "PLM",
+      "assetClass": "commodity",
+      "first": "2016-10-05"
+    },
+    {
+      "symbol": "PA=F",
+      "ibkr": "PAM",
+      "assetClass": "commodity",
+      "first": "2016-10-05"
+    },
+    {
+      "symbol": "NG=F",
+      "ibkr": "MNG",
+      "assetClass": "commodity",
+      "first": "2016-10-05"
+    },
+    {
+      "symbol": "BTC-USD",
+      "ibkr": "MBT",
+      "assetClass": "crypto",
+      "first": "2016-10-06"
+    },
+    {
+      "symbol": "ETH-USD",
+      "ibkr": "MET",
+      "assetClass": "crypto",
+      "first": "2017-11-09"
+    }
+  ],
+  "books": [
+    {
+      "label": "F13 trend 1m",
+      "market": "MULTI-ASSET",
+      "cell": "MULTI-ASSET × medium × long/short",
+      "horizon": "medium",
+      "periods": 202,
+      "firstPeriod": "2010-01-29",
+      "lastPeriod": "2026-10-05",
+      "netReturnPct": -49.1,
+      "benchmarkReturnPct": null,
+      "excessPp": -49.1,
+      "annualizedPct": -3.95,
+      "excessT": -1.46,
+      "sharpeAnnual": -0.36,
+      "sharpeT": -1.46,
+      "alpha": null,
+      "hurdle": null,
+      "maxDrawdownPct": 52.14,
+      "trades": 4149,
+      "win": 33.2,
+      "pf": 0.922,
+      "perTradeT": -1.24,
+      "perTradeMeanPct": -0.15,
+      "variant": "1m",
+      "rebalance": "weekly",
+      "avgTurnover": 0,
+      "avgNames": 21.1,
+      "corrSpy": -0.151,
+      "worstSpyMonths": {
+        "months": 20,
+        "bookMeanPct": 2.18,
+        "spyMeanPct": -7.39
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "periods": 6,
+          "returnPct": -1.34,
+          "benchmarkReturnPct": null,
+          "excessPp": -1.34,
+          "trades": 150,
+          "win": 34.7,
+          "pf": 0.658,
+          "pfInfinite": false,
+          "maxDrawdownPct": 5.25,
+          "profitable": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "periods": 6,
+          "returnPct": -6.44,
+          "benchmarkReturnPct": null,
+          "excessPp": -6.44,
+          "trades": 168,
+          "win": 33.9,
+          "pf": 0.822,
+          "pfInfinite": false,
+          "maxDrawdownPct": 7.67,
+          "profitable": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "periods": 6,
+          "returnPct": -3.33,
+          "benchmarkReturnPct": null,
+          "excessPp": -3.33,
+          "trades": 181,
+          "win": 33.7,
+          "pf": 1.157,
+          "pfInfinite": false,
+          "maxDrawdownPct": 6.8,
+          "profitable": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "periods": 7,
+          "returnPct": 2.46,
+          "benchmarkReturnPct": null,
+          "excessPp": 2.46,
+          "trades": 200,
+          "win": 43.5,
+          "pf": 1.337,
+          "pfInfinite": false,
+          "maxDrawdownPct": 3.67,
+          "profitable": true
+        }
+      ],
+      "yearly": [
+        {
+          "year": "2010",
+          "periods": 12,
+          "returnPct": -3.13,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2011",
+          "periods": 12,
+          "returnPct": -14.71,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2012",
+          "periods": 12,
+          "returnPct": 0.73,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2013",
+          "periods": 12,
+          "returnPct": 5.22,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2014",
+          "periods": 12,
+          "returnPct": -18.27,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2015",
+          "periods": 12,
+          "returnPct": -1.91,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2016",
+          "periods": 12,
+          "returnPct": -9.26,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2017",
+          "periods": 12,
+          "returnPct": -4.58,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2018",
+          "periods": 12,
+          "returnPct": 4.15,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2019",
+          "periods": 12,
+          "returnPct": -8.07,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2020",
+          "periods": 12,
+          "returnPct": 5.97,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2021",
+          "periods": 12,
+          "returnPct": 2.02,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2022",
+          "periods": 12,
+          "returnPct": 6.9,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2023",
+          "periods": 12,
+          "returnPct": -9.54,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2024",
+          "periods": 12,
+          "returnPct": -10.17,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2025",
+          "periods": 12,
+          "returnPct": -10.51,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2026",
+          "periods": 10,
+          "returnPct": 4.08,
+          "benchmarkReturnPct": null
+        }
+      ],
+      "verdict": "FAIL",
+      "failReasons": [
+        "a window with trades is unprofitable or PF < 1.2",
+        "full-sample net ≤ 0",
+        "monthly t -1.46 < 3"
+      ],
+      "positiveWindows": 1,
+      "sixtyForty": {
+        "netPct": 239.6,
+        "sharpeAnnual": 0.85,
+        "t": 3.48,
+        "maxDdPct": 18.91
+      },
+      "spyOnly": {
+        "netPct": 477.78,
+        "sharpeAnnual": 0.8,
+        "t": 3.26,
+        "maxDdPct": 22.61
+      },
+      "vs6040T": -3.2,
+      "byAssetClass": {
+        "equity": -43.59,
+        "rates": -15.05,
+        "fx": -8.81,
+        "commodity": -4.08,
+        "crypto": 13.83
+      },
+      "perInstrument": [
+        {
+          "symbol": "BTC-USD",
+          "assetClass": "crypto",
+          "longPnlPct": 9.81,
+          "shortPnlPct": -1.12,
+          "costPct": 1.58,
+          "netPct": 7.12,
+          "longDays": 1326,
+          "shortDays": 1139
+        },
+        {
+          "symbol": "ETH-USD",
+          "assetClass": "crypto",
+          "longPnlPct": 5.32,
+          "shortPnlPct": 2.4,
+          "costPct": 1.01,
+          "netPct": 6.71,
+          "longDays": 1066,
+          "shortDays": 1125
+        },
+        {
+          "symbol": "NQ=F",
+          "assetClass": "equity",
+          "longPnlPct": 12.42,
+          "shortPnlPct": -7.54,
+          "costPct": 0.85,
+          "netPct": 4.03,
+          "longDays": 2795,
+          "shortDays": 1407
+        },
+        {
+          "symbol": "CL=F",
+          "assetClass": "commodity",
+          "longPnlPct": 2.64,
+          "shortPnlPct": 1.77,
+          "costPct": 0.6,
+          "netPct": 3.81,
+          "longDays": 1330,
+          "shortDays": 1112
+        },
+        {
+          "symbol": "RTY=F",
+          "assetClass": "equity",
+          "longPnlPct": 2.26,
+          "shortPnlPct": 1.68,
+          "costPct": 0.33,
+          "netPct": 3.61,
+          "longDays": 1313,
+          "shortDays": 941
+        },
+        {
+          "symbol": "GC=F",
+          "assetClass": "commodity",
+          "longPnlPct": 6.45,
+          "shortPnlPct": -2.58,
+          "costPct": 1.04,
+          "netPct": 2.82,
+          "longDays": 1423,
+          "shortDays": 1019
+        },
+        {
+          "symbol": "6E=F",
+          "assetClass": "fx",
+          "longPnlPct": -1.73,
+          "shortPnlPct": 5.84,
+          "costPct": 1.48,
+          "netPct": 2.63,
+          "longDays": 1986,
+          "shortDays": 2206
+        },
+        {
+          "symbol": "^N225",
+          "assetClass": "equity",
+          "longPnlPct": 3.56,
+          "shortPnlPct": -2.59,
+          "costPct": 0.41,
+          "netPct": 0.55,
+          "longDays": 1404,
+          "shortDays": 888
+        },
+        {
+          "symbol": "ZB=F",
+          "assetClass": "rates",
+          "longPnlPct": 0.85,
+          "shortPnlPct": 0.14,
+          "costPct": 1.17,
+          "netPct": -0.18,
+          "longDays": 2058,
+          "shortDays": 2142
+        },
+        {
+          "symbol": "PL=F",
+          "assetClass": "commodity",
+          "longPnlPct": 0.59,
+          "shortPnlPct": -0.65,
+          "costPct": 0.53,
+          "netPct": -0.6,
+          "longDays": 1287,
+          "shortDays": 1151
+        },
+        {
+          "symbol": "NG=F",
+          "assetClass": "commodity",
+          "longPnlPct": 3.07,
+          "shortPnlPct": -3.85,
+          "costPct": 0.4,
+          "netPct": -1.18,
+          "longDays": 1283,
+          "shortDays": 1150
+        },
+        {
+          "symbol": "6J=F",
+          "assetClass": "fx",
+          "longPnlPct": -6.79,
+          "shortPnlPct": 6.85,
+          "costPct": 1.41,
+          "netPct": -1.35,
+          "longDays": 1992,
+          "shortDays": 2215
+        },
+        {
+          "symbol": "ES=F",
+          "assetClass": "equity",
+          "longPnlPct": 7.38,
+          "shortPnlPct": -8.08,
+          "costPct": 1.12,
+          "netPct": -1.82,
+          "longDays": 2797,
+          "shortDays": 1410
+        },
+        {
+          "symbol": "6C=F",
+          "assetClass": "fx",
+          "longPnlPct": -6.22,
+          "shortPnlPct": 5.65,
+          "costPct": 1.7,
+          "netPct": -2.28,
+          "longDays": 2052,
+          "shortDays": 2155
+        },
+        {
+          "symbol": "SI=F",
+          "assetClass": "commodity",
+          "longPnlPct": 1.39,
+          "shortPnlPct": -3.09,
+          "costPct": 0.61,
+          "netPct": -2.3,
+          "longDays": 1338,
+          "shortDays": 1104
+        },
+        {
+          "symbol": "^HSI",
+          "assetClass": "equity",
+          "longPnlPct": -0.24,
+          "shortPnlPct": -1.94,
+          "costPct": 0.54,
+          "netPct": -2.73,
+          "longDays": 1190,
+          "shortDays": 1138
+        },
+        {
+          "symbol": "PA=F",
+          "assetClass": "commodity",
+          "longPnlPct": 1.26,
+          "shortPnlPct": -3.91,
+          "costPct": 0.4,
+          "netPct": -3.05,
+          "longDays": 1359,
+          "shortDays": 1083
+        },
+        {
+          "symbol": "6B=F",
+          "assetClass": "fx",
+          "longPnlPct": -4.23,
+          "shortPnlPct": 2.01,
+          "costPct": 1.36,
+          "netPct": -3.57,
+          "longDays": 2104,
+          "shortDays": 2089
+        },
+        {
+          "symbol": "HG=F",
+          "assetClass": "commodity",
+          "longPnlPct": 0.59,
+          "shortPnlPct": -3.46,
+          "costPct": 0.72,
+          "netPct": -3.6,
+          "longDays": 1396,
+          "shortDays": 1041
+        },
+        {
+          "symbol": "6A=F",
+          "assetClass": "fx",
+          "longPnlPct": -6.37,
+          "shortPnlPct": 3.3,
+          "costPct": 1.16,
+          "netPct": -4.23,
+          "longDays": 2122,
+          "shortDays": 2065
+        },
+        {
+          "symbol": "YM=F",
+          "assetClass": "equity",
+          "longPnlPct": 4.02,
+          "shortPnlPct": -9.36,
+          "costPct": 1.13,
+          "netPct": -6.47,
+          "longDays": 2770,
+          "shortDays": 1437
+        },
+        {
+          "symbol": "^FCHI",
+          "assetClass": "equity",
+          "longPnlPct": -2.65,
+          "shortPnlPct": -3.61,
+          "costPct": 0.78,
+          "netPct": -7.04,
+          "longDays": 1377,
+          "shortDays": 1047
+        },
+        {
+          "symbol": "ZN=F",
+          "assetClass": "rates",
+          "longPnlPct": -4.25,
+          "shortPnlPct": -0.45,
+          "costPct": 2.43,
+          "netPct": -7.13,
+          "longDays": 2137,
+          "shortDays": 2038
+        },
+        {
+          "symbol": "ZF=F",
+          "assetClass": "rates",
+          "longPnlPct": -4.73,
+          "shortPnlPct": 0.64,
+          "costPct": 3.66,
+          "netPct": -7.74,
+          "longDays": 2130,
+          "shortDays": 2063
+        },
+        {
+          "symbol": "^GDAXI",
+          "assetClass": "equity",
+          "longPnlPct": -3.08,
+          "shortPnlPct": -6.18,
+          "costPct": 0.51,
+          "netPct": -9.77,
+          "longDays": 1475,
+          "shortDays": 929
+        },
+        {
+          "symbol": "^FTSE",
+          "assetClass": "equity",
+          "longPnlPct": -4.05,
+          "shortPnlPct": -5.9,
+          "costPct": 1.23,
+          "netPct": -11.18,
+          "longDays": 2388,
+          "shortDays": 1742
+        },
+        {
+          "symbol": "^STOXX50E",
+          "assetClass": "equity",
+          "longPnlPct": -4.79,
+          "shortPnlPct": -7.02,
+          "costPct": 0.97,
+          "netPct": -12.78,
+          "longDays": 2373,
+          "shortDays": 1724
+        }
+      ],
+      "realizedVolPct": 9.87
+    },
+    {
+      "label": "F13 trend 3m+6m",
+      "market": "MULTI-ASSET",
+      "cell": "MULTI-ASSET × medium × long/short",
+      "horizon": "medium",
+      "periods": 202,
+      "firstPeriod": "2010-01-29",
+      "lastPeriod": "2026-10-05",
+      "netReturnPct": 29.81,
+      "benchmarkReturnPct": null,
+      "excessPp": 29.81,
+      "annualizedPct": 1.57,
+      "excessT": 0.81,
+      "sharpeAnnual": 0.2,
+      "sharpeT": 0.81,
+      "alpha": null,
+      "hurdle": null,
+      "maxDrawdownPct": 26.84,
+      "trades": 916,
+      "win": 34.2,
+      "pf": 1.152,
+      "perTradeT": 0.67,
+      "perTradeMeanPct": 0.52,
+      "variant": "3m+6m",
+      "rebalance": "monthly",
+      "avgTurnover": 0,
+      "avgNames": 21.1,
+      "corrSpy": 0.019,
+      "worstSpyMonths": {
+        "months": 20,
+        "bookMeanPct": -0.67,
+        "spyMeanPct": -7.39
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "periods": 6,
+          "returnPct": -9.35,
+          "benchmarkReturnPct": null,
+          "excessPp": -9.35,
+          "trades": 45,
+          "win": 22.2,
+          "pf": 0.617,
+          "pfInfinite": false,
+          "maxDrawdownPct": 10.07,
+          "profitable": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "periods": 6,
+          "returnPct": 3.67,
+          "benchmarkReturnPct": null,
+          "excessPp": 3.67,
+          "trades": 34,
+          "win": 29.4,
+          "pf": 0.384,
+          "pfInfinite": false,
+          "maxDrawdownPct": 5.04,
+          "profitable": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "periods": 6,
+          "returnPct": 0.54,
+          "benchmarkReturnPct": null,
+          "excessPp": 0.54,
+          "trades": 31,
+          "win": 35.5,
+          "pf": 0.996,
+          "pfInfinite": false,
+          "maxDrawdownPct": 9.09,
+          "profitable": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "periods": 7,
+          "returnPct": -2.14,
+          "benchmarkReturnPct": null,
+          "excessPp": -2.14,
+          "trades": 49,
+          "win": 49,
+          "pf": 1.691,
+          "pfInfinite": false,
+          "maxDrawdownPct": 5.59,
+          "profitable": false
+        }
+      ],
+      "yearly": [
+        {
+          "year": "2010",
+          "periods": 12,
+          "returnPct": -5.76,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2011",
+          "periods": 12,
+          "returnPct": 8.05,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2012",
+          "periods": 12,
+          "returnPct": -10.69,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2013",
+          "periods": 12,
+          "returnPct": 13.4,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2014",
+          "periods": 12,
+          "returnPct": 4.54,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2015",
+          "periods": 12,
+          "returnPct": 5.09,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2016",
+          "periods": 12,
+          "returnPct": 5.82,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2017",
+          "periods": 12,
+          "returnPct": 11.99,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2018",
+          "periods": 12,
+          "returnPct": 4.89,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2019",
+          "periods": 12,
+          "returnPct": -0.12,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2020",
+          "periods": 12,
+          "returnPct": -1.29,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2021",
+          "periods": 12,
+          "returnPct": 6.77,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2022",
+          "periods": 12,
+          "returnPct": 4.3,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2023",
+          "periods": 12,
+          "returnPct": -14.88,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2024",
+          "periods": 12,
+          "returnPct": 0.72,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2025",
+          "periods": 12,
+          "returnPct": 4.6,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2026",
+          "periods": 10,
+          "returnPct": -6.37,
+          "benchmarkReturnPct": null
+        }
+      ],
+      "verdict": "FAIL",
+      "failReasons": [
+        "a window with trades is unprofitable or PF < 1.2",
+        "monthly t 0.81 < 3"
+      ],
+      "positiveWindows": 2,
+      "sixtyForty": {
+        "netPct": 239.6,
+        "sharpeAnnual": 0.85,
+        "t": 3.48,
+        "maxDdPct": 18.91
+      },
+      "spyOnly": {
+        "netPct": 477.78,
+        "sharpeAnnual": 0.8,
+        "t": 3.26,
+        "maxDdPct": 22.61
+      },
+      "vs6040T": -1.62,
+      "byAssetClass": {
+        "equity": 7.53,
+        "rates": 4.1,
+        "fx": 5.35,
+        "commodity": 13.36,
+        "crypto": 6.8
+      },
+      "perInstrument": [
+        {
+          "symbol": "6J=F",
+          "assetClass": "fx",
+          "longPnlPct": 0.73,
+          "shortPnlPct": 12.25,
+          "costPct": 0.56,
+          "netPct": 12.42,
+          "longDays": 1239,
+          "shortDays": 1861
+        },
+        {
+          "symbol": "NQ=F",
+          "assetClass": "equity",
+          "longPnlPct": 16.07,
+          "shortPnlPct": -4.27,
+          "costPct": 0.38,
+          "netPct": 11.42,
+          "longDays": 2892,
+          "shortDays": 523
+        },
+        {
+          "symbol": "6E=F",
+          "assetClass": "fx",
+          "longPnlPct": -0.19,
+          "shortPnlPct": 10.37,
+          "costPct": 0.59,
+          "netPct": 9.59,
+          "longDays": 1342,
+          "shortDays": 1703
+        },
+        {
+          "symbol": "ES=F",
+          "assetClass": "equity",
+          "longPnlPct": 13.9,
+          "shortPnlPct": -3.9,
+          "costPct": 0.48,
+          "netPct": 9.51,
+          "longDays": 2741,
+          "shortDays": 572
+        },
+        {
+          "symbol": "GC=F",
+          "assetClass": "commodity",
+          "longPnlPct": 8.66,
+          "shortPnlPct": -1.52,
+          "costPct": 0.47,
+          "netPct": 6.67,
+          "longDays": 1402,
+          "shortDays": 404
+        },
+        {
+          "symbol": "BTC-USD",
+          "assetClass": "crypto",
+          "longPnlPct": 9.34,
+          "shortPnlPct": -3.23,
+          "costPct": 0.81,
+          "netPct": 5.31,
+          "longDays": 1109,
+          "shortDays": 756
+        },
+        {
+          "symbol": "ZB=F",
+          "assetClass": "rates",
+          "longPnlPct": 3.73,
+          "shortPnlPct": 1.74,
+          "costPct": 0.49,
+          "netPct": 4.98,
+          "longDays": 1597,
+          "shortDays": 1482
+        },
+        {
+          "symbol": "PA=F",
+          "assetClass": "commodity",
+          "longPnlPct": 5.86,
+          "shortPnlPct": -1.22,
+          "costPct": 0.15,
+          "netPct": 4.49,
+          "longDays": 1091,
+          "shortDays": 693
+        },
+        {
+          "symbol": "^N225",
+          "assetClass": "equity",
+          "longPnlPct": 6.09,
+          "shortPnlPct": -2.23,
+          "costPct": 0.16,
+          "netPct": 3.7,
+          "longDays": 1114,
+          "shortDays": 528
+        },
+        {
+          "symbol": "YM=F",
+          "assetClass": "equity",
+          "longPnlPct": 8.27,
+          "shortPnlPct": -4.2,
+          "costPct": 0.5,
+          "netPct": 3.56,
+          "longDays": 2460,
+          "shortDays": 573
+        },
+        {
+          "symbol": "HG=F",
+          "assetClass": "commodity",
+          "longPnlPct": 3.21,
+          "shortPnlPct": -0.59,
+          "costPct": 0.3,
+          "netPct": 2.32,
+          "longDays": 1130,
+          "shortDays": 719
+        },
+        {
+          "symbol": "6B=F",
+          "assetClass": "fx",
+          "longPnlPct": -0.27,
+          "shortPnlPct": 3.16,
+          "costPct": 0.62,
+          "netPct": 2.27,
+          "longDays": 1502,
+          "shortDays": 1719
+        },
+        {
+          "symbol": "SI=F",
+          "assetClass": "commodity",
+          "longPnlPct": 3.5,
+          "shortPnlPct": -1.74,
+          "costPct": 0.26,
+          "netPct": 1.51,
+          "longDays": 1044,
+          "shortDays": 756
+        },
+        {
+          "symbol": "ETH-USD",
+          "assetClass": "crypto",
+          "longPnlPct": 4.04,
+          "shortPnlPct": -1.98,
+          "costPct": 0.57,
+          "netPct": 1.49,
+          "longDays": 883,
+          "shortDays": 777
+        },
+        {
+          "symbol": "CL=F",
+          "assetClass": "commodity",
+          "longPnlPct": 1.4,
+          "shortPnlPct": 0.23,
+          "costPct": 0.3,
+          "netPct": 1.34,
+          "longDays": 820,
+          "shortDays": 746
+        },
+        {
+          "symbol": "^HSI",
+          "assetClass": "equity",
+          "longPnlPct": 1.12,
+          "shortPnlPct": 0.09,
+          "costPct": 0.27,
+          "netPct": 0.94,
+          "longDays": 863,
+          "shortDays": 880
+        },
+        {
+          "symbol": "ZN=F",
+          "assetClass": "rates",
+          "longPnlPct": -0.27,
+          "shortPnlPct": 2.02,
+          "costPct": 1.01,
+          "netPct": 0.74,
+          "longDays": 1606,
+          "shortDays": 1565
+        },
+        {
+          "symbol": "NG=F",
+          "assetClass": "commodity",
+          "longPnlPct": 2.49,
+          "shortPnlPct": -1.9,
+          "costPct": 0.22,
+          "netPct": 0.37,
+          "longDays": 833,
+          "shortDays": 888
+        },
+        {
+          "symbol": "^GDAXI",
+          "assetClass": "equity",
+          "longPnlPct": 2.36,
+          "shortPnlPct": -2.99,
+          "costPct": 0.19,
+          "netPct": -0.82,
+          "longDays": 1309,
+          "shortDays": 488
+        },
+        {
+          "symbol": "ZF=F",
+          "assetClass": "rates",
+          "longPnlPct": -0.37,
+          "shortPnlPct": 0.29,
+          "costPct": 1.53,
+          "netPct": -1.62,
+          "longDays": 1579,
+          "shortDays": 1609
+        },
+        {
+          "symbol": "^FTSE",
+          "assetClass": "equity",
+          "longPnlPct": -0.05,
+          "shortPnlPct": -1.89,
+          "costPct": 0.51,
+          "netPct": -2.46,
+          "longDays": 2234,
+          "shortDays": 845
+        },
+        {
+          "symbol": "PL=F",
+          "assetClass": "commodity",
+          "longPnlPct": -0.85,
+          "shortPnlPct": -2.25,
+          "costPct": 0.24,
+          "netPct": -3.34,
+          "longDays": 1001,
+          "shortDays": 776
+        },
+        {
+          "symbol": "^STOXX50E",
+          "assetClass": "equity",
+          "longPnlPct": -2.99,
+          "shortPnlPct": -2.23,
+          "costPct": 0.39,
+          "netPct": -5.61,
+          "longDays": 1883,
+          "shortDays": 1009
+        },
+        {
+          "symbol": "RTY=F",
+          "assetClass": "equity",
+          "longPnlPct": -2.82,
+          "shortPnlPct": -3.33,
+          "costPct": 0.14,
+          "netPct": -6.29,
+          "longDays": 1041,
+          "shortDays": 609
+        },
+        {
+          "symbol": "^FCHI",
+          "assetClass": "equity",
+          "longPnlPct": -4.09,
+          "shortPnlPct": -1.94,
+          "costPct": 0.4,
+          "netPct": -6.43,
+          "longDays": 1183,
+          "shortDays": 499
+        },
+        {
+          "symbol": "6C=F",
+          "assetClass": "fx",
+          "longPnlPct": -8.71,
+          "shortPnlPct": 0.53,
+          "costPct": 0.73,
+          "netPct": -8.92,
+          "longDays": 1251,
+          "shortDays": 1904
+        },
+        {
+          "symbol": "6A=F",
+          "assetClass": "fx",
+          "longPnlPct": -8.63,
+          "shortPnlPct": -0.9,
+          "costPct": 0.49,
+          "netPct": -10.01,
+          "longDays": 1361,
+          "shortDays": 1555
+        }
+      ],
+      "realizedVolPct": 10.77
+    },
+    {
+      "label": "F13 trend 12m",
+      "market": "MULTI-ASSET",
+      "cell": "MULTI-ASSET × medium × long/short",
+      "horizon": "medium",
+      "periods": 202,
+      "firstPeriod": "2010-01-29",
+      "lastPeriod": "2026-10-05",
+      "netReturnPct": 65.22,
+      "benchmarkReturnPct": null,
+      "excessPp": 65.22,
+      "annualizedPct": 3.04,
+      "excessT": 1.4,
+      "sharpeAnnual": 0.34,
+      "sharpeT": 1.4,
+      "alpha": null,
+      "hurdle": null,
+      "maxDrawdownPct": 20.5,
+      "trades": 514,
+      "win": 29.4,
+      "pf": 1.242,
+      "perTradeT": 1.01,
+      "perTradeMeanPct": 1.2,
+      "variant": "12m",
+      "rebalance": "monthly",
+      "avgTurnover": 0,
+      "avgNames": 21.1,
+      "corrSpy": 0.132,
+      "worstSpyMonths": {
+        "months": 20,
+        "bookMeanPct": -0.88,
+        "spyMeanPct": -7.39
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "periods": 6,
+          "returnPct": -4.5,
+          "benchmarkReturnPct": null,
+          "excessPp": -4.5,
+          "trades": 27,
+          "win": 25.9,
+          "pf": 0.405,
+          "pfInfinite": false,
+          "maxDrawdownPct": 4.5,
+          "profitable": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "periods": 6,
+          "returnPct": 12.34,
+          "benchmarkReturnPct": null,
+          "excessPp": 12.34,
+          "trades": 16,
+          "win": 25,
+          "pf": 0.112,
+          "pfInfinite": false,
+          "maxDrawdownPct": 1.82,
+          "profitable": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "periods": 6,
+          "returnPct": 3.05,
+          "benchmarkReturnPct": null,
+          "excessPp": 3.05,
+          "trades": 13,
+          "win": 30.8,
+          "pf": 1.367,
+          "pfInfinite": false,
+          "maxDrawdownPct": 10.15,
+          "profitable": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "periods": 7,
+          "returnPct": 6.16,
+          "benchmarkReturnPct": null,
+          "excessPp": 6.16,
+          "trades": 40,
+          "win": 72.5,
+          "pf": 10.623,
+          "pfInfinite": false,
+          "maxDrawdownPct": 0.72,
+          "profitable": true
+        }
+      ],
+      "yearly": [
+        {
+          "year": "2010",
+          "periods": 12,
+          "returnPct": -1.22,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2011",
+          "periods": 12,
+          "returnPct": -4.64,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2012",
+          "periods": 12,
+          "returnPct": 1.5,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2013",
+          "periods": 12,
+          "returnPct": 21.06,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2014",
+          "periods": 12,
+          "returnPct": 1.42,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2015",
+          "periods": 12,
+          "returnPct": 1.86,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2016",
+          "periods": 12,
+          "returnPct": -15.82,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2017",
+          "periods": 12,
+          "returnPct": 21.87,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2018",
+          "periods": 12,
+          "returnPct": 1.1,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2019",
+          "periods": 12,
+          "returnPct": 0.16,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2020",
+          "periods": 12,
+          "returnPct": -2.29,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2021",
+          "periods": 12,
+          "returnPct": 2.21,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2022",
+          "periods": 12,
+          "returnPct": 8.66,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2023",
+          "periods": 12,
+          "returnPct": -5,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2024",
+          "periods": 12,
+          "returnPct": 5.62,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2025",
+          "periods": 12,
+          "returnPct": 20.14,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2026",
+          "periods": 10,
+          "returnPct": 1.66,
+          "benchmarkReturnPct": null
+        }
+      ],
+      "verdict": "FAIL",
+      "failReasons": [
+        "a window with trades is unprofitable or PF < 1.2",
+        "monthly t 1.4 < 3"
+      ],
+      "positiveWindows": 3,
+      "sixtyForty": {
+        "netPct": 239.6,
+        "sharpeAnnual": 0.85,
+        "t": 3.48,
+        "maxDdPct": 18.91
+      },
+      "spyOnly": {
+        "netPct": 477.78,
+        "sharpeAnnual": 0.8,
+        "t": 3.26,
+        "maxDdPct": 22.61
+      },
+      "vs6040T": -1.34,
+      "byAssetClass": {
+        "equity": 37.92,
+        "rates": -0.96,
+        "fx": -0.69,
+        "commodity": 16.55,
+        "crypto": 7.34
+      },
+      "perInstrument": [
+        {
+          "symbol": "NQ=F",
+          "assetClass": "equity",
+          "longPnlPct": 23.12,
+          "shortPnlPct": -2.16,
+          "costPct": 0.34,
+          "netPct": 20.61,
+          "longDays": 3840,
+          "shortDays": 353
+        },
+        {
+          "symbol": "6J=F",
+          "assetClass": "fx",
+          "longPnlPct": 1.05,
+          "shortPnlPct": 15.13,
+          "costPct": 0.53,
+          "netPct": 15.65,
+          "longDays": 1701,
+          "shortDays": 2492
+        },
+        {
+          "symbol": "ES=F",
+          "assetClass": "equity",
+          "longPnlPct": 18.22,
+          "shortPnlPct": -2.61,
+          "costPct": 0.44,
+          "netPct": 15.17,
+          "longDays": 3632,
+          "shortDays": 561
+        },
+        {
+          "symbol": "YM=F",
+          "assetClass": "equity",
+          "longPnlPct": 17.28,
+          "shortPnlPct": -2.36,
+          "costPct": 0.46,
+          "netPct": 14.46,
+          "longDays": 3587,
+          "shortDays": 606
+        },
+        {
+          "symbol": "BTC-USD",
+          "assetClass": "crypto",
+          "longPnlPct": 9.97,
+          "shortPnlPct": -0.12,
+          "costPct": 0.79,
+          "netPct": 9.07,
+          "longDays": 1596,
+          "shortDays": 730
+        },
+        {
+          "symbol": "GC=F",
+          "assetClass": "commodity",
+          "longPnlPct": 9.08,
+          "shortPnlPct": -1.52,
+          "costPct": 0.45,
+          "netPct": 7.11,
+          "longDays": 1693,
+          "shortDays": 548
+        },
+        {
+          "symbol": "SI=F",
+          "assetClass": "commodity",
+          "longPnlPct": 5.74,
+          "shortPnlPct": -1.09,
+          "costPct": 0.22,
+          "netPct": 4.42,
+          "longDays": 1487,
+          "shortDays": 754
+        },
+        {
+          "symbol": "PA=F",
+          "assetClass": "commodity",
+          "longPnlPct": 5.08,
+          "shortPnlPct": -1.06,
+          "costPct": 0.13,
+          "netPct": 3.88,
+          "longDays": 1360,
+          "shortDays": 881
+        },
+        {
+          "symbol": "ZF=F",
+          "assetClass": "rates",
+          "longPnlPct": 0.15,
+          "shortPnlPct": 4.86,
+          "costPct": 1.43,
+          "netPct": 3.58,
+          "longDays": 2033,
+          "shortDays": 2160
+        },
+        {
+          "symbol": "^HSI",
+          "assetClass": "equity",
+          "longPnlPct": 0.88,
+          "shortPnlPct": 1.65,
+          "costPct": 0.26,
+          "netPct": 2.27,
+          "longDays": 977,
+          "shortDays": 1160
+        },
+        {
+          "symbol": "NG=F",
+          "assetClass": "commodity",
+          "longPnlPct": 4.2,
+          "shortPnlPct": -1.76,
+          "costPct": 0.21,
+          "netPct": 2.23,
+          "longDays": 1019,
+          "shortDays": 1223
+        },
+        {
+          "symbol": "6A=F",
+          "assetClass": "fx",
+          "longPnlPct": -2.16,
+          "shortPnlPct": 4.66,
+          "costPct": 0.51,
+          "netPct": 1.99,
+          "longDays": 1764,
+          "shortDays": 2429
+        },
+        {
+          "symbol": "^N225",
+          "assetClass": "equity",
+          "longPnlPct": 4.2,
+          "shortPnlPct": -2.2,
+          "costPct": 0.13,
+          "netPct": 1.87,
+          "longDays": 1534,
+          "shortDays": 565
+        },
+        {
+          "symbol": "ZB=F",
+          "assetClass": "rates",
+          "longPnlPct": 0.24,
+          "shortPnlPct": 1.71,
+          "costPct": 0.45,
+          "netPct": 1.5,
+          "longDays": 1993,
+          "shortDays": 2198
+        },
+        {
+          "symbol": "HG=F",
+          "assetClass": "commodity",
+          "longPnlPct": 2.24,
+          "shortPnlPct": -1.07,
+          "costPct": 0.26,
+          "netPct": 0.91,
+          "longDays": 1364,
+          "shortDays": 877
+        },
+        {
+          "symbol": "6C=F",
+          "assetClass": "fx",
+          "longPnlPct": -3.73,
+          "shortPnlPct": 3.86,
+          "costPct": 0.75,
+          "netPct": -0.61,
+          "longDays": 1567,
+          "shortDays": 2606
+        },
+        {
+          "symbol": "PL=F",
+          "assetClass": "commodity",
+          "longPnlPct": 1.55,
+          "shortPnlPct": -2.29,
+          "costPct": 0.2,
+          "netPct": -0.94,
+          "longDays": 1280,
+          "shortDays": 961
+        },
+        {
+          "symbol": "CL=F",
+          "assetClass": "commodity",
+          "longPnlPct": -0.58,
+          "shortPnlPct": -0.15,
+          "costPct": 0.34,
+          "netPct": -1.07,
+          "longDays": 1076,
+          "shortDays": 1165
+        },
+        {
+          "symbol": "^GDAXI",
+          "assetClass": "equity",
+          "longPnlPct": 1.21,
+          "shortPnlPct": -2.15,
+          "costPct": 0.17,
+          "netPct": -1.11,
+          "longDays": 1589,
+          "shortDays": 614
+        },
+        {
+          "symbol": "^FTSE",
+          "assetClass": "equity",
+          "longPnlPct": 2.43,
+          "shortPnlPct": -3.08,
+          "costPct": 0.48,
+          "netPct": -1.13,
+          "longDays": 2924,
+          "shortDays": 1192
+        },
+        {
+          "symbol": "ETH-USD",
+          "assetClass": "crypto",
+          "longPnlPct": 1.21,
+          "shortPnlPct": -2.38,
+          "costPct": 0.56,
+          "netPct": -1.73,
+          "longDays": 1283,
+          "shortDays": 771
+        },
+        {
+          "symbol": "^FCHI",
+          "assetClass": "equity",
+          "longPnlPct": -1.16,
+          "shortPnlPct": -2.52,
+          "costPct": 0.4,
+          "netPct": -4.08,
+          "longDays": 1645,
+          "shortDays": 597
+        },
+        {
+          "symbol": "^STOXX50E",
+          "assetClass": "equity",
+          "longPnlPct": 0.51,
+          "shortPnlPct": -5.2,
+          "costPct": 0.37,
+          "netPct": -5.06,
+          "longDays": 2732,
+          "shortDays": 1351
+        },
+        {
+          "symbol": "RTY=F",
+          "assetClass": "equity",
+          "longPnlPct": -2.48,
+          "shortPnlPct": -2.48,
+          "costPct": 0.13,
+          "netPct": -5.08,
+          "longDays": 1282,
+          "shortDays": 773
+        },
+        {
+          "symbol": "ZN=F",
+          "assetClass": "rates",
+          "longPnlPct": -4.89,
+          "shortPnlPct": -0.2,
+          "costPct": 0.96,
+          "netPct": -6.04,
+          "longDays": 2080,
+          "shortDays": 2111
+        },
+        {
+          "symbol": "6E=F",
+          "assetClass": "fx",
+          "longPnlPct": -6.01,
+          "shortPnlPct": -0.73,
+          "costPct": 0.65,
+          "netPct": -7.39,
+          "longDays": 1951,
+          "shortDays": 2242
+        },
+        {
+          "symbol": "6B=F",
+          "assetClass": "fx",
+          "longPnlPct": -7.68,
+          "shortPnlPct": -2.02,
+          "costPct": 0.62,
+          "netPct": -10.33,
+          "longDays": 2009,
+          "shortDays": 2184
+        }
+      ],
+      "realizedVolPct": 10.28
+    },
+    {
+      "label": "F13 trend blend",
+      "market": "MULTI-ASSET",
+      "cell": "MULTI-ASSET × medium × long/short",
+      "horizon": "medium",
+      "periods": 202,
+      "firstPeriod": "2010-01-29",
+      "lastPeriod": "2026-10-05",
+      "netReturnPct": 18.37,
+      "benchmarkReturnPct": null,
+      "excessPp": 18.37,
+      "annualizedPct": 1.01,
+      "excessT": 0.61,
+      "sharpeAnnual": 0.15,
+      "sharpeT": 0.61,
+      "alpha": null,
+      "hurdle": null,
+      "maxDrawdownPct": 18.91,
+      "trades": 1069,
+      "win": 31.7,
+      "pf": 1.009,
+      "perTradeT": 0.06,
+      "perTradeMeanPct": 0.03,
+      "variant": "blend",
+      "rebalance": "monthly",
+      "avgTurnover": 0,
+      "avgNames": 21.1,
+      "corrSpy": -0.026,
+      "worstSpyMonths": {
+        "months": 20,
+        "bookMeanPct": -0.29,
+        "spyMeanPct": -7.39
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "periods": 6,
+          "returnPct": -8.68,
+          "benchmarkReturnPct": null,
+          "excessPp": -8.68,
+          "trades": 54,
+          "win": 27.8,
+          "pf": 0.767,
+          "pfInfinite": false,
+          "maxDrawdownPct": 8.91,
+          "profitable": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "periods": 6,
+          "returnPct": 6.53,
+          "benchmarkReturnPct": null,
+          "excessPp": 6.53,
+          "trades": 46,
+          "win": 28.3,
+          "pf": 0.27,
+          "pfInfinite": false,
+          "maxDrawdownPct": 1.62,
+          "profitable": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "periods": 6,
+          "returnPct": 3.13,
+          "benchmarkReturnPct": null,
+          "excessPp": 3.13,
+          "trades": 31,
+          "win": 41.9,
+          "pf": 1.513,
+          "pfInfinite": false,
+          "maxDrawdownPct": 8.47,
+          "profitable": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "periods": 7,
+          "returnPct": -0.68,
+          "benchmarkReturnPct": null,
+          "excessPp": -0.68,
+          "trades": 59,
+          "win": 47.5,
+          "pf": 1.822,
+          "pfInfinite": false,
+          "maxDrawdownPct": 3.36,
+          "profitable": false
+        }
+      ],
+      "yearly": [
+        {
+          "year": "2010",
+          "periods": 12,
+          "returnPct": -7.95,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2011",
+          "periods": 12,
+          "returnPct": 2.06,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2012",
+          "periods": 12,
+          "returnPct": -9.91,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2013",
+          "periods": 12,
+          "returnPct": 16.44,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2014",
+          "periods": 12,
+          "returnPct": -0.91,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2015",
+          "periods": 12,
+          "returnPct": -4.38,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2016",
+          "periods": 12,
+          "returnPct": 1.94,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2017",
+          "periods": 12,
+          "returnPct": 13.94,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2018",
+          "periods": 12,
+          "returnPct": 4.2,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2019",
+          "periods": 12,
+          "returnPct": -5.79,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2020",
+          "periods": 12,
+          "returnPct": 6.17,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2021",
+          "periods": 12,
+          "returnPct": 4.84,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2022",
+          "periods": 12,
+          "returnPct": 4.25,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2023",
+          "periods": 12,
+          "returnPct": -10.09,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2024",
+          "periods": 12,
+          "returnPct": 0.71,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2025",
+          "periods": 12,
+          "returnPct": 10.21,
+          "benchmarkReturnPct": null
+        },
+        {
+          "year": "2026",
+          "periods": 10,
+          "returnPct": -3.99,
+          "benchmarkReturnPct": null
+        }
+      ],
+      "verdict": "FAIL",
+      "failReasons": [
+        "a window with trades is unprofitable or PF < 1.2",
+        "monthly t 0.61 < 3"
+      ],
+      "positiveWindows": 2,
+      "sixtyForty": {
+        "netPct": 239.6,
+        "sharpeAnnual": 0.85,
+        "t": 3.48,
+        "maxDdPct": 18.91
+      },
+      "spyOnly": {
+        "netPct": 477.78,
+        "sharpeAnnual": 0.8,
+        "t": 3.26,
+        "maxDdPct": 22.61
+      },
+      "vs6040T": -1.84,
+      "byAssetClass": {
+        "equity": 12.71,
+        "rates": -0.69,
+        "fx": -10.46,
+        "commodity": 16.64,
+        "crypto": 9.14
+      },
+      "perInstrument": [
+        {
+          "symbol": "NQ=F",
+          "assetClass": "equity",
+          "longPnlPct": 16.94,
+          "shortPnlPct": -3.65,
+          "costPct": 0.44,
+          "netPct": 12.85,
+          "longDays": 3275,
+          "shortDays": 523
+        },
+        {
+          "symbol": "ES=F",
+          "assetClass": "equity",
+          "longPnlPct": 13.63,
+          "shortPnlPct": -2.85,
+          "costPct": 0.55,
+          "netPct": 10.22,
+          "longDays": 3082,
+          "shortDays": 549
+        },
+        {
+          "symbol": "6J=F",
+          "assetClass": "fx",
+          "longPnlPct": -1.87,
+          "shortPnlPct": 12.59,
+          "costPct": 0.59,
+          "netPct": 10.14,
+          "longDays": 1388,
+          "shortDays": 2093
+        },
+        {
+          "symbol": "GC=F",
+          "assetClass": "commodity",
+          "longPnlPct": 8.35,
+          "shortPnlPct": -0.47,
+          "costPct": 0.43,
+          "netPct": 7.45,
+          "longDays": 1355,
+          "shortDays": 468
+        },
+        {
+          "symbol": "BTC-USD",
+          "assetClass": "crypto",
+          "longPnlPct": 8.71,
+          "shortPnlPct": -0.95,
+          "costPct": 0.64,
+          "netPct": 7.12,
+          "longDays": 1190,
+          "shortDays": 690
+        },
+        {
+          "symbol": "YM=F",
+          "assetClass": "equity",
+          "longPnlPct": 10.27,
+          "shortPnlPct": -2.7,
+          "costPct": 0.58,
+          "netPct": 6.99,
+          "longDays": 2947,
+          "shortDays": 636
+        },
+        {
+          "symbol": "ZB=F",
+          "assetClass": "rates",
+          "longPnlPct": 2.29,
+          "shortPnlPct": 1.46,
+          "costPct": 0.49,
+          "netPct": 3.27,
+          "longDays": 1579,
+          "shortDays": 1565
+        },
+        {
+          "symbol": "PA=F",
+          "assetClass": "commodity",
+          "longPnlPct": 4.26,
+          "shortPnlPct": -1.26,
+          "costPct": 0.15,
+          "netPct": 2.85,
+          "longDays": 1128,
+          "shortDays": 693
+        },
+        {
+          "symbol": "6E=F",
+          "assetClass": "fx",
+          "longPnlPct": -1.86,
+          "shortPnlPct": 5,
+          "costPct": 0.63,
+          "netPct": 2.52,
+          "longDays": 1487,
+          "shortDays": 1865
+        },
+        {
+          "symbol": "HG=F",
+          "assetClass": "commodity",
+          "longPnlPct": 2.27,
+          "shortPnlPct": 0.48,
+          "costPct": 0.26,
+          "netPct": 2.49,
+          "longDays": 1064,
+          "shortDays": 653
+        },
+        {
+          "symbol": "NG=F",
+          "assetClass": "commodity",
+          "longPnlPct": 2.94,
+          "shortPnlPct": -0.48,
+          "costPct": 0.18,
+          "netPct": 2.29,
+          "longDays": 892,
+          "shortDays": 930
+        },
+        {
+          "symbol": "^N225",
+          "assetClass": "equity",
+          "longPnlPct": 4.51,
+          "shortPnlPct": -2.24,
+          "costPct": 0.14,
+          "netPct": 2.12,
+          "longDays": 1215,
+          "shortDays": 527
+        },
+        {
+          "symbol": "SI=F",
+          "assetClass": "commodity",
+          "longPnlPct": 3.2,
+          "shortPnlPct": -0.9,
+          "costPct": 0.23,
+          "netPct": 2.06,
+          "longDays": 1149,
+          "shortDays": 737
+        },
+        {
+          "symbol": "ETH-USD",
+          "assetClass": "crypto",
+          "longPnlPct": 3.3,
+          "shortPnlPct": -0.82,
+          "costPct": 0.46,
+          "netPct": 2.02,
+          "longDays": 961,
+          "shortDays": 731
+        },
+        {
+          "symbol": "CL=F",
+          "assetClass": "commodity",
+          "longPnlPct": 0.6,
+          "shortPnlPct": 1.5,
+          "costPct": 0.28,
+          "netPct": 1.82,
+          "longDays": 948,
+          "shortDays": 853
+        },
+        {
+          "symbol": "^HSI",
+          "assetClass": "equity",
+          "longPnlPct": 1.37,
+          "shortPnlPct": -0.4,
+          "costPct": 0.21,
+          "netPct": 0.77,
+          "longDays": 812,
+          "shortDays": 947
+        },
+        {
+          "symbol": "^GDAXI",
+          "assetClass": "equity",
+          "longPnlPct": 1.27,
+          "shortPnlPct": -1.56,
+          "costPct": 0.18,
+          "netPct": -0.47,
+          "longDays": 1231,
+          "shortDays": 514
+        },
+        {
+          "symbol": "ZF=F",
+          "assetClass": "rates",
+          "longPnlPct": -2.32,
+          "shortPnlPct": 2.4,
+          "costPct": 1.6,
+          "netPct": -1.52,
+          "longDays": 1701,
+          "shortDays": 1654
+        },
+        {
+          "symbol": "PL=F",
+          "assetClass": "commodity",
+          "longPnlPct": 0.37,
+          "shortPnlPct": -2.48,
+          "costPct": 0.21,
+          "netPct": -2.32,
+          "longDays": 1002,
+          "shortDays": 708
+        },
+        {
+          "symbol": "ZN=F",
+          "assetClass": "rates",
+          "longPnlPct": -2.86,
+          "shortPnlPct": 1.44,
+          "costPct": 1.02,
+          "netPct": -2.44,
+          "longDays": 1649,
+          "shortDays": 1801
+        },
+        {
+          "symbol": "6B=F",
+          "assetClass": "fx",
+          "longPnlPct": -3.7,
+          "shortPnlPct": 1.21,
+          "costPct": 0.66,
+          "netPct": -3.14,
+          "longDays": 1564,
+          "shortDays": 1794
+        },
+        {
+          "symbol": "^STOXX50E",
+          "assetClass": "equity",
+          "longPnlPct": -2.36,
+          "shortPnlPct": -1.76,
+          "costPct": 0.41,
+          "netPct": -4.54,
+          "longDays": 2128,
+          "shortDays": 1155
+        },
+        {
+          "symbol": "RTY=F",
+          "assetClass": "equity",
+          "longPnlPct": -2.34,
+          "shortPnlPct": -2.23,
+          "costPct": 0.14,
+          "netPct": -4.71,
+          "longDays": 1064,
+          "shortDays": 653
+        },
+        {
+          "symbol": "^FCHI",
+          "assetClass": "equity",
+          "longPnlPct": -2.83,
+          "shortPnlPct": -2.05,
+          "costPct": 0.38,
+          "netPct": -5.26,
+          "longDays": 1246,
+          "shortDays": 606
+        },
+        {
+          "symbol": "^FTSE",
+          "assetClass": "equity",
+          "longPnlPct": -1.72,
+          "shortPnlPct": -3,
+          "costPct": 0.55,
+          "netPct": -5.27,
+          "longDays": 2322,
+          "shortDays": 880
+        },
+        {
+          "symbol": "6C=F",
+          "assetClass": "fx",
+          "longPnlPct": -7.21,
+          "shortPnlPct": -0.91,
+          "costPct": 0.77,
+          "netPct": -8.89,
+          "longDays": 1269,
+          "shortDays": 2080
+        },
+        {
+          "symbol": "6A=F",
+          "assetClass": "fx",
+          "longPnlPct": -9.52,
+          "shortPnlPct": -1.02,
+          "costPct": 0.54,
+          "netPct": -11.09,
+          "longDays": 1390,
+          "shortDays": 1700
+        }
+      ],
+      "realizedVolPct": 10.05
+    }
+  ],
+  "deflated": [
+    {
+      "label": "F13 trend 1m",
+      "nTrials": 4,
+      "probability": 0.0032408469176646304,
+      "sharpe": -0.10292983906507769,
+      "annualized": -0.35655942175120475,
+      "sr0": 0.09240803777577138
+    },
+    {
+      "label": "F13 trend 3m+6m",
+      "nTrials": 4,
+      "probability": 0.31011778134760243,
+      "sharpe": 0.05712844347954202,
+      "annualized": 0.19789873332778743,
+      "sr0": 0.09240803777577138
+    },
+    {
+      "label": "F13 trend 12m",
+      "nTrials": 4,
+      "probability": 0.5348494289370573,
+      "sharpe": 0.09860157979269077,
+      "annualized": 0.34156589181499425,
+      "sr0": 0.09240803777577138
+    },
+    {
+      "label": "F13 trend blend",
+      "nTrials": 4,
+      "probability": 0.24206374098722516,
+      "sharpe": 0.0431911011271725,
+      "annualized": 0.14961836317421634,
+      "sr0": 0.09240803777577138
+    }
+  ],
+  "detail": {
+    "1m": {
+      "monthly": [
+        {
+          "date": "2010-01-29",
+          "ret": -0.021013
+        },
+        {
+          "date": "2010-02-26",
+          "ret": -0.016253
+        },
+        {
+          "date": "2010-03-31",
+          "ret": -0.007572
+        },
+        {
+          "date": "2010-04-30",
+          "ret": -0.000394
+        },
+        {
+          "date": "2010-05-28",
+          "ret": 0.002472
+        },
+        {
+          "date": "2010-06-30",
+          "ret": -0.019618
+        },
+        {
+          "date": "2010-07-30",
+          "ret": -0.010714
+        },
+        {
+          "date": "2010-08-31",
+          "ret": 0.016995
+        },
+        {
+          "date": "2010-09-30",
+          "ret": -0.027636
+        },
+        {
+          "date": "2010-10-29",
+          "ret": 0.020316
+        },
+        {
+          "date": "2010-11-30",
+          "ret": 0.011689
+        },
+        {
+          "date": "2010-12-31",
+          "ret": 0.021623
+        },
+        {
+          "date": "2011-01-31",
+          "ret": -0.007834
+        },
+        {
+          "date": "2011-02-28",
+          "ret": -0.00016
+        },
+        {
+          "date": "2011-03-31",
+          "ret": -0.02534
+        },
+        {
+          "date": "2011-04-29",
+          "ret": 0.00749
+        },
+        {
+          "date": "2011-05-31",
+          "ret": -0.027107
+        },
+        {
+          "date": "2011-06-30",
+          "ret": -0.001101
+        },
+        {
+          "date": "2011-07-29",
+          "ret": -0.037671
+        },
+        {
+          "date": "2011-08-31",
+          "ret": 0.028884
+        },
+        {
+          "date": "2011-09-30",
+          "ret": -0.000474
+        },
+        {
+          "date": "2011-10-31",
+          "ret": -0.021571
+        },
+        {
+          "date": "2011-11-30",
+          "ret": -0.039712
+        },
+        {
+          "date": "2011-12-30",
+          "ret": -0.031086
+        },
+        {
+          "date": "2012-01-31",
+          "ret": 0.000598
+        },
+        {
+          "date": "2012-02-29",
+          "ret": 0.029982
+        },
+        {
+          "date": "2012-03-30",
+          "ret": 0.017066
+        },
+        {
+          "date": "2012-04-30",
+          "ret": -0.031605
+        },
+        {
+          "date": "2012-05-31",
+          "ret": 0.070615
+        },
+        {
+          "date": "2012-06-29",
+          "ret": -0.026976
+        },
+        {
+          "date": "2012-07-31",
+          "ret": -0.001778
+        },
+        {
+          "date": "2012-08-31",
+          "ret": -0.006613
+        },
+        {
+          "date": "2012-09-28",
+          "ret": -0.02282
+        },
+        {
+          "date": "2012-10-31",
+          "ret": -0.000108
+        },
+        {
+          "date": "2012-11-30",
+          "ret": -0.013687
+        },
+        {
+          "date": "2012-12-31",
+          "ret": -0.003155
+        },
+        {
+          "date": "2013-01-31",
+          "ret": 0.014453
+        },
+        {
+          "date": "2013-02-28",
+          "ret": 0.014768
+        },
+        {
+          "date": "2013-03-28",
+          "ret": -0.023313
+        },
+        {
+          "date": "2013-04-30",
+          "ret": -0.030393
+        },
+        {
+          "date": "2013-05-31",
+          "ret": 0.03874
+        },
+        {
+          "date": "2013-06-28",
+          "ret": 0.00238
+        },
+        {
+          "date": "2013-07-31",
+          "ret": -0.00492
+        },
+        {
+          "date": "2013-08-30",
+          "ret": -0.015439
+        },
+        {
+          "date": "2013-09-30",
+          "ret": -0.020113
+        },
+        {
+          "date": "2013-10-31",
+          "ret": 0.02843
+        },
+        {
+          "date": "2013-11-29",
+          "ret": 0.027009
+        },
+        {
+          "date": "2013-12-31",
+          "ret": 0.022347
+        },
+        {
+          "date": "2014-01-31",
+          "ret": -0.040932
+        },
+        {
+          "date": "2014-02-28",
+          "ret": -0.031766
+        },
+        {
+          "date": "2014-03-31",
+          "ret": -0.06232
+        },
+        {
+          "date": "2014-04-30",
+          "ret": 0.003577
+        },
+        {
+          "date": "2014-05-30",
+          "ret": 0.028432
+        },
+        {
+          "date": "2014-06-30",
+          "ret": -0.02631
+        },
+        {
+          "date": "2014-07-31",
+          "ret": -0.058139
+        },
+        {
+          "date": "2014-08-29",
+          "ret": 0.009831
+        },
+        {
+          "date": "2014-09-30",
+          "ret": 0.012416
+        },
+        {
+          "date": "2014-10-31",
+          "ret": -0.017647
+        },
+        {
+          "date": "2014-11-28",
+          "ret": 0.0194
+        },
+        {
+          "date": "2014-12-31",
+          "ret": -0.031404
+        },
+        {
+          "date": "2015-01-30",
+          "ret": 0.077176
+        },
+        {
+          "date": "2015-02-27",
+          "ret": -0.017336
+        },
+        {
+          "date": "2015-03-31",
+          "ret": -0.007422
+        },
+        {
+          "date": "2015-04-30",
+          "ret": -0.019462
+        },
+        {
+          "date": "2015-05-29",
+          "ret": 0.005372
+        },
+        {
+          "date": "2015-06-30",
+          "ret": -0.013431
+        },
+        {
+          "date": "2015-07-31",
+          "ret": -0.051933
+        },
+        {
+          "date": "2015-08-31",
+          "ret": 0.040883
+        },
+        {
+          "date": "2015-09-30",
+          "ret": 0.013315
+        },
+        {
+          "date": "2015-10-30",
+          "ret": -0.005337
+        },
+        {
+          "date": "2015-11-30",
+          "ret": -0.002194
+        },
+        {
+          "date": "2015-12-31",
+          "ret": -0.032771
+        },
+        {
+          "date": "2016-01-29",
+          "ret": 0.070886
+        },
+        {
+          "date": "2016-02-29",
+          "ret": 0.006995
+        },
+        {
+          "date": "2016-03-31",
+          "ret": -0.002571
+        },
+        {
+          "date": "2016-04-29",
+          "ret": -0.008392
+        },
+        {
+          "date": "2016-05-31",
+          "ret": -0.055507
+        },
+        {
+          "date": "2016-06-30",
+          "ret": -0.049927
+        },
+        {
+          "date": "2016-07-29",
+          "ret": -0.022676
+        },
+        {
+          "date": "2016-08-31",
+          "ret": -0.014261
+        },
+        {
+          "date": "2016-09-30",
+          "ret": -0.034792
+        },
+        {
+          "date": "2016-10-31",
+          "ret": 0.027152
+        },
+        {
+          "date": "2016-11-30",
+          "ret": -0.041217
+        },
+        {
+          "date": "2016-12-30",
+          "ret": 0.035289
+        },
+        {
+          "date": "2017-01-31",
+          "ret": -0.005331
+        },
+        {
+          "date": "2017-02-28",
+          "ret": 0.024326
+        },
+        {
+          "date": "2017-03-31",
+          "ret": -0.041522
+        },
+        {
+          "date": "2017-04-28",
+          "ret": -0.009701
+        },
+        {
+          "date": "2017-05-31",
+          "ret": 0.004147
+        },
+        {
+          "date": "2017-06-30",
+          "ret": 0.011599
+        },
+        {
+          "date": "2017-07-31",
+          "ret": 0.004391
+        },
+        {
+          "date": "2017-08-31",
+          "ret": 0.004114
+        },
+        {
+          "date": "2017-09-29",
+          "ret": -0.037297
+        },
+        {
+          "date": "2017-10-31",
+          "ret": 0.031316
+        },
+        {
+          "date": "2017-11-30",
+          "ret": -0.005775
+        },
+        {
+          "date": "2017-12-29",
+          "ret": -0.024315
+        },
+        {
+          "date": "2018-01-31",
+          "ret": 0.064554
+        },
+        {
+          "date": "2018-02-28",
+          "ret": -0.060621
+        },
+        {
+          "date": "2018-03-29",
+          "ret": -0.032155
+        },
+        {
+          "date": "2018-04-30",
+          "ret": -0.003517
+        },
+        {
+          "date": "2018-05-31",
+          "ret": 0.009666
+        },
+        {
+          "date": "2018-06-29",
+          "ret": 0.002865
+        },
+        {
+          "date": "2018-07-31",
+          "ret": 0.012959
+        },
+        {
+          "date": "2018-08-31",
+          "ret": -0.004506
+        },
+        {
+          "date": "2018-09-28",
+          "ret": -0.000181
+        },
+        {
+          "date": "2018-10-31",
+          "ret": 0.006601
+        },
+        {
+          "date": "2018-11-30",
+          "ret": -0.002453
+        },
+        {
+          "date": "2018-12-31",
+          "ret": 0.053446
+        },
+        {
+          "date": "2019-01-31",
+          "ret": -0.013969
+        },
+        {
+          "date": "2019-02-28",
+          "ret": -0.004262
+        },
+        {
+          "date": "2019-03-29",
+          "ret": -0.010779
+        },
+        {
+          "date": "2019-04-30",
+          "ret": 0.020413
+        },
+        {
+          "date": "2019-05-31",
+          "ret": 0.030649
+        },
+        {
+          "date": "2019-06-28",
+          "ret": -0.017595
+        },
+        {
+          "date": "2019-07-31",
+          "ret": -0.007883
+        },
+        {
+          "date": "2019-08-30",
+          "ret": -0.006298
+        },
+        {
+          "date": "2019-09-30",
+          "ret": -0.034593
+        },
+        {
+          "date": "2019-10-31",
+          "ret": -0.047264
+        },
+        {
+          "date": "2019-11-29",
+          "ret": -0.004724
+        },
+        {
+          "date": "2019-12-31",
+          "ret": 0.01509
+        },
+        {
+          "date": "2020-01-31",
+          "ret": 0.024359
+        },
+        {
+          "date": "2020-02-28",
+          "ret": -0.007092
+        },
+        {
+          "date": "2020-03-31",
+          "ret": 0.095953
+        },
+        {
+          "date": "2020-04-30",
+          "ret": -0.005569
+        },
+        {
+          "date": "2020-05-29",
+          "ret": 0.002631
+        },
+        {
+          "date": "2020-06-30",
+          "ret": -0.006182
+        },
+        {
+          "date": "2020-07-31",
+          "ret": 0.052836
+        },
+        {
+          "date": "2020-08-31",
+          "ret": 0.018234
+        },
+        {
+          "date": "2020-09-30",
+          "ret": -0.046834
+        },
+        {
+          "date": "2020-10-30",
+          "ret": -0.06553
+        },
+        {
+          "date": "2020-11-30",
+          "ret": -0.010103
+        },
+        {
+          "date": "2020-12-31",
+          "ret": 0.015
+        },
+        {
+          "date": "2021-01-29",
+          "ret": -0.014841
+        },
+        {
+          "date": "2021-02-26",
+          "ret": 0.018419
+        },
+        {
+          "date": "2021-03-31",
+          "ret": 0.061527
+        },
+        {
+          "date": "2021-04-30",
+          "ret": -0.00503
+        },
+        {
+          "date": "2021-05-28",
+          "ret": 0.029966
+        },
+        {
+          "date": "2021-06-30",
+          "ret": -0.00105
+        },
+        {
+          "date": "2021-07-30",
+          "ret": 0.012982
+        },
+        {
+          "date": "2021-08-31",
+          "ret": -0.026377
+        },
+        {
+          "date": "2021-09-30",
+          "ret": 0.016896
+        },
+        {
+          "date": "2021-10-29",
+          "ret": -0.024922
+        },
+        {
+          "date": "2021-11-30",
+          "ret": 0.002099
+        },
+        {
+          "date": "2021-12-31",
+          "ret": -0.045147
+        },
+        {
+          "date": "2022-01-31",
+          "ret": 0.008583
+        },
+        {
+          "date": "2022-02-28",
+          "ret": -0.001078
+        },
+        {
+          "date": "2022-03-31",
+          "ret": 0.009681
+        },
+        {
+          "date": "2022-04-29",
+          "ret": 0.015536
+        },
+        {
+          "date": "2022-05-31",
+          "ret": 0.008206
+        },
+        {
+          "date": "2022-06-30",
+          "ret": -0.008034
+        },
+        {
+          "date": "2022-07-29",
+          "ret": 0.017387
+        },
+        {
+          "date": "2022-08-31",
+          "ret": -0.018084
+        },
+        {
+          "date": "2022-09-30",
+          "ret": 0.048396
+        },
+        {
+          "date": "2022-10-31",
+          "ret": -0.006055
+        },
+        {
+          "date": "2022-11-30",
+          "ret": 0.008355
+        },
+        {
+          "date": "2022-12-30",
+          "ret": -0.014257
+        },
+        {
+          "date": "2023-01-31",
+          "ret": 0.001044
+        },
+        {
+          "date": "2023-02-28",
+          "ret": -0.009481
+        },
+        {
+          "date": "2023-03-31",
+          "ret": -0.061914
+        },
+        {
+          "date": "2023-04-28",
+          "ret": -0.000625
+        },
+        {
+          "date": "2023-05-31",
+          "ret": 0.02185
+        },
+        {
+          "date": "2023-06-30",
+          "ret": -0.01556
+        },
+        {
+          "date": "2023-07-31",
+          "ret": -0.03488
+        },
+        {
+          "date": "2023-08-31",
+          "ret": -0.065098
+        },
+        {
+          "date": "2023-09-29",
+          "ret": 0.012735
+        },
+        {
+          "date": "2023-10-31",
+          "ret": 0.031358
+        },
+        {
+          "date": "2023-11-30",
+          "ret": -0.026679
+        },
+        {
+          "date": "2023-12-29",
+          "ret": 0.054557
+        },
+        {
+          "date": "2024-01-31",
+          "ret": -0.052291
+        },
+        {
+          "date": "2024-02-29",
+          "ret": 0.037729
+        },
+        {
+          "date": "2024-03-28",
+          "ret": 0.014822
+        },
+        {
+          "date": "2024-04-30",
+          "ret": -0.01064
+        },
+        {
+          "date": "2024-05-31",
+          "ret": -0.042341
+        },
+        {
+          "date": "2024-06-28",
+          "ret": 0.00323
+        },
+        {
+          "date": "2024-07-31",
+          "ret": -0.042057
+        },
+        {
+          "date": "2024-08-30",
+          "ret": -0.018796
+        },
+        {
+          "date": "2024-09-30",
+          "ret": 0.026306
+        },
+        {
+          "date": "2024-10-31",
+          "ret": -0.009492
+        },
+        {
+          "date": "2024-11-29",
+          "ret": 0.011128
+        },
+        {
+          "date": "2024-12-31",
+          "ret": -0.019927
+        },
+        {
+          "date": "2025-01-31",
+          "ret": -0.033188
+        },
+        {
+          "date": "2025-02-28",
+          "ret": 0.020654
+        },
+        {
+          "date": "2025-03-31",
+          "ret": 0.018559
+        },
+        {
+          "date": "2025-04-30",
+          "ret": -0.011699
+        },
+        {
+          "date": "2025-05-30",
+          "ret": -0.02004
+        },
+        {
+          "date": "2025-06-30",
+          "ret": 0.021703
+        },
+        {
+          "date": "2025-07-31",
+          "ret": -0.011863
+        },
+        {
+          "date": "2025-08-29",
+          "ret": -0.05571
+        },
+        {
+          "date": "2025-09-30",
+          "ret": 0.013264
+        },
+        {
+          "date": "2025-10-31",
+          "ret": 0.005893
+        },
+        {
+          "date": "2025-11-28",
+          "ret": -0.068019
+        },
+        {
+          "date": "2025-12-31",
+          "ret": 0.015129
+        },
+        {
+          "date": "2026-01-30",
+          "ret": 0.015641
+        },
+        {
+          "date": "2026-02-27",
+          "ret": -0.004044
+        },
+        {
+          "date": "2026-03-31",
+          "ret": 0.004206
+        },
+        {
+          "date": "2026-04-30",
+          "ret": -0.036696
+        },
+        {
+          "date": "2026-05-29",
+          "ret": 0.01032
+        },
+        {
+          "date": "2026-06-30",
+          "ret": 0.035778
+        },
+        {
+          "date": "2026-07-31",
+          "ret": -0.019575
+        },
+        {
+          "date": "2026-08-31",
+          "ret": -0.016159
+        },
+        {
+          "date": "2026-09-30",
+          "ret": 0.045126
+        },
+        {
+          "date": "2026-10-05",
+          "ret": 0.008259
+        }
+      ]
+    },
+    "3m+6m": {
+      "monthly": [
+        {
+          "date": "2010-01-29",
+          "ret": -0.000119
+        },
+        {
+          "date": "2010-02-26",
+          "ret": 0.013888
+        },
+        {
+          "date": "2010-03-31",
+          "ret": 0.011521
+        },
+        {
+          "date": "2010-04-30",
+          "ret": 0.01317
+        },
+        {
+          "date": "2010-05-28",
+          "ret": -0.081265
+        },
+        {
+          "date": "2010-06-30",
+          "ret": 0.006445
+        },
+        {
+          "date": "2010-07-30",
+          "ret": -0.021483
+        },
+        {
+          "date": "2010-08-31",
+          "ret": 0.014187
+        },
+        {
+          "date": "2010-09-30",
+          "ret": -0.027213
+        },
+        {
+          "date": "2010-10-29",
+          "ret": 0.018577
+        },
+        {
+          "date": "2010-11-30",
+          "ret": -0.049955
+        },
+        {
+          "date": "2010-12-31",
+          "ret": 0.050122
+        },
+        {
+          "date": "2011-01-31",
+          "ret": 0.011611
+        },
+        {
+          "date": "2011-02-28",
+          "ret": 0.037201
+        },
+        {
+          "date": "2011-03-31",
+          "ret": -0.001993
+        },
+        {
+          "date": "2011-04-29",
+          "ret": 0.031012
+        },
+        {
+          "date": "2011-05-31",
+          "ret": -0.031784
+        },
+        {
+          "date": "2011-06-30",
+          "ret": -0.006974
+        },
+        {
+          "date": "2011-07-29",
+          "ret": 0.023988
+        },
+        {
+          "date": "2011-08-31",
+          "ret": 0.037751
+        },
+        {
+          "date": "2011-09-30",
+          "ret": 0.019177
+        },
+        {
+          "date": "2011-10-31",
+          "ret": -0.058564
+        },
+        {
+          "date": "2011-11-30",
+          "ret": 0.013695
+        },
+        {
+          "date": "2011-12-30",
+          "ret": 0.007101
+        },
+        {
+          "date": "2012-01-31",
+          "ret": 0.001805
+        },
+        {
+          "date": "2012-02-29",
+          "ret": -0.009668
+        },
+        {
+          "date": "2012-03-30",
+          "ret": 0.000377
+        },
+        {
+          "date": "2012-04-30",
+          "ret": -0.043287
+        },
+        {
+          "date": "2012-05-31",
+          "ret": -0.03177
+        },
+        {
+          "date": "2012-06-29",
+          "ret": -0.02274
+        },
+        {
+          "date": "2012-07-31",
+          "ret": 0.010519
+        },
+        {
+          "date": "2012-08-31",
+          "ret": -0.014029
+        },
+        {
+          "date": "2012-09-28",
+          "ret": 0.0109
+        },
+        {
+          "date": "2012-10-31",
+          "ret": -0.041663
+        },
+        {
+          "date": "2012-11-30",
+          "ret": 0.00396
+        },
+        {
+          "date": "2012-12-31",
+          "ret": 0.025782
+        },
+        {
+          "date": "2013-01-31",
+          "ret": 0.065309
+        },
+        {
+          "date": "2013-02-28",
+          "ret": -0.043199
+        },
+        {
+          "date": "2013-03-28",
+          "ret": 0.004277
+        },
+        {
+          "date": "2013-04-30",
+          "ret": -0.012165
+        },
+        {
+          "date": "2013-05-31",
+          "ret": 0.000261
+        },
+        {
+          "date": "2013-06-28",
+          "ret": 0.015724
+        },
+        {
+          "date": "2013-07-31",
+          "ret": 0.012074
+        },
+        {
+          "date": "2013-08-30",
+          "ret": -0.005388
+        },
+        {
+          "date": "2013-09-30",
+          "ret": 0.000999
+        },
+        {
+          "date": "2013-10-31",
+          "ret": 0.023148
+        },
+        {
+          "date": "2013-11-29",
+          "ret": 0.012679
+        },
+        {
+          "date": "2013-12-31",
+          "ret": 0.057235
+        },
+        {
+          "date": "2014-01-31",
+          "ret": -0.056198
+        },
+        {
+          "date": "2014-02-28",
+          "ret": 0.011934
+        },
+        {
+          "date": "2014-03-31",
+          "ret": -0.014045
+        },
+        {
+          "date": "2014-04-30",
+          "ret": 0.009901
+        },
+        {
+          "date": "2014-05-30",
+          "ret": -0.010774
+        },
+        {
+          "date": "2014-06-30",
+          "ret": 0.0154
+        },
+        {
+          "date": "2014-07-31",
+          "ret": -0.03961
+        },
+        {
+          "date": "2014-08-29",
+          "ret": 0.053131
+        },
+        {
+          "date": "2014-09-30",
+          "ret": -0.00086
+        },
+        {
+          "date": "2014-10-31",
+          "ret": 0.029804
+        },
+        {
+          "date": "2014-11-28",
+          "ret": 0.042292
+        },
+        {
+          "date": "2014-12-31",
+          "ret": 0.008934
+        },
+        {
+          "date": "2015-01-30",
+          "ret": 0.06631
+        },
+        {
+          "date": "2015-02-27",
+          "ret": 0.007324
+        },
+        {
+          "date": "2015-03-31",
+          "ret": 0.051046
+        },
+        {
+          "date": "2015-04-30",
+          "ret": -0.034603
+        },
+        {
+          "date": "2015-05-29",
+          "ret": 0.020981
+        },
+        {
+          "date": "2015-06-30",
+          "ret": -0.040526
+        },
+        {
+          "date": "2015-07-31",
+          "ret": -0.005584
+        },
+        {
+          "date": "2015-08-31",
+          "ret": -0.013065
+        },
+        {
+          "date": "2015-09-30",
+          "ret": 0.044493
+        },
+        {
+          "date": "2015-10-30",
+          "ret": -0.048291
+        },
+        {
+          "date": "2015-11-30",
+          "ret": 0.001966
+        },
+        {
+          "date": "2015-12-31",
+          "ret": 0.006936
+        },
+        {
+          "date": "2016-01-29",
+          "ret": -0.010664
+        },
+        {
+          "date": "2016-02-29",
+          "ret": 0.040458
+        },
+        {
+          "date": "2016-03-31",
+          "ret": -0.037929
+        },
+        {
+          "date": "2016-04-29",
+          "ret": 0.004901
+        },
+        {
+          "date": "2016-05-31",
+          "ret": -0.021442
+        },
+        {
+          "date": "2016-06-30",
+          "ret": 0.034339
+        },
+        {
+          "date": "2016-07-29",
+          "ret": 0.002971
+        },
+        {
+          "date": "2016-08-31",
+          "ret": -0.015208
+        },
+        {
+          "date": "2016-09-30",
+          "ret": 0.008728
+        },
+        {
+          "date": "2016-10-31",
+          "ret": 0.00394
+        },
+        {
+          "date": "2016-11-30",
+          "ret": 0.025263
+        },
+        {
+          "date": "2016-12-30",
+          "ret": 0.024411
+        },
+        {
+          "date": "2017-01-31",
+          "ret": -0.037953
+        },
+        {
+          "date": "2017-02-28",
+          "ret": 0.023904
+        },
+        {
+          "date": "2017-03-31",
+          "ret": 0.003442
+        },
+        {
+          "date": "2017-04-28",
+          "ret": 0.010685
+        },
+        {
+          "date": "2017-05-31",
+          "ret": 0.019071
+        },
+        {
+          "date": "2017-06-30",
+          "ret": -0.030521
+        },
+        {
+          "date": "2017-07-31",
+          "ret": 0.048658
+        },
+        {
+          "date": "2017-08-31",
+          "ret": 0.023025
+        },
+        {
+          "date": "2017-09-29",
+          "ret": -0.029926
+        },
+        {
+          "date": "2017-10-31",
+          "ret": 0.052033
+        },
+        {
+          "date": "2017-11-30",
+          "ret": 0.030579
+        },
+        {
+          "date": "2017-12-29",
+          "ret": 0.00563
+        },
+        {
+          "date": "2018-01-31",
+          "ret": 0.083472
+        },
+        {
+          "date": "2018-02-28",
+          "ret": -0.048137
+        },
+        {
+          "date": "2018-03-29",
+          "ret": -0.006858
+        },
+        {
+          "date": "2018-04-30",
+          "ret": -0.010891
+        },
+        {
+          "date": "2018-05-31",
+          "ret": -0.004454
+        },
+        {
+          "date": "2018-06-29",
+          "ret": 0.02609
+        },
+        {
+          "date": "2018-07-31",
+          "ret": 0.022002
+        },
+        {
+          "date": "2018-08-31",
+          "ret": 0.035607
+        },
+        {
+          "date": "2018-09-28",
+          "ret": -0.006547
+        },
+        {
+          "date": "2018-10-31",
+          "ret": -0.046714
+        },
+        {
+          "date": "2018-11-30",
+          "ret": 0.018193
+        },
+        {
+          "date": "2018-12-31",
+          "ret": -0.006907
+        },
+        {
+          "date": "2019-01-31",
+          "ret": -0.032653
+        },
+        {
+          "date": "2019-02-28",
+          "ret": -0.016094
+        },
+        {
+          "date": "2019-03-29",
+          "ret": 0.000857
+        },
+        {
+          "date": "2019-04-30",
+          "ret": 0.001361
+        },
+        {
+          "date": "2019-05-31",
+          "ret": -0.049583
+        },
+        {
+          "date": "2019-06-28",
+          "ret": 0.013441
+        },
+        {
+          "date": "2019-07-31",
+          "ret": 0.004562
+        },
+        {
+          "date": "2019-08-30",
+          "ret": 0.044225
+        },
+        {
+          "date": "2019-09-30",
+          "ret": -0.010252
+        },
+        {
+          "date": "2019-10-31",
+          "ret": -0.005708
+        },
+        {
+          "date": "2019-11-29",
+          "ret": 0.003513
+        },
+        {
+          "date": "2019-12-31",
+          "ret": 0.04934
+        },
+        {
+          "date": "2020-01-31",
+          "ret": -0.060693
+        },
+        {
+          "date": "2020-02-28",
+          "ret": -0.046357
+        },
+        {
+          "date": "2020-03-31",
+          "ret": 0.096824
+        },
+        {
+          "date": "2020-04-30",
+          "ret": -0.019769
+        },
+        {
+          "date": "2020-05-29",
+          "ret": -0.007987
+        },
+        {
+          "date": "2020-06-30",
+          "ret": -0.006299
+        },
+        {
+          "date": "2020-07-31",
+          "ret": 0.01911
+        },
+        {
+          "date": "2020-08-31",
+          "ret": 0.015754
+        },
+        {
+          "date": "2020-09-30",
+          "ret": -0.037981
+        },
+        {
+          "date": "2020-10-30",
+          "ret": -0.01759
+        },
+        {
+          "date": "2020-11-30",
+          "ret": 0.026821
+        },
+        {
+          "date": "2020-12-31",
+          "ret": 0.034983
+        },
+        {
+          "date": "2021-01-29",
+          "ret": 0.00866
+        },
+        {
+          "date": "2021-02-26",
+          "ret": 0.062886
+        },
+        {
+          "date": "2021-03-31",
+          "ret": 0.039538
+        },
+        {
+          "date": "2021-04-30",
+          "ret": 0.021378
+        },
+        {
+          "date": "2021-05-28",
+          "ret": 0.006365
+        },
+        {
+          "date": "2021-06-30",
+          "ret": -0.010537
+        },
+        {
+          "date": "2021-07-30",
+          "ret": -0.004276
+        },
+        {
+          "date": "2021-08-31",
+          "ret": 0.013744
+        },
+        {
+          "date": "2021-09-30",
+          "ret": -0.004859
+        },
+        {
+          "date": "2021-10-29",
+          "ret": -0.004901
+        },
+        {
+          "date": "2021-11-30",
+          "ret": -0.019754
+        },
+        {
+          "date": "2021-12-31",
+          "ret": -0.038655
+        },
+        {
+          "date": "2022-01-31",
+          "ret": -0.002459
+        },
+        {
+          "date": "2022-02-28",
+          "ret": -0.006728
+        },
+        {
+          "date": "2022-03-31",
+          "ret": 0.027904
+        },
+        {
+          "date": "2022-04-29",
+          "ret": 0.022913
+        },
+        {
+          "date": "2022-05-31",
+          "ret": -0.000868
+        },
+        {
+          "date": "2022-06-30",
+          "ret": 0.032242
+        },
+        {
+          "date": "2022-07-29",
+          "ret": -0.046336
+        },
+        {
+          "date": "2022-08-31",
+          "ret": 0.034625
+        },
+        {
+          "date": "2022-09-30",
+          "ret": 0.051175
+        },
+        {
+          "date": "2022-10-31",
+          "ret": -0.023693
+        },
+        {
+          "date": "2022-11-30",
+          "ret": -0.041853
+        },
+        {
+          "date": "2022-12-30",
+          "ret": 0.000487
+        },
+        {
+          "date": "2023-01-31",
+          "ret": 0.013108
+        },
+        {
+          "date": "2023-02-28",
+          "ret": -0.017858
+        },
+        {
+          "date": "2023-03-31",
+          "ret": -0.007578
+        },
+        {
+          "date": "2023-04-28",
+          "ret": 0.009262
+        },
+        {
+          "date": "2023-05-31",
+          "ret": -0.018099
+        },
+        {
+          "date": "2023-06-30",
+          "ret": 0.021059
+        },
+        {
+          "date": "2023-07-31",
+          "ret": 0.000987
+        },
+        {
+          "date": "2023-08-31",
+          "ret": -0.024748
+        },
+        {
+          "date": "2023-09-29",
+          "ret": -0.02712
+        },
+        {
+          "date": "2023-10-31",
+          "ret": 0.017228
+        },
+        {
+          "date": "2023-11-30",
+          "ret": -0.113882
+        },
+        {
+          "date": "2023-12-29",
+          "ret": -0.00484
+        },
+        {
+          "date": "2024-01-31",
+          "ret": 0.002114
+        },
+        {
+          "date": "2024-02-29",
+          "ret": 0.028148
+        },
+        {
+          "date": "2024-03-28",
+          "ret": 0.048744
+        },
+        {
+          "date": "2024-04-30",
+          "ret": -0.0199
+        },
+        {
+          "date": "2024-05-31",
+          "ret": 0.024912
+        },
+        {
+          "date": "2024-06-28",
+          "ret": -0.028029
+        },
+        {
+          "date": "2024-07-31",
+          "ret": -0.027235
+        },
+        {
+          "date": "2024-08-30",
+          "ret": 0.010587
+        },
+        {
+          "date": "2024-09-30",
+          "ret": 0.028583
+        },
+        {
+          "date": "2024-10-31",
+          "ret": -0.069939
+        },
+        {
+          "date": "2024-11-29",
+          "ret": 0.013627
+        },
+        {
+          "date": "2024-12-31",
+          "ret": 0.001486
+        },
+        {
+          "date": "2025-01-31",
+          "ret": -0.012518
+        },
+        {
+          "date": "2025-02-28",
+          "ret": -0.035368
+        },
+        {
+          "date": "2025-03-31",
+          "ret": 0.007961
+        },
+        {
+          "date": "2025-04-30",
+          "ret": -0.033484
+        },
+        {
+          "date": "2025-05-30",
+          "ret": -0.017506
+        },
+        {
+          "date": "2025-06-30",
+          "ret": 0.013982
+        },
+        {
+          "date": "2025-07-31",
+          "ret": -0.008384
+        },
+        {
+          "date": "2025-08-29",
+          "ret": 0.026417
+        },
+        {
+          "date": "2025-09-30",
+          "ret": 0.057808
+        },
+        {
+          "date": "2025-10-31",
+          "ret": 0.035624
+        },
+        {
+          "date": "2025-11-28",
+          "ret": 0.005147
+        },
+        {
+          "date": "2025-12-31",
+          "ret": 0.009491
+        },
+        {
+          "date": "2026-01-30",
+          "ret": 0.027823
+        },
+        {
+          "date": "2026-02-27",
+          "ret": 0.023924
+        },
+        {
+          "date": "2026-03-31",
+          "ret": -0.090888
+        },
+        {
+          "date": "2026-04-30",
+          "ret": -0.021524
+        },
+        {
+          "date": "2026-05-29",
+          "ret": 0.011844
+        },
+        {
+          "date": "2026-06-30",
+          "ret": 0.006557
+        },
+        {
+          "date": "2026-07-31",
+          "ret": -0.016025
+        },
+        {
+          "date": "2026-08-31",
+          "ret": -0.037244
+        },
+        {
+          "date": "2026-09-30",
+          "ret": 0.025572
+        },
+        {
+          "date": "2026-10-05",
+          "ret": 0.01074
+        }
+      ]
+    },
+    "12m": {
+      "monthly": [
+        {
+          "date": "2010-01-29",
+          "ret": -0.000157
+        },
+        {
+          "date": "2010-02-26",
+          "ret": -0.000925
+        },
+        {
+          "date": "2010-03-31",
+          "ret": 0.020501
+        },
+        {
+          "date": "2010-04-30",
+          "ret": -0.010048
+        },
+        {
+          "date": "2010-05-28",
+          "ret": -0.071642
+        },
+        {
+          "date": "2010-06-30",
+          "ret": -0.003646
+        },
+        {
+          "date": "2010-07-30",
+          "ret": 0.013441
+        },
+        {
+          "date": "2010-08-31",
+          "ret": 0.006137
+        },
+        {
+          "date": "2010-09-30",
+          "ret": 0.034074
+        },
+        {
+          "date": "2010-10-29",
+          "ret": 0.021579
+        },
+        {
+          "date": "2010-11-30",
+          "ret": -0.029489
+        },
+        {
+          "date": "2010-12-31",
+          "ret": 0.012292
+        },
+        {
+          "date": "2011-01-31",
+          "ret": -0.012991
+        },
+        {
+          "date": "2011-02-28",
+          "ret": 0.03884
+        },
+        {
+          "date": "2011-03-31",
+          "ret": -0.012373
+        },
+        {
+          "date": "2011-04-29",
+          "ret": 0.059542
+        },
+        {
+          "date": "2011-05-31",
+          "ret": -0.014569
+        },
+        {
+          "date": "2011-06-30",
+          "ret": -0.017421
+        },
+        {
+          "date": "2011-07-29",
+          "ret": -0.006121
+        },
+        {
+          "date": "2011-08-31",
+          "ret": -0.016467
+        },
+        {
+          "date": "2011-09-30",
+          "ret": -0.031453
+        },
+        {
+          "date": "2011-10-31",
+          "ret": -0.026258
+        },
+        {
+          "date": "2011-11-30",
+          "ret": -0.005111
+        },
+        {
+          "date": "2011-12-30",
+          "ret": 0.000794
+        },
+        {
+          "date": "2012-01-31",
+          "ret": 0.006505
+        },
+        {
+          "date": "2012-02-29",
+          "ret": -0.037489
+        },
+        {
+          "date": "2012-03-30",
+          "ret": -0.017488
+        },
+        {
+          "date": "2012-04-30",
+          "ret": 0.033582
+        },
+        {
+          "date": "2012-05-31",
+          "ret": 0.081685
+        },
+        {
+          "date": "2012-06-29",
+          "ret": -0.049395
+        },
+        {
+          "date": "2012-07-31",
+          "ret": 0.013403
+        },
+        {
+          "date": "2012-08-31",
+          "ret": -0.005329
+        },
+        {
+          "date": "2012-09-28",
+          "ret": -0.010476
+        },
+        {
+          "date": "2012-10-31",
+          "ret": -0.025222
+        },
+        {
+          "date": "2012-11-30",
+          "ret": 0.028715
+        },
+        {
+          "date": "2012-12-31",
+          "ret": 0.003192
+        },
+        {
+          "date": "2013-01-31",
+          "ret": 0.040665
+        },
+        {
+          "date": "2013-02-28",
+          "ret": -0.050763
+        },
+        {
+          "date": "2013-03-28",
+          "ret": 0.008708
+        },
+        {
+          "date": "2013-04-30",
+          "ret": 0.015898
+        },
+        {
+          "date": "2013-05-31",
+          "ret": 0.02158
+        },
+        {
+          "date": "2013-06-28",
+          "ret": 0.016818
+        },
+        {
+          "date": "2013-07-31",
+          "ret": 0.025654
+        },
+        {
+          "date": "2013-08-30",
+          "ret": -0.006775
+        },
+        {
+          "date": "2013-09-30",
+          "ret": -0.003016
+        },
+        {
+          "date": "2013-10-31",
+          "ret": 0.030605
+        },
+        {
+          "date": "2013-11-29",
+          "ret": 0.035413
+        },
+        {
+          "date": "2013-12-31",
+          "ret": 0.062252
+        },
+        {
+          "date": "2014-01-31",
+          "ret": -0.046085
+        },
+        {
+          "date": "2014-02-28",
+          "ret": 0.017544
+        },
+        {
+          "date": "2014-03-31",
+          "ret": 0.000239
+        },
+        {
+          "date": "2014-04-30",
+          "ret": 0.003114
+        },
+        {
+          "date": "2014-05-30",
+          "ret": -0.0137
+        },
+        {
+          "date": "2014-06-30",
+          "ret": 0.009216
+        },
+        {
+          "date": "2014-07-31",
+          "ret": -0.005693
+        },
+        {
+          "date": "2014-08-29",
+          "ret": 0.015699
+        },
+        {
+          "date": "2014-09-30",
+          "ret": -0.00272
+        },
+        {
+          "date": "2014-10-31",
+          "ret": 0.00805
+        },
+        {
+          "date": "2014-11-28",
+          "ret": 0.023899
+        },
+        {
+          "date": "2014-12-31",
+          "ret": 0.006401
+        },
+        {
+          "date": "2015-01-30",
+          "ret": 0.032857
+        },
+        {
+          "date": "2015-02-27",
+          "ret": 0.004898
+        },
+        {
+          "date": "2015-03-31",
+          "ret": 0.031887
+        },
+        {
+          "date": "2015-04-30",
+          "ret": -0.030557
+        },
+        {
+          "date": "2015-05-29",
+          "ret": 0.032325
+        },
+        {
+          "date": "2015-06-30",
+          "ret": -0.04196
+        },
+        {
+          "date": "2015-07-31",
+          "ret": 0.039841
+        },
+        {
+          "date": "2015-08-31",
+          "ret": -0.041766
+        },
+        {
+          "date": "2015-09-30",
+          "ret": 0.013
+        },
+        {
+          "date": "2015-10-30",
+          "ret": -0.024946
+        },
+        {
+          "date": "2015-11-30",
+          "ret": 0.011029
+        },
+        {
+          "date": "2015-12-31",
+          "ret": -0.00309
+        },
+        {
+          "date": "2016-01-29",
+          "ret": 0.006608
+        },
+        {
+          "date": "2016-02-29",
+          "ret": -0.024596
+        },
+        {
+          "date": "2016-03-31",
+          "ret": -0.055825
+        },
+        {
+          "date": "2016-04-29",
+          "ret": -0.009931
+        },
+        {
+          "date": "2016-05-31",
+          "ret": -0.005387
+        },
+        {
+          "date": "2016-06-30",
+          "ret": 0.041455
+        },
+        {
+          "date": "2016-07-29",
+          "ret": -0.002966
+        },
+        {
+          "date": "2016-08-31",
+          "ret": -0.006141
+        },
+        {
+          "date": "2016-09-30",
+          "ret": 0.001452
+        },
+        {
+          "date": "2016-10-31",
+          "ret": -0.039876
+        },
+        {
+          "date": "2016-11-30",
+          "ret": -0.07647
+        },
+        {
+          "date": "2016-12-30",
+          "ret": 0.006292
+        },
+        {
+          "date": "2017-01-31",
+          "ret": 0.007585
+        },
+        {
+          "date": "2017-02-28",
+          "ret": 0.03377
+        },
+        {
+          "date": "2017-03-31",
+          "ret": 0.013623
+        },
+        {
+          "date": "2017-04-28",
+          "ret": 0.003889
+        },
+        {
+          "date": "2017-05-31",
+          "ret": 0.001077
+        },
+        {
+          "date": "2017-06-30",
+          "ret": -0.002688
+        },
+        {
+          "date": "2017-07-31",
+          "ret": 0.043294
+        },
+        {
+          "date": "2017-08-31",
+          "ret": -0.011654
+        },
+        {
+          "date": "2017-09-29",
+          "ret": 0.03277
+        },
+        {
+          "date": "2017-10-31",
+          "ret": 0.026295
+        },
+        {
+          "date": "2017-11-30",
+          "ret": 0.014989
+        },
+        {
+          "date": "2017-12-29",
+          "ret": 0.038225
+        },
+        {
+          "date": "2018-01-31",
+          "ret": 0.084504
+        },
+        {
+          "date": "2018-02-28",
+          "ret": -0.04988
+        },
+        {
+          "date": "2018-03-29",
+          "ret": -0.011448
+        },
+        {
+          "date": "2018-04-30",
+          "ret": 0.002573
+        },
+        {
+          "date": "2018-05-31",
+          "ret": -0.011987
+        },
+        {
+          "date": "2018-06-29",
+          "ret": -0.013832
+        },
+        {
+          "date": "2018-07-31",
+          "ret": 0.012079
+        },
+        {
+          "date": "2018-08-31",
+          "ret": 0.014649
+        },
+        {
+          "date": "2018-09-28",
+          "ret": 0.035217
+        },
+        {
+          "date": "2018-10-31",
+          "ret": -0.039564
+        },
+        {
+          "date": "2018-11-30",
+          "ret": 0.015547
+        },
+        {
+          "date": "2018-12-31",
+          "ret": -0.020088
+        },
+        {
+          "date": "2019-01-31",
+          "ret": -0.045585
+        },
+        {
+          "date": "2019-02-28",
+          "ret": -0.013196
+        },
+        {
+          "date": "2019-03-29",
+          "ret": 0.014837
+        },
+        {
+          "date": "2019-04-30",
+          "ret": -0.003885
+        },
+        {
+          "date": "2019-05-31",
+          "ret": -0.004604
+        },
+        {
+          "date": "2019-06-28",
+          "ret": -0.008051
+        },
+        {
+          "date": "2019-07-31",
+          "ret": 0.0091
+        },
+        {
+          "date": "2019-08-30",
+          "ret": 0.094907
+        },
+        {
+          "date": "2019-09-30",
+          "ret": -0.040966
+        },
+        {
+          "date": "2019-10-31",
+          "ret": -0.016809
+        },
+        {
+          "date": "2019-11-29",
+          "ret": 0.012406
+        },
+        {
+          "date": "2019-12-31",
+          "ret": 0.010169
+        },
+        {
+          "date": "2020-01-31",
+          "ret": 0.009863
+        },
+        {
+          "date": "2020-02-28",
+          "ret": -0.06689
+        },
+        {
+          "date": "2020-03-31",
+          "ret": 0.052463
+        },
+        {
+          "date": "2020-04-30",
+          "ret": -0.024091
+        },
+        {
+          "date": "2020-05-29",
+          "ret": -0.004034
+        },
+        {
+          "date": "2020-06-30",
+          "ret": -0.009859
+        },
+        {
+          "date": "2020-07-31",
+          "ret": 0.02435
+        },
+        {
+          "date": "2020-08-31",
+          "ret": 0.011452
+        },
+        {
+          "date": "2020-09-30",
+          "ret": -0.026107
+        },
+        {
+          "date": "2020-10-30",
+          "ret": -0.003688
+        },
+        {
+          "date": "2020-11-30",
+          "ret": -0.014093
+        },
+        {
+          "date": "2020-12-31",
+          "ret": 0.032895
+        },
+        {
+          "date": "2021-01-29",
+          "ret": -0.008089
+        },
+        {
+          "date": "2021-02-26",
+          "ret": 0.000758
+        },
+        {
+          "date": "2021-03-31",
+          "ret": 0.000558
+        },
+        {
+          "date": "2021-04-30",
+          "ret": 0.03638
+        },
+        {
+          "date": "2021-05-28",
+          "ret": 0.020294
+        },
+        {
+          "date": "2021-06-30",
+          "ret": -0.016306
+        },
+        {
+          "date": "2021-07-30",
+          "ret": -0.015538
+        },
+        {
+          "date": "2021-08-31",
+          "ret": 0.008729
+        },
+        {
+          "date": "2021-09-30",
+          "ret": -0.008837
+        },
+        {
+          "date": "2021-10-29",
+          "ret": 0.038482
+        },
+        {
+          "date": "2021-11-30",
+          "ret": -0.042945
+        },
+        {
+          "date": "2021-12-31",
+          "ret": 0.011287
+        },
+        {
+          "date": "2022-01-31",
+          "ret": -0.004045
+        },
+        {
+          "date": "2022-02-28",
+          "ret": -0.009913
+        },
+        {
+          "date": "2022-03-31",
+          "ret": 0.039231
+        },
+        {
+          "date": "2022-04-29",
+          "ret": 0.023254
+        },
+        {
+          "date": "2022-05-31",
+          "ret": 0.012986
+        },
+        {
+          "date": "2022-06-30",
+          "ret": 0.05681
+        },
+        {
+          "date": "2022-07-29",
+          "ret": -0.028025
+        },
+        {
+          "date": "2022-08-31",
+          "ret": 0.035245
+        },
+        {
+          "date": "2022-09-30",
+          "ret": 0.037288
+        },
+        {
+          "date": "2022-10-31",
+          "ret": -0.023559
+        },
+        {
+          "date": "2022-11-30",
+          "ret": -0.049776
+        },
+        {
+          "date": "2022-12-30",
+          "ret": -0.000477
+        },
+        {
+          "date": "2023-01-31",
+          "ret": -0.031211
+        },
+        {
+          "date": "2023-02-28",
+          "ret": 0.014509
+        },
+        {
+          "date": "2023-03-31",
+          "ret": -0.044602
+        },
+        {
+          "date": "2023-04-28",
+          "ret": 0.002379
+        },
+        {
+          "date": "2023-05-31",
+          "ret": 0.005709
+        },
+        {
+          "date": "2023-06-30",
+          "ret": 0.005324
+        },
+        {
+          "date": "2023-07-31",
+          "ret": 0.017663
+        },
+        {
+          "date": "2023-08-31",
+          "ret": -0.025477
+        },
+        {
+          "date": "2023-09-29",
+          "ret": -0.036611
+        },
+        {
+          "date": "2023-10-31",
+          "ret": -0.009669
+        },
+        {
+          "date": "2023-11-30",
+          "ret": 0.056414
+        },
+        {
+          "date": "2023-12-29",
+          "ret": -0.001264
+        },
+        {
+          "date": "2024-01-31",
+          "ret": 0.015307
+        },
+        {
+          "date": "2024-02-29",
+          "ret": 0.080375
+        },
+        {
+          "date": "2024-03-28",
+          "ret": 0.041007
+        },
+        {
+          "date": "2024-04-30",
+          "ret": -0.031696
+        },
+        {
+          "date": "2024-05-31",
+          "ret": 0.002573
+        },
+        {
+          "date": "2024-06-28",
+          "ret": -0.014872
+        },
+        {
+          "date": "2024-07-31",
+          "ret": -0.008665
+        },
+        {
+          "date": "2024-08-30",
+          "ret": -0.009351
+        },
+        {
+          "date": "2024-09-30",
+          "ret": 0.024732
+        },
+        {
+          "date": "2024-10-31",
+          "ret": -0.035643
+        },
+        {
+          "date": "2024-11-29",
+          "ret": 0.003351
+        },
+        {
+          "date": "2024-12-31",
+          "ret": -0.006727
+        },
+        {
+          "date": "2025-01-31",
+          "ret": 0.02403
+        },
+        {
+          "date": "2025-02-28",
+          "ret": -0.014949
+        },
+        {
+          "date": "2025-03-31",
+          "ret": -0.014867
+        },
+        {
+          "date": "2025-04-30",
+          "ret": 0.022168
+        },
+        {
+          "date": "2025-05-30",
+          "ret": -0.000979
+        },
+        {
+          "date": "2025-06-30",
+          "ret": 0.018947
+        },
+        {
+          "date": "2025-07-31",
+          "ret": -0.018243
+        },
+        {
+          "date": "2025-08-29",
+          "ret": 0.019836
+        },
+        {
+          "date": "2025-09-30",
+          "ret": 0.078352
+        },
+        {
+          "date": "2025-10-31",
+          "ret": 0.045611
+        },
+        {
+          "date": "2025-11-28",
+          "ret": 0.002125
+        },
+        {
+          "date": "2025-12-31",
+          "ret": 0.027037
+        },
+        {
+          "date": "2026-01-30",
+          "ret": 0.034179
+        },
+        {
+          "date": "2026-02-27",
+          "ret": 0.030563
+        },
+        {
+          "date": "2026-03-31",
+          "ret": -0.1015
+        },
+        {
+          "date": "2026-04-30",
+          "ret": 0.033355
+        },
+        {
+          "date": "2026-05-29",
+          "ret": 0.008622
+        },
+        {
+          "date": "2026-06-30",
+          "ret": -0.002285
+        },
+        {
+          "date": "2026-07-31",
+          "ret": 0.002871
+        },
+        {
+          "date": "2026-08-31",
+          "ret": 0.003458
+        },
+        {
+          "date": "2026-09-30",
+          "ret": -0.007218
+        },
+        {
+          "date": "2026-10-05",
+          "ret": 0.021836
+        }
+      ]
+    },
+    "blend": {
+      "monthly": [
+        {
+          "date": "2010-01-29",
+          "ret": -0.000054
+        },
+        {
+          "date": "2010-02-26",
+          "ret": 0.005011
+        },
+        {
+          "date": "2010-03-31",
+          "ret": 0.011769
+        },
+        {
+          "date": "2010-04-30",
+          "ret": -0.000394
+        },
+        {
+          "date": "2010-05-28",
+          "ret": -0.071479
+        },
+        {
+          "date": "2010-06-30",
+          "ret": 0.007665
+        },
+        {
+          "date": "2010-07-30",
+          "ret": -0.010354
+        },
+        {
+          "date": "2010-08-31",
+          "ret": 0.010637
+        },
+        {
+          "date": "2010-09-30",
+          "ret": -0.032693
+        },
+        {
+          "date": "2010-10-29",
+          "ret": 0.030348
+        },
+        {
+          "date": "2010-11-30",
+          "ret": -0.048692
+        },
+        {
+          "date": "2010-12-31",
+          "ret": 0.020763
+        },
+        {
+          "date": "2011-01-31",
+          "ret": 0.006643
+        },
+        {
+          "date": "2011-02-28",
+          "ret": 0.034536
+        },
+        {
+          "date": "2011-03-31",
+          "ret": -0.008077
+        },
+        {
+          "date": "2011-04-29",
+          "ret": 0.033535
+        },
+        {
+          "date": "2011-05-31",
+          "ret": -0.025923
+        },
+        {
+          "date": "2011-06-30",
+          "ret": -0.007924
+        },
+        {
+          "date": "2011-07-29",
+          "ret": 0.007052
+        },
+        {
+          "date": "2011-08-31",
+          "ret": 0.034225
+        },
+        {
+          "date": "2011-09-30",
+          "ret": 0.009978
+        },
+        {
+          "date": "2011-10-31",
+          "ret": -0.070049
+        },
+        {
+          "date": "2011-11-30",
+          "ret": 0.002345
+        },
+        {
+          "date": "2011-12-30",
+          "ret": 0.008876
+        },
+        {
+          "date": "2012-01-31",
+          "ret": 0.002761
+        },
+        {
+          "date": "2012-02-29",
+          "ret": -0.015947
+        },
+        {
+          "date": "2012-03-30",
+          "ret": 0.003351
+        },
+        {
+          "date": "2012-04-30",
+          "ret": -0.02607
+        },
+        {
+          "date": "2012-05-31",
+          "ret": 0.000798
+        },
+        {
+          "date": "2012-06-29",
+          "ret": -0.053127
+        },
+        {
+          "date": "2012-07-31",
+          "ret": 0.008689
+        },
+        {
+          "date": "2012-08-31",
+          "ret": -0.006012
+        },
+        {
+          "date": "2012-09-28",
+          "ret": 0.005271
+        },
+        {
+          "date": "2012-10-31",
+          "ret": -0.044277
+        },
+        {
+          "date": "2012-11-30",
+          "ret": 0.009522
+        },
+        {
+          "date": "2012-12-31",
+          "ret": 0.013805
+        },
+        {
+          "date": "2013-01-31",
+          "ret": 0.068094
+        },
+        {
+          "date": "2013-02-28",
+          "ret": -0.037783
+        },
+        {
+          "date": "2013-03-28",
+          "ret": 0.005403
+        },
+        {
+          "date": "2013-04-30",
+          "ret": 0.000046
+        },
+        {
+          "date": "2013-05-31",
+          "ret": 0.002171
+        },
+        {
+          "date": "2013-06-28",
+          "ret": 0.017969
+        },
+        {
+          "date": "2013-07-31",
+          "ret": 0.00497
+        },
+        {
+          "date": "2013-08-30",
+          "ret": -0.009053
+        },
+        {
+          "date": "2013-09-30",
+          "ret": -0.007094
+        },
+        {
+          "date": "2013-10-31",
+          "ret": 0.032297
+        },
+        {
+          "date": "2013-11-29",
+          "ret": 0.020833
+        },
+        {
+          "date": "2013-12-31",
+          "ret": 0.060054
+        },
+        {
+          "date": "2014-01-31",
+          "ret": -0.056319
+        },
+        {
+          "date": "2014-02-28",
+          "ret": 0.000085
+        },
+        {
+          "date": "2014-03-31",
+          "ret": -0.012273
+        },
+        {
+          "date": "2014-04-30",
+          "ret": 0.004016
+        },
+        {
+          "date": "2014-05-30",
+          "ret": -0.010055
+        },
+        {
+          "date": "2014-06-30",
+          "ret": 0.009354
+        },
+        {
+          "date": "2014-07-31",
+          "ret": -0.032171
+        },
+        {
+          "date": "2014-08-29",
+          "ret": 0.03423
+        },
+        {
+          "date": "2014-09-30",
+          "ret": -0.00594
+        },
+        {
+          "date": "2014-10-31",
+          "ret": 0.015136
+        },
+        {
+          "date": "2014-11-28",
+          "ret": 0.04113
+        },
+        {
+          "date": "2014-12-31",
+          "ret": 0.007539
+        },
+        {
+          "date": "2015-01-30",
+          "ret": 0.051873
+        },
+        {
+          "date": "2015-02-27",
+          "ret": -0.008523
+        },
+        {
+          "date": "2015-03-31",
+          "ret": 0.025121
+        },
+        {
+          "date": "2015-04-30",
+          "ret": -0.040648
+        },
+        {
+          "date": "2015-05-29",
+          "ret": 0.016871
+        },
+        {
+          "date": "2015-06-30",
+          "ret": -0.039755
+        },
+        {
+          "date": "2015-07-31",
+          "ret": -0.00634
+        },
+        {
+          "date": "2015-08-31",
+          "ret": -0.036767
+        },
+        {
+          "date": "2015-09-30",
+          "ret": 0.03301
+        },
+        {
+          "date": "2015-10-30",
+          "ret": -0.044379
+        },
+        {
+          "date": "2015-11-30",
+          "ret": 0.006582
+        },
+        {
+          "date": "2015-12-31",
+          "ret": 0.003903
+        },
+        {
+          "date": "2016-01-29",
+          "ret": 0.001443
+        },
+        {
+          "date": "2016-02-29",
+          "ret": 0.009886
+        },
+        {
+          "date": "2016-03-31",
+          "ret": -0.029159
+        },
+        {
+          "date": "2016-04-29",
+          "ret": 0.003659
+        },
+        {
+          "date": "2016-05-31",
+          "ret": -0.017967
+        },
+        {
+          "date": "2016-06-30",
+          "ret": 0.033726
+        },
+        {
+          "date": "2016-07-29",
+          "ret": -0.003207
+        },
+        {
+          "date": "2016-08-31",
+          "ret": -0.010945
+        },
+        {
+          "date": "2016-09-30",
+          "ret": 0.005981
+        },
+        {
+          "date": "2016-10-31",
+          "ret": -0.010635
+        },
+        {
+          "date": "2016-11-30",
+          "ret": 0.009005
+        },
+        {
+          "date": "2016-12-30",
+          "ret": 0.029213
+        },
+        {
+          "date": "2017-01-31",
+          "ret": -0.032204
+        },
+        {
+          "date": "2017-02-28",
+          "ret": 0.025203
+        },
+        {
+          "date": "2017-03-31",
+          "ret": 0.007861
+        },
+        {
+          "date": "2017-04-28",
+          "ret": 0.008412
+        },
+        {
+          "date": "2017-05-31",
+          "ret": 0.015461
+        },
+        {
+          "date": "2017-06-30",
+          "ret": -0.029053
+        },
+        {
+          "date": "2017-07-31",
+          "ret": 0.058951
+        },
+        {
+          "date": "2017-08-31",
+          "ret": 0.00955
+        },
+        {
+          "date": "2017-09-29",
+          "ret": -0.010194
+        },
+        {
+          "date": "2017-10-31",
+          "ret": 0.037892
+        },
+        {
+          "date": "2017-11-30",
+          "ret": 0.023386
+        },
+        {
+          "date": "2017-12-29",
+          "ret": 0.019641
+        },
+        {
+          "date": "2018-01-31",
+          "ret": 0.093147
+        },
+        {
+          "date": "2018-02-28",
+          "ret": -0.054737
+        },
+        {
+          "date": "2018-03-29",
+          "ret": -0.004736
+        },
+        {
+          "date": "2018-04-30",
+          "ret": -0.010687
+        },
+        {
+          "date": "2018-05-31",
+          "ret": -0.006558
+        },
+        {
+          "date": "2018-06-29",
+          "ret": 0.006472
+        },
+        {
+          "date": "2018-07-31",
+          "ret": 0.014162
+        },
+        {
+          "date": "2018-08-31",
+          "ret": 0.023682
+        },
+        {
+          "date": "2018-09-28",
+          "ret": 0.001482
+        },
+        {
+          "date": "2018-10-31",
+          "ret": -0.027865
+        },
+        {
+          "date": "2018-11-30",
+          "ret": 0.022805
+        },
+        {
+          "date": "2018-12-31",
+          "ret": -0.009164
+        },
+        {
+          "date": "2019-01-31",
+          "ret": -0.040636
+        },
+        {
+          "date": "2019-02-28",
+          "ret": -0.00879
+        },
+        {
+          "date": "2019-03-29",
+          "ret": 0.003187
+        },
+        {
+          "date": "2019-04-30",
+          "ret": 0.00739
+        },
+        {
+          "date": "2019-05-31",
+          "ret": -0.060762
+        },
+        {
+          "date": "2019-06-28",
+          "ret": -0.010919
+        },
+        {
+          "date": "2019-07-31",
+          "ret": 0.001015
+        },
+        {
+          "date": "2019-08-30",
+          "ret": 0.048492
+        },
+        {
+          "date": "2019-09-30",
+          "ret": -0.026564
+        },
+        {
+          "date": "2019-10-31",
+          "ret": -0.000891
+        },
+        {
+          "date": "2019-11-29",
+          "ret": 0.00818
+        },
+        {
+          "date": "2019-12-31",
+          "ret": 0.025415
+        },
+        {
+          "date": "2020-01-31",
+          "ret": -0.049894
+        },
+        {
+          "date": "2020-02-28",
+          "ret": -0.010634
+        },
+        {
+          "date": "2020-03-31",
+          "ret": 0.122524
+        },
+        {
+          "date": "2020-04-30",
+          "ret": -0.019704
+        },
+        {
+          "date": "2020-05-29",
+          "ret": -0.003082
+        },
+        {
+          "date": "2020-06-30",
+          "ret": -0.002493
+        },
+        {
+          "date": "2020-07-31",
+          "ret": 0.012155
+        },
+        {
+          "date": "2020-08-31",
+          "ret": 0.02126
+        },
+        {
+          "date": "2020-09-30",
+          "ret": -0.038163
+        },
+        {
+          "date": "2020-10-30",
+          "ret": -0.004716
+        },
+        {
+          "date": "2020-11-30",
+          "ret": -0.000824
+        },
+        {
+          "date": "2020-12-31",
+          "ret": 0.043938
+        },
+        {
+          "date": "2021-01-29",
+          "ret": 0.000876
+        },
+        {
+          "date": "2021-02-26",
+          "ret": 0.045282
+        },
+        {
+          "date": "2021-03-31",
+          "ret": 0.037423
+        },
+        {
+          "date": "2021-04-30",
+          "ret": 0.023371
+        },
+        {
+          "date": "2021-05-28",
+          "ret": 0.020325
+        },
+        {
+          "date": "2021-06-30",
+          "ret": -0.012142
+        },
+        {
+          "date": "2021-07-30",
+          "ret": -0.004513
+        },
+        {
+          "date": "2021-08-31",
+          "ret": 0.014141
+        },
+        {
+          "date": "2021-09-30",
+          "ret": -0.002432
+        },
+        {
+          "date": "2021-10-29",
+          "ret": 0.000208
+        },
+        {
+          "date": "2021-11-30",
+          "ret": -0.048575
+        },
+        {
+          "date": "2021-12-31",
+          "ret": -0.022895
+        },
+        {
+          "date": "2022-01-31",
+          "ret": -0.005257
+        },
+        {
+          "date": "2022-02-28",
+          "ret": -0.007446
+        },
+        {
+          "date": "2022-03-31",
+          "ret": 0.034181
+        },
+        {
+          "date": "2022-04-29",
+          "ret": 0.02347
+        },
+        {
+          "date": "2022-05-31",
+          "ret": 0.005668
+        },
+        {
+          "date": "2022-06-30",
+          "ret": 0.0256
+        },
+        {
+          "date": "2022-07-29",
+          "ret": -0.047865
+        },
+        {
+          "date": "2022-08-31",
+          "ret": 0.022743
+        },
+        {
+          "date": "2022-09-30",
+          "ret": 0.058075
+        },
+        {
+          "date": "2022-10-31",
+          "ret": -0.024243
+        },
+        {
+          "date": "2022-11-30",
+          "ret": -0.036014
+        },
+        {
+          "date": "2022-12-30",
+          "ret": -0.002019
+        },
+        {
+          "date": "2023-01-31",
+          "ret": -0.008733
+        },
+        {
+          "date": "2023-02-28",
+          "ret": -0.012577
+        },
+        {
+          "date": "2023-03-31",
+          "ret": -0.033307
+        },
+        {
+          "date": "2023-04-28",
+          "ret": 0.011372
+        },
+        {
+          "date": "2023-05-31",
+          "ret": -0.017318
+        },
+        {
+          "date": "2023-06-30",
+          "ret": 0.009186
+        },
+        {
+          "date": "2023-07-31",
+          "ret": 0.01354
+        },
+        {
+          "date": "2023-08-31",
+          "ret": -0.028706
+        },
+        {
+          "date": "2023-09-29",
+          "ret": -0.009882
+        },
+        {
+          "date": "2023-10-31",
+          "ret": 0.01694
+        },
+        {
+          "date": "2023-11-30",
+          "ret": -0.059507
+        },
+        {
+          "date": "2023-12-29",
+          "ret": 0.016278
+        },
+        {
+          "date": "2024-01-31",
+          "ret": 0.00178
+        },
+        {
+          "date": "2024-02-29",
+          "ret": 0.043691
+        },
+        {
+          "date": "2024-03-28",
+          "ret": 0.045626
+        },
+        {
+          "date": "2024-04-30",
+          "ret": -0.027789
+        },
+        {
+          "date": "2024-05-31",
+          "ret": 0.008787
+        },
+        {
+          "date": "2024-06-28",
+          "ret": -0.024694
+        },
+        {
+          "date": "2024-07-31",
+          "ret": -0.018629
+        },
+        {
+          "date": "2024-08-30",
+          "ret": 0.00456
+        },
+        {
+          "date": "2024-09-30",
+          "ret": 0.03734
+        },
+        {
+          "date": "2024-10-31",
+          "ret": -0.062796
+        },
+        {
+          "date": "2024-11-29",
+          "ret": 0.00903
+        },
+        {
+          "date": "2024-12-31",
+          "ret": -0.004203
+        },
+        {
+          "date": "2025-01-31",
+          "ret": -0.005764
+        },
+        {
+          "date": "2025-02-28",
+          "ret": -0.027126
+        },
+        {
+          "date": "2025-03-31",
+          "ret": 0.002571
+        },
+        {
+          "date": "2025-04-30",
+          "ret": -0.002493
+        },
+        {
+          "date": "2025-05-30",
+          "ret": -0.013739
+        },
+        {
+          "date": "2025-06-30",
+          "ret": 0.026484
+        },
+        {
+          "date": "2025-07-31",
+          "ret": -0.015865
+        },
+        {
+          "date": "2025-08-29",
+          "ret": 0.01139
+        },
+        {
+          "date": "2025-09-30",
+          "ret": 0.059789
+        },
+        {
+          "date": "2025-10-31",
+          "ret": 0.048472
+        },
+        {
+          "date": "2025-11-28",
+          "ret": 0.005214
+        },
+        {
+          "date": "2025-12-31",
+          "ret": 0.012243
+        },
+        {
+          "date": "2026-01-30",
+          "ret": 0.032486
+        },
+        {
+          "date": "2026-02-27",
+          "ret": 0.022947
+        },
+        {
+          "date": "2026-03-31",
+          "ret": -0.084696
+        },
+        {
+          "date": "2026-04-30",
+          "ret": -0.012294
+        },
+        {
+          "date": "2026-05-29",
+          "ret": 0.010219
+        },
+        {
+          "date": "2026-06-30",
+          "ret": 0.011464
+        },
+        {
+          "date": "2026-07-31",
+          "ret": -0.017941
+        },
+        {
+          "date": "2026-08-31",
+          "ret": -0.015966
+        },
+        {
+          "date": "2026-09-30",
+          "ret": 0.004086
+        },
+        {
+          "date": "2026-10-05",
+          "ret": 0.014155
+        }
+      ]
+    }
+  }
+}
