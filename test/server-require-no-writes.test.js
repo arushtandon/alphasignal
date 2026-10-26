@@ -85,3 +85,29 @@ test('requiring server.js performs no file writes and cannot rewrite the fill le
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
+
+test('ISOLATED_DATA_DIR_WRITES is ignored when DATA_DIR is the repo data dir', () => {
+  // The harness opt-in must not be usable against the real ledger. Point
+  // DATA_DIR at ./data with the flag set: the ledger write must still throw.
+  // (Nothing is written because the guard stays off; read-only otherwise.)
+  const run = spawnSync(process.execPath, ['-e', CHILD, path.join(REPO, 'server.js')], {
+    cwd: REPO,
+    encoding: 'utf8',
+    timeout: 120000,
+    maxBuffer: 64 * 1024 * 1024,
+    env: {
+      ...process.env,
+      DATA_DIR: path.join(REPO, 'data'),
+      ISOLATED_DATA_DIR_WRITES: '1',
+      RESEARCH_MODE: '1',
+      AUTH_TEST_BYPASS: '1',
+      PORT: '0',
+      DATABASE_URL: '',
+    },
+  });
+  const marker = run.stdout.lastIndexOf('__RESULT__');
+  assert.ok(marker >= 0, `child produced no result\nstderr: ${run.stderr.slice(-2000)}`);
+  const result = JSON.parse(run.stdout.slice(marker + '__RESULT__'.length).split('\n')[0]);
+  assert.deepEqual(result.hits, [], `opt-in against ./data wrote to disk:\n${result.hits.join('\n')}`);
+  assert.equal(result.ledgerWriteBlocked, true, 'opt-in must be ignored for the repo data dir');
+});

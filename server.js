@@ -162,7 +162,15 @@ const IS_PERFORMANCE_WORKER = process.env.PERFORMANCE_WORKER === '1';
 // actually serves traffic (`node server.js`). Anything that merely requires this
 // module — research runners, forked workers, tests — must never write data/.
 const IS_MAIN_PROCESS = require.main === module;
-const BOOT_WRITES_ENABLED = IS_MAIN_PROCESS && !IS_PERFORMANCE_WORKER;
+// Test harnesses (scripts/lifecycle-invariants.js) exercise the ledger and
+// history paths against a throwaway DATA_DIR. They opt in explicitly, and the
+// opt-in is honoured only when DATA_DIR points somewhere other than the repo's
+// ./data, so a research worker can never flip it on against the real ledger.
+const ISOLATED_DATA_DIR_WRITES = process.env.ISOLATED_DATA_DIR_WRITES === '1'
+  && !!process.env.DATA_DIR
+  && path.resolve(process.env.DATA_DIR) !== path.resolve(__dirname, 'data')
+  && (!process.env.RENDER_DISK_MOUNT_PATH || path.resolve(process.env.DATA_DIR) !== path.resolve(process.env.RENDER_DISK_MOUNT_PATH));
+const BOOT_WRITES_ENABLED = (IS_MAIN_PROCESS || ISOLATED_DATA_DIR_WRITES) && !IS_PERFORMANCE_WORKER;
 function bootRepair(label, fn) {
   if (!BOOT_WRITES_ENABLED) return;
   try {

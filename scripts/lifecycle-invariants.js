@@ -11,6 +11,9 @@ const http = require('http');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'as-lifecycle-'));
 process.env.DATA_DIR = tmp;
+// server.js blocks ledger/history writes unless it is the serving process; this
+// harness owns an isolated temp DATA_DIR, so it opts in explicitly.
+process.env.ISOLATED_DATA_DIR_WRITES = '1';
 process.env.IBKR_EVENTS_ENABLED = '1';
 // T29 explicitly verifies the authorized signal-flip path. Production remains
 // paused by default unless this flag is deliberately enabled.
