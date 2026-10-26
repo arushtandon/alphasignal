@@ -1,0 +1,666 @@
+{
+  "generatedAt": "2026-10-26T05:29:50.102Z",
+  "offline": false,
+  "rows": [
+    {
+      "symbol": "ES=F",
+      "name": "S&P 500 (E-mini series)",
+      "assetClass": "equity",
+      "ibkr": "MES",
+      "exchange": "CME",
+      "multiplier": 5,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "tom": true,
+      "tomLabel": "S&P 500",
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5496,
+        "barsSince2010": 4230,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "NQ=F",
+      "name": "Nasdaq 100",
+      "assetClass": "equity",
+      "ibkr": "MNQ",
+      "exchange": "CME",
+      "multiplier": 2,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5496,
+        "barsSince2010": 4230,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "YM=F",
+      "name": "Dow Jones",
+      "assetClass": "equity",
+      "ibkr": "MYM",
+      "exchange": "CBOT",
+      "multiplier": 0.5,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5489,
+        "barsSince2010": 4230,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "RTY=F",
+      "name": "Russell 2000",
+      "assetClass": "equity",
+      "ibkr": "M2K",
+      "exchange": "CME",
+      "multiplier": 5,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "report": {
+        "first": "2017-07-10",
+        "last": "2026-10-26",
+        "bars": 2341,
+        "barsSince2010": 2341,
+        "coversFrom2010": false,
+        "gaps": [],
+        "missingYears": [
+          2010,
+          2011,
+          2012,
+          2013,
+          2014,
+          2015,
+          2016
+        ]
+      },
+      "verdict": "PARTIAL (missing 2010, 2011, 2012, 2013, 2014, 2015, 2016)"
+    },
+    {
+      "symbol": "^STOXX50E",
+      "name": "Euro Stoxx 50 (index)",
+      "assetClass": "equity",
+      "ibkr": "FSXE",
+      "exchange": "EUREX",
+      "multiplier": 1,
+      "currency": "EUR",
+      "rollsPerYear": 4,
+      "note": "Micro-FESX; EUR 1 per point",
+      "report": {
+        "first": "2007-03-30",
+        "last": "2026-10-23",
+        "bars": 4906,
+        "barsSince2010": 4217,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "^GDAXI",
+      "name": "DAX (index)",
+      "assetClass": "equity",
+      "ibkr": "FDXS",
+      "exchange": "EUREX",
+      "multiplier": 1,
+      "currency": "EUR",
+      "rollsPerYear": 4,
+      "tom": true,
+      "tomLabel": "DAX",
+      "note": "Micro-DAX; EUR 1 per point",
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-23",
+        "bars": 5539,
+        "barsSince2010": 4267,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "^FTSE",
+      "name": "FTSE 100 (index)",
+      "assetClass": "equity",
+      "ibkr": "Z (ICE EU) — no micro; ISF.L ETF for TOM",
+      "exchange": "ICEEU",
+      "multiplier": 10,
+      "currency": "GBP",
+      "rollsPerYear": 4,
+      "tom": true,
+      "tomLabel": "FTSE 100",
+      "note": "No micro FTSE contract at IBKR; full Z is GBP 10/pt. TOM also run on ISF.L.",
+      "report": {
+        "first": "1990-01-02",
+        "last": "2026-10-06",
+        "bars": 9286,
+        "barsSince2010": 4232,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "ISF.L",
+      "name": "iShares Core FTSE 100 ETF",
+      "assetClass": "equity",
+      "ibkr": "ISF (LSE ETF)",
+      "exchange": "LSE",
+      "multiplier": 1,
+      "currency": "GBp",
+      "rollsPerYear": 0,
+      "tom": true,
+      "tomLabel": "FTSE 100 via ISF.L",
+      "note": "UK stamp duty does not apply to ETF purchases.",
+      "report": {
+        "first": "2009-01-02",
+        "last": "2026-10-23",
+        "bars": 4499,
+        "barsSince2010": 4246,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "^N225",
+      "name": "Nikkei 225 (index)",
+      "assetClass": "equity",
+      "ibkr": "MNK (OSE Micro Nikkei 225)",
+      "exchange": "OSE.JPN",
+      "multiplier": 10,
+      "currency": "JPY",
+      "rollsPerYear": 4,
+      "tom": true,
+      "tomLabel": "Nikkei 225",
+      "note": "JPY 10 per point",
+      "report": {
+        "first": "2005-01-04",
+        "last": "2026-10-26",
+        "bars": 5335,
+        "barsSince2010": 4110,
+        "coversFrom2010": true,
+        "gaps": [
+          {
+            "from": "2019-04-26",
+            "to": "2019-05-07",
+            "days": 11
+          }
+        ],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "^HSI",
+      "name": "Hang Seng (index)",
+      "assetClass": "equity",
+      "ibkr": "MHI (HKFE Mini Hang Seng)",
+      "exchange": "HKFE",
+      "multiplier": 10,
+      "currency": "HKD",
+      "rollsPerYear": 12,
+      "tom": true,
+      "tomLabel": "Hang Seng",
+      "note": "HKD 10 per point; monthly expiries",
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5372,
+        "barsSince2010": 4138,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "^FCHI",
+      "name": "CAC 40 (index)",
+      "assetClass": "equity",
+      "ibkr": "CAC40 (Euronext mini; no micro)",
+      "exchange": "MONEP",
+      "multiplier": 1,
+      "currency": "EUR",
+      "rollsPerYear": 12,
+      "tom": true,
+      "tomLabel": "CAC 40",
+      "note": "EUR 1 per point mini; monthly expiries",
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-23",
+        "bars": 5578,
+        "barsSince2010": 4299,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "ZN=F",
+      "name": "US 10-year T-note",
+      "assetClass": "rates",
+      "ibkr": "10Y (CBOT Micro 10-Year Yield) — price proxy ZN",
+      "exchange": "CBOT",
+      "multiplier": 1000,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "note": "Micro yield futures trade on yield, not price; sign of a price-trend signal is inverted when mapped",
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5477,
+        "barsSince2010": 4228,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "ZB=F",
+      "name": "US 30-year T-bond",
+      "assetClass": "rates",
+      "ibkr": "30Y (CBOT Micro 30-Year Yield) — price proxy ZB",
+      "exchange": "CBOT",
+      "multiplier": 1000,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "note": "As above",
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5483,
+        "barsSince2010": 4228,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "ZF=F",
+      "name": "US 5-year T-note",
+      "assetClass": "rates",
+      "ibkr": "5YY (CBOT Micro 5-Year Yield) — price proxy ZF",
+      "exchange": "CBOT",
+      "multiplier": 1000,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "note": "As above",
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5489,
+        "barsSince2010": 4230,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "6E=F",
+      "name": "Euro FX",
+      "assetClass": "fx",
+      "ibkr": "M6E",
+      "exchange": "CME",
+      "multiplier": 12500,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5496,
+        "barsSince2010": 4229,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "6J=F",
+      "name": "Japanese yen",
+      "assetClass": "fx",
+      "ibkr": "M6J",
+      "exchange": "CME",
+      "multiplier": 1250000,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5497,
+        "barsSince2010": 4230,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "6B=F",
+      "name": "British pound",
+      "assetClass": "fx",
+      "ibkr": "M6B",
+      "exchange": "CME",
+      "multiplier": 6250,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5496,
+        "barsSince2010": 4229,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "6A=F",
+      "name": "Australian dollar",
+      "assetClass": "fx",
+      "ibkr": "M6A",
+      "exchange": "CME",
+      "multiplier": 10000,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5497,
+        "barsSince2010": 4230,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "6C=F",
+      "name": "Canadian dollar",
+      "assetClass": "fx",
+      "ibkr": "MCD",
+      "exchange": "CME",
+      "multiplier": 10000,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "note": "E-micro CAD/USD (MCD)",
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5496,
+        "barsSince2010": 4229,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "GC=F",
+      "name": "Gold",
+      "assetClass": "commodity",
+      "ibkr": "MGC",
+      "exchange": "COMEX",
+      "multiplier": 10,
+      "currency": "USD",
+      "rollsPerYear": 6,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5484,
+        "barsSince2010": 4229,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "SI=F",
+      "name": "Silver",
+      "assetClass": "commodity",
+      "ibkr": "SIL",
+      "exchange": "COMEX",
+      "multiplier": 1000,
+      "currency": "USD",
+      "rollsPerYear": 5,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5484,
+        "barsSince2010": 4228,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "CL=F",
+      "name": "WTI crude",
+      "assetClass": "commodity",
+      "ibkr": "MCL",
+      "exchange": "NYMEX",
+      "multiplier": 100,
+      "currency": "USD",
+      "rollsPerYear": 12,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5486,
+        "barsSince2010": 4228,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "HG=F",
+      "name": "Copper",
+      "assetClass": "commodity",
+      "ibkr": "MHG",
+      "exchange": "COMEX",
+      "multiplier": 2500,
+      "currency": "USD",
+      "rollsPerYear": 5,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5487,
+        "barsSince2010": 4229,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "PL=F",
+      "name": "Platinum",
+      "assetClass": "commodity",
+      "ibkr": "PLM",
+      "exchange": "NYMEX",
+      "multiplier": 10,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 4926,
+        "barsSince2010": 4227,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "PA=F",
+      "name": "Palladium",
+      "assetClass": "commodity",
+      "ibkr": "PAM",
+      "exchange": "NYMEX",
+      "multiplier": 10,
+      "currency": "USD",
+      "rollsPerYear": 4,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5041,
+        "barsSince2010": 4210,
+        "coversFrom2010": true,
+        "gaps": [
+          {
+            "from": "2010-01-27",
+            "to": "2010-02-22",
+            "days": 26
+          }
+        ],
+        "missingYears": []
+      },
+      "verdict": "OK (gaps > 14d)"
+    },
+    {
+      "symbol": "NG=F",
+      "name": "Natural gas",
+      "assetClass": "commodity",
+      "ibkr": "MNG",
+      "exchange": "NYMEX",
+      "multiplier": 1000,
+      "currency": "USD",
+      "rollsPerYear": 12,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-26",
+        "bars": 5488,
+        "barsSince2010": 4230,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "BTC-USD",
+      "name": "Bitcoin",
+      "assetClass": "crypto",
+      "ibkr": "MBT",
+      "exchange": "CME",
+      "multiplier": 0.1,
+      "currency": "USD",
+      "rollsPerYear": 12,
+      "note": "Spot series as proxy; MBT is 0.1 BTC",
+      "report": {
+        "first": "2014-09-17",
+        "last": "2026-10-26",
+        "bars": 4422,
+        "barsSince2010": 4422,
+        "coversFrom2010": false,
+        "gaps": [],
+        "missingYears": [
+          2010,
+          2011,
+          2012,
+          2013
+        ]
+      },
+      "verdict": "PARTIAL (missing 2010, 2011, 2012, 2013)"
+    },
+    {
+      "symbol": "ETH-USD",
+      "name": "Ether",
+      "assetClass": "crypto",
+      "ibkr": "MET",
+      "exchange": "CME",
+      "multiplier": 0.1,
+      "currency": "USD",
+      "rollsPerYear": 12,
+      "note": "Spot series as proxy; MET is 0.1 ETH",
+      "report": {
+        "first": "2017-11-09",
+        "last": "2026-10-26",
+        "bars": 3273,
+        "barsSince2010": 3273,
+        "coversFrom2010": false,
+        "gaps": [],
+        "missingYears": [
+          2010,
+          2011,
+          2012,
+          2013,
+          2014,
+          2015,
+          2016
+        ]
+      },
+      "verdict": "PARTIAL (missing 2010, 2011, 2012, 2013, 2014, 2015, 2016)"
+    },
+    {
+      "symbol": "SPY",
+      "name": "SPY (benchmark)",
+      "assetClass": "benchmark",
+      "ibkr": "—",
+      "exchange": "—",
+      "multiplier": 1,
+      "currency": "USD",
+      "rollsPerYear": 0,
+      "report": {
+        "first": "2010-01-04",
+        "last": "2026-10-05",
+        "bars": 4214,
+        "barsSince2010": 4214,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    },
+    {
+      "symbol": "AGG",
+      "name": "AGG (60/40 bond leg)",
+      "assetClass": "benchmark",
+      "ibkr": "—",
+      "exchange": "—",
+      "multiplier": 1,
+      "currency": "USD",
+      "rollsPerYear": 0,
+      "report": {
+        "first": "2005-01-03",
+        "last": "2026-10-23",
+        "bars": 5487,
+        "barsSince2010": 4228,
+        "coversFrom2010": true,
+        "gaps": [],
+        "missingYears": []
+      },
+      "verdict": "OK"
+    }
+  ]
+}
