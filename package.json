@@ -15,6 +15,22 @@
     "validate:capital": "node scripts/capital-readiness-validation.js",
     "test:capital": "node --test test/capital-readiness.test.js test/postgres-store.test.js test/strategy-research.test.js",
     "compare:strategy": "node scripts/strategy-pnl-comparison.js",
+    "test:research": "node --test test/cost-model.test.js test/strategy-research.test.js test/factor-snapshot.test.js test/bayesian-expectancy.test.js test/walk-forward-optimizer.test.js",
+    "preflight:fmp-research": "node scripts/preflight-fmp-research.js",
+    "download:fmp-statements": "node scripts/download-fmp-quarterly-statements.js",
+    "report:pit-statement-availability": "node scripts/report-pit-statement-availability.js",
+    "backtest:performance-program": "node scripts/run-cache-backed-performance-program.js",
+    "backtest:setup-book": "node scripts/run-validated-setup-book.js",
+    "backtest:consistency": "node scripts/run-consistency-study.js",
+    "test:fmp-statements": "node --test test/fmp-statement-cache.test.js",
+    "backtest:advanced-factors": "node scripts/backtest-advanced-factors.js --perMarket=80",
+    "backtest:geography-side": "node scripts/backtest-advanced-factors.js --perMarket=80 --selection=dual-improvement --output=backtest-geography-side-results.json",
+    "backtest:production-overlays": "node scripts/backtest-production-factor-overlays.js --perMarket=80",
+    "report:production-overlays": "node scripts/report-production-factor-overlays.js",
+    "test:production-overlays": "node --test test/production-overlay-study.test.js",
+    "test:setup-book": "node --test test/validated-setup-book.test.js test/setup-book-flag.test.js test/publication-record.test.js test/evidence-setup-book.test.js test/setup-book-runtime.test.js test/setup-book-live-guards.test.js test/setup-book-execution.test.js test/setup-book-research-golden.test.js",
+    "backtest:regime-sell-hedge": "node scripts/run-regime-sell-hedge.js",
+    "test:consistency": "node --test test/consistency-study.test.js",
     "lint:bridge": "eslint server.js ibkr-bridge"
   },
   "dependencies": {
@@ -24,7 +40,7 @@
     "pg": "^8.23.0"
   },
   "devDependencies": {
-    "eslint": "^9.39.0",
-    "globals": "^16.4.0"
+    "eslint": "^9.39.5",
+    "globals": "^16.5.0"
   }
 }
