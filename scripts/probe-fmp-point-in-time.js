@@ -9,6 +9,9 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { loadResearchEnv } = require('./research-env');
+
+loadResearchEnv();
 
 const key = String(
   process.env.FMP_API_KEY || process.env.FMP_KEY || process.env.FINANCIAL_MODELING_PREP_API_KEY || '',
