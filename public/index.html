@@ -505,6 +505,19 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
   }
   tryHealth();
   setInterval(tryHealth, 60000);
+  function loadDanelfinBudget() {
+    fetch('/api/danelfin/budget', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) {
+      var el = document.getElementById('danelfinBudget');
+      if (!el || !d) return;
+      var last = d.lastCall ? (d.lastCall.status + ' ' + d.lastCall.at) : 'no calls';
+      el.textContent = 'Danelfin ' + d.environment + ' ' + d.used + '/' + d.share
+        + ' (month ' + d.totalUsed + '/' + d.monthlyCap + ', reserve ' + d.reserve + ')'
+        + (d.breakerOpen ? ' BREAKER OPEN' : '')
+        + ' · last ' + last;
+    }).catch(function () {});
+  }
+  loadDanelfinBudget();
+  setInterval(loadDanelfinBudget, 60000);
 })();
 </script>
 
@@ -550,6 +563,7 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
         <h2>Global market picks</h2>
         <p>Top 5 long &amp; short opportunities across the full research universe, ranked by AI composite score</p>
         <div class="dash-ts" id="dashTs">Loading...</div>
+        <div id="danelfinBudget" style="margin-top:6px;font-size:11px;font-family:'DM Mono',monospace;color:var(--m1)">Danelfin budget: …</div>
       </div>
 
       <!-- Two-column layout: picks (left) + earnings sidebar (right) -->

@@ -6698,8 +6698,7 @@ async function fetchFmpScore(symbol, opts = {}) {
 }
 
 
-/** Danelfin API: https://danelfin.com/docs/api — keyed by ticker as returned by the client batch. */
-const DANELFIN_BASE_URL = 'https://apirest.danelfin.com';
+/** Danelfin scores, if any, come from lib/integrations/danelfin-client.js. */
 function danelfinNum(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
@@ -6726,52 +6725,10 @@ function danelfinLatestLeaf(payload) {
   return chosen;
 }
 
-async function fetchDanelfinRow(apiKey, symbol) {
-  const sym = String(symbol || '').trim();
-  if (!sym) return null;
-  const fld =
-    'aiscore,technical,fundamental,sentiment,low_risk,buy_track_record,sell_track_record';
-
-  async function ranking(marketEu) {
-    const q = `ticker=${encodeURIComponent(sym)}&fields=${encodeURIComponent(fld)}`;
-    const u = `${DANELFIN_BASE_URL}/ranking?${q}${marketEu ? '&market=europe' : ''}`;
-    const r = await fetch(u, {
-      headers: { Accept: 'application/json', 'x-api-key': apiKey },
-      signal: AbortSignal.timeout(14000)
-    });
-    if (!r.ok) return null;
-    let json;
-    try {
-      json = await r.json();
-    } catch {
-      return null;
-    }
-    const leaf = danelfinLatestLeaf(json);
-    if (!leaf) return null;
-    return {
-      aiscore: danelfinNum(leaf.aiscore),
-      technical: danelfinNum(leaf.technical),
-      fundamental: danelfinNum(leaf.fundamental),
-      sentiment: danelfinNum(leaf.sentiment),
-      low_risk: danelfinNum(leaf.low_risk),
-      buy_track_record:
-        leaf.buy_track_record === true ||
-        leaf.buy_track_record === 1 ||
-        leaf.buy_track_record === '1',
-      sell_track_record:
-        leaf.sell_track_record === true ||
-        leaf.sell_track_record === 1 ||
-        leaf.sell_track_record === '1'
-    };
-  }
-  try {
-    const us = await ranking(false);
-    if (us && us.aiscore != null) return us;
-    return await ranking(true);
-  } catch (e) {
-    console.warn('Danelfin', sym, e.message);
-    return null;
-  }
+async function fetchDanelfinRow() {
+  // Retired from this file. The only caller that may hit the network is
+  // lib/integrations/danelfin-client.js, and the batch route below does not.
+  return null;
 }
 
 /** Re-derive action/rating from buy/sell scores after tier overlays. */
@@ -7563,6 +7520,55 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
   fixHistoryRecordMinRR(trade);
   return { ok: true, trade, shell };
 }
+
+app.get('/api/danelfin/budget', (req, res) => {
+  const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
+  const client = createDanelfinClient({ allowNetwork: false });
+  res.json({ ok: true, ...client.status() });
+});
+
+app.post('/api/danelfin/discover', async (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const dir = path.join(DATA_DIR, 'danelfin-discovery');
+  const doneFile = path.join(dir, 'done.json');
+  if (fs.existsSync(doneFile)) return res.json({ ok: true, already: true, ...JSON.parse(fs.readFileSync(doneFile, 'utf8')) });
+  const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
+  const fields = 'aiscore,fundamental,technical,sentiment,low_risk';
+  const client = createDanelfinClient({
+    root: path.join(DATA_DIR, 'danelfin-research'),
+    environment: 'research',
+    allowNetwork: true,
+    maxCalls: 3,
+  });
+  const jobs = [
+    { purpose: 'discovery-earliest', params: { date: '2017-01-03', fields } },
+    { purpose: 'discovery-ticker-history', params: { ticker: 'AAPL', fields } },
+    { purpose: 'discovery-ai-min-9', params: { date: '2024-06-03', aiscore_min: 9, fields } },
+  ];
+  fs.mkdirSync(dir, { recursive: true });
+  const summary = [];
+  for (const job of jobs) {
+    const result = await client.request({ ...job, endpoint: '/ranking', noRetry: true });
+    const file = path.join(dir, `${job.purpose}.json`);
+    fs.writeFileSync(file, JSON.stringify(result.body == null ? { status: result.status, reason: result.reason } : result.body));
+    const body = result.body && typeof result.body === 'object' ? result.body : {};
+    const dateKey = Object.keys(body).find(key => /^\d{4}-\d{2}-\d{2}$/.test(key));
+    const tickers = dateKey && body[dateKey] && typeof body[dateKey] === 'object' ? Object.keys(body[dateKey]) : [];
+    summary.push({
+      purpose: job.purpose,
+      params: job.params,
+      ok: result.ok === true,
+      status: result.status || null,
+      reason: result.reason || null,
+      dateKeys: Object.keys(body).filter(key => /^\d{4}-\d{2}-\d{2}$/.test(key)).length,
+      tickers: tickers.length,
+      file,
+    });
+  }
+  const record = { at: new Date().toISOString(), calls: summary };
+  fs.writeFileSync(doneFile, JSON.stringify(record, null, 2));
+  res.json({ ok: true, ...record });
+});
 
 // POST /api/danelfin/batch — equities only; returns map ticker -> scores (omit if no AI score)
 app.post('/api/danelfin/batch', async (req, res) => {
