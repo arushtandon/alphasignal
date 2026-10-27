@@ -1,0 +1,94 @@
+{
+  "generatedAt": "2026-09-29T10:14:06.078Z",
+  "source": "data/research/fmp cached statement responses only",
+  "researchOnly": true,
+  "liveBehaviorChanged": false,
+  "legalDeadlineRules": {
+    "US": "quarterly 45d; annual 90d",
+    "Japan": "quarterly 45d; annual 90d",
+    "Hong Kong": "interim 60d; annual 90d",
+    "UK/Germany/France": "quarterly or half-yearly 90d; annual 120d",
+    "unknownPeriod": "longer applicable deadline"
+  },
+  "markets": [
+    {
+      "market": "US",
+      "vendorDateRows": 5166,
+      "deadlineOnlyRows": 20742,
+      "medianAvailabilityLagDays": 45,
+      "fScoreCoverage": {
+        "symbols": 68,
+        "symbolsWithAllStatements": 68,
+        "symbolsWithEnoughConsecutiveFilings": 51,
+        "percentage": 75
+      },
+      "cadence": "QUARTERLY_SCORE_UPDATE"
+    },
+    {
+      "market": "Japan",
+      "vendorDateRows": 123,
+      "deadlineOnlyRows": 47915,
+      "medianAvailabilityLagDays": 45,
+      "fScoreCoverage": {
+        "symbols": 223,
+        "symbolsWithAllStatements": 222,
+        "symbolsWithEnoughConsecutiveFilings": 97,
+        "percentage": 43.5
+      },
+      "cadence": "QUARTERLY_SCORE_UPDATE"
+    },
+    {
+      "market": "Hong Kong",
+      "vendorDateRows": 2,
+      "deadlineOnlyRows": 12583,
+      "medianAvailabilityLagDays": 60,
+      "fScoreCoverage": {
+        "symbols": 78,
+        "symbolsWithAllStatements": 78,
+        "symbolsWithEnoughConsecutiveFilings": 32,
+        "percentage": 41
+      },
+      "cadence": "QUARTERLY_SCORE_UPDATE"
+    },
+    {
+      "market": "UK",
+      "vendorDateRows": 36,
+      "deadlineOnlyRows": 18632,
+      "medianAvailabilityLagDays": 90,
+      "fScoreCoverage": {
+        "symbols": 100,
+        "symbolsWithAllStatements": 99,
+        "symbolsWithEnoughConsecutiveFilings": 33,
+        "percentage": 33
+      },
+      "cadence": "TWICE_YEARLY_SCORE_UPDATE"
+    },
+    {
+      "market": "Germany",
+      "vendorDateRows": 0,
+      "deadlineOnlyRows": 8858,
+      "medianAvailabilityLagDays": 90,
+      "fScoreCoverage": {
+        "symbols": 40,
+        "symbolsWithAllStatements": 40,
+        "symbolsWithEnoughConsecutiveFilings": 27,
+        "percentage": 67.5
+      },
+      "cadence": "TWICE_YEARLY_SCORE_UPDATE"
+    },
+    {
+      "market": "France",
+      "vendorDateRows": 0,
+      "deadlineOnlyRows": 7181,
+      "medianAvailabilityLagDays": 90,
+      "fScoreCoverage": {
+        "symbols": 40,
+        "symbolsWithAllStatements": 40,
+        "symbolsWithEnoughConsecutiveFilings": 18,
+        "percentage": 45
+      },
+      "cadence": "TWICE_YEARLY_SCORE_UPDATE"
+    }
+  ],
+  "partsBtoEBlocker": "No genuine runner replays the production trend entry/exit primitives with cached PIT F-scores. scripts/backtest-performance-program.js only emits a blocked report and explicitly performs no execution, so Parts B–E were not run."
+}

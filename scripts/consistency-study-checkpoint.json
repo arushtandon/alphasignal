@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "study": "consistency-first-all-markets-v1",
+  "state": "complete",
+  "completedAt": "2026-10-05T13:04:54.234Z",
+  "output": "scripts\\consistency-study-results.json",
+  "cells": 1982,
+  "consistent": 7
+}

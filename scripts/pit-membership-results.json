@@ -1,0 +1,2741 @@
+{
+  "generatedAt": "2026-10-06T05:57:51.033Z",
+  "rows": [
+    {
+      "id": "B__UK__medium__momentum__regimeoff",
+      "market": "UK",
+      "horizon": "medium",
+      "strategy": "12-1 momentum",
+      "overall": {
+        "returnPct": -22.59,
+        "maxDrawdownPct": 63.67,
+        "sharpe": -0.02,
+        "n": 1890,
+        "win": 49.2,
+        "pf": 0.991
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -16.69,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 5.81,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 22.75,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": -6.02,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": -0.04,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": 2.2,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 0.76,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": -21.83,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 11.21,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -19.23,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": -12.95,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -25.49,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": 1.81,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": -0.69,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 62.63,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": -1.24,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -21.64
+      },
+      "maxDrawdownPct": 63.67,
+      "medianNames": 10,
+      "verdict": "CANDIDATE",
+      "membershipCount2010": 104,
+      "pricedNames": 131,
+      "universeNames": 197,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": 6.56,
+          "pf": 1.393,
+          "win": 61.7,
+          "trades": 60,
+          "maxDrawdownPct": 5.1,
+          "benchmarkReturnPct": 0.72,
+          "beat": true
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 32.8,
+          "pf": 4.451,
+          "win": 65,
+          "trades": 60,
+          "maxDrawdownPct": 0,
+          "benchmarkReturnPct": 13.36,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 7.81,
+          "pf": 1.36,
+          "win": 60,
+          "trades": 60,
+          "maxDrawdownPct": 12.14,
+          "benchmarkReturnPct": 8.86,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 1.63,
+          "pf": 1.124,
+          "win": 45,
+          "trades": 60,
+          "maxDrawdownPct": 10.78,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "prior": {
+        "verdict": "CANDIDATE",
+        "returnPct": 177.93,
+        "maxDrawdownPct": 32.65,
+        "worstMonth": {
+          "date": "2020-03-31",
+          "returnPct": -24.97
+        },
+        "beats": 3
+      }
+    },
+    {
+      "id": "B__UK__medium__momentum__regimeon",
+      "market": "UK",
+      "horizon": "medium",
+      "strategy": "12-1 momentum, cash below 200-day MA",
+      "overall": {
+        "returnPct": -11.03,
+        "maxDrawdownPct": 48.01,
+        "sharpe": -0.01,
+        "n": 1170,
+        "win": 48.2,
+        "pf": 0.995
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -1.77,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 0.15,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 12.36,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": -9.71,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": -0.94,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": 3.46,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": -7.15,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": 1.1,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 3.89,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -5.82,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": -15.11,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -19.87,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": 1.2,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": -0.69,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 40.26,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": -1.24,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2026-03-31",
+        "returnPct": -12.14
+      },
+      "maxDrawdownPct": 48.01,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "membershipCount2010": 104,
+      "pricedNames": 131,
+      "universeNames": 197,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -8.1,
+          "pf": 0.551,
+          "win": 45,
+          "trades": 40,
+          "maxDrawdownPct": 8.1,
+          "benchmarkReturnPct": 0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 32.8,
+          "pf": 4.451,
+          "win": 65,
+          "trades": 60,
+          "maxDrawdownPct": 0,
+          "benchmarkReturnPct": 13.36,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 7.81,
+          "pf": 1.36,
+          "win": 60,
+          "trades": 60,
+          "maxDrawdownPct": 12.14,
+          "benchmarkReturnPct": 8.86,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 1.63,
+          "pf": 1.124,
+          "win": 45,
+          "trades": 60,
+          "maxDrawdownPct": 10.78,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "prior": {
+        "verdict": "FAIL",
+        "returnPct": 86.47,
+        "maxDrawdownPct": 28.29,
+        "worstMonth": {
+          "date": "2026-03-31",
+          "returnPct": -12.09
+        },
+        "beats": 2
+      }
+    },
+    {
+      "id": "B__UK__medium__piotroski6__regimeoff",
+      "market": "UK",
+      "horizon": "medium",
+      "strategy": "12-1 momentum among Piotroski ≥ 6",
+      "overall": {
+        "returnPct": -49.04,
+        "maxDrawdownPct": 62.77,
+        "sharpe": -0.242,
+        "n": 1711,
+        "win": 46.1,
+        "pf": 0.866
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -3.64,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": -6.59,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 4.29,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": -16.13,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": -5.45,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": -6.84,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 10.46,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": -19.66,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": -4.34,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -23.42,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": 9.75,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -9.71,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": -5.99,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": -2.52,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 16.26,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 7.07,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -12.79
+      },
+      "maxDrawdownPct": 62.77,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "membershipCount2010": 104,
+      "pricedNames": 131,
+      "universeNames": 197,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -1.6,
+          "pf": 0.938,
+          "win": 46.7,
+          "trades": 60,
+          "maxDrawdownPct": 5.07,
+          "benchmarkReturnPct": 0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 9.6,
+          "pf": 1.693,
+          "win": 50.9,
+          "trades": 53,
+          "maxDrawdownPct": 0.12,
+          "benchmarkReturnPct": 13.36,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 9.66,
+          "pf": 1.615,
+          "win": 58.3,
+          "trades": 60,
+          "maxDrawdownPct": 4.66,
+          "benchmarkReturnPct": 8.86,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 1.12,
+          "pf": 1.086,
+          "win": 43.3,
+          "trades": 60,
+          "maxDrawdownPct": 5.17,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "prior": {
+        "verdict": "FAIL",
+        "returnPct": -28.92,
+        "maxDrawdownPct": 53.75,
+        "worstMonth": {
+          "date": "2020-03-31",
+          "returnPct": -12.9
+        },
+        "beats": 1
+      }
+    },
+    {
+      "id": "B__UK__medium__piotroski6__regimeon",
+      "market": "UK",
+      "horizon": "medium",
+      "strategy": "12-1 momentum among Piotroski ≥ 6, cash below 200-day MA",
+      "overall": {
+        "returnPct": -37.63,
+        "maxDrawdownPct": 49.24,
+        "sharpe": -0.274,
+        "n": 1039,
+        "win": 45.2,
+        "pf": 0.854
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -3.16,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": -11.87,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": -0.73,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": -7.08,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": -6.27,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": -2.86,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 11.13,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": 1.19,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": -3.11,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -17.78,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": 3.56,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -13.1,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": -4.68,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": -2.52,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 8.5,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 7.07,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-02-28",
+        "returnPct": -10.65
+      },
+      "maxDrawdownPct": 49.24,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "membershipCount2010": 104,
+      "pricedNames": 131,
+      "universeNames": 197,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -8.16,
+          "pf": 0.484,
+          "win": 45,
+          "trades": 40,
+          "maxDrawdownPct": 8.16,
+          "benchmarkReturnPct": 0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 9.6,
+          "pf": 1.693,
+          "win": 50.9,
+          "trades": 53,
+          "maxDrawdownPct": 0.12,
+          "benchmarkReturnPct": 13.36,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 9.66,
+          "pf": 1.615,
+          "win": 58.3,
+          "trades": 60,
+          "maxDrawdownPct": 4.66,
+          "benchmarkReturnPct": 8.86,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 1.12,
+          "pf": 1.086,
+          "win": 43.3,
+          "trades": 60,
+          "maxDrawdownPct": 5.17,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "prior": {
+        "verdict": "FAIL",
+        "returnPct": -24.17,
+        "maxDrawdownPct": 40.9,
+        "worstMonth": {
+          "date": "2020-02-28",
+          "returnPct": -10.79
+        },
+        "beats": 1
+      }
+    },
+    {
+      "id": "B__UK__long__momentum__regimeoff",
+      "market": "UK",
+      "horizon": "long",
+      "strategy": "12-1 momentum",
+      "overall": {
+        "returnPct": 230.4,
+        "maxDrawdownPct": 22.84,
+        "sharpe": 0.559,
+        "n": 1840,
+        "win": 57.1,
+        "pf": 1.835
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -6.71,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 17.54,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 39.08,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": 3.76,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": 7,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": -8.27,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 19.28,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": -14.26,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 22.57,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -2.03,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": -0.38,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -13.08,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": 11.9,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": 5.7,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 61.72,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 4.58,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -16.6
+      },
+      "maxDrawdownPct": 22.84,
+      "medianNames": 10,
+      "verdict": "PASS",
+      "membershipCount2010": 104,
+      "pricedNames": 131,
+      "universeNames": 197,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": 2.23,
+          "pf": 1.582,
+          "win": 61.7,
+          "trades": 60,
+          "maxDrawdownPct": 6.89,
+          "benchmarkReturnPct": 0.72,
+          "beat": true
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 34.47,
+          "pf": 10.132,
+          "win": 83.3,
+          "trades": 60,
+          "maxDrawdownPct": 0,
+          "benchmarkReturnPct": 13.36,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 11.42,
+          "pf": 22.657,
+          "win": 85,
+          "trades": 60,
+          "maxDrawdownPct": 11.69,
+          "benchmarkReturnPct": 8.86,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 7.61,
+          "pf": 1.836,
+          "win": 55,
+          "trades": 60,
+          "maxDrawdownPct": 5.96,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "prior": {
+        "verdict": "FAIL",
+        "returnPct": 800.63,
+        "maxDrawdownPct": 24.74,
+        "worstMonth": {
+          "date": "2020-03-31",
+          "returnPct": -18.37
+        },
+        "beats": 2
+      }
+    },
+    {
+      "id": "B__UK__long__momentum__regimeon",
+      "market": "UK",
+      "horizon": "long",
+      "strategy": "12-1 momentum, cash below 200-day MA",
+      "overall": {
+        "returnPct": 101.54,
+        "maxDrawdownPct": 21.87,
+        "sharpe": 0.509,
+        "n": 770,
+        "win": 61.9,
+        "pf": 2.845
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": 5.26,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 1.5,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 23.65,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": -5.49,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": -0.66,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": 0.57,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 14.39,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": 3.81,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 3.27,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -4.07,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": -3.56,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -10.9,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": 4,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": 4.51,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 40.61,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 4.58,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2026-03-31",
+        "returnPct": -11.69
+      },
+      "maxDrawdownPct": 21.87,
+      "medianNames": 10,
+      "verdict": "CANDIDATE",
+      "membershipCount2010": 104,
+      "pricedNames": 131,
+      "universeNames": 197,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -6.74,
+          "pf": 1.137,
+          "win": 50,
+          "trades": 40,
+          "maxDrawdownPct": 6.74,
+          "benchmarkReturnPct": 0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 28.14,
+          "pf": 9.73,
+          "win": 80,
+          "trades": 40,
+          "maxDrawdownPct": 0,
+          "benchmarkReturnPct": 13.36,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 11.42,
+          "pf": 22.657,
+          "win": 85,
+          "trades": 60,
+          "maxDrawdownPct": 11.69,
+          "benchmarkReturnPct": 8.86,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 7.61,
+          "pf": 1.836,
+          "win": 55,
+          "trades": 60,
+          "maxDrawdownPct": 5.96,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "prior": {
+        "verdict": "FAIL",
+        "returnPct": 175.62,
+        "maxDrawdownPct": 22.56,
+        "worstMonth": {
+          "date": "2026-03-31",
+          "returnPct": -12.96
+        },
+        "beats": 2
+      }
+    },
+    {
+      "id": "B__UK__long__piotroski6__regimeoff",
+      "market": "UK",
+      "horizon": "long",
+      "strategy": "12-1 momentum among Piotroski ≥ 6",
+      "overall": {
+        "returnPct": 102.29,
+        "maxDrawdownPct": 30.49,
+        "sharpe": 0.386,
+        "n": 1661,
+        "win": 54.3,
+        "pf": 1.46
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": 1.5,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 2.87,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 16.71,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": -9.52,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": -2.94,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": 6.17,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 14.68,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": -13.55,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 12.47,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -9.21,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": 19.36,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -4.77,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": 3.11,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": 12.89,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 26.15,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 5.35,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -13.47
+      },
+      "maxDrawdownPct": 30.49,
+      "medianNames": 10,
+      "verdict": "CANDIDATE",
+      "membershipCount2010": 104,
+      "pricedNames": 131,
+      "universeNames": 197,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": 7.55,
+          "pf": 1.894,
+          "win": 50,
+          "trades": 60,
+          "maxDrawdownPct": 3.7,
+          "benchmarkReturnPct": 0.72,
+          "beat": true
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 13.7,
+          "pf": 7.605,
+          "win": 66.7,
+          "trades": 60,
+          "maxDrawdownPct": 0.33,
+          "benchmarkReturnPct": 13.36,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 8.98,
+          "pf": 6.033,
+          "win": 71.7,
+          "trades": 53,
+          "maxDrawdownPct": 5.48,
+          "benchmarkReturnPct": 8.86,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 0.48,
+          "pf": 1.144,
+          "win": 53.3,
+          "trades": 60,
+          "maxDrawdownPct": 1.59,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "prior": {
+        "verdict": "PASS",
+        "returnPct": 172.83,
+        "maxDrawdownPct": 32.44,
+        "worstMonth": {
+          "date": "2020-03-31",
+          "returnPct": -13.54
+        },
+        "beats": 4
+      }
+    },
+    {
+      "id": "B__UK__long__piotroski6__regimeon",
+      "market": "UK",
+      "horizon": "long",
+      "strategy": "12-1 momentum among Piotroski ≥ 6, cash below 200-day MA",
+      "overall": {
+        "returnPct": 35.61,
+        "maxDrawdownPct": 19.43,
+        "sharpe": 0.294,
+        "n": 679,
+        "win": 59.2,
+        "pf": 2.211
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": 0.05,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": -1.97,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 9.53,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": -3.12,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": -1.74,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": -0.98,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 13.92,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": 3.44,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 1.22,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -10.01,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": 9.76,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -7.5,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": -3.9,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": 8.43,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 11.94,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 5.35,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2022-06-30",
+        "returnPct": -7.64
+      },
+      "maxDrawdownPct": 19.43,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "membershipCount2010": 104,
+      "pricedNames": 131,
+      "universeNames": 197,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -1.74,
+          "pf": 1.272,
+          "win": 45,
+          "trades": 40,
+          "maxDrawdownPct": 3.93,
+          "benchmarkReturnPct": 0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 10.43,
+          "pf": 8.404,
+          "win": 70,
+          "trades": 40,
+          "maxDrawdownPct": 0.33,
+          "benchmarkReturnPct": 13.36,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 8.98,
+          "pf": 6.033,
+          "win": 71.7,
+          "trades": 53,
+          "maxDrawdownPct": 5.48,
+          "benchmarkReturnPct": 8.86,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 0.48,
+          "pf": 1.144,
+          "win": 53.3,
+          "trades": 60,
+          "maxDrawdownPct": 1.59,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "prior": {
+        "verdict": "FAIL",
+        "returnPct": 53.43,
+        "maxDrawdownPct": 23.15,
+        "worstMonth": {
+          "date": "2022-06-30",
+          "returnPct": -8.51
+        },
+        "beats": 2
+      }
+    },
+    {
+      "id": "B__France__medium__momentum__regimeoff",
+      "market": "France",
+      "horizon": "medium",
+      "strategy": "12-1 momentum",
+      "overall": {
+        "returnPct": 54.94,
+        "maxDrawdownPct": 31.78,
+        "sharpe": 0.244,
+        "n": 1890,
+        "win": 51,
+        "pf": 1.132
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -20.02,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 24.45,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 22.7,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": -8.25,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": 8.24,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": -11.43,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 14.54,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -12.27,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 23.46,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": 2.37,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 19.79,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -23.36,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 2.52,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -0.78,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": 12.31,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": 8.28,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -16.74
+      },
+      "maxDrawdownPct": 31.78,
+      "medianNames": 10,
+      "verdict": "PASS",
+      "membershipCount2010": 40,
+      "pricedNames": 52,
+      "universeNames": 62,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": 6.2,
+          "pf": 1.501,
+          "win": 55,
+          "trades": 60,
+          "maxDrawdownPct": 4.8,
+          "benchmarkReturnPct": 0.95,
+          "beat": true
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 6.24,
+          "pf": 1.594,
+          "win": 53.3,
+          "trades": 60,
+          "maxDrawdownPct": 3.39,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 4.66,
+          "pf": 1.287,
+          "win": 53.3,
+          "trades": 60,
+          "maxDrawdownPct": 12.04,
+          "benchmarkReturnPct": -1.67,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 3.87,
+          "pf": 1.215,
+          "win": 41.7,
+          "trades": 60,
+          "maxDrawdownPct": 9.13,
+          "benchmarkReturnPct": -5.07,
+          "beat": true
+        }
+      ],
+      "prior": {
+        "verdict": "FAIL",
+        "returnPct": 69.98,
+        "maxDrawdownPct": 34.19,
+        "worstMonth": {
+          "date": "2020-03-31",
+          "returnPct": -14.45
+        },
+        "beats": 2
+      }
+    },
+    {
+      "id": "B__France__medium__momentum__regimeon",
+      "market": "France",
+      "horizon": "medium",
+      "strategy": "12-1 momentum, cash below 200-day MA",
+      "overall": {
+        "returnPct": 3.95,
+        "maxDrawdownPct": 24.95,
+        "sharpe": 0.076,
+        "n": 1180,
+        "win": 48.5,
+        "pf": 1.045
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -9.02,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 9.68,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 12.34,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": -7.07,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": -11.91,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": -2.65,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 14.54,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": 3.23,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 1.67,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -4.89,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 19.79,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -11.65,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": -0.38,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -3.8,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": 1.54,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -1.2,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2026-03-31",
+        "returnPct": -12.04
+      },
+      "maxDrawdownPct": 24.95,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "membershipCount2010": 40,
+      "pricedNames": 52,
+      "universeNames": 62,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -7.25,
+          "pf": 0.156,
+          "win": 30,
+          "trades": 20,
+          "maxDrawdownPct": 7.25,
+          "benchmarkReturnPct": 0.95,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 6.24,
+          "pf": 1.594,
+          "win": 53.3,
+          "trades": 60,
+          "maxDrawdownPct": 3.39,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 4.66,
+          "pf": 1.287,
+          "win": 53.3,
+          "trades": 60,
+          "maxDrawdownPct": 12.04,
+          "benchmarkReturnPct": -1.67,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -5.22,
+          "pf": 0.741,
+          "win": 34,
+          "trades": 50,
+          "maxDrawdownPct": 9.13,
+          "benchmarkReturnPct": -5.07,
+          "beat": false
+        }
+      ],
+      "prior": {
+        "verdict": "FAIL",
+        "returnPct": 7.12,
+        "maxDrawdownPct": 30.76,
+        "worstMonth": {
+          "date": "2026-03-31",
+          "returnPct": -11.35
+        },
+        "beats": 0
+      }
+    },
+    {
+      "id": "B__France__medium__piotroski6__regimeoff",
+      "market": "France",
+      "horizon": "medium",
+      "strategy": "12-1 momentum among Piotroski ≥ 6",
+      "overall": {
+        "returnPct": 2.29,
+        "maxDrawdownPct": 32.77,
+        "sharpe": 0.086,
+        "n": 1479,
+        "win": 50,
+        "pf": 1.058
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -7.91,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 8.78,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 9.59,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": -6.13,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": 14.21,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": 4.39,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 6.62,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -18.8,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 12.68,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -12.34,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 13.96,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -6.49,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 1.8,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -5.1,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": 9.01,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -13.25,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -18.92
+      },
+      "maxDrawdownPct": 32.77,
+      "medianNames": 8,
+      "verdict": "FAIL",
+      "membershipCount2010": 40,
+      "pricedNames": 52,
+      "universeNames": 62,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -0.92,
+          "pf": 1.176,
+          "win": 54.4,
+          "trades": 57,
+          "maxDrawdownPct": 9.99,
+          "benchmarkReturnPct": 0.95,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 1.96,
+          "pf": 1.139,
+          "win": 46.6,
+          "trades": 58,
+          "maxDrawdownPct": 4.05,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -4.94,
+          "pf": 0.803,
+          "win": 40,
+          "trades": 50,
+          "maxDrawdownPct": 7.09,
+          "benchmarkReturnPct": -1.67,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -8.15,
+          "pf": 0.58,
+          "win": 43.3,
+          "trades": 60,
+          "maxDrawdownPct": 8.76,
+          "benchmarkReturnPct": -5.07,
+          "beat": false
+        }
+      ],
+      "prior": {
+        "verdict": "FAIL",
+        "returnPct": 34.03,
+        "maxDrawdownPct": 29.54,
+        "worstMonth": {
+          "date": "2020-03-31",
+          "returnPct": -19.36
+        },
+        "beats": 0
+      }
+    },
+    {
+      "id": "B__France__medium__piotroski6__regimeon",
+      "market": "France",
+      "horizon": "medium",
+      "strategy": "12-1 momentum among Piotroski ≥ 6, cash below 200-day MA",
+      "overall": {
+        "returnPct": -41.84,
+        "maxDrawdownPct": 46.12,
+        "sharpe": -0.301,
+        "n": 955,
+        "win": 47,
+        "pf": 0.875
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -0.44,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": -5.71,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 1.78,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": -3.18,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": -15.6,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": -2.42,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 6.62,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -5.62,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": -5.09,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -10.08,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 13.96,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -5.64,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 7.05,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -11.03,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": -0.89,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -12.44,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2015-08-31",
+        "returnPct": -10.61
+      },
+      "maxDrawdownPct": 46.12,
+      "medianNames": 8,
+      "verdict": "FAIL",
+      "membershipCount2010": 40,
+      "pricedNames": 52,
+      "universeNames": 62,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -11.95,
+          "pf": 0.125,
+          "win": 23.5,
+          "trades": 17,
+          "maxDrawdownPct": 11.95,
+          "benchmarkReturnPct": 0.95,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 1.96,
+          "pf": 1.139,
+          "win": 46.6,
+          "trades": 58,
+          "maxDrawdownPct": 4.05,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -4.94,
+          "pf": 0.803,
+          "win": 40,
+          "trades": 50,
+          "maxDrawdownPct": 7.09,
+          "benchmarkReturnPct": -1.67,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -7.29,
+          "pf": 0.555,
+          "win": 44,
+          "trades": 50,
+          "maxDrawdownPct": 8.76,
+          "benchmarkReturnPct": -5.07,
+          "beat": false
+        }
+      ],
+      "prior": {
+        "verdict": "FAIL",
+        "returnPct": -27.63,
+        "maxDrawdownPct": 35.07,
+        "worstMonth": {
+          "date": "2024-10-31",
+          "returnPct": -7.99
+        },
+        "beats": 0
+      }
+    },
+    {
+      "id": "B__France__long__momentum__regimeoff",
+      "market": "France",
+      "horizon": "long",
+      "strategy": "12-1 momentum",
+      "overall": {
+        "returnPct": 212.96,
+        "maxDrawdownPct": 28.04,
+        "sharpe": 0.515,
+        "n": 1840,
+        "win": 61.1,
+        "pf": 1.952
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -21.81,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 26.29,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 32.82,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": 0.86,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": 20.26,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": -5.83,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 19.07,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -6.8,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 27.67,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -1.69,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 27.68,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -16.21,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 19.88,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": 2.1,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": 12.47,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": 1.83,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -17.49
+      },
+      "maxDrawdownPct": 28.04,
+      "medianNames": 10,
+      "verdict": "CANDIDATE",
+      "membershipCount2010": 40,
+      "pricedNames": 52,
+      "universeNames": 62,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": 1.95,
+          "pf": 0.937,
+          "win": 56.7,
+          "trades": 60,
+          "maxDrawdownPct": 5.46,
+          "benchmarkReturnPct": 0.95,
+          "beat": true
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 5.12,
+          "pf": 1.527,
+          "win": 48.3,
+          "trades": 60,
+          "maxDrawdownPct": 3.04,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 5.34,
+          "pf": 4.268,
+          "win": 71.7,
+          "trades": 60,
+          "maxDrawdownPct": 10.73,
+          "benchmarkReturnPct": -1.67,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 0.02,
+          "pf": 1.808,
+          "win": 58.3,
+          "trades": 60,
+          "maxDrawdownPct": 8.08,
+          "benchmarkReturnPct": -5.07,
+          "beat": true
+        }
+      ],
+      "prior": {
+        "verdict": "CANDIDATE",
+        "returnPct": 371.25,
+        "maxDrawdownPct": 24.64,
+        "worstMonth": {
+          "date": "2020-03-31",
+          "returnPct": -16.33
+        },
+        "beats": 3
+      }
+    },
+    {
+      "id": "B__France__long__momentum__regimeon",
+      "market": "France",
+      "horizon": "long",
+      "strategy": "12-1 momentum, cash below 200-day MA",
+      "overall": {
+        "returnPct": 61,
+        "maxDrawdownPct": 17.57,
+        "sharpe": 0.366,
+        "n": 770,
+        "win": 68.1,
+        "pf": 3.721
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -7.35,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 4.59,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 20.02,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": -3.76,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": -5.06,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": -2.53,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 17.21,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": 7.81,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 2.88,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -6.88,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 25.69,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -4.37,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 5.14,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -2.09,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": 5.58,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -1.71,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2026-03-31",
+        "returnPct": -10.73
+      },
+      "maxDrawdownPct": 17.57,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "membershipCount2010": 40,
+      "pricedNames": 52,
+      "universeNames": 62,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -2.18,
+          "pf": 0.917,
+          "win": 50,
+          "trades": 20,
+          "maxDrawdownPct": 2.18,
+          "benchmarkReturnPct": 0.95,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 3.64,
+          "pf": 0.88,
+          "win": 40,
+          "trades": 20,
+          "maxDrawdownPct": 3.04,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 5.34,
+          "pf": 4.268,
+          "win": 71.7,
+          "trades": 60,
+          "maxDrawdownPct": 10.73,
+          "benchmarkReturnPct": -1.67,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -3.46,
+          "pf": 1.914,
+          "win": 62.5,
+          "trades": 40,
+          "maxDrawdownPct": 6.52,
+          "benchmarkReturnPct": -5.07,
+          "beat": true
+        }
+      ],
+      "prior": {
+        "verdict": "FAIL",
+        "returnPct": 107.97,
+        "maxDrawdownPct": 14.99,
+        "worstMonth": {
+          "date": "2026-03-31",
+          "returnPct": -9.71
+        },
+        "beats": 2
+      }
+    },
+    {
+      "id": "B__France__long__piotroski6__regimeoff",
+      "market": "France",
+      "horizon": "long",
+      "strategy": "12-1 momentum among Piotroski ≥ 6",
+      "overall": {
+        "returnPct": 53.54,
+        "maxDrawdownPct": 29.93,
+        "sharpe": 0.245,
+        "n": 1429,
+        "win": 56.7,
+        "pf": 1.365
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -9.94,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 5.46,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 16.24,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": -0.93,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": 16.49,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": 3.26,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 8.54,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -15.92,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 17.74,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -9.04,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 16.59,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -6.25,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 10.59,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": 0.4,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": 7.86,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -8.76,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -19.35
+      },
+      "maxDrawdownPct": 29.93,
+      "medianNames": 8,
+      "verdict": "FAIL",
+      "membershipCount2010": 40,
+      "pricedNames": 52,
+      "universeNames": 62,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": 1.11,
+          "pf": 0.349,
+          "win": 37.3,
+          "trades": 51,
+          "maxDrawdownPct": 7.54,
+          "benchmarkReturnPct": 0.95,
+          "beat": true
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": -0.21,
+          "pf": 1.693,
+          "win": 56.7,
+          "trades": 60,
+          "maxDrawdownPct": 4.36,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -0.9,
+          "pf": 2.829,
+          "win": 64.9,
+          "trades": 57,
+          "maxDrawdownPct": 6.52,
+          "benchmarkReturnPct": -1.67,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -6.46,
+          "pf": 0.533,
+          "win": 45.1,
+          "trades": 51,
+          "maxDrawdownPct": 8.59,
+          "benchmarkReturnPct": -5.07,
+          "beat": false
+        }
+      ],
+      "prior": {
+        "verdict": "FAIL",
+        "returnPct": 94.78,
+        "maxDrawdownPct": 26.24,
+        "worstMonth": {
+          "date": "2020-03-31",
+          "returnPct": -19.28
+        },
+        "beats": 1
+      }
+    },
+    {
+      "id": "B__France__long__piotroski6__regimeon",
+      "market": "France",
+      "horizon": "long",
+      "strategy": "12-1 momentum among Piotroski ≥ 6, cash below 200-day MA",
+      "overall": {
+        "returnPct": -3.98,
+        "maxDrawdownPct": 17.89,
+        "sharpe": 0.003,
+        "n": 612,
+        "win": 65,
+        "pf": 2.002
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -3.23,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": -1.27,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 6.2,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": 1.3,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": -6.79,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": -1.23,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 8.03,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -5.24,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 4.51,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -9.77,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 14.15,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -1.98,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 5.06,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -5.63,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": 1.18,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -6.34,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-02-28",
+        "returnPct": -7.56
+      },
+      "maxDrawdownPct": 17.89,
+      "medianNames": 8,
+      "verdict": "FAIL",
+      "membershipCount2010": 40,
+      "pricedNames": 52,
+      "universeNames": 62,
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -5.27,
+          "pf": 0.125,
+          "win": 29.4,
+          "trades": 17,
+          "maxDrawdownPct": 5.27,
+          "benchmarkReturnPct": 0.95,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 0.87,
+          "pf": 0.502,
+          "win": 40,
+          "trades": 20,
+          "maxDrawdownPct": 2.91,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -0.9,
+          "pf": 2.829,
+          "win": 64.9,
+          "trades": 57,
+          "maxDrawdownPct": 6.52,
+          "benchmarkReturnPct": -1.67,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -3.98,
+          "pf": 0.558,
+          "win": 50,
+          "trades": 34,
+          "maxDrawdownPct": 7.29,
+          "benchmarkReturnPct": -5.07,
+          "beat": true
+        }
+      ],
+      "prior": {
+        "verdict": "FAIL",
+        "returnPct": 8.45,
+        "maxDrawdownPct": 18.37,
+        "worstMonth": {
+          "date": "2026-03-31",
+          "returnPct": -8.14
+        },
+        "beats": 1
+      }
+    }
+  ]
+}

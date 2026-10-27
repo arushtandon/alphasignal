@@ -1,0 +1,2552 @@
+{
+  "generatedAt": "2026-10-01T09:07:45.130Z",
+  "mode": "BACKTEST_ONLY",
+  "liveBehaviorChanged": false,
+  "range": {
+    "requestedFrom": "2026-08-01",
+    "parityFrom": "2026-09-10",
+    "to": "2026-09-29"
+  },
+  "danelfinRetirement": {
+    "commitDate": "2026-09-09",
+    "comparisonStarts": "2026-09-10"
+  },
+  "usUniverse": {
+    "currentSymbols": 518,
+    "candidates": 808,
+    "historicalMembership": true,
+    "survivorshipBias": false
+  },
+  "history": {
+    "rawBuySellRows": 149,
+    "inRequestedRange": {
+      "Japan|long": 1,
+      "US|long": 2,
+      "Germany|short": 1,
+      "Hong Kong|medium": 1,
+      "US|short": 1,
+      "Japan|short": 3,
+      "Hong Kong|short": 1
+    },
+    "auditUsed": {
+      "Japan|long": 1
+    },
+    "excludedPreDanelfin": {
+      "US|long": 2,
+      "Germany|short": 1,
+      "Hong Kong|medium": 1,
+      "US|short": 1,
+      "Japan|short": 3,
+      "Hong Kong|short": 1
+    },
+    "unparseableDate": [],
+    "unmappedMarket": [
+      {
+        "market": null,
+        "ticker": "INDUSINDBK.NS",
+        "horizon": "short",
+        "side": "buy",
+        "date": "2026-07-25",
+        "rating": "Buy",
+        "score": 72,
+        "confidence": 62,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-07-25T14:43:40.824Z"
+      },
+      {
+        "market": null,
+        "ticker": "BAJFINANCE.NS",
+        "horizon": "short",
+        "side": "buy",
+        "date": "2026-07-25",
+        "rating": "Buy",
+        "score": 72,
+        "confidence": 62,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-07-24T18:29:09.634Z"
+      },
+      {
+        "market": null,
+        "ticker": "NESTLEIND.NS",
+        "horizon": "medium",
+        "side": "buy",
+        "date": "2026-07-15",
+        "rating": "Strong Buy",
+        "score": 88,
+        "confidence": 88,
+        "historyMarketTier": null,
+        "rawDate": "2026-07-15T12:00:00.000Z"
+      },
+      {
+        "market": null,
+        "ticker": "HINDUNILVR.NS",
+        "horizon": "long",
+        "side": "sell",
+        "date": "2026-07-15",
+        "rating": "Sell",
+        "score": 78,
+        "confidence": 78,
+        "historyMarketTier": null,
+        "rawDate": "2026-07-15T12:00:00.000Z"
+      },
+      {
+        "market": null,
+        "ticker": "ADANIENT.NS",
+        "horizon": "medium",
+        "side": "buy",
+        "date": "2026-07-16",
+        "rating": "Buy",
+        "score": 72,
+        "confidence": 62,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-07-16T04:11:03.025Z"
+      },
+      {
+        "market": null,
+        "ticker": "SUNPHARMA.NS",
+        "horizon": "medium",
+        "side": "buy",
+        "date": "2026-07-08",
+        "rating": "Buy",
+        "score": 72,
+        "confidence": 62,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-07-08T00:29:45.099Z"
+      },
+      {
+        "market": null,
+        "ticker": "KOTAKBANK.NS",
+        "horizon": "medium",
+        "side": "sell",
+        "date": "2026-07-08",
+        "rating": "Strong Sell",
+        "score": 0,
+        "confidence": 62,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-07-08T00:29:45.099Z"
+      },
+      {
+        "market": null,
+        "ticker": "LT.NS",
+        "horizon": "long",
+        "side": "buy",
+        "date": "2026-07-07",
+        "rating": "Buy",
+        "score": 72,
+        "confidence": 65,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-07-07T04:52:03.972Z"
+      },
+      {
+        "market": null,
+        "ticker": "AXISBANK.NS",
+        "horizon": "long",
+        "side": "buy",
+        "date": "2026-07-07",
+        "rating": "Buy",
+        "score": 72,
+        "confidence": 65,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-07-07T04:52:03.972Z"
+      },
+      {
+        "market": null,
+        "ticker": "TECHM.NS",
+        "horizon": "short",
+        "side": "sell",
+        "date": "2026-07-07",
+        "rating": "Sell",
+        "score": 12,
+        "confidence": 56,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-07-07T04:52:03.972Z"
+      },
+      {
+        "market": null,
+        "ticker": "ASIANPAINT.NS",
+        "horizon": "short",
+        "side": "buy",
+        "date": "2026-06-17",
+        "rating": "Buy",
+        "score": 72,
+        "confidence": 62,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-06-17T06:17:23.005Z"
+      },
+      {
+        "market": null,
+        "ticker": "NESTLEIND.NS",
+        "horizon": "short",
+        "side": "buy",
+        "date": "2026-06-17",
+        "rating": "Buy",
+        "score": 72,
+        "confidence": 56,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-06-17T06:17:23.005Z"
+      },
+      {
+        "market": null,
+        "ticker": "EICHERMOT.NS",
+        "horizon": "short",
+        "side": "buy",
+        "date": "2026-06-17",
+        "rating": "Buy",
+        "score": 72,
+        "confidence": 62,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-06-17T06:17:23.005Z"
+      },
+      {
+        "market": null,
+        "ticker": "DRREDDY.NS",
+        "horizon": "medium",
+        "side": "buy",
+        "date": "2026-06-17",
+        "rating": "Buy",
+        "score": 72,
+        "confidence": 56,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-06-17T06:17:23.005Z"
+      },
+      {
+        "market": null,
+        "ticker": "DIVISLAB.NS",
+        "horizon": "long",
+        "side": "buy",
+        "date": "2026-06-17",
+        "rating": "Buy",
+        "score": 72,
+        "confidence": 65,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-06-17T06:17:23.005Z"
+      },
+      {
+        "market": null,
+        "ticker": "HDFCBANK.NS",
+        "horizon": "medium",
+        "side": "sell",
+        "date": "2026-06-17",
+        "rating": "Strong Sell",
+        "score": 0,
+        "confidence": 62,
+        "historyMarketTier": "fmp_quality",
+        "rawDate": "2026-06-17T06:17:23.005Z"
+      }
+    ]
+  },
+  "replay": {
+    "markets": [
+      "US",
+      "Japan",
+      "Hong Kong",
+      "UK",
+      "Germany",
+      "France"
+    ],
+    "horizons": [
+      "short",
+      "medium",
+      "long"
+    ],
+    "entryStep": 1,
+    "exactKey": "market|ticker|horizon|side|UTC decision date",
+    "fundamentals": "cache-only PIT Piotroski/Altman decision-date injection"
+  },
+  "perMarket": {
+    "US": {
+      "matched": 0,
+      "missed": 0,
+      "extra": 5
+    },
+    "Japan": {
+      "matched": 0,
+      "missed": 1,
+      "extra": 5
+    },
+    "Hong Kong": {
+      "matched": 0,
+      "missed": 0,
+      "extra": 4
+    },
+    "UK": {
+      "matched": 0,
+      "missed": 0,
+      "extra": 0
+    },
+    "Germany": {
+      "matched": 0,
+      "missed": 0,
+      "extra": 4
+    },
+    "France": {
+      "matched": 0,
+      "missed": 0,
+      "extra": 23
+    }
+  },
+  "diagnostics": {
+    "US": {
+      "decisions": 19461,
+      "scoreBelow62": 18810,
+      "confidenceBelow62": 12756,
+      "rewardRisk": 234,
+      "supertrendNotAligned": 13455,
+      "overlayReducedBelow62": 927,
+      "marketTierPolicy": 271,
+      "piotroskiUnavailable": 0,
+      "altmanUnavailable": 0,
+      "missingFundamentals": 4092,
+      "entryEligible": 5
+    },
+    "UK": {
+      "decisions": 3582,
+      "scoreBelow62": 3488,
+      "confidenceBelow62": 2969,
+      "rewardRisk": 47,
+      "supertrendNotAligned": 2200,
+      "overlayReducedBelow62": 263,
+      "marketTierPolicy": 22,
+      "piotroskiUnavailable": 0,
+      "altmanUnavailable": 0,
+      "missingFundamentals": 2376,
+      "entryEligible": 0
+    }
+  },
+  "matched": [],
+  "missed": [
+    {
+      "market": "Japan",
+      "ticker": "9532.T",
+      "horizon": "long",
+      "side": "buy",
+      "date": "2026-09-23",
+      "rating": "Buy",
+      "score": 72,
+      "confidence": 65,
+      "historyMarketTier": "fmp_quality",
+      "rawDate": "2026-09-23T04:52:15.544Z",
+      "currentPitFunnel": {
+        "gate": "NOT_EVALUATED",
+        "rejectionReasons": [
+          "No bar for exact UTC decision date"
+        ]
+      }
+    }
+  ],
+  "extra": [
+    {
+      "signalIndex": 2501,
+      "side": "sell",
+      "signalTs": 1789565400,
+      "score": 81,
+      "confidence": 66,
+      "rating": "Strong Sell",
+      "entry": 229.5,
+      "target1": 182.47,
+      "stopLoss": 253.21,
+      "rewardRisk": 1.9835512442007586,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 6,
+      "altmanZ": 4.19753440646353,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish",
+        "FMP quality 8/10, Piotroski 6/9"
+      ],
+      "market": "US",
+      "ticker": "GNRC",
+      "horizon": "medium",
+      "date": "2026-09-16"
+    },
+    {
+      "signalIndex": 2500,
+      "side": "sell",
+      "signalTs": 1789479000,
+      "score": 81,
+      "confidence": 66,
+      "rating": "Strong Sell",
+      "entry": 443.7799987792969,
+      "target1": 377.54,
+      "stopLoss": 489,
+      "rewardRisk": 1.464838500468021,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.252295554359124,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish",
+        "FMP quality 9/10, Piotroski 7/9"
+      ],
+      "market": "US",
+      "ticker": "HUBB",
+      "horizon": "medium",
+      "date": "2026-09-15"
+    },
+    {
+      "signalIndex": 2501,
+      "side": "sell",
+      "signalTs": 1789565400,
+      "score": 81,
+      "confidence": 66,
+      "rating": "Strong Sell",
+      "entry": 198.61000061035156,
+      "target1": 180.36,
+      "stopLoss": 209.9,
+      "rewardRisk": 1.616474897871525,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 9,
+      "altmanZ": 3.102148937252771,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish",
+        "FMP quality 10/10, Piotroski 9/9"
+      ],
+      "market": "US",
+      "ticker": "LOW",
+      "horizon": "medium",
+      "date": "2026-09-16"
+    },
+    {
+      "signalIndex": 2499,
+      "side": "buy",
+      "signalTs": 1789392600,
+      "score": 88,
+      "confidence": 66,
+      "rating": "Strong Buy",
+      "entry": 180.5399932861328,
+      "target1": 222.86,
+      "stopLoss": 151.45,
+      "rewardRisk": 1.4547960289162774,
+      "supertrend": {
+        "direction": "bull",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 4,
+      "altmanZ": 6.249861233109429,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bullish",
+        "FMP quality 7/10, Piotroski 4/9"
+      ],
+      "market": "US",
+      "ticker": "QCOM",
+      "horizon": "medium",
+      "date": "2026-09-14"
+    },
+    {
+      "signalIndex": 1457,
+      "side": "sell",
+      "signalTs": 1789565400,
+      "score": 88,
+      "confidence": 62,
+      "rating": "Strong Sell",
+      "entry": 65.55000305175781,
+      "target1": 50.29,
+      "stopLoss": 75.11,
+      "rewardRisk": 1.5962351383975804,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 3,
+      "altmanZ": 34.96394847854146,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish",
+        "FMP quality 6/10 supports 1–3mo hold"
+      ],
+      "market": "US",
+      "ticker": "RKLB",
+      "horizon": "medium",
+      "date": "2026-09-16"
+    },
+    {
+      "signalIndex": 2449,
+      "side": "buy",
+      "signalTs": 1788998400,
+      "score": 63,
+      "confidence": 62,
+      "rating": "Buy",
+      "entry": 2531,
+      "target1": 2713.65,
+      "stopLoss": 2387.64,
+      "rewardRisk": 1.274065290178571,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": null,
+      "altmanZ": null,
+      "qualityUsable": false,
+      "overlayConditions": [
+        "Below medium Supertrend — buy capped"
+      ],
+      "market": "Japan",
+      "ticker": "4042.T",
+      "horizon": "medium",
+      "date": "2026-09-10"
+    },
+    {
+      "signalIndex": 2449,
+      "side": "buy",
+      "signalTs": 1788998400,
+      "score": 72,
+      "confidence": 62,
+      "rating": "Buy",
+      "entry": 2737.5,
+      "target1": 2957.46,
+      "stopLoss": 2544.93,
+      "rewardRisk": 1.142233992833774,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 8,
+      "altmanZ": 1.9682965542619086,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "FMP Piotroski 8/9 — quality confirm"
+      ],
+      "market": "Japan",
+      "ticker": "6326.T",
+      "horizon": "short",
+      "date": "2026-09-10"
+    },
+    {
+      "signalIndex": 2451,
+      "side": "buy",
+      "signalTs": 1789344000,
+      "score": 72,
+      "confidence": 62,
+      "rating": "Buy",
+      "entry": 2743.5,
+      "target1": 2925.55,
+      "stopLoss": 2583.21,
+      "rewardRisk": 1.1357539459729256,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 8,
+      "altmanZ": 1.9638818494169472,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "FMP Piotroski 8/9 — quality confirm"
+      ],
+      "market": "Japan",
+      "ticker": "6326.T",
+      "horizon": "short",
+      "date": "2026-09-14"
+    },
+    {
+      "signalIndex": 2459,
+      "side": "buy",
+      "signalTs": 1790640000,
+      "score": 72,
+      "confidence": 62,
+      "rating": "Buy",
+      "entry": 2638.5,
+      "target1": 2845.99,
+      "stopLoss": 2465,
+      "rewardRisk": 1.1959077809798258,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": null,
+      "altmanZ": null,
+      "qualityUsable": false,
+      "overlayConditions": [],
+      "market": "Japan",
+      "ticker": "9503.T",
+      "horizon": "short",
+      "date": "2026-09-29"
+    },
+    {
+      "signalIndex": 2452,
+      "side": "buy",
+      "signalTs": 1789430400,
+      "score": 72,
+      "confidence": 65,
+      "rating": "Buy",
+      "entry": 6164,
+      "target1": 7404.62,
+      "stopLoss": 5156.39,
+      "rewardRisk": 1.2312501860839018,
+      "supertrend": {
+        "direction": "bull",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": null,
+      "altmanZ": null,
+      "qualityUsable": false,
+      "overlayConditions": [
+        "Supertrend long bullish"
+      ],
+      "market": "Japan",
+      "ticker": "9532.T",
+      "horizon": "long",
+      "date": "2026-09-15"
+    },
+    {
+      "signalIndex": 2448,
+      "side": "sell",
+      "signalTs": 1789090200,
+      "score": 88,
+      "confidence": 62,
+      "rating": "Strong Sell",
+      "entry": 12.359999656677246,
+      "target1": 9.539,
+      "stopLoss": 14.92,
+      "rewardRisk": 1.101952843106157,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": null,
+      "altmanZ": null,
+      "qualityUsable": false,
+      "overlayConditions": [
+        "Supertrend medium bearish"
+      ],
+      "market": "Hong Kong",
+      "ticker": "0688.HK",
+      "horizon": "medium",
+      "date": "2026-09-11"
+    },
+    {
+      "signalIndex": 2448,
+      "side": "sell",
+      "signalTs": 1789090200,
+      "score": 81,
+      "confidence": 62,
+      "rating": "Strong Sell",
+      "entry": 108.19999694824219,
+      "target1": 90.58,
+      "stopLoss": 123.46,
+      "rewardRisk": 1.1546522558665238,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": null,
+      "altmanZ": null,
+      "qualityUsable": false,
+      "overlayConditions": [
+        "Supertrend medium bearish"
+      ],
+      "market": "Hong Kong",
+      "ticker": "0016.HK",
+      "horizon": "medium",
+      "date": "2026-09-11"
+    },
+    {
+      "signalIndex": 2449,
+      "side": "sell",
+      "signalTs": 1789349400,
+      "score": 81,
+      "confidence": 62,
+      "rating": "Strong Sell",
+      "entry": 110,
+      "target1": 92.18,
+      "stopLoss": 125.83,
+      "rewardRisk": 1.1257106759317748,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": null,
+      "altmanZ": null,
+      "qualityUsable": false,
+      "overlayConditions": [
+        "Supertrend medium bearish"
+      ],
+      "market": "Hong Kong",
+      "ticker": "0016.HK",
+      "horizon": "medium",
+      "date": "2026-09-14"
+    },
+    {
+      "signalIndex": 2455,
+      "side": "sell",
+      "signalTs": 1790040600,
+      "score": 81,
+      "confidence": 62,
+      "rating": "Strong Sell",
+      "entry": 8.1850004196167,
+      "target1": 7.132,
+      "stopLoss": 9.067,
+      "rewardRisk": 1.1938785947710822,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": null,
+      "altmanZ": null,
+      "qualityUsable": false,
+      "overlayConditions": [
+        "Supertrend medium bearish"
+      ],
+      "market": "Hong Kong",
+      "ticker": "0868.HK",
+      "horizon": "medium",
+      "date": "2026-09-22"
+    },
+    {
+      "signalIndex": 2527,
+      "side": "buy",
+      "signalTs": 1789369200,
+      "score": 66,
+      "confidence": 65,
+      "rating": "Buy",
+      "entry": 72.81999969482422,
+      "target1": 80.7,
+      "stopLoss": 65.79,
+      "rewardRisk": 1.1209104761380542,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": null,
+      "altmanZ": null,
+      "qualityUsable": false,
+      "overlayConditions": [
+        "Below long Supertrend — pullback in intact uptrend (soft cap)"
+      ],
+      "market": "Germany",
+      "ticker": "HEN3.DE",
+      "horizon": "long",
+      "date": "2026-09-14"
+    },
+    {
+      "signalIndex": 2528,
+      "side": "sell",
+      "signalTs": 1789455600,
+      "score": 81,
+      "confidence": 66,
+      "rating": "Strong Sell",
+      "entry": 148.5,
+      "target1": 126.11,
+      "stopLoss": 168.44,
+      "rewardRisk": 1.1228686058174524,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 9,
+      "altmanZ": 2.407662710609475,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish",
+        "FMP quality 8/10, Piotroski 9/9"
+      ],
+      "market": "Germany",
+      "ticker": "HEI.DE",
+      "horizon": "medium",
+      "date": "2026-09-15"
+    },
+    {
+      "signalIndex": 2530,
+      "side": "sell",
+      "signalTs": 1789628400,
+      "score": 81,
+      "confidence": 66,
+      "rating": "Strong Sell",
+      "entry": 146.10000610351562,
+      "target1": 123.69,
+      "stopLoss": 165.55,
+      "rewardRisk": 1.1521857653418732,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 9,
+      "altmanZ": 2.3893762274513506,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish",
+        "FMP quality 8/10, Piotroski 9/9"
+      ],
+      "market": "Germany",
+      "ticker": "HEI.DE",
+      "horizon": "medium",
+      "date": "2026-09-17"
+    },
+    {
+      "signalIndex": 2537,
+      "side": "sell",
+      "signalTs": 1790578800,
+      "score": 81,
+      "confidence": 62,
+      "rating": "Strong Sell",
+      "entry": 25.25,
+      "target1": 21.25,
+      "stopLoss": 28.72,
+      "rewardRisk": 1.1527377521613837,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 3,
+      "altmanZ": 1.9596945767190566,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish"
+      ],
+      "market": "Germany",
+      "ticker": "PAH3.DE",
+      "horizon": "medium",
+      "date": "2026-09-28"
+    },
+    {
+      "signalIndex": 2549,
+      "side": "sell",
+      "signalTs": 1789628400,
+      "score": 88,
+      "confidence": 66,
+      "rating": "Strong Sell",
+      "entry": 410,
+      "target1": 356.6,
+      "stopLoss": 452.99,
+      "rewardRisk": 1.2421493370551282,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.963843930889713,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish",
+        "FMP quality 9/10, Piotroski 7/9"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "medium",
+      "date": "2026-09-17"
+    },
+    {
+      "signalIndex": 2551,
+      "side": "sell",
+      "signalTs": 1789974000,
+      "score": 88,
+      "confidence": 66,
+      "rating": "Strong Sell",
+      "entry": 404.79998779296875,
+      "target1": 351.36,
+      "stopLoss": 446.21,
+      "rewardRisk": 1.2905088635519617,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.9360454015257407,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish",
+        "FMP quality 9/10, Piotroski 7/9"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "medium",
+      "date": "2026-09-21"
+    },
+    {
+      "signalIndex": 2552,
+      "side": "sell",
+      "signalTs": 1790060400,
+      "score": 88,
+      "confidence": 66,
+      "rating": "Strong Sell",
+      "entry": 403.04998779296875,
+      "target1": 349.95,
+      "stopLoss": 442.41,
+      "rewardRisk": 1.3490846373132723,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.921532957840677,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish",
+        "FMP quality 9/10, Piotroski 7/9"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "medium",
+      "date": "2026-09-22"
+    },
+    {
+      "signalIndex": 2553,
+      "side": "sell",
+      "signalTs": 1790146800,
+      "score": 88,
+      "confidence": 66,
+      "rating": "Strong Sell",
+      "entry": 398.1000061035156,
+      "target1": 345.3,
+      "stopLoss": 437.13,
+      "rewardRisk": 1.3528059021364995,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.9008883498548377,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish",
+        "FMP quality 9/10, Piotroski 7/9"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "medium",
+      "date": "2026-09-23"
+    },
+    {
+      "signalIndex": 2554,
+      "side": "sell",
+      "signalTs": 1790233200,
+      "score": 88,
+      "confidence": 66,
+      "rating": "Strong Sell",
+      "entry": 401.45001220703125,
+      "target1": 348.67,
+      "stopLoss": 437.31,
+      "rewardRisk": 1.4718357549853955,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.901706005030052,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish",
+        "FMP quality 9/10, Piotroski 7/9"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "medium",
+      "date": "2026-09-24"
+    },
+    {
+      "signalIndex": 2555,
+      "side": "sell",
+      "signalTs": 1790319600,
+      "score": 88,
+      "confidence": 62,
+      "rating": "Strong Sell",
+      "entry": 399.95001220703125,
+      "target1": 348.09,
+      "stopLoss": 436.36,
+      "rewardRisk": 1.4243347869796898,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": null,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "medium",
+      "date": "2026-09-25"
+    },
+    {
+      "signalIndex": 2546,
+      "side": "sell",
+      "signalTs": 1789369200,
+      "score": 68,
+      "confidence": 68,
+      "rating": "Sell",
+      "entry": 413.1499938964844,
+      "target1": 323.18,
+      "stopLoss": 484.28,
+      "rewardRisk": 1.2648669503212318,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.9848973664631595,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend long bearish",
+        "FMP quality 9/10 + Altman Z 4.0 (safe)"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "long",
+      "date": "2026-09-14"
+    },
+    {
+      "signalIndex": 2547,
+      "side": "sell",
+      "signalTs": 1789455600,
+      "score": 75,
+      "confidence": 68,
+      "rating": "Strong Sell",
+      "entry": 406,
+      "target1": 312.34,
+      "stopLoss": 476.02,
+      "rewardRisk": 1.3376178234790066,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.9399290764730104,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend long bearish",
+        "FMP quality 9/10 + Altman Z 3.9 (safe)"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "long",
+      "date": "2026-09-15"
+    },
+    {
+      "signalIndex": 2548,
+      "side": "sell",
+      "signalTs": 1789542000,
+      "score": 75,
+      "confidence": 68,
+      "rating": "Strong Sell",
+      "entry": 412.79998779296875,
+      "target1": 319.27,
+      "stopLoss": 480.43,
+      "rewardRisk": 1.3829657091684626,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.9583251951053446,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend long bearish",
+        "FMP quality 9/10 + Altman Z 4.0 (safe)"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "long",
+      "date": "2026-09-16"
+    },
+    {
+      "signalIndex": 2549,
+      "side": "sell",
+      "signalTs": 1789628400,
+      "score": 75,
+      "confidence": 68,
+      "rating": "Strong Sell",
+      "entry": 410,
+      "target1": 321,
+      "stopLoss": 478.41,
+      "rewardRisk": 1.300979388978219,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.963843930889713,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend long bearish",
+        "FMP quality 9/10 + Altman Z 4.0 (safe)"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "long",
+      "date": "2026-09-17"
+    },
+    {
+      "signalIndex": 2551,
+      "side": "sell",
+      "signalTs": 1789974000,
+      "score": 75,
+      "confidence": 68,
+      "rating": "Strong Sell",
+      "entry": 404.79998779296875,
+      "target1": 315.74,
+      "stopLoss": 471.66,
+      "rewardRisk": 1.3320366666580241,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.9360454015257407,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend long bearish",
+        "FMP quality 9/10 + Altman Z 3.9 (safe)"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "long",
+      "date": "2026-09-21"
+    },
+    {
+      "signalIndex": 2552,
+      "side": "sell",
+      "signalTs": 1790060400,
+      "score": 75,
+      "confidence": 68,
+      "rating": "Strong Sell",
+      "entry": 403.04998779296875,
+      "target1": 314.55,
+      "stopLoss": 467.69,
+      "rewardRisk": 1.3691208397287726,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.921532957840677,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend long bearish",
+        "FMP quality 9/10 + Altman Z 3.9 (safe)"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "long",
+      "date": "2026-09-22"
+    },
+    {
+      "signalIndex": 2553,
+      "side": "sell",
+      "signalTs": 1790146800,
+      "score": 75,
+      "confidence": 68,
+      "rating": "Strong Sell",
+      "entry": 398.1000061035156,
+      "target1": 310.1,
+      "stopLoss": 462.27,
+      "rewardRisk": 1.3713575576378043,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.9008883498548377,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend long bearish",
+        "FMP quality 9/10 + Altman Z 3.9 (safe)"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "long",
+      "date": "2026-09-23"
+    },
+    {
+      "signalIndex": 2554,
+      "side": "sell",
+      "signalTs": 1790233200,
+      "score": 75,
+      "confidence": 68,
+      "rating": "Strong Sell",
+      "entry": 401.45001220703125,
+      "target1": 313.48,
+      "stopLoss": 462.45,
+      "rewardRisk": 1.4421316362488066,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 7,
+      "altmanZ": 3.901706005030052,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend long bearish",
+        "FMP quality 9/10 + Altman Z 3.9 (safe)"
+      ],
+      "market": "France",
+      "ticker": "MC.PA",
+      "horizon": "long",
+      "date": "2026-09-24"
+    },
+    {
+      "signalIndex": 2552,
+      "side": "sell",
+      "signalTs": 1790060400,
+      "score": 88,
+      "confidence": 62,
+      "rating": "Strong Sell",
+      "entry": 230.89999389648438,
+      "target1": 190.4,
+      "stopLoss": 262.86,
+      "rewardRisk": 1.26720857828714,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": null,
+      "altmanZ": null,
+      "qualityUsable": false,
+      "overlayConditions": [
+        "Supertrend medium bearish"
+      ],
+      "market": "France",
+      "ticker": "KER.PA",
+      "horizon": "medium",
+      "date": "2026-09-22"
+    },
+    {
+      "signalIndex": 2553,
+      "side": "sell",
+      "signalTs": 1790146800,
+      "score": 88,
+      "confidence": 62,
+      "rating": "Strong Sell",
+      "entry": 227.75,
+      "target1": 187.25,
+      "stopLoss": 258.16,
+      "rewardRisk": 1.331798750411048,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": null,
+      "altmanZ": null,
+      "qualityUsable": false,
+      "overlayConditions": [
+        "Supertrend medium bearish"
+      ],
+      "market": "France",
+      "ticker": "KER.PA",
+      "horizon": "medium",
+      "date": "2026-09-23"
+    },
+    {
+      "signalIndex": 2554,
+      "side": "sell",
+      "signalTs": 1790233200,
+      "score": 88,
+      "confidence": 62,
+      "rating": "Strong Sell",
+      "entry": 227.0500030517578,
+      "target1": 191.84,
+      "stopLoss": 256.24,
+      "rewardRisk": 1.2062352426480172,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": null,
+      "altmanZ": null,
+      "qualityUsable": false,
+      "overlayConditions": [
+        "Supertrend medium bearish"
+      ],
+      "market": "France",
+      "ticker": "KER.PA",
+      "horizon": "medium",
+      "date": "2026-09-24"
+    },
+    {
+      "signalIndex": 2555,
+      "side": "sell",
+      "signalTs": 1790319600,
+      "score": 88,
+      "confidence": 62,
+      "rating": "Strong Sell",
+      "entry": 226.75,
+      "target1": 196.04,
+      "stopLoss": 254.14,
+      "rewardRisk": 1.121212121212122,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": null,
+      "altmanZ": null,
+      "qualityUsable": false,
+      "overlayConditions": [
+        "Supertrend medium bearish"
+      ],
+      "market": "France",
+      "ticker": "KER.PA",
+      "horizon": "medium",
+      "date": "2026-09-25"
+    },
+    {
+      "signalIndex": 2544,
+      "side": "sell",
+      "signalTs": 1789023600,
+      "score": 81,
+      "confidence": 62,
+      "rating": "Strong Sell",
+      "entry": 1409,
+      "target1": 1232.78,
+      "stopLoss": 1561.57,
+      "rewardRisk": 1.1550108147080036,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": null,
+      "altmanZ": null,
+      "qualityUsable": false,
+      "overlayConditions": [
+        "Supertrend medium bearish"
+      ],
+      "market": "France",
+      "ticker": "RMS.PA",
+      "horizon": "medium",
+      "date": "2026-09-10"
+    },
+    {
+      "signalIndex": 2554,
+      "side": "sell",
+      "signalTs": 1790233200,
+      "score": 88,
+      "confidence": 66,
+      "rating": "Strong Sell",
+      "entry": 60,
+      "target1": 55.05,
+      "stopLoss": 64.42,
+      "rewardRisk": 1.1199095022624437,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 4,
+      "altmanZ": 3.0602365819635002,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend medium bearish",
+        "FMP quality 7/10, Piotroski 4/9"
+      ],
+      "market": "France",
+      "ticker": "BN.PA",
+      "horizon": "medium",
+      "date": "2026-09-24"
+    },
+    {
+      "signalIndex": 2553,
+      "side": "sell",
+      "signalTs": 1790146800,
+      "score": 75,
+      "confidence": 68,
+      "rating": "Strong Sell",
+      "entry": 60.29999923706055,
+      "target1": 50.93,
+      "stopLoss": 67.28,
+      "rewardRisk": 1.3424066207572454,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 4,
+      "altmanZ": 3.0627159149998295,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend long bearish",
+        "FMP quality 7/10 + Altman Z 3.1 (safe)"
+      ],
+      "market": "France",
+      "ticker": "BN.PA",
+      "horizon": "long",
+      "date": "2026-09-23"
+    },
+    {
+      "signalIndex": 2554,
+      "side": "sell",
+      "signalTs": 1790233200,
+      "score": 75,
+      "confidence": 68,
+      "rating": "Strong Sell",
+      "entry": 60,
+      "target1": 51.76,
+      "stopLoss": 67.1,
+      "rewardRisk": 1.1605633802816913,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 4,
+      "altmanZ": 3.0602365819635002,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend long bearish",
+        "FMP quality 7/10 + Altman Z 3.1 (safe)"
+      ],
+      "market": "France",
+      "ticker": "BN.PA",
+      "horizon": "long",
+      "date": "2026-09-24"
+    },
+    {
+      "signalIndex": 2556,
+      "side": "sell",
+      "signalTs": 1790578800,
+      "score": 75,
+      "confidence": 68,
+      "rating": "Strong Sell",
+      "entry": 59.220001220703125,
+      "target1": 50.3,
+      "stopLoss": 66.13,
+      "rewardRisk": 1.2908831832833965,
+      "supertrend": {
+        "direction": "bear",
+        "flippedBull": false,
+        "flippedBear": false
+      },
+      "marketTier": "fmp_quality",
+      "piotroski": 4,
+      "altmanZ": 3.0514211989649187,
+      "qualityUsable": true,
+      "overlayConditions": [
+        "Supertrend long bearish",
+        "FMP quality 7/10 + Altman Z 3.1 (safe)"
+      ],
+      "market": "France",
+      "ticker": "BN.PA",
+      "horizon": "long",
+      "date": "2026-09-28"
+    }
+  ],
+  "unsupportedShort": [],
+  "failures": [
+    {
+      "market": "US",
+      "symbol": "ABMD",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "ACE",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "ADS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "AET",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "AGN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "ALAB",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "ALTR",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "ALXN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "AMTM",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "ANDV",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "ANSS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "APC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "APP",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "ARG",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "ARM",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "ATVI",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "AVB",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "AVP",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "BBBY",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "BCR",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "BMS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "BRCM",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "BXLT",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CA",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CAM",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CCE",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CEG",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CELG",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CERN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CFN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CHK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CMA",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CMCSK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "COIN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "COL",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "COV",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CPGX",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CRWV",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CSC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CSRA",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CTLT",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CTRA",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CTRX",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CTXS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "CXO",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "DAY",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "DFS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "DISCA",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "DISCK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "DISH",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "DNB",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "DNR",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "DO",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "DPS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "DRE",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "DTV",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "DWDP",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "EA",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "EMC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "ENDP",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "ESRX",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "ETFC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "EVHC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "FDO",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "FDXF",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "FL",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "FLIR",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "FRC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "FRX",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "FTR",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "GAS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "GEHC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "GEV",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "GFS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "GGP",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "GMCR",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "GPS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "HAR",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "HBI",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "HCBK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "HES",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "HFC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "HOLX",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "HONA",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "HOOD",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "HOT",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "HSP",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "IGT",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "INFO",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "IPG",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "JNPR",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "JOY",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "JWN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "K",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "KRFT",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "KSU",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "KVUE",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "LEG",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "LIFE",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "LLL",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "LLTC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "LM",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "LMCA",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "LMCK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "LO",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "LSI",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "LVLT",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "LVNTA",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "MBC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "MJN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "MNK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "MON",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "MRO",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "MXIM",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "NBIS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "NBL",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "NE",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "NFX",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "NLOK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "NLSN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "OGN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "PBCT",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "PCL",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "PCP",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "PDCO",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "PETM",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "PLL",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "POM",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "PXD",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "Q",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "QEP",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "QRTEA",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "RAI",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "RDC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "RDDT",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "RHT",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "RIVN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "RMG",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "RTN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SATS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SBNY",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SCG",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SEE",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SGEN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SHPG",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SIAL",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SIVB",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SNDK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SNI",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SOLS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SOLV",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SPCX",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SPLK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SPLS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SRCL",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "STI",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "STJ",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SWN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "SWY",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "TEG",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "TGNA",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "TIF",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "TSS",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "TWC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "TWTR",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "TWX",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "TYC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "VAL",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "VAR",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "VIAB",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "VLTO",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "VSNT",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "WBA",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "WCG",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "WFM",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "WIN",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "WLTW",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "WPX",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "WRK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "WYND",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "X",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "XEC",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "XL",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "XLNX",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "US",
+      "symbol": "YHOO",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Japan",
+      "symbol": "7205.T",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Japan",
+      "symbol": "9613.T",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Japan",
+      "symbol": "9719.T",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Japan",
+      "symbol": "9437.T",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Japan",
+      "symbol": "8355.T",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Japan",
+      "symbol": "9147.T",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Hong Kong",
+      "symbol": "0011.HK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Hong Kong",
+      "symbol": "2015.HK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Hong Kong",
+      "symbol": "9888.HK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Hong Kong",
+      "symbol": "9961.HK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Hong Kong",
+      "symbol": "1024.HK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Hong Kong",
+      "symbol": "9626.HK",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "UK",
+      "symbol": "HLN.L",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "UK",
+      "symbol": "CRH.L",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "UK",
+      "symbol": "FLTR.L",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "UK",
+      "symbol": "AHT.L",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "UK",
+      "symbol": "PHNX.L",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "UK",
+      "symbol": "BDEV.L",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "UK",
+      "symbol": "MGGT.L",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "UK",
+      "symbol": "DLG.L",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Germany",
+      "symbol": "P911.DE",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "Germany",
+      "symbol": "1COV.DE",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    },
+    {
+      "market": "France",
+      "symbol": "URW.PA",
+      "error": "STAGE1_CONTEXT_UNAVAILABLE"
+    }
+  ]
+}

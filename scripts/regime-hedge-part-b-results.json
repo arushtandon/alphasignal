@@ -1,0 +1,473 @@
+{
+  "generatedAt": "2026-10-07T10:31:48.573Z",
+  "results": [
+    {
+      "id": "JAPAN_MEDIUM_MR",
+      "hedge": "EWJ",
+      "symbols": 217,
+      "trades": 4735,
+      "windows": [
+        {
+          "range": {
+            "from": "2024-09-26",
+            "to": "2025-03-28"
+          },
+          "off": {
+            "from": "2024-09-26",
+            "to": "2025-03-28",
+            "sessions": 76,
+            "sessionsHedged": 0,
+            "returnPct": 1.45,
+            "pnlUsd": 25691,
+            "profitFactor": 1.549,
+            "maxDrawdownPct": -6.89
+          },
+          "on": {
+            "from": "2024-09-26",
+            "to": "2025-03-28",
+            "sessions": 76,
+            "sessionsHedged": 29,
+            "returnPct": -4.56,
+            "pnlUsd": 14778,
+            "profitFactor": 1.273,
+            "maxDrawdownPct": -11.71
+          }
+        },
+        {
+          "range": {
+            "from": "2025-03-31",
+            "to": "2025-09-29"
+          },
+          "off": {
+            "from": "2025-03-31",
+            "to": "2025-09-29",
+            "sessions": 92,
+            "sessionsHedged": 0,
+            "returnPct": -27.19,
+            "pnlUsd": -14433,
+            "profitFactor": 0.921,
+            "maxDrawdownPct": -28.26
+          },
+          "on": {
+            "from": "2025-03-31",
+            "to": "2025-09-29",
+            "sessions": 92,
+            "sessionsHedged": 0,
+            "returnPct": -27.19,
+            "pnlUsd": -14433,
+            "profitFactor": 0.921,
+            "maxDrawdownPct": -28.26
+          }
+        },
+        {
+          "range": {
+            "from": "2025-09-30",
+            "to": "2026-03-31"
+          },
+          "off": {
+            "from": "2025-09-30",
+            "to": "2026-03-31",
+            "sessions": 97,
+            "sessionsHedged": 0,
+            "returnPct": 20.39,
+            "pnlUsd": 86781,
+            "profitFactor": 1.343,
+            "maxDrawdownPct": -6.72
+          },
+          "on": {
+            "from": "2025-09-30",
+            "to": "2026-03-31",
+            "sessions": 97,
+            "sessionsHedged": 0,
+            "returnPct": 20.39,
+            "pnlUsd": 86781,
+            "profitFactor": 1.343,
+            "maxDrawdownPct": -6.72
+          }
+        },
+        {
+          "range": {
+            "from": "2026-04-01",
+            "to": "2026-09-30"
+          },
+          "off": {
+            "from": "2026-04-01",
+            "to": "2026-09-30",
+            "sessions": 95,
+            "sessionsHedged": 0,
+            "returnPct": -2.95,
+            "pnlUsd": 56718,
+            "profitFactor": 1.183,
+            "maxDrawdownPct": -9.88
+          },
+          "on": {
+            "from": "2026-04-01",
+            "to": "2026-09-30",
+            "sessions": 95,
+            "sessionsHedged": 0,
+            "returnPct": -2.95,
+            "pnlUsd": 56718,
+            "profitFactor": 1.183,
+            "maxDrawdownPct": -9.88
+          }
+        }
+      ],
+      "hedgeLeg": {
+        "pnlUsd": -30986,
+        "executionUsd": 21318,
+        "borrowUsd": 1673
+      }
+    },
+    {
+      "id": "JAPAN_SHORT_MR",
+      "hedge": "EWJ",
+      "symbols": 217,
+      "trades": 4735,
+      "windows": [
+        {
+          "range": {
+            "from": "2024-09-26",
+            "to": "2025-03-28"
+          },
+          "off": {
+            "from": "2024-09-26",
+            "to": "2025-03-28",
+            "sessions": 76,
+            "sessionsHedged": 0,
+            "returnPct": 3.5,
+            "pnlUsd": 32899,
+            "profitFactor": 1.518,
+            "maxDrawdownPct": -6.22
+          },
+          "on": {
+            "from": "2024-09-26",
+            "to": "2025-03-28",
+            "sessions": 76,
+            "sessionsHedged": 29,
+            "returnPct": -2.8,
+            "pnlUsd": 21538,
+            "profitFactor": 1.296,
+            "maxDrawdownPct": -10.42
+          }
+        },
+        {
+          "range": {
+            "from": "2025-03-31",
+            "to": "2025-09-29"
+          },
+          "off": {
+            "from": "2025-03-31",
+            "to": "2025-09-29",
+            "sessions": 92,
+            "sessionsHedged": 0,
+            "returnPct": -24.57,
+            "pnlUsd": -10485,
+            "profitFactor": 0.952,
+            "maxDrawdownPct": -25.05
+          },
+          "on": {
+            "from": "2025-03-31",
+            "to": "2025-09-29",
+            "sessions": 92,
+            "sessionsHedged": 0,
+            "returnPct": -24.57,
+            "pnlUsd": -10485,
+            "profitFactor": 0.952,
+            "maxDrawdownPct": -25.05
+          }
+        },
+        {
+          "range": {
+            "from": "2025-09-30",
+            "to": "2026-03-31"
+          },
+          "off": {
+            "from": "2025-09-30",
+            "to": "2026-03-31",
+            "sessions": 99,
+            "sessionsHedged": 0,
+            "returnPct": 13.05,
+            "pnlUsd": 124320,
+            "profitFactor": 1.392,
+            "maxDrawdownPct": -5.03
+          },
+          "on": {
+            "from": "2025-09-30",
+            "to": "2026-03-31",
+            "sessions": 99,
+            "sessionsHedged": 0,
+            "returnPct": 13.05,
+            "pnlUsd": 124320,
+            "profitFactor": 1.392,
+            "maxDrawdownPct": -5.03
+          }
+        },
+        {
+          "range": {
+            "from": "2026-04-01",
+            "to": "2026-09-30"
+          },
+          "off": {
+            "from": "2026-04-01",
+            "to": "2026-09-30",
+            "sessions": 95,
+            "sessionsHedged": 0,
+            "returnPct": -0.16,
+            "pnlUsd": 88999,
+            "profitFactor": 1.247,
+            "maxDrawdownPct": -8.45
+          },
+          "on": {
+            "from": "2026-04-01",
+            "to": "2026-09-30",
+            "sessions": 95,
+            "sessionsHedged": 0,
+            "returnPct": -0.16,
+            "pnlUsd": 88999,
+            "profitFactor": 1.247,
+            "maxDrawdownPct": -8.45
+          }
+        }
+      ],
+      "hedgeLeg": {
+        "pnlUsd": -22260,
+        "executionUsd": 25542,
+        "borrowUsd": 1940
+      }
+    },
+    {
+      "id": "US_SHORT_MR",
+      "hedge": "SPY",
+      "symbols": 623,
+      "trades": 13331,
+      "windows": [
+        {
+          "range": {
+            "from": "2024-09-26",
+            "to": "2025-03-28"
+          },
+          "off": {
+            "from": "2024-09-26",
+            "to": "2025-03-28",
+            "sessions": 72,
+            "sessionsHedged": 0,
+            "returnPct": -16.57,
+            "pnlUsd": -169724,
+            "profitFactor": 0.697,
+            "maxDrawdownPct": -18.32
+          },
+          "on": {
+            "from": "2024-09-26",
+            "to": "2025-03-28",
+            "sessions": 72,
+            "sessionsHedged": 0,
+            "returnPct": -16.57,
+            "pnlUsd": -169724,
+            "profitFactor": 0.697,
+            "maxDrawdownPct": -18.32
+          }
+        },
+        {
+          "range": {
+            "from": "2025-03-31",
+            "to": "2025-09-29"
+          },
+          "off": {
+            "from": "2025-03-31",
+            "to": "2025-09-29",
+            "sessions": 86,
+            "sessionsHedged": 0,
+            "returnPct": 6.99,
+            "pnlUsd": 39546,
+            "profitFactor": 1.36,
+            "maxDrawdownPct": -3.19
+          },
+          "on": {
+            "from": "2025-03-31",
+            "to": "2025-09-29",
+            "sessions": 86,
+            "sessionsHedged": 0,
+            "returnPct": 6.99,
+            "pnlUsd": 39546,
+            "profitFactor": 1.36,
+            "maxDrawdownPct": -3.19
+          }
+        },
+        {
+          "range": {
+            "from": "2025-09-30",
+            "to": "2026-03-31"
+          },
+          "off": {
+            "from": "2025-09-30",
+            "to": "2026-03-31",
+            "sessions": 115,
+            "sessionsHedged": 0,
+            "returnPct": -8.72,
+            "pnlUsd": 97929,
+            "profitFactor": 1.23,
+            "maxDrawdownPct": -9.31
+          },
+          "on": {
+            "from": "2025-09-30",
+            "to": "2026-03-31",
+            "sessions": 115,
+            "sessionsHedged": 0,
+            "returnPct": -8.72,
+            "pnlUsd": 97929,
+            "profitFactor": 1.23,
+            "maxDrawdownPct": -9.31
+          }
+        },
+        {
+          "range": {
+            "from": "2026-04-01",
+            "to": "2026-09-30"
+          },
+          "off": {
+            "from": "2026-04-01",
+            "to": "2026-09-30",
+            "sessions": 82,
+            "sessionsHedged": 0,
+            "returnPct": 1.06,
+            "pnlUsd": 28697,
+            "profitFactor": 1.085,
+            "maxDrawdownPct": -7.61
+          },
+          "on": {
+            "from": "2026-04-01",
+            "to": "2026-09-30",
+            "sessions": 82,
+            "sessionsHedged": 0,
+            "returnPct": 1.06,
+            "pnlUsd": 28697,
+            "profitFactor": 1.085,
+            "maxDrawdownPct": -7.61
+          }
+        }
+      ],
+      "hedgeLeg": {
+        "pnlUsd": 12759,
+        "executionUsd": 6204,
+        "borrowUsd": 371
+      }
+    },
+    {
+      "id": "US_LONG_WAVE3",
+      "hedge": "SPY",
+      "symbols": 623,
+      "trades": 18532,
+      "windows": [
+        {
+          "range": {
+            "from": "2024-09-26",
+            "to": "2025-03-28"
+          },
+          "off": {
+            "from": "2024-09-26",
+            "to": "2025-03-28",
+            "sessions": 126,
+            "sessionsHedged": 0,
+            "returnPct": -2.73,
+            "pnlUsd": -169053,
+            "profitFactor": 0.945,
+            "maxDrawdownPct": -10.65
+          },
+          "on": {
+            "from": "2024-09-26",
+            "to": "2025-03-28",
+            "sessions": 126,
+            "sessionsHedged": 12,
+            "returnPct": -3.28,
+            "pnlUsd": -173644,
+            "profitFactor": 0.941,
+            "maxDrawdownPct": -9.72
+          }
+        },
+        {
+          "range": {
+            "from": "2025-03-31",
+            "to": "2025-09-29"
+          },
+          "off": {
+            "from": "2025-03-31",
+            "to": "2025-09-29",
+            "sessions": 126,
+            "sessionsHedged": 0,
+            "returnPct": 5.19,
+            "pnlUsd": 409011,
+            "profitFactor": 1.199,
+            "maxDrawdownPct": -13.99
+          },
+          "on": {
+            "from": "2025-03-31",
+            "to": "2025-09-29",
+            "sessions": 126,
+            "sessionsHedged": 30,
+            "returnPct": -1.46,
+            "pnlUsd": 326470,
+            "profitFactor": 1.168,
+            "maxDrawdownPct": -11.44
+          }
+        },
+        {
+          "range": {
+            "from": "2025-09-30",
+            "to": "2026-03-31"
+          },
+          "off": {
+            "from": "2025-09-30",
+            "to": "2026-03-31",
+            "sessions": 126,
+            "sessionsHedged": 0,
+            "returnPct": 2.3,
+            "pnlUsd": 79167,
+            "profitFactor": 1.029,
+            "maxDrawdownPct": -8.29
+          },
+          "on": {
+            "from": "2025-09-30",
+            "to": "2026-03-31",
+            "sessions": 126,
+            "sessionsHedged": 8,
+            "returnPct": 3.54,
+            "pnlUsd": 181855,
+            "profitFactor": 1.072,
+            "maxDrawdownPct": -6.42
+          }
+        },
+        {
+          "range": {
+            "from": "2026-04-01",
+            "to": "2026-09-30"
+          },
+          "off": {
+            "from": "2026-04-01",
+            "to": "2026-09-30",
+            "sessions": 126,
+            "sessionsHedged": 0,
+            "returnPct": 6.37,
+            "pnlUsd": 411696,
+            "profitFactor": 1.18,
+            "maxDrawdownPct": -5.71
+          },
+          "on": {
+            "from": "2026-04-01",
+            "to": "2026-09-30",
+            "sessions": 126,
+            "sessionsHedged": 5,
+            "returnPct": 2.18,
+            "pnlUsd": 137882,
+            "profitFactor": 1.06,
+            "maxDrawdownPct": -5.71
+          }
+        }
+      ],
+      "hedgeLeg": {
+        "pnlUsd": -389902,
+        "executionUsd": 285846,
+        "borrowUsd": 57911
+      }
+    }
+  ]
+}

@@ -1,0 +1,7400 @@
+{
+  "generatedAt": "2026-09-24T11:29:32.662Z",
+  "study": "production-factor-overlays-v1",
+  "methodology": {
+    "productionBaseline": "server.backtestSignal + computeQuantSignal + canonical decision/levels/hybrid exit",
+    "markets": [
+      "US",
+      "HK",
+      "Japan",
+      "UK",
+      "Germany",
+      "France",
+      "Commodities"
+    ],
+    "loadedPerMarket": {
+      "US": 80,
+      "HK": 67,
+      "Japan": 80,
+      "UK": 80,
+      "Germany": 38,
+      "France": 39,
+      "Commodities": 10
+    },
+    "requestedPerMarket": 80,
+    "range": "10y",
+    "folds": 4,
+    "trainBars": 504,
+    "validationBars": 126,
+    "testBars": 126,
+    "horizonEmbargoBars": {
+      "short": 20,
+      "medium": 63,
+      "long": 180
+    },
+    "nextOpen": true,
+    "productionHybridExit": true,
+    "productionTpSlUnchanged": true,
+    "costsAndBorrow": true,
+    "pointInTimeFundamentals": false,
+    "currentFundamentalsUsed": false,
+    "shortPrimaryFrame": "daily OHLC cash-session proxy for 8H",
+    "minProfitFactor": 1.3,
+    "minDevelopmentTrades": 30,
+    "minHoldoutTrades": 30,
+    "winRateTargetPct": [
+      65,
+      70
+    ],
+    "promotionRule": "strictly improves both win rate and PnL in development OOS and untouched holdout"
+  },
+  "candidates": [
+    {
+      "id": "production",
+      "factors": []
+    },
+    {
+      "id": "mtf",
+      "factors": [
+        "mtf"
+      ]
+    },
+    {
+      "id": "rs10",
+      "factors": [
+        "rs10"
+      ]
+    },
+    {
+      "id": "rs15",
+      "factors": [
+        "rs15"
+      ]
+    },
+    {
+      "id": "rs20",
+      "factors": [
+        "rs20"
+      ]
+    },
+    {
+      "id": "alignment",
+      "factors": [
+        "alignment"
+      ]
+    },
+    {
+      "id": "breadth",
+      "factors": [
+        "breadth"
+      ]
+    },
+    {
+      "id": "adx_vol",
+      "factors": [
+        "adxVol"
+      ]
+    },
+    {
+      "id": "retest",
+      "factors": [
+        "retest"
+      ]
+    },
+    {
+      "id": "ma_distance",
+      "factors": [
+        "maDistance"
+      ]
+    },
+    {
+      "id": "execution",
+      "factors": [
+        "execution"
+      ]
+    },
+    {
+      "id": "expectancy",
+      "factors": [
+        "expectancy"
+      ]
+    },
+    {
+      "id": "commodity",
+      "factors": [
+        "commodity"
+      ]
+    },
+    {
+      "id": "mtf_rs",
+      "factors": [
+        "mtf",
+        "rs20"
+      ]
+    },
+    {
+      "id": "mtf_alignment",
+      "factors": [
+        "mtf",
+        "alignment"
+      ]
+    },
+    {
+      "id": "rs_alignment",
+      "factors": [
+        "rs20",
+        "alignment"
+      ]
+    },
+    {
+      "id": "rs_breadth",
+      "factors": [
+        "rs20",
+        "breadth"
+      ]
+    },
+    {
+      "id": "trend_regime",
+      "factors": [
+        "alignment",
+        "breadth",
+        "adxVol"
+      ]
+    },
+    {
+      "id": "retest_quality",
+      "factors": [
+        "retest",
+        "maDistance",
+        "execution"
+      ]
+    },
+    {
+      "id": "rs_execution",
+      "factors": [
+        "rs20",
+        "maDistance",
+        "execution"
+      ]
+    },
+    {
+      "id": "expectancy_rs",
+      "factors": [
+        "expectancy",
+        "rs20"
+      ]
+    },
+    {
+      "id": "expectancy_quality",
+      "factors": [
+        "expectancy",
+        "maDistance",
+        "execution"
+      ]
+    },
+    {
+      "id": "mtf_quality",
+      "factors": [
+        "mtf",
+        "maDistance",
+        "execution"
+      ]
+    },
+    {
+      "id": "confirmation_core",
+      "factors": [
+        "mtf",
+        "rs20",
+        "alignment",
+        "adxVol"
+      ]
+    },
+    {
+      "id": "commodity_regime",
+      "factors": [
+        "commodity",
+        "adxVol",
+        "execution"
+      ]
+    },
+    {
+      "id": "commodity_expectancy",
+      "factors": [
+        "commodity",
+        "expectancy",
+        "execution"
+      ]
+    }
+  ],
+  "cells": [
+    {
+      "market": "US",
+      "horizon": "short",
+      "side": "buy",
+      "eventOpportunities": 6,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 2,
+        "wins": 1,
+        "winRate": 50,
+        "avgReturnPct": -1.62,
+        "profitFactor": 0.233,
+        "pnlUsd": -324.01,
+        "maxDrawdownPct": 4.222
+      },
+      "baselineDevelopment": {
+        "trades": 2,
+        "wins": 1,
+        "winRate": 50,
+        "avgReturnPct": -1.62,
+        "profitFactor": 0.233,
+        "pnlUsd": -324.01,
+        "maxDrawdownPct": 4.222
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 1.333,
+            "profitFactor": 99,
+            "pnlUsd": 133.34,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.222,
+            "profitFactor": 0,
+            "pnlUsd": -422.24,
+            "maxDrawdownPct": 4.222
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.222,
+            "profitFactor": 0,
+            "pnlUsd": -422.24,
+            "maxDrawdownPct": 4.222
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 0.982,
+            "profitFactor": 99,
+            "pnlUsd": 98.24,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 0.982,
+            "profitFactor": 99,
+            "pnlUsd": 98.24,
+            "maxDrawdownPct": 0
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "US",
+      "horizon": "short",
+      "side": "sell",
+      "eventOpportunities": 0,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineDevelopment": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "eventOpportunities": 26,
+      "frozenModel": "adx_vol",
+      "factors": [
+        "adxVol"
+      ],
+      "development": {
+        "trades": 2,
+        "wins": 1,
+        "winRate": 50,
+        "avgReturnPct": -0.746,
+        "profitFactor": 0.549,
+        "pnlUsd": -149.17,
+        "maxDrawdownPct": 3.309
+      },
+      "baselineDevelopment": {
+        "trades": 4,
+        "wins": 2,
+        "winRate": 50,
+        "avgReturnPct": 0.711,
+        "profitFactor": 1.681,
+        "pnlUsd": 284.21,
+        "maxDrawdownPct": 3.309
+      },
+      "holdout": {
+        "trades": 1,
+        "wins": 1,
+        "winRate": 100,
+        "avgReturnPct": 2.162,
+        "profitFactor": 99,
+        "pnlUsd": 216.17,
+        "maxDrawdownPct": 0
+      },
+      "baselineHoldout": {
+        "trades": 1,
+        "wins": 1,
+        "winRate": 100,
+        "avgReturnPct": 2.162,
+        "profitFactor": 99,
+        "pnlUsd": 216.17,
+        "maxDrawdownPct": 0
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "mtf",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 4.675,
+            "profitFactor": 99,
+            "pnlUsd": 467.48,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -3.309,
+            "profitFactor": 0,
+            "pnlUsd": -330.88,
+            "maxDrawdownPct": 3.309
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": 0.946,
+            "profitFactor": 1.572,
+            "pnlUsd": 189.16,
+            "maxDrawdownPct": 3.309
+          }
+        },
+        {
+          "fold": 2,
+          "model": "adx_vol",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 5.2,
+            "profitFactor": 99,
+            "pnlUsd": 520.03,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -0.866,
+            "profitFactor": 0,
+            "pnlUsd": -86.65,
+            "maxDrawdownPct": 0.866
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 1.817,
+            "profitFactor": 99,
+            "pnlUsd": 181.7,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 1.817,
+            "profitFactor": 99,
+            "pnlUsd": 181.7,
+            "maxDrawdownPct": 0
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": true,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": true,
+        "positiveDevelopment": false,
+        "positiveHoldout": true,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": true,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": -433.38,
+        "trades": -2,
+        "profitFactor": -1.132
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.15865526383236372,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "eventOpportunities": 20,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 2,
+        "wins": 1,
+        "winRate": 50,
+        "avgReturnPct": -0.436,
+        "profitFactor": 0.66,
+        "pnlUsd": -87.28,
+        "maxDrawdownPct": 2.565
+      },
+      "baselineDevelopment": {
+        "trades": 2,
+        "wins": 1,
+        "winRate": 50,
+        "avgReturnPct": -0.436,
+        "profitFactor": 0.66,
+        "pnlUsd": -87.28,
+        "maxDrawdownPct": 2.565
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": -0.436,
+            "profitFactor": 0.66,
+            "pnlUsd": -87.28,
+            "maxDrawdownPct": 2.565
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": -0.436,
+            "profitFactor": 0.66,
+            "pnlUsd": -87.28,
+            "maxDrawdownPct": 2.565
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "adx_vol",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 1.693,
+            "profitFactor": 99,
+            "pnlUsd": 169.26,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "eventOpportunities": 6,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 2,
+        "wins": 1,
+        "winRate": 50,
+        "avgReturnPct": 3.788,
+        "profitFactor": 2.176,
+        "pnlUsd": 757.6,
+        "maxDrawdownPct": 6.444
+      },
+      "baselineDevelopment": {
+        "trades": 2,
+        "wins": 1,
+        "winRate": 50,
+        "avgReturnPct": 3.788,
+        "profitFactor": 2.176,
+        "pnlUsd": 757.6,
+        "maxDrawdownPct": 6.444
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": 3.788,
+            "profitFactor": 2.176,
+            "pnlUsd": 757.6,
+            "maxDrawdownPct": 6.444
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": 3.788,
+            "profitFactor": 2.176,
+            "pnlUsd": 757.6,
+            "maxDrawdownPct": 6.444
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": true,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": true,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "eventOpportunities": 0,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineDevelopment": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "HK",
+      "horizon": "short",
+      "side": "buy",
+      "eventOpportunities": 66,
+      "frozenModel": "execution",
+      "factors": [
+        "execution"
+      ],
+      "development": {
+        "trades": 15,
+        "wins": 12,
+        "winRate": 80,
+        "avgReturnPct": 3.567,
+        "profitFactor": 6.85,
+        "pnlUsd": 5350.98,
+        "maxDrawdownPct": 8.878
+      },
+      "baselineDevelopment": {
+        "trades": 16,
+        "wins": 13,
+        "winRate": 81.3,
+        "avgReturnPct": 3.341,
+        "profitFactor": 4.949,
+        "pnlUsd": 5345.63,
+        "maxDrawdownPct": 8.878
+      },
+      "holdout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -5.311,
+        "profitFactor": 0,
+        "pnlUsd": -531.14,
+        "maxDrawdownPct": 5.311
+      },
+      "baselineHoldout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -5.311,
+        "profitFactor": 0,
+        "pnlUsd": -531.14,
+        "maxDrawdownPct": 5.311
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "execution",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 1.988,
+            "profitFactor": 99,
+            "pnlUsd": 198.78,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": 2.634,
+            "profitFactor": 20.745,
+            "pnlUsd": 526.78,
+            "maxDrawdownPct": 0.267
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": 2.634,
+            "profitFactor": 20.745,
+            "pnlUsd": 526.78,
+            "maxDrawdownPct": 0.267
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 5,
+            "wins": 3,
+            "winRate": 60,
+            "avgReturnPct": 2.129,
+            "profitFactor": 18.77,
+            "pnlUsd": 1064.72,
+            "maxDrawdownPct": 0.332
+          },
+          "test": {
+            "trades": 11,
+            "wins": 10,
+            "winRate": 90.9,
+            "avgReturnPct": 3.896,
+            "profitFactor": 5.964,
+            "pnlUsd": 4285.95,
+            "maxDrawdownPct": 8.634
+          },
+          "baseline": {
+            "trades": 11,
+            "wins": 10,
+            "winRate": 90.9,
+            "avgReturnPct": 3.896,
+            "profitFactor": 5.964,
+            "pnlUsd": 4285.95,
+            "maxDrawdownPct": 8.634
+          }
+        },
+        {
+          "fold": 3,
+          "model": "execution",
+          "validation": {
+            "trades": 9,
+            "wins": 9,
+            "winRate": 100,
+            "avgReturnPct": 5.556,
+            "profitFactor": 99,
+            "pnlUsd": 5000.53,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": 2.691,
+            "profitFactor": 22.79,
+            "pnlUsd": 538.25,
+            "maxDrawdownPct": 0.247
+          },
+          "baseline": {
+            "trades": 3,
+            "wins": 2,
+            "winRate": 66.7,
+            "avgReturnPct": 1.776,
+            "profitFactor": 2.149,
+            "pnlUsd": 532.89,
+            "maxDrawdownPct": 4.637
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": true,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": true,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": true,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": -1.3,
+        "pnlUsd": 5.35,
+        "trades": -1,
+        "profitFactor": 1.901
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.8413447361676363,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "HK",
+      "horizon": "short",
+      "side": "sell",
+      "eventOpportunities": 6,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -4.632,
+        "profitFactor": 0,
+        "pnlUsd": -463.16,
+        "maxDrawdownPct": 4.632
+      },
+      "baselineDevelopment": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -4.632,
+        "profitFactor": 0,
+        "pnlUsd": -463.16,
+        "maxDrawdownPct": 4.632
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 2,
+            "wins": 2,
+            "winRate": 100,
+            "avgReturnPct": 0.735,
+            "profitFactor": 99,
+            "pnlUsd": 146.91,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.632,
+            "profitFactor": 0,
+            "pnlUsd": -463.16,
+            "maxDrawdownPct": 4.632
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.632,
+            "profitFactor": 0,
+            "pnlUsd": -463.16,
+            "maxDrawdownPct": 4.632
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.632,
+            "profitFactor": 0,
+            "pnlUsd": -463.16,
+            "maxDrawdownPct": 4.632
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "HK",
+      "horizon": "medium",
+      "side": "buy",
+      "eventOpportunities": 93,
+      "frozenModel": "alignment",
+      "factors": [
+        "alignment"
+      ],
+      "development": {
+        "trades": 21,
+        "wins": 8,
+        "winRate": 38.1,
+        "avgReturnPct": -0.961,
+        "profitFactor": 0.716,
+        "pnlUsd": -2017.08,
+        "maxDrawdownPct": 39.763
+      },
+      "baselineDevelopment": {
+        "trades": 28,
+        "wins": 11,
+        "winRate": 39.3,
+        "avgReturnPct": -1.097,
+        "profitFactor": 0.661,
+        "pnlUsd": -3070.38,
+        "maxDrawdownPct": 41.569
+      },
+      "holdout": {
+        "trades": 3,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -2.018,
+        "profitFactor": 0,
+        "pnlUsd": -605.55,
+        "maxDrawdownPct": 5.98
+      },
+      "baselineHoldout": {
+        "trades": 4,
+        "wins": 1,
+        "winRate": 25,
+        "avgReturnPct": -1.51,
+        "profitFactor": 0.002,
+        "pnlUsd": -604.17,
+        "maxDrawdownPct": 5.967
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -10.702,
+            "profitFactor": 0,
+            "pnlUsd": -1070.25,
+            "maxDrawdownPct": 10.702
+          },
+          "test": {
+            "trades": 9,
+            "wins": 2,
+            "winRate": 22.2,
+            "avgReturnPct": -1.762,
+            "profitFactor": 0.427,
+            "pnlUsd": -1586.16,
+            "maxDrawdownPct": 15.831
+          },
+          "baseline": {
+            "trades": 9,
+            "wins": 2,
+            "winRate": 22.2,
+            "avgReturnPct": -1.762,
+            "profitFactor": 0.427,
+            "pnlUsd": -1586.16,
+            "maxDrawdownPct": 15.831
+          }
+        },
+        {
+          "fold": 2,
+          "model": "alignment",
+          "validation": {
+            "trades": 3,
+            "wins": 1,
+            "winRate": 33.3,
+            "avgReturnPct": -0.192,
+            "profitFactor": 0.952,
+            "pnlUsd": -57.73,
+            "maxDrawdownPct": 11.771
+          },
+          "test": {
+            "trades": 6,
+            "wins": 1,
+            "winRate": 16.7,
+            "avgReturnPct": -5.033,
+            "profitFactor": 0.226,
+            "pnlUsd": -3019.81,
+            "maxDrawdownPct": 28.433
+          },
+          "baseline": {
+            "trades": 8,
+            "wins": 2,
+            "winRate": 25,
+            "avgReturnPct": -4.06,
+            "profitFactor": 0.271,
+            "pnlUsd": -3247.74,
+            "maxDrawdownPct": 30.195
+          }
+        },
+        {
+          "fold": 3,
+          "model": "breadth",
+          "validation": {
+            "trades": 4,
+            "wins": 1,
+            "winRate": 25,
+            "avgReturnPct": -5.527,
+            "profitFactor": 0.129,
+            "pnlUsd": -2210.77,
+            "maxDrawdownPct": 24.233
+          },
+          "test": {
+            "trades": 6,
+            "wins": 5,
+            "winRate": 83.3,
+            "avgReturnPct": 4.315,
+            "profitFactor": 6.962,
+            "pnlUsd": 2588.89,
+            "maxDrawdownPct": 4.342
+          },
+          "baseline": {
+            "trades": 11,
+            "wins": 7,
+            "winRate": 63.6,
+            "avgReturnPct": 1.603,
+            "profitFactor": 1.958,
+            "pnlUsd": 1763.53,
+            "maxDrawdownPct": 14.504
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": true,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": -1.2,
+        "pnlUsd": 1053.3,
+        "trades": -7,
+        "profitFactor": 0.055
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": -25,
+        "pnlUsd": -1.38,
+        "trades": -1,
+        "profitFactor": -0.002
+      },
+      "multiplicity": {
+        "rawP": 0.958367779292276,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "HK",
+      "horizon": "medium",
+      "side": "sell",
+      "eventOpportunities": 238,
+      "frozenModel": "expectancy_rs",
+      "factors": [
+        "expectancy",
+        "rs20"
+      ],
+      "development": {
+        "trades": 6,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -5.504,
+        "profitFactor": 0,
+        "pnlUsd": -3302.13,
+        "maxDrawdownPct": 28.952
+      },
+      "baselineDevelopment": {
+        "trades": 12,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -4.605,
+        "profitFactor": 0,
+        "pnlUsd": -5525.69,
+        "maxDrawdownPct": 43.427
+      },
+      "holdout": {
+        "trades": 5,
+        "wins": 4,
+        "winRate": 80,
+        "avgReturnPct": 3.5,
+        "profitFactor": 4.156,
+        "pnlUsd": 1749.92,
+        "maxDrawdownPct": 5.545
+      },
+      "baselineHoldout": {
+        "trades": 12,
+        "wins": 6,
+        "winRate": 50,
+        "avgReturnPct": 1.086,
+        "profitFactor": 1.519,
+        "pnlUsd": 1302.72,
+        "maxDrawdownPct": 10.926
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "expectancy_rs",
+          "validation": {
+            "trades": 4,
+            "wins": 3,
+            "winRate": 75,
+            "avgReturnPct": 1.242,
+            "profitFactor": 1.801,
+            "pnlUsd": 496.89,
+            "maxDrawdownPct": 6.205
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.82,
+            "profitFactor": 0,
+            "pnlUsd": -482.01,
+            "maxDrawdownPct": 4.82
+          },
+          "baseline": {
+            "trades": 6,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -3.226,
+            "profitFactor": 0,
+            "pnlUsd": -1935.32,
+            "maxDrawdownPct": 17.887
+          }
+        },
+        {
+          "fold": 2,
+          "model": "expectancy_rs",
+          "validation": {
+            "trades": 3,
+            "wins": 2,
+            "winRate": 66.7,
+            "avgReturnPct": 1.462,
+            "profitFactor": 6.144,
+            "pnlUsd": 438.61,
+            "maxDrawdownPct": 0.853
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -9.429,
+            "profitFactor": 0,
+            "pnlUsd": -942.92,
+            "maxDrawdownPct": 9.429
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -8.566,
+            "profitFactor": 0,
+            "pnlUsd": -1713.17,
+            "maxDrawdownPct": 16.405
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 8,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.561,
+            "profitFactor": 0,
+            "pnlUsd": -3648.49,
+            "maxDrawdownPct": 31.358
+          },
+          "test": {
+            "trades": 4,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.693,
+            "profitFactor": 0,
+            "pnlUsd": -1877.2,
+            "maxDrawdownPct": 17.582
+          },
+          "baseline": {
+            "trades": 4,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.693,
+            "profitFactor": 0,
+            "pnlUsd": -1877.2,
+            "maxDrawdownPct": 17.582
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": true,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": true,
+        "positiveDevelopment": false,
+        "positiveHoldout": true,
+        "improvesDevelopment": false,
+        "improvesHoldout": true,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": true,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 2223.56,
+        "trades": -6,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 30,
+        "pnlUsd": 447.2,
+        "trades": -7,
+        "profitFactor": 2.637
+      },
+      "multiplicity": {
+        "rawP": 0.0898563115175054,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "HK",
+      "horizon": "long",
+      "side": "buy",
+      "eventOpportunities": 122,
+      "frozenModel": "alignment",
+      "factors": [
+        "alignment"
+      ],
+      "development": {
+        "trades": 20,
+        "wins": 7,
+        "winRate": 35,
+        "avgReturnPct": 2.073,
+        "profitFactor": 1.239,
+        "pnlUsd": 4146.18,
+        "maxDrawdownPct": 55.994
+      },
+      "baselineDevelopment": {
+        "trades": 27,
+        "wins": 12,
+        "winRate": 44.4,
+        "avgReturnPct": 4.027,
+        "profitFactor": 1.553,
+        "pnlUsd": 10871.97,
+        "maxDrawdownPct": 55.994
+      },
+      "holdout": {
+        "trades": 3,
+        "wins": 1,
+        "winRate": 33.3,
+        "avgReturnPct": -7.183,
+        "profitFactor": 0.522,
+        "pnlUsd": -2154.81,
+        "maxDrawdownPct": 40.271
+      },
+      "baselineHoldout": {
+        "trades": 3,
+        "wins": 1,
+        "winRate": 33.3,
+        "avgReturnPct": -7.183,
+        "profitFactor": 0.522,
+        "pnlUsd": -2154.81,
+        "maxDrawdownPct": 40.271
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 11,
+            "wins": 4,
+            "winRate": 36.4,
+            "avgReturnPct": 3.169,
+            "profitFactor": 1.331,
+            "pnlUsd": 3485.55,
+            "maxDrawdownPct": 55.994
+          },
+          "baseline": {
+            "trades": 11,
+            "wins": 4,
+            "winRate": 36.4,
+            "avgReturnPct": 3.169,
+            "profitFactor": 1.331,
+            "pnlUsd": 3485.55,
+            "maxDrawdownPct": 55.994
+          }
+        },
+        {
+          "fold": 2,
+          "model": "mtf",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 16.261,
+            "profitFactor": 99,
+            "pnlUsd": 1626.07,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 4,
+            "wins": 2,
+            "winRate": 50,
+            "avgReturnPct": 4.704,
+            "profitFactor": 1.795,
+            "pnlUsd": 1881.65,
+            "maxDrawdownPct": 15.595
+          },
+          "baseline": {
+            "trades": 9,
+            "wins": 6,
+            "winRate": 66.7,
+            "avgReturnPct": 9.859,
+            "profitFactor": 3.984,
+            "pnlUsd": 8873.49,
+            "maxDrawdownPct": 15.595
+          }
+        },
+        {
+          "fold": 3,
+          "model": "alignment",
+          "validation": {
+            "trades": 6,
+            "wins": 1,
+            "winRate": 16.7,
+            "avgReturnPct": -4.445,
+            "profitFactor": 0.701,
+            "pnlUsd": -2666.97,
+            "maxDrawdownPct": 55.994
+          },
+          "test": {
+            "trades": 5,
+            "wins": 1,
+            "winRate": 20,
+            "avgReturnPct": -2.442,
+            "profitFactor": 0.728,
+            "pnlUsd": -1221.02,
+            "maxDrawdownPct": 38.463
+          },
+          "baseline": {
+            "trades": 7,
+            "wins": 2,
+            "winRate": 28.6,
+            "avgReturnPct": -2.124,
+            "profitFactor": 0.759,
+            "pnlUsd": -1487.06,
+            "maxDrawdownPct": 43.013
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": true,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": true,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": -9.4,
+        "pnlUsd": -6725.79,
+        "trades": -7,
+        "profitFactor": -0.314
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.7181486083948903,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "HK",
+      "horizon": "long",
+      "side": "sell",
+      "eventOpportunities": 43,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 2,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -16.86,
+        "profitFactor": 0,
+        "pnlUsd": -3371.96,
+        "maxDrawdownPct": 31.159
+      },
+      "baselineDevelopment": {
+        "trades": 2,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -16.86,
+        "profitFactor": 0,
+        "pnlUsd": -3371.96,
+        "maxDrawdownPct": 31.159
+      },
+      "holdout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -38.09,
+        "profitFactor": 0,
+        "pnlUsd": -3809.02,
+        "maxDrawdownPct": 38.09
+      },
+      "baselineHoldout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -38.09,
+        "profitFactor": 0,
+        "pnlUsd": -3809.02,
+        "maxDrawdownPct": 38.09
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "adx_vol",
+          "validation": {
+            "trades": 5,
+            "wins": 3,
+            "winRate": 60,
+            "avgReturnPct": 8.948,
+            "profitFactor": 2.577,
+            "pnlUsd": 4473.87,
+            "maxDrawdownPct": 23.209
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -11.552,
+            "profitFactor": 0,
+            "pnlUsd": -1155.2,
+            "maxDrawdownPct": 11.552
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -11.552,
+            "profitFactor": 0,
+            "pnlUsd": -1155.2,
+            "maxDrawdownPct": 11.552
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -22.168,
+            "profitFactor": 0,
+            "pnlUsd": -2216.76,
+            "maxDrawdownPct": 22.168
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -22.168,
+            "profitFactor": 0,
+            "pnlUsd": -2216.76,
+            "maxDrawdownPct": 22.168
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -18.484,
+            "profitFactor": 0,
+            "pnlUsd": -1848.41,
+            "maxDrawdownPct": 18.484
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.8413447361676363,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Japan",
+      "horizon": "short",
+      "side": "buy",
+      "eventOpportunities": 177,
+      "frozenModel": "alignment",
+      "factors": [
+        "alignment"
+      ],
+      "development": {
+        "trades": 7,
+        "wins": 5,
+        "winRate": 71.4,
+        "avgReturnPct": 1.56,
+        "profitFactor": 3.421,
+        "pnlUsd": 1091.94,
+        "maxDrawdownPct": 4.507
+      },
+      "baselineDevelopment": {
+        "trades": 30,
+        "wins": 12,
+        "winRate": 40,
+        "avgReturnPct": -1.799,
+        "profitFactor": 0.328,
+        "pnlUsd": -5396.82,
+        "maxDrawdownPct": 47.907
+      },
+      "holdout": {
+        "trades": 2,
+        "wins": 2,
+        "winRate": 100,
+        "avgReturnPct": 3.181,
+        "profitFactor": 99,
+        "pnlUsd": 636.14,
+        "maxDrawdownPct": 0
+      },
+      "baselineHoldout": {
+        "trades": 9,
+        "wins": 8,
+        "winRate": 88.9,
+        "avgReturnPct": 4.322,
+        "profitFactor": 129.162,
+        "pnlUsd": 3889.47,
+        "maxDrawdownPct": 0.303
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "execution",
+          "validation": {
+            "trades": 9,
+            "wins": 8,
+            "winRate": 88.9,
+            "avgReturnPct": 1.082,
+            "profitFactor": 3.194,
+            "pnlUsd": 974.17,
+            "maxDrawdownPct": 4.44
+          },
+          "test": {
+            "trades": 2,
+            "wins": 2,
+            "winRate": 100,
+            "avgReturnPct": 2.615,
+            "profitFactor": 99,
+            "pnlUsd": 522.92,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 3,
+            "wins": 3,
+            "winRate": 100,
+            "avgReturnPct": 2.33,
+            "profitFactor": 99,
+            "pnlUsd": 698.92,
+            "maxDrawdownPct": 0
+          }
+        },
+        {
+          "fold": 2,
+          "model": "breadth",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 1.652,
+            "profitFactor": 99,
+            "pnlUsd": 165.22,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 4,
+            "wins": 3,
+            "winRate": 75,
+            "avgReturnPct": 2.533,
+            "profitFactor": 145.254,
+            "pnlUsd": 1013.02,
+            "maxDrawdownPct": 0.07
+          },
+          "baseline": {
+            "trades": 22,
+            "wins": 7,
+            "winRate": 31.8,
+            "avgReturnPct": -2.399,
+            "profitFactor": 0.198,
+            "pnlUsd": -5277.73,
+            "maxDrawdownPct": 47.907
+          }
+        },
+        {
+          "fold": 3,
+          "model": "alignment",
+          "validation": {
+            "trades": 6,
+            "wins": 4,
+            "winRate": 66.7,
+            "avgReturnPct": -0.924,
+            "profitFactor": 0.487,
+            "pnlUsd": -554.18,
+            "maxDrawdownPct": 10.354
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.44,
+            "profitFactor": 0,
+            "pnlUsd": -444,
+            "maxDrawdownPct": 4.44
+          },
+          "baseline": {
+            "trades": 5,
+            "wins": 2,
+            "winRate": 40,
+            "avgReturnPct": -1.636,
+            "profitFactor": 0.434,
+            "pnlUsd": -818.01,
+            "maxDrawdownPct": 8.276
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": true,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": true,
+        "holdoutProfitFactor": true,
+        "positiveDevelopment": true,
+        "positiveHoldout": true,
+        "improvesDevelopment": true,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": true,
+      "developmentDelta": {
+        "winRatePctPoints": 31.4,
+        "pnlUsd": 6488.76,
+        "trades": -23,
+        "profitFactor": 3.093
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 11.1,
+        "pnlUsd": -3253.33,
+        "trades": -7,
+        "profitFactor": -30.162
+      },
+      "multiplicity": {
+        "rawP": 0.07864965512620503,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Japan",
+      "horizon": "short",
+      "side": "sell",
+      "eventOpportunities": 16,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 2,
+        "wins": 2,
+        "winRate": 100,
+        "avgReturnPct": 3.829,
+        "profitFactor": 99,
+        "pnlUsd": 765.74,
+        "maxDrawdownPct": 0
+      },
+      "baselineDevelopment": {
+        "trades": 2,
+        "wins": 2,
+        "winRate": 100,
+        "avgReturnPct": 3.829,
+        "profitFactor": 99,
+        "pnlUsd": 765.74,
+        "maxDrawdownPct": 0
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 2,
+            "wins": 2,
+            "winRate": 100,
+            "avgReturnPct": 3.829,
+            "profitFactor": 99,
+            "pnlUsd": 765.74,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 2,
+            "winRate": 100,
+            "avgReturnPct": 3.829,
+            "profitFactor": 99,
+            "pnlUsd": 765.74,
+            "maxDrawdownPct": 0
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 2,
+            "wins": 2,
+            "winRate": 100,
+            "avgReturnPct": 3.829,
+            "profitFactor": 99,
+            "pnlUsd": 765.74,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": true,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": true,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "eventOpportunities": 239,
+      "frozenModel": "adx_vol",
+      "factors": [
+        "adxVol"
+      ],
+      "development": {
+        "trades": 29,
+        "wins": 11,
+        "winRate": 37.9,
+        "avgReturnPct": -1.598,
+        "profitFactor": 0.489,
+        "pnlUsd": -4635.52,
+        "maxDrawdownPct": 45.316
+      },
+      "baselineDevelopment": {
+        "trades": 41,
+        "wins": 20,
+        "winRate": 48.8,
+        "avgReturnPct": -0.14,
+        "profitFactor": 0.946,
+        "pnlUsd": -572.46,
+        "maxDrawdownPct": 31.397
+      },
+      "holdout": {
+        "trades": 8,
+        "wins": 2,
+        "winRate": 25,
+        "avgReturnPct": -1.737,
+        "profitFactor": 0.298,
+        "pnlUsd": -1389.75,
+        "maxDrawdownPct": 15.632
+      },
+      "baselineHoldout": {
+        "trades": 15,
+        "wins": 4,
+        "winRate": 26.7,
+        "avgReturnPct": -1.837,
+        "profitFactor": 0.423,
+        "pnlUsd": -2755.85,
+        "maxDrawdownPct": 29.21
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "adx_vol",
+          "validation": {
+            "trades": 11,
+            "wins": 7,
+            "winRate": 63.6,
+            "avgReturnPct": 1.632,
+            "profitFactor": 3.396,
+            "pnlUsd": 1795.22,
+            "maxDrawdownPct": 6.537
+          },
+          "test": {
+            "trades": 7,
+            "wins": 3,
+            "winRate": 42.9,
+            "avgReturnPct": -0.741,
+            "profitFactor": 0.765,
+            "pnlUsd": -518.79,
+            "maxDrawdownPct": 15.564
+          },
+          "baseline": {
+            "trades": 7,
+            "wins": 3,
+            "winRate": 42.9,
+            "avgReturnPct": -0.741,
+            "profitFactor": 0.765,
+            "pnlUsd": -518.79,
+            "maxDrawdownPct": 15.564
+          }
+        },
+        {
+          "fold": 2,
+          "model": "adx_vol",
+          "validation": {
+            "trades": 17,
+            "wins": 6,
+            "winRate": 35.3,
+            "avgReturnPct": -1.672,
+            "profitFactor": 0.495,
+            "pnlUsd": -2843.2,
+            "maxDrawdownPct": 29.91
+          },
+          "test": {
+            "trades": 11,
+            "wins": 4,
+            "winRate": 36.4,
+            "avgReturnPct": -1.847,
+            "profitFactor": 0.168,
+            "pnlUsd": -2031.37,
+            "maxDrawdownPct": 20.776
+          },
+          "baseline": {
+            "trades": 12,
+            "wins": 5,
+            "winRate": 41.7,
+            "avgReturnPct": -1.472,
+            "profitFactor": 0.277,
+            "pnlUsd": -1766.63,
+            "maxDrawdownPct": 20.241
+          }
+        },
+        {
+          "fold": 3,
+          "model": "alignment",
+          "validation": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": -2.402,
+            "profitFactor": 0.085,
+            "pnlUsd": -480.35,
+            "maxDrawdownPct": 5.247
+          },
+          "test": {
+            "trades": 11,
+            "wins": 4,
+            "winRate": 36.4,
+            "avgReturnPct": -1.896,
+            "profitFactor": 0.528,
+            "pnlUsd": -2085.35,
+            "maxDrawdownPct": 31.335
+          },
+          "baseline": {
+            "trades": 22,
+            "wins": 12,
+            "winRate": 54.5,
+            "avgReturnPct": 0.779,
+            "profitFactor": 1.29,
+            "pnlUsd": 1712.97,
+            "maxDrawdownPct": 29.493
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": true,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": -10.9,
+        "pnlUsd": -4063.06,
+        "trades": -12,
+        "profitFactor": -0.457
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": -1.7,
+        "pnlUsd": 1366.1,
+        "trades": -7,
+        "profitFactor": -0.125
+      },
+      "multiplicity": {
+        "rawP": 0.921350344873795,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "sell",
+      "eventOpportunities": 239,
+      "frozenModel": "adx_vol",
+      "factors": [
+        "adxVol"
+      ],
+      "development": {
+        "trades": 18,
+        "wins": 2,
+        "winRate": 11.1,
+        "avgReturnPct": -2.588,
+        "profitFactor": 0.168,
+        "pnlUsd": -4658.18,
+        "maxDrawdownPct": 38.349
+      },
+      "baselineDevelopment": {
+        "trades": 27,
+        "wins": 4,
+        "winRate": 14.8,
+        "avgReturnPct": -2.123,
+        "profitFactor": 0.174,
+        "pnlUsd": -5732.92,
+        "maxDrawdownPct": 44.769
+      },
+      "holdout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -0.94,
+        "profitFactor": 0,
+        "pnlUsd": -94.02,
+        "maxDrawdownPct": 0.94
+      },
+      "baselineHoldout": {
+        "trades": 2,
+        "wins": 1,
+        "winRate": 50,
+        "avgReturnPct": -0.396,
+        "profitFactor": 0.157,
+        "pnlUsd": -79.27,
+        "maxDrawdownPct": 0.94
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 3,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -1.527,
+            "profitFactor": 0,
+            "pnlUsd": -458.22,
+            "maxDrawdownPct": 4.529
+          },
+          "test": {
+            "trades": 15,
+            "wins": 2,
+            "winRate": 13.3,
+            "avgReturnPct": -2.008,
+            "profitFactor": 0.237,
+            "pnlUsd": -3012.44,
+            "maxDrawdownPct": 26.971
+          },
+          "baseline": {
+            "trades": 15,
+            "wins": 2,
+            "winRate": 13.3,
+            "avgReturnPct": -2.008,
+            "profitFactor": 0.237,
+            "pnlUsd": -3012.44,
+            "maxDrawdownPct": 26.971
+          }
+        },
+        {
+          "fold": 2,
+          "model": "adx_vol",
+          "validation": {
+            "trades": 6,
+            "wins": 4,
+            "winRate": 66.7,
+            "avgReturnPct": 3.59,
+            "profitFactor": 3.996,
+            "pnlUsd": 2154.06,
+            "maxDrawdownPct": 5.756
+          },
+          "test": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -5.96,
+            "profitFactor": 0,
+            "pnlUsd": -1191.95,
+            "maxDrawdownPct": 11.567
+          },
+          "baseline": {
+            "trades": 11,
+            "wins": 2,
+            "winRate": 18.2,
+            "avgReturnPct": -2.061,
+            "profitFactor": 0.108,
+            "pnlUsd": -2266.69,
+            "maxDrawdownPct": 20.776
+          }
+        },
+        {
+          "fold": 3,
+          "model": "alignment",
+          "validation": {
+            "trades": 9,
+            "wins": 2,
+            "winRate": 22.2,
+            "avgReturnPct": -1.955,
+            "profitFactor": 0.135,
+            "pnlUsd": -1759.66,
+            "maxDrawdownPct": 16.578
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.538,
+            "profitFactor": 0,
+            "pnlUsd": -453.79,
+            "maxDrawdownPct": 4.538
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.538,
+            "profitFactor": 0,
+            "pnlUsd": -453.79,
+            "maxDrawdownPct": 4.538
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": true,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": -3.7,
+        "pnlUsd": 1074.74,
+        "trades": -9,
+        "profitFactor": -0.006
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": -50,
+        "pnlUsd": -14.75,
+        "trades": -1,
+        "profitFactor": -0.157
+      },
+      "multiplicity": {
+        "rawP": 0.8413447361676363,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Japan",
+      "horizon": "long",
+      "side": "buy",
+      "eventOpportunities": 247,
+      "frozenModel": "trend_regime",
+      "factors": [
+        "alignment",
+        "breadth",
+        "adxVol"
+      ],
+      "development": {
+        "trades": 20,
+        "wins": 16,
+        "winRate": 80,
+        "avgReturnPct": 16.01,
+        "profitFactor": 6.863,
+        "pnlUsd": 32019.8,
+        "maxDrawdownPct": 23.524
+      },
+      "baselineDevelopment": {
+        "trades": 43,
+        "wins": 27,
+        "winRate": 62.8,
+        "avgReturnPct": 11.396,
+        "profitFactor": 3.15,
+        "pnlUsd": 49004.78,
+        "maxDrawdownPct": 64.897
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 4,
+        "wins": 1,
+        "winRate": 25,
+        "avgReturnPct": -2.809,
+        "profitFactor": 0.48,
+        "pnlUsd": -1123.59,
+        "maxDrawdownPct": 19.38
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 10,
+            "wins": 6,
+            "winRate": 60,
+            "avgReturnPct": 5.619,
+            "profitFactor": 3.013,
+            "pnlUsd": 5619.2,
+            "maxDrawdownPct": 13.23
+          },
+          "test": {
+            "trades": 5,
+            "wins": 3,
+            "winRate": 60,
+            "avgReturnPct": 14.856,
+            "profitFactor": 3.49,
+            "pnlUsd": 7427.75,
+            "maxDrawdownPct": 15.308
+          },
+          "baseline": {
+            "trades": 5,
+            "wins": 3,
+            "winRate": 60,
+            "avgReturnPct": 14.856,
+            "profitFactor": 3.49,
+            "pnlUsd": 7427.75,
+            "maxDrawdownPct": 15.308
+          }
+        },
+        {
+          "fold": 2,
+          "model": "trend_regime",
+          "validation": {
+            "trades": 13,
+            "wins": 10,
+            "winRate": 76.9,
+            "avgReturnPct": 10.081,
+            "profitFactor": 4.508,
+            "pnlUsd": 13104.87,
+            "maxDrawdownPct": 20.528
+          },
+          "test": {
+            "trades": 13,
+            "wins": 11,
+            "winRate": 84.6,
+            "avgReturnPct": 16.372,
+            "profitFactor": 9.589,
+            "pnlUsd": 21284.06,
+            "maxDrawdownPct": 15.079
+          },
+          "baseline": {
+            "trades": 19,
+            "wins": 14,
+            "winRate": 73.7,
+            "avgReturnPct": 13.876,
+            "profitFactor": 6.669,
+            "pnlUsd": 26364.67,
+            "maxDrawdownPct": 15.079
+          }
+        },
+        {
+          "fold": 3,
+          "model": "confirmation_core",
+          "validation": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": 18.254,
+            "profitFactor": 3.079,
+            "pnlUsd": 3650.89,
+            "maxDrawdownPct": 17.562
+          },
+          "test": {
+            "trades": 2,
+            "wins": 2,
+            "winRate": 100,
+            "avgReturnPct": 16.54,
+            "profitFactor": 99,
+            "pnlUsd": 3307.99,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 19,
+            "wins": 10,
+            "winRate": 52.6,
+            "avgReturnPct": 8.007,
+            "profitFactor": 2.004,
+            "pnlUsd": 15212.36,
+            "maxDrawdownPct": 64.897
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": true,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": true,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": true,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 17.2,
+        "pnlUsd": -16984.98,
+        "trades": -23,
+        "profitFactor": 3.713
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 1123.59,
+        "trades": -4,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Japan",
+      "horizon": "long",
+      "side": "sell",
+      "eventOpportunities": 42,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 3,
+        "wins": 1,
+        "winRate": 33.3,
+        "avgReturnPct": -0.963,
+        "profitFactor": 0.861,
+        "pnlUsd": -288.97,
+        "maxDrawdownPct": 12.251
+      },
+      "baselineDevelopment": {
+        "trades": 3,
+        "wins": 1,
+        "winRate": 33.3,
+        "avgReturnPct": -0.963,
+        "profitFactor": 0.861,
+        "pnlUsd": -288.97,
+        "maxDrawdownPct": 12.251
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -23.121,
+            "profitFactor": 0,
+            "pnlUsd": -2312.12,
+            "maxDrawdownPct": 23.121
+          },
+          "test": {
+            "trades": 3,
+            "wins": 1,
+            "winRate": 33.3,
+            "avgReturnPct": -0.963,
+            "profitFactor": 0.861,
+            "pnlUsd": -288.97,
+            "maxDrawdownPct": 12.251
+          },
+          "baseline": {
+            "trades": 3,
+            "wins": 1,
+            "winRate": 33.3,
+            "avgReturnPct": -0.963,
+            "profitFactor": 0.861,
+            "pnlUsd": -288.97,
+            "maxDrawdownPct": 12.251
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "mtf",
+          "validation": {
+            "trades": 6,
+            "wins": 4,
+            "winRate": 66.7,
+            "avgReturnPct": 5.291,
+            "profitFactor": 2.963,
+            "pnlUsd": 3174.75,
+            "maxDrawdownPct": 15.693
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "UK",
+      "horizon": "short",
+      "side": "buy",
+      "eventOpportunities": 7,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 1,
+        "wins": 1,
+        "winRate": 100,
+        "avgReturnPct": 6.63,
+        "profitFactor": 99,
+        "pnlUsd": 663.01,
+        "maxDrawdownPct": 0
+      },
+      "baselineDevelopment": {
+        "trades": 1,
+        "wins": 1,
+        "winRate": 100,
+        "avgReturnPct": 6.63,
+        "profitFactor": 99,
+        "pnlUsd": 663.01,
+        "maxDrawdownPct": 0
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 6.63,
+            "profitFactor": 99,
+            "pnlUsd": 663.01,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 6.63,
+            "profitFactor": 99,
+            "pnlUsd": 663.01,
+            "maxDrawdownPct": 0
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": true,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": true,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "UK",
+      "horizon": "short",
+      "side": "sell",
+      "eventOpportunities": 0,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineDevelopment": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "buy",
+      "eventOpportunities": 10,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 1,
+        "wins": 1,
+        "winRate": 100,
+        "avgReturnPct": 5.867,
+        "profitFactor": 99,
+        "pnlUsd": 586.73,
+        "maxDrawdownPct": 0
+      },
+      "baselineDevelopment": {
+        "trades": 1,
+        "wins": 1,
+        "winRate": 100,
+        "avgReturnPct": 5.867,
+        "profitFactor": 99,
+        "pnlUsd": 586.73,
+        "maxDrawdownPct": 0
+      },
+      "holdout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -10.589,
+        "profitFactor": 0,
+        "pnlUsd": -1058.87,
+        "maxDrawdownPct": 10.589
+      },
+      "baselineHoldout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -10.589,
+        "profitFactor": 0,
+        "pnlUsd": -1058.87,
+        "maxDrawdownPct": 10.589
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 5.867,
+            "profitFactor": 99,
+            "pnlUsd": 586.73,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 5.867,
+            "profitFactor": 99,
+            "pnlUsd": 586.73,
+            "maxDrawdownPct": 0
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": true,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": true,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.8413447361676363,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "eventOpportunities": 21,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 2,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -3.877,
+        "profitFactor": 0,
+        "pnlUsd": -775.38,
+        "maxDrawdownPct": 7.692
+      },
+      "baselineDevelopment": {
+        "trades": 2,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -3.877,
+        "profitFactor": 0,
+        "pnlUsd": -775.38,
+        "maxDrawdownPct": 7.692
+      },
+      "holdout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -1.121,
+        "profitFactor": 0,
+        "pnlUsd": -112.06,
+        "maxDrawdownPct": 1.121
+      },
+      "baselineHoldout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -1.121,
+        "profitFactor": 0,
+        "pnlUsd": -112.06,
+        "maxDrawdownPct": 1.121
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -3.877,
+            "profitFactor": 0,
+            "pnlUsd": -775.38,
+            "maxDrawdownPct": 7.692
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -3.877,
+            "profitFactor": 0,
+            "pnlUsd": -775.38,
+            "maxDrawdownPct": 7.692
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -6.847,
+            "profitFactor": 0,
+            "pnlUsd": -684.66,
+            "maxDrawdownPct": 6.847
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -0.907,
+            "profitFactor": 0,
+            "pnlUsd": -90.72,
+            "maxDrawdownPct": 0.907
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.8413447361676363,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "eventOpportunities": 6,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineDevelopment": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -1.944,
+            "profitFactor": 0,
+            "pnlUsd": -194.4,
+            "maxDrawdownPct": 1.944
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "eventOpportunities": 1,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -3.931,
+        "profitFactor": 0,
+        "pnlUsd": -393.09,
+        "maxDrawdownPct": 3.931
+      },
+      "baselineDevelopment": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -3.931,
+        "profitFactor": 0,
+        "pnlUsd": -393.09,
+        "maxDrawdownPct": 3.931
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -3.931,
+            "profitFactor": 0,
+            "pnlUsd": -393.09,
+            "maxDrawdownPct": 3.931
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -3.931,
+            "profitFactor": 0,
+            "pnlUsd": -393.09,
+            "maxDrawdownPct": 3.931
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -3.931,
+            "profitFactor": 0,
+            "pnlUsd": -393.09,
+            "maxDrawdownPct": 3.931
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Germany",
+      "horizon": "short",
+      "side": "buy",
+      "eventOpportunities": 42,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 9,
+        "wins": 8,
+        "winRate": 88.9,
+        "avgReturnPct": 1.265,
+        "profitFactor": 3.437,
+        "pnlUsd": 1138.69,
+        "maxDrawdownPct": 4.673
+      },
+      "baselineDevelopment": {
+        "trades": 10,
+        "wins": 8,
+        "winRate": 80,
+        "avgReturnPct": 0.698,
+        "profitFactor": 1.769,
+        "pnlUsd": 698.26,
+        "maxDrawdownPct": 8.705
+      },
+      "holdout": {
+        "trades": 4,
+        "wins": 2,
+        "winRate": 50,
+        "avgReturnPct": 0.046,
+        "profitFactor": 1.017,
+        "pnlUsd": 18.48,
+        "maxDrawdownPct": 6.774
+      },
+      "baselineHoldout": {
+        "trades": 4,
+        "wins": 2,
+        "winRate": 50,
+        "avgReturnPct": 0.046,
+        "profitFactor": 1.017,
+        "pnlUsd": 18.48,
+        "maxDrawdownPct": 6.774
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 3,
+            "wins": 2,
+            "winRate": 66.7,
+            "avgReturnPct": 0.815,
+            "profitFactor": 12.179,
+            "pnlUsd": 244.64,
+            "maxDrawdownPct": 0.219
+          },
+          "test": {
+            "trades": 5,
+            "wins": 5,
+            "winRate": 100,
+            "avgReturnPct": 1.751,
+            "profitFactor": 99,
+            "pnlUsd": 875.38,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 5,
+            "wins": 5,
+            "winRate": 100,
+            "avgReturnPct": 1.751,
+            "profitFactor": 99,
+            "pnlUsd": 875.38,
+            "maxDrawdownPct": 0
+          }
+        },
+        {
+          "fold": 2,
+          "model": "adx_vol",
+          "validation": {
+            "trades": 2,
+            "wins": 2,
+            "winRate": 100,
+            "avgReturnPct": 2.148,
+            "profitFactor": 99,
+            "pnlUsd": 429.63,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 2,
+            "wins": 2,
+            "winRate": 100,
+            "avgReturnPct": 3.562,
+            "profitFactor": 99,
+            "pnlUsd": 712.37,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 3,
+            "wins": 2,
+            "winRate": 66.7,
+            "avgReturnPct": 0.906,
+            "profitFactor": 1.617,
+            "pnlUsd": 271.94,
+            "maxDrawdownPct": 4.404
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 3,
+            "wins": 3,
+            "winRate": 100,
+            "avgReturnPct": 2.751,
+            "profitFactor": 99,
+            "pnlUsd": 825.35,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": -2.245,
+            "profitFactor": 0.039,
+            "pnlUsd": -449.06,
+            "maxDrawdownPct": 4.673
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": -2.245,
+            "profitFactor": 0.039,
+            "pnlUsd": -449.06,
+            "maxDrawdownPct": 4.673
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": true,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": true,
+        "positiveHoldout": true,
+        "improvesDevelopment": true,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 8.9,
+        "pnlUsd": 440.43,
+        "trades": -1,
+        "profitFactor": 1.668
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.4999999995,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Germany",
+      "horizon": "short",
+      "side": "sell",
+      "eventOpportunities": 2,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineDevelopment": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "buy",
+      "eventOpportunities": 74,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 7,
+        "wins": 5,
+        "winRate": 71.4,
+        "avgReturnPct": 1.869,
+        "profitFactor": 6.116,
+        "pnlUsd": 1308.58,
+        "maxDrawdownPct": 1.436
+      },
+      "baselineDevelopment": {
+        "trades": 10,
+        "wins": 7,
+        "winRate": 70,
+        "avgReturnPct": 2.4,
+        "profitFactor": 4.637,
+        "pnlUsd": 2400.28,
+        "maxDrawdownPct": 4.041
+      },
+      "holdout": {
+        "trades": 5,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -3.711,
+        "profitFactor": 0,
+        "pnlUsd": -1855.43,
+        "maxDrawdownPct": 17.517
+      },
+      "baselineHoldout": {
+        "trades": 5,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -3.711,
+        "profitFactor": 0,
+        "pnlUsd": -1855.43,
+        "maxDrawdownPct": 17.517
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "rs10",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 5.202,
+            "profitFactor": 99,
+            "pnlUsd": 520.22,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 3,
+            "wins": 2,
+            "winRate": 66.7,
+            "avgReturnPct": 3.639,
+            "profitFactor": 3.701,
+            "pnlUsd": 1091.7,
+            "maxDrawdownPct": 4.041
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 7,
+            "wins": 6,
+            "winRate": 85.7,
+            "avgReturnPct": 1.203,
+            "profitFactor": 3.083,
+            "pnlUsd": 841.78,
+            "maxDrawdownPct": 4.041
+          },
+          "test": {
+            "trades": 5,
+            "wins": 4,
+            "winRate": 80,
+            "avgReturnPct": 2.376,
+            "profitFactor": 9.271,
+            "pnlUsd": 1187.91,
+            "maxDrawdownPct": 1.436
+          },
+          "baseline": {
+            "trades": 5,
+            "wins": 4,
+            "winRate": 80,
+            "avgReturnPct": 2.376,
+            "profitFactor": 9.271,
+            "pnlUsd": 1187.91,
+            "maxDrawdownPct": 1.436
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 4,
+            "wins": 4,
+            "winRate": 100,
+            "avgReturnPct": 5.804,
+            "profitFactor": 99,
+            "pnlUsd": 2321.57,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": 0.603,
+            "profitFactor": 2.076,
+            "pnlUsd": 120.67,
+            "maxDrawdownPct": 1.121
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": 0.603,
+            "profitFactor": 2.076,
+            "pnlUsd": 120.67,
+            "maxDrawdownPct": 1.121
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": true,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": true,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 1.4,
+        "pnlUsd": -1091.7,
+        "trades": -3,
+        "profitFactor": 1.479
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.9873263821245539,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "sell",
+      "eventOpportunities": 103,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 10,
+        "wins": 5,
+        "winRate": 50,
+        "avgReturnPct": 0.324,
+        "profitFactor": 1.408,
+        "pnlUsd": 324.29,
+        "maxDrawdownPct": 4.938
+      },
+      "baselineDevelopment": {
+        "trades": 10,
+        "wins": 5,
+        "winRate": 50,
+        "avgReturnPct": 0.324,
+        "profitFactor": 1.408,
+        "pnlUsd": 324.29,
+        "maxDrawdownPct": 4.938
+      },
+      "holdout": {
+        "trades": 5,
+        "wins": 1,
+        "winRate": 20,
+        "avgReturnPct": -2.395,
+        "profitFactor": 0.443,
+        "pnlUsd": -1197.55,
+        "maxDrawdownPct": 20.106
+      },
+      "baselineHoldout": {
+        "trades": 5,
+        "wins": 1,
+        "winRate": 20,
+        "avgReturnPct": -2.395,
+        "profitFactor": 0.443,
+        "pnlUsd": -1197.55,
+        "maxDrawdownPct": 20.106
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -0.726,
+            "profitFactor": 0,
+            "pnlUsd": -145.17,
+            "maxDrawdownPct": 1.451
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -0.726,
+            "profitFactor": 0,
+            "pnlUsd": -145.17,
+            "maxDrawdownPct": 1.451
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -0.726,
+            "profitFactor": 0,
+            "pnlUsd": -145.17,
+            "maxDrawdownPct": 1.451
+          },
+          "test": {
+            "trades": 3,
+            "wins": 3,
+            "winRate": 100,
+            "avgReturnPct": 1.941,
+            "profitFactor": 99,
+            "pnlUsd": 582.39,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 3,
+            "wins": 3,
+            "winRate": 100,
+            "avgReturnPct": 1.941,
+            "profitFactor": 99,
+            "pnlUsd": 582.39,
+            "maxDrawdownPct": 0
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 5,
+            "wins": 2,
+            "winRate": 40,
+            "avgReturnPct": -0.226,
+            "profitFactor": 0.826,
+            "pnlUsd": -112.93,
+            "maxDrawdownPct": 4.938
+          },
+          "baseline": {
+            "trades": 5,
+            "wins": 2,
+            "winRate": 40,
+            "avgReturnPct": -0.226,
+            "profitFactor": 0.826,
+            "pnlUsd": -112.93,
+            "maxDrawdownPct": 4.938
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": true,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": true,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.9101436884824946,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Germany",
+      "horizon": "long",
+      "side": "buy",
+      "eventOpportunities": 98,
+      "frozenModel": "adx_vol",
+      "factors": [
+        "adxVol"
+      ],
+      "development": {
+        "trades": 13,
+        "wins": 3,
+        "winRate": 23.1,
+        "avgReturnPct": -3.879,
+        "profitFactor": 0.544,
+        "pnlUsd": -5043.11,
+        "maxDrawdownPct": 47.22
+      },
+      "baselineDevelopment": {
+        "trades": 19,
+        "wins": 5,
+        "winRate": 26.3,
+        "avgReturnPct": -3.542,
+        "profitFactor": 0.581,
+        "pnlUsd": -6730.16,
+        "maxDrawdownPct": 58.684
+      },
+      "holdout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -4.146,
+        "profitFactor": 0,
+        "pnlUsd": -414.62,
+        "maxDrawdownPct": 4.146
+      },
+      "baselineHoldout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -4.146,
+        "profitFactor": 0,
+        "pnlUsd": -414.62,
+        "maxDrawdownPct": 4.146
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "adx_vol",
+          "validation": {
+            "trades": 4,
+            "wins": 1,
+            "winRate": 25,
+            "avgReturnPct": -7.147,
+            "profitFactor": 0.275,
+            "pnlUsd": -2858.95,
+            "maxDrawdownPct": 27.609
+          },
+          "test": {
+            "trades": 4,
+            "wins": 1,
+            "winRate": 25,
+            "avgReturnPct": -5.084,
+            "profitFactor": 0.451,
+            "pnlUsd": -2033.54,
+            "maxDrawdownPct": 23.207
+          },
+          "baseline": {
+            "trades": 8,
+            "wins": 2,
+            "winRate": 25,
+            "avgReturnPct": -7.163,
+            "profitFactor": 0.351,
+            "pnlUsd": -5730.33,
+            "maxDrawdownPct": 49.097
+          }
+        },
+        {
+          "fold": 2,
+          "model": "breadth",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 6.734,
+            "profitFactor": 99,
+            "pnlUsd": 673.38,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 6,
+            "wins": 2,
+            "winRate": 33.3,
+            "avgReturnPct": 1.697,
+            "profitFactor": 1.307,
+            "pnlUsd": 1018.16,
+            "maxDrawdownPct": 13.712
+          },
+          "baseline": {
+            "trades": 8,
+            "wins": 3,
+            "winRate": 37.5,
+            "avgReturnPct": 3.785,
+            "profitFactor": 1.94,
+            "pnlUsd": 3027.9,
+            "maxDrawdownPct": 12.695
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 8,
+            "wins": 4,
+            "winRate": 50,
+            "avgReturnPct": 0.226,
+            "profitFactor": 1.034,
+            "pnlUsd": 180.56,
+            "maxDrawdownPct": 25.077
+          },
+          "test": {
+            "trades": 3,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -13.426,
+            "profitFactor": 0,
+            "pnlUsd": -4027.73,
+            "maxDrawdownPct": 35.164
+          },
+          "baseline": {
+            "trades": 3,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -13.426,
+            "profitFactor": 0,
+            "pnlUsd": -4027.73,
+            "maxDrawdownPct": 35.164
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": true,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": -3.2,
+        "pnlUsd": 1687.05,
+        "trades": -6,
+        "profitFactor": -0.037
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.8413447361676363,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Germany",
+      "horizon": "long",
+      "side": "sell",
+      "eventOpportunities": 20,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineDevelopment": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -19.576,
+            "profitFactor": 0,
+            "pnlUsd": -1957.64,
+            "maxDrawdownPct": 19.576
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "France",
+      "horizon": "short",
+      "side": "buy",
+      "eventOpportunities": 67,
+      "frozenModel": "adx_vol",
+      "factors": [
+        "adxVol"
+      ],
+      "development": {
+        "trades": 10,
+        "wins": 7,
+        "winRate": 70,
+        "avgReturnPct": 0.538,
+        "profitFactor": 1.394,
+        "pnlUsd": 538.13,
+        "maxDrawdownPct": 13.062
+      },
+      "baselineDevelopment": {
+        "trades": 17,
+        "wins": 12,
+        "winRate": 70.6,
+        "avgReturnPct": 1.106,
+        "profitFactor": 1.817,
+        "pnlUsd": 1879.85,
+        "maxDrawdownPct": 9.086
+      },
+      "holdout": {
+        "trades": 2,
+        "wins": 2,
+        "winRate": 100,
+        "avgReturnPct": 3.134,
+        "profitFactor": 99,
+        "pnlUsd": 626.78,
+        "maxDrawdownPct": 0
+      },
+      "baselineHoldout": {
+        "trades": 3,
+        "wins": 3,
+        "winRate": 100,
+        "avgReturnPct": 4.213,
+        "profitFactor": 99,
+        "pnlUsd": 1263.78,
+        "maxDrawdownPct": 0
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "breadth",
+          "validation": {
+            "trades": 2,
+            "wins": 2,
+            "winRate": 100,
+            "avgReturnPct": 2.858,
+            "profitFactor": 99,
+            "pnlUsd": 571.69,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.651,
+            "profitFactor": 0,
+            "pnlUsd": -930.21,
+            "maxDrawdownPct": 9.086
+          },
+          "baseline": {
+            "trades": 3,
+            "wins": 1,
+            "winRate": 33.3,
+            "avgReturnPct": -2.801,
+            "profitFactor": 0.097,
+            "pnlUsd": -840.34,
+            "maxDrawdownPct": 9.086
+          }
+        },
+        {
+          "fold": 2,
+          "model": "adx_vol",
+          "validation": {
+            "trades": 4,
+            "wins": 1,
+            "winRate": 25,
+            "avgReturnPct": -4.078,
+            "profitFactor": 0.052,
+            "pnlUsd": -1631.13,
+            "maxDrawdownPct": 16.292
+          },
+          "test": {
+            "trades": 3,
+            "wins": 2,
+            "winRate": 66.7,
+            "avgReturnPct": -1.105,
+            "profitFactor": 0.242,
+            "pnlUsd": -331.58,
+            "maxDrawdownPct": 4.373
+          },
+          "baseline": {
+            "trades": 8,
+            "wins": 6,
+            "winRate": 75,
+            "avgReturnPct": 1.91,
+            "profitFactor": 3.003,
+            "pnlUsd": 1528.34,
+            "maxDrawdownPct": 4.373
+          }
+        },
+        {
+          "fold": 3,
+          "model": "execution",
+          "validation": {
+            "trades": 4,
+            "wins": 3,
+            "winRate": 75,
+            "avgReturnPct": 4.541,
+            "profitFactor": 6.574,
+            "pnlUsd": 1816.28,
+            "maxDrawdownPct": 3.258
+          },
+          "test": {
+            "trades": 5,
+            "wins": 5,
+            "winRate": 100,
+            "avgReturnPct": 3.6,
+            "profitFactor": 99,
+            "pnlUsd": 1799.91,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 6,
+            "wins": 5,
+            "winRate": 83.3,
+            "avgReturnPct": 1.986,
+            "profitFactor": 2.96,
+            "pnlUsd": 1191.85,
+            "maxDrawdownPct": 6.081
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": true,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": true,
+        "holdoutProfitFactor": true,
+        "positiveDevelopment": true,
+        "positiveHoldout": true,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": true,
+      "developmentDelta": {
+        "winRatePctPoints": -0.6,
+        "pnlUsd": -1341.72,
+        "trades": -7,
+        "profitFactor": -0.423
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": -637,
+        "trades": -1,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.07864965512620503,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "France",
+      "horizon": "short",
+      "side": "sell",
+      "eventOpportunities": 4,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 3,
+        "wins": 2,
+        "winRate": 66.7,
+        "avgReturnPct": -2.128,
+        "profitFactor": 0.242,
+        "pnlUsd": -638.45,
+        "maxDrawdownPct": 8.425
+      },
+      "baselineDevelopment": {
+        "trades": 3,
+        "wins": 2,
+        "winRate": 66.7,
+        "avgReturnPct": -2.128,
+        "profitFactor": 0.242,
+        "pnlUsd": -638.45,
+        "maxDrawdownPct": 8.425
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 3,
+            "wins": 2,
+            "winRate": 66.7,
+            "avgReturnPct": -2.128,
+            "profitFactor": 0.242,
+            "pnlUsd": -638.45,
+            "maxDrawdownPct": 8.425
+          },
+          "baseline": {
+            "trades": 3,
+            "wins": 2,
+            "winRate": 66.7,
+            "avgReturnPct": -2.128,
+            "profitFactor": 0.242,
+            "pnlUsd": -638.45,
+            "maxDrawdownPct": 8.425
+          }
+        },
+        {
+          "fold": 2,
+          "model": "adx_vol",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 1.306,
+            "profitFactor": 99,
+            "pnlUsd": 130.55,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "France",
+      "horizon": "medium",
+      "side": "buy",
+      "eventOpportunities": 86,
+      "frozenModel": "alignment",
+      "factors": [
+        "alignment"
+      ],
+      "development": {
+        "trades": 10,
+        "wins": 3,
+        "winRate": 30,
+        "avgReturnPct": -1.631,
+        "profitFactor": 0.381,
+        "pnlUsd": -1631.18,
+        "maxDrawdownPct": 18.985
+      },
+      "baselineDevelopment": {
+        "trades": 18,
+        "wins": 9,
+        "winRate": 50,
+        "avgReturnPct": -0.296,
+        "profitFactor": 0.825,
+        "pnlUsd": -531.95,
+        "maxDrawdownPct": 20.539
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 2,
+        "wins": 1,
+        "winRate": 50,
+        "avgReturnPct": 0.458,
+        "profitFactor": 1.307,
+        "pnlUsd": 91.65,
+        "maxDrawdownPct": 2.988
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "confirmation_core",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 5.522,
+            "profitFactor": 99,
+            "pnlUsd": 552.2,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 2,
+            "winRate": 100,
+            "avgReturnPct": 1.504,
+            "profitFactor": 99,
+            "pnlUsd": 300.81,
+            "maxDrawdownPct": 0
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 1.374,
+            "profitFactor": 99,
+            "pnlUsd": 137.43,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 8,
+            "wins": 2,
+            "winRate": 25,
+            "avgReturnPct": -2.032,
+            "profitFactor": 0.279,
+            "pnlUsd": -1625.34,
+            "maxDrawdownPct": 18.741
+          },
+          "baseline": {
+            "trades": 8,
+            "wins": 2,
+            "winRate": 25,
+            "avgReturnPct": -2.032,
+            "profitFactor": 0.279,
+            "pnlUsd": -1625.34,
+            "maxDrawdownPct": 18.741
+          }
+        },
+        {
+          "fold": 3,
+          "model": "alignment",
+          "validation": {
+            "trades": 5,
+            "wins": 3,
+            "winRate": 60,
+            "avgReturnPct": 0.38,
+            "profitFactor": 1.509,
+            "pnlUsd": 190.16,
+            "maxDrawdownPct": 3.701
+          },
+          "test": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": -0.029,
+            "profitFactor": 0.985,
+            "pnlUsd": -5.84,
+            "maxDrawdownPct": 3.815
+          },
+          "baseline": {
+            "trades": 8,
+            "wins": 5,
+            "winRate": 62.5,
+            "avgReturnPct": 0.991,
+            "profitFactor": 2.018,
+            "pnlUsd": 792.58,
+            "maxDrawdownPct": 5.659
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": true,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": -20,
+        "pnlUsd": -1099.23,
+        "trades": -8,
+        "profitFactor": -0.444
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": -91.65,
+        "trades": -2,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "France",
+      "horizon": "medium",
+      "side": "sell",
+      "eventOpportunities": 124,
+      "frozenModel": "alignment",
+      "factors": [
+        "alignment"
+      ],
+      "development": {
+        "trades": 10,
+        "wins": 5,
+        "winRate": 50,
+        "avgReturnPct": -0.738,
+        "profitFactor": 0.621,
+        "pnlUsd": -737.61,
+        "maxDrawdownPct": 11.756
+      },
+      "baselineDevelopment": {
+        "trades": 12,
+        "wins": 6,
+        "winRate": 50,
+        "avgReturnPct": -0.585,
+        "profitFactor": 0.722,
+        "pnlUsd": -701.8,
+        "maxDrawdownPct": 14.981
+      },
+      "holdout": {
+        "trades": 4,
+        "wins": 1,
+        "winRate": 25,
+        "avgReturnPct": -0.451,
+        "profitFactor": 0.566,
+        "pnlUsd": -180.41,
+        "maxDrawdownPct": 4.122
+      },
+      "baselineHoldout": {
+        "trades": 6,
+        "wins": 2,
+        "winRate": 33.3,
+        "avgReturnPct": -1.195,
+        "profitFactor": 0.381,
+        "pnlUsd": -716.83,
+        "maxDrawdownPct": 9.412
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "alignment",
+          "validation": {
+            "trades": 3,
+            "wins": 1,
+            "winRate": 33.3,
+            "avgReturnPct": -0.962,
+            "profitFactor": 0.395,
+            "pnlUsd": -288.64,
+            "maxDrawdownPct": 4.733
+          },
+          "test": {
+            "trades": 6,
+            "wins": 3,
+            "winRate": 50,
+            "avgReturnPct": -0.266,
+            "profitFactor": 0.787,
+            "pnlUsd": -159.44,
+            "maxDrawdownPct": 5.902
+          },
+          "baseline": {
+            "trades": 7,
+            "wins": 3,
+            "winRate": 42.9,
+            "avgReturnPct": -1.052,
+            "profitFactor": 0.444,
+            "pnlUsd": -736.65,
+            "maxDrawdownPct": 11.356
+          }
+        },
+        {
+          "fold": 2,
+          "model": "alignment",
+          "validation": {
+            "trades": 7,
+            "wins": 3,
+            "winRate": 42.9,
+            "avgReturnPct": -0.385,
+            "profitFactor": 0.686,
+            "pnlUsd": -269.3,
+            "maxDrawdownPct": 5.902
+          },
+          "test": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": -1.788,
+            "profitFactor": 0.61,
+            "pnlUsd": -357.7,
+            "maxDrawdownPct": 9.164
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": -1.788,
+            "profitFactor": 0.61,
+            "pnlUsd": -357.7,
+            "maxDrawdownPct": 9.164
+          }
+        },
+        {
+          "fold": 3,
+          "model": "adx_vol",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 5.587,
+            "profitFactor": 99,
+            "pnlUsd": 558.65,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": -1.102,
+            "profitFactor": 0.222,
+            "pnlUsd": -220.46,
+            "maxDrawdownPct": 2.834
+          },
+          "baseline": {
+            "trades": 3,
+            "wins": 2,
+            "winRate": 66.7,
+            "avgReturnPct": 1.309,
+            "profitFactor": 2.385,
+            "pnlUsd": 392.55,
+            "maxDrawdownPct": 2.834
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": true,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": -35.81,
+        "trades": -2,
+        "profitFactor": -0.101
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": -8.3,
+        "pnlUsd": 536.42,
+        "trades": -2,
+        "profitFactor": 0.185
+      },
+      "multiplicity": {
+        "rawP": 0.8413447361676363,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "France",
+      "horizon": "long",
+      "side": "buy",
+      "eventOpportunities": 66,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 9,
+        "wins": 4,
+        "winRate": 44.4,
+        "avgReturnPct": -1.928,
+        "profitFactor": 0.668,
+        "pnlUsd": -1735.48,
+        "maxDrawdownPct": 27.274
+      },
+      "baselineDevelopment": {
+        "trades": 12,
+        "wins": 6,
+        "winRate": 50,
+        "avgReturnPct": 1.339,
+        "profitFactor": 1.292,
+        "pnlUsd": 1606.37,
+        "maxDrawdownPct": 20.062
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 20.5,
+            "profitFactor": 99,
+            "pnlUsd": 2050.01,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 3,
+            "wins": 2,
+            "winRate": 66.7,
+            "avgReturnPct": 3.615,
+            "profitFactor": 2.414,
+            "pnlUsd": 1084.54,
+            "maxDrawdownPct": 7.669
+          },
+          "baseline": {
+            "trades": 3,
+            "wins": 2,
+            "winRate": 66.7,
+            "avgReturnPct": 3.615,
+            "profitFactor": 2.414,
+            "pnlUsd": 1084.54,
+            "maxDrawdownPct": 7.669
+          }
+        },
+        {
+          "fold": 2,
+          "model": "mtf",
+          "validation": {
+            "trades": 4,
+            "wins": 2,
+            "winRate": 50,
+            "avgReturnPct": 0.826,
+            "profitFactor": 1.155,
+            "pnlUsd": 330.45,
+            "maxDrawdownPct": 12.904
+          },
+          "test": {
+            "trades": 3,
+            "wins": 1,
+            "winRate": 33.3,
+            "avgReturnPct": -5.541,
+            "profitFactor": 0.315,
+            "pnlUsd": -1662.36,
+            "maxDrawdownPct": 17.013
+          },
+          "baseline": {
+            "trades": 6,
+            "wins": 3,
+            "winRate": 50,
+            "avgReturnPct": 2.799,
+            "profitFactor": 1.622,
+            "pnlUsd": 1679.49,
+            "maxDrawdownPct": 15.475
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -7.669,
+            "profitFactor": 0,
+            "pnlUsd": -766.85,
+            "maxDrawdownPct": 7.669
+          },
+          "test": {
+            "trades": 3,
+            "wins": 1,
+            "winRate": 33.3,
+            "avgReturnPct": -3.859,
+            "profitFactor": 0.433,
+            "pnlUsd": -1157.66,
+            "maxDrawdownPct": 19.474
+          },
+          "baseline": {
+            "trades": 3,
+            "wins": 1,
+            "winRate": 33.3,
+            "avgReturnPct": -3.859,
+            "profitFactor": 0.433,
+            "pnlUsd": -1157.66,
+            "maxDrawdownPct": 19.474
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": -5.6,
+        "pnlUsd": -3341.85,
+        "trades": -3,
+        "profitFactor": -0.624
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "France",
+      "horizon": "long",
+      "side": "sell",
+      "eventOpportunities": 26,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 2,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -10.014,
+        "profitFactor": 0,
+        "pnlUsd": -2002.88,
+        "maxDrawdownPct": 19.428
+      },
+      "baselineDevelopment": {
+        "trades": 2,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -10.014,
+        "profitFactor": 0,
+        "pnlUsd": -2002.88,
+        "maxDrawdownPct": 19.428
+      },
+      "holdout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -6.293,
+        "profitFactor": 0,
+        "pnlUsd": -629.26,
+        "maxDrawdownPct": 6.293
+      },
+      "baselineHoldout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -6.293,
+        "profitFactor": 0,
+        "pnlUsd": -629.26,
+        "maxDrawdownPct": 6.293
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 14.347,
+            "profitFactor": 99,
+            "pnlUsd": 1434.7,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -10.014,
+            "profitFactor": 0,
+            "pnlUsd": -2002.88,
+            "maxDrawdownPct": 19.428
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -10.014,
+            "profitFactor": 0,
+            "pnlUsd": -2002.88,
+            "maxDrawdownPct": 19.428
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "alignment",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 0.464,
+            "profitFactor": 99,
+            "pnlUsd": 46.37,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.8413447361676363,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Commodities",
+      "horizon": "short",
+      "side": "buy",
+      "eventOpportunities": 12,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 3,
+        "wins": 2,
+        "winRate": 66.7,
+        "avgReturnPct": 1.56,
+        "profitFactor": 21.251,
+        "pnlUsd": 467.96,
+        "maxDrawdownPct": 0.231
+      },
+      "baselineDevelopment": {
+        "trades": 3,
+        "wins": 2,
+        "winRate": 66.7,
+        "avgReturnPct": 1.56,
+        "profitFactor": 21.251,
+        "pnlUsd": 467.96,
+        "maxDrawdownPct": 0.231
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -0.231,
+            "profitFactor": 0,
+            "pnlUsd": -23.11,
+            "maxDrawdownPct": 0.231
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -0.231,
+            "profitFactor": 0,
+            "pnlUsd": -23.11,
+            "maxDrawdownPct": 0.231
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -0.231,
+            "profitFactor": 0,
+            "pnlUsd": -23.11,
+            "maxDrawdownPct": 0.231
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 2,
+            "wins": 2,
+            "winRate": 100,
+            "avgReturnPct": 2.455,
+            "profitFactor": 99,
+            "pnlUsd": 491.07,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 2,
+            "winRate": 100,
+            "avgReturnPct": 2.455,
+            "profitFactor": 99,
+            "pnlUsd": 491.07,
+            "maxDrawdownPct": 0
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": true,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": true,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Commodities",
+      "horizon": "short",
+      "side": "sell",
+      "eventOpportunities": 2,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineDevelopment": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.66,
+            "profitFactor": 0,
+            "pnlUsd": -466.01,
+            "maxDrawdownPct": 4.66
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Commodities",
+      "horizon": "medium",
+      "side": "buy",
+      "eventOpportunities": 15,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 4,
+        "wins": 1,
+        "winRate": 25,
+        "avgReturnPct": -3.003,
+        "profitFactor": 0.248,
+        "pnlUsd": -1201.13,
+        "maxDrawdownPct": 15.193
+      },
+      "baselineDevelopment": {
+        "trades": 4,
+        "wins": 1,
+        "winRate": 25,
+        "avgReturnPct": -3.003,
+        "profitFactor": 0.248,
+        "pnlUsd": -1201.13,
+        "maxDrawdownPct": 15.193
+      },
+      "holdout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -0.406,
+        "profitFactor": 0,
+        "pnlUsd": -40.58,
+        "maxDrawdownPct": 0.406
+      },
+      "baselineHoldout": {
+        "trades": 1,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -0.406,
+        "profitFactor": 0,
+        "pnlUsd": -40.58,
+        "maxDrawdownPct": 0.406
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 1.246,
+            "profitFactor": 99,
+            "pnlUsd": 124.59,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "baseline": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.077,
+            "profitFactor": 0,
+            "pnlUsd": -815.46,
+            "maxDrawdownPct": 7.991
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.077,
+            "profitFactor": 0,
+            "pnlUsd": -815.46,
+            "maxDrawdownPct": 7.991
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": -1.928,
+            "profitFactor": 0.507,
+            "pnlUsd": -385.67,
+            "maxDrawdownPct": 7.828
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": -1.928,
+            "profitFactor": 0.507,
+            "pnlUsd": -385.67,
+            "maxDrawdownPct": 7.828
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.8413447361676363,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Commodities",
+      "horizon": "medium",
+      "side": "sell",
+      "eventOpportunities": 39,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 5,
+        "wins": 1,
+        "winRate": 20,
+        "avgReturnPct": -4.857,
+        "profitFactor": 0.089,
+        "pnlUsd": -2428.7,
+        "maxDrawdownPct": 22.552
+      },
+      "baselineDevelopment": {
+        "trades": 5,
+        "wins": 1,
+        "winRate": 20,
+        "avgReturnPct": -4.857,
+        "profitFactor": 0.089,
+        "pnlUsd": -2428.7,
+        "maxDrawdownPct": 22.552
+      },
+      "holdout": {
+        "trades": 4,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -4.938,
+        "profitFactor": 0,
+        "pnlUsd": -1975.22,
+        "maxDrawdownPct": 18.523
+      },
+      "baselineHoldout": {
+        "trades": 4,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -4.938,
+        "profitFactor": 0,
+        "pnlUsd": -1975.22,
+        "maxDrawdownPct": 18.523
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -1.662,
+            "profitFactor": 0,
+            "pnlUsd": -166.22,
+            "maxDrawdownPct": 1.662
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -2.352,
+            "profitFactor": 0,
+            "pnlUsd": -235.24,
+            "maxDrawdownPct": 2.352
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -2.352,
+            "profitFactor": 0,
+            "pnlUsd": -235.24,
+            "maxDrawdownPct": 2.352
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -5.418,
+            "profitFactor": 0,
+            "pnlUsd": -541.8,
+            "maxDrawdownPct": 5.418
+          },
+          "test": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": -5.044,
+            "profitFactor": 0.191,
+            "pnlUsd": -1008.83,
+            "maxDrawdownPct": 12.467
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 1,
+            "winRate": 50,
+            "avgReturnPct": -5.044,
+            "profitFactor": 0.191,
+            "pnlUsd": -1008.83,
+            "maxDrawdownPct": 12.467
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -7.41,
+            "profitFactor": 0,
+            "pnlUsd": -1481.98,
+            "maxDrawdownPct": 14.526
+          },
+          "test": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -5.923,
+            "profitFactor": 0,
+            "pnlUsd": -1184.63,
+            "maxDrawdownPct": 11.496
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -5.923,
+            "profitFactor": 0,
+            "pnlUsd": -1184.63,
+            "maxDrawdownPct": 11.496
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "multiplicity": {
+        "rawP": 0.9772499371127437,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Commodities",
+      "horizon": "long",
+      "side": "buy",
+      "eventOpportunities": 26,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 5,
+        "wins": 4,
+        "winRate": 80,
+        "avgReturnPct": 23.12,
+        "profitFactor": 27.494,
+        "pnlUsd": 11559.76,
+        "maxDrawdownPct": 4.363
+      },
+      "baselineDevelopment": {
+        "trades": 5,
+        "wins": 4,
+        "winRate": 80,
+        "avgReturnPct": 23.12,
+        "profitFactor": 27.494,
+        "pnlUsd": 11559.76,
+        "maxDrawdownPct": 4.363
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 36.853,
+            "profitFactor": 99,
+            "pnlUsd": 3685.33,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 20.513,
+            "profitFactor": 99,
+            "pnlUsd": 2051.31,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 20.513,
+            "profitFactor": 99,
+            "pnlUsd": 2051.31,
+            "maxDrawdownPct": 0
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -11.458,
+            "profitFactor": 0,
+            "pnlUsd": -1145.8,
+            "maxDrawdownPct": 11.458
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.363,
+            "profitFactor": 0,
+            "pnlUsd": -436.32,
+            "maxDrawdownPct": 4.363
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -4.363,
+            "profitFactor": 0,
+            "pnlUsd": -436.32,
+            "maxDrawdownPct": 4.363
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 3,
+            "wins": 3,
+            "winRate": 100,
+            "avgReturnPct": 33.149,
+            "profitFactor": 99,
+            "pnlUsd": 9944.76,
+            "maxDrawdownPct": 0
+          },
+          "baseline": {
+            "trades": 3,
+            "wins": 3,
+            "winRate": 100,
+            "avgReturnPct": 33.149,
+            "profitFactor": 99,
+            "pnlUsd": 9944.76,
+            "maxDrawdownPct": 0
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": true,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": true,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    },
+    {
+      "market": "Commodities",
+      "horizon": "long",
+      "side": "sell",
+      "eventOpportunities": 13,
+      "frozenModel": "production",
+      "factors": [],
+      "development": {
+        "trades": 4,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -32.226,
+        "profitFactor": 0,
+        "pnlUsd": -12890.37,
+        "maxDrawdownPct": 83.829
+      },
+      "baselineDevelopment": {
+        "trades": 4,
+        "wins": 0,
+        "winRate": 0,
+        "avgReturnPct": -32.226,
+        "profitFactor": 0,
+        "pnlUsd": -12890.37,
+        "maxDrawdownPct": 83.829
+      },
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "baselineHoldout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "maxDrawdownPct": null
+      },
+      "folds": [
+        {
+          "fold": 1,
+          "model": "production",
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "maxDrawdownPct": null
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -66.947,
+            "profitFactor": 0,
+            "pnlUsd": -6694.67,
+            "maxDrawdownPct": 66.947
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -66.947,
+            "profitFactor": 0,
+            "pnlUsd": -6694.67,
+            "maxDrawdownPct": 66.947
+          }
+        },
+        {
+          "fold": 2,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -14.749,
+            "profitFactor": 0,
+            "pnlUsd": -1474.91,
+            "maxDrawdownPct": 14.749
+          },
+          "test": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -27.073,
+            "profitFactor": 0,
+            "pnlUsd": -5414.7,
+            "maxDrawdownPct": 46.93
+          },
+          "baseline": {
+            "trades": 2,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -27.073,
+            "profitFactor": 0,
+            "pnlUsd": -5414.7,
+            "maxDrawdownPct": 46.93
+          }
+        },
+        {
+          "fold": 3,
+          "model": "production",
+          "validation": {
+            "trades": 1,
+            "wins": 1,
+            "winRate": 100,
+            "avgReturnPct": 3.977,
+            "profitFactor": 99,
+            "pnlUsd": 397.66,
+            "maxDrawdownPct": 0
+          },
+          "test": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -7.81,
+            "profitFactor": 0,
+            "pnlUsd": -781,
+            "maxDrawdownPct": 7.81
+          },
+          "baseline": {
+            "trades": 1,
+            "wins": 0,
+            "winRate": 0,
+            "avgReturnPct": -7.81,
+            "profitFactor": 0,
+            "pnlUsd": -781,
+            "maxDrawdownPct": 7.81
+          }
+        }
+      ],
+      "checks": {
+        "nonBaseline": false,
+        "developmentSample": false,
+        "holdoutSample": false,
+        "developmentProfitFactor": false,
+        "holdoutProfitFactor": false,
+        "positiveDevelopment": false,
+        "positiveHoldout": false,
+        "improvesDevelopment": false,
+        "improvesHoldout": false,
+        "stable": false
+      },
+      "passBeforeMultiplicity": false,
+      "reachesWinRateTarget": false,
+      "developmentDelta": {
+        "winRatePctPoints": 0,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": 0
+      },
+      "holdoutDelta": {
+        "winRatePctPoints": null,
+        "pnlUsd": 0,
+        "trades": 0,
+        "profitFactor": null
+      },
+      "multiplicity": {
+        "rawP": 1,
+        "significantAt05": false
+      },
+      "status": "UNSUPPORTED"
+    }
+  ]
+}

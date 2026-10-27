@@ -1,0 +1,8033 @@
+{
+  "generatedAt": "2026-10-07T10:27:50.422Z",
+  "preregistration": "292f9cf663bfcedd44b3d6f82d74565151a139eb",
+  "gaps": [
+    "Hong Kong is a data gap. A complete 2010-to-today Hang Seng change list was not assembled from the quarterly review announcements, so no membership file was written and no current constituent list was substituted. The designated-short-selling flag was not applied."
+  ],
+  "cells": [
+    {
+      "id": "US|a",
+      "market": "US",
+      "variant": "a",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -27.86,
+        "grossReturnPct": -27.86,
+        "costDragPp": 0,
+        "maxDrawdownPct": 63.78,
+        "benchmarkReturnPct": 0,
+        "tStat": -5.08,
+        "tN": 3352,
+        "pf": 0.765,
+        "pfInfinite": false,
+        "win": 32.6,
+        "trades": 3352,
+        "sharpe": -0.005864118915108454
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 126,
+          "win": 30.2,
+          "pf": 0.43,
+          "pfInfinite": false,
+          "returnPct": -8.46,
+          "maxDrawdownPct": 14.46,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 170,
+          "win": 35.3,
+          "pf": 0.853,
+          "pfInfinite": false,
+          "returnPct": 14.78,
+          "maxDrawdownPct": 6.64,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 160,
+          "win": 31.9,
+          "pf": 0.993,
+          "pfInfinite": false,
+          "returnPct": 6.32,
+          "maxDrawdownPct": 10.87,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 251,
+          "win": 47.4,
+          "pf": 1.874,
+          "pfInfinite": false,
+          "returnPct": 5.38,
+          "maxDrawdownPct": 18.93,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 3352,
+      "truncated": 78,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 13.3,
+          "trades": 133
+        },
+        {
+          "year": 2012,
+          "returnPct": 4.56,
+          "trades": 94
+        },
+        {
+          "year": 2013,
+          "returnPct": -23.75,
+          "trades": 73
+        },
+        {
+          "year": 2014,
+          "returnPct": -2.57,
+          "trades": 104
+        },
+        {
+          "year": 2015,
+          "returnPct": 13.65,
+          "trades": 213
+        },
+        {
+          "year": 2016,
+          "returnPct": -12.86,
+          "trades": 216
+        },
+        {
+          "year": 2017,
+          "returnPct": 3.71,
+          "trades": 189
+        },
+        {
+          "year": 2018,
+          "returnPct": 13.11,
+          "trades": 253
+        },
+        {
+          "year": 2019,
+          "returnPct": -15.3,
+          "trades": 267
+        },
+        {
+          "year": 2020,
+          "returnPct": -22.82,
+          "trades": 177
+        },
+        {
+          "year": 2021,
+          "returnPct": 2.93,
+          "trades": 63
+        },
+        {
+          "year": 2022,
+          "returnPct": -15.77,
+          "trades": 433
+        },
+        {
+          "year": 2023,
+          "returnPct": 0.56,
+          "trades": 310
+        },
+        {
+          "year": 2024,
+          "returnPct": 7.09,
+          "trades": 150
+        },
+        {
+          "year": 2025,
+          "returnPct": 5.25,
+          "trades": 357
+        },
+        {
+          "year": 2026,
+          "returnPct": 9.84,
+          "trades": 320
+        }
+      ],
+      "concurrent": 132,
+      "rebound": -41.82,
+      "worst": [
+        {
+          "symbol": "PCG",
+          "side": "short",
+          "signalDate": "2018-11-15",
+          "exitDate": "2019-02-19",
+          "ret": -0.6317957067762439
+        },
+        {
+          "symbol": "SMCI",
+          "side": "short",
+          "signalDate": "2024-11-13",
+          "exitDate": "2024-11-25",
+          "ret": -0.6157519711845674
+        },
+        {
+          "symbol": "PDD",
+          "side": "short",
+          "signalDate": "2022-03-03",
+          "exitDate": "2022-04-29",
+          "ret": -0.46159384754287225
+        },
+        {
+          "symbol": "APA",
+          "side": "short",
+          "signalDate": "2020-03-09",
+          "exitDate": "2020-04-29",
+          "ret": -0.44434767794102226
+        },
+        {
+          "symbol": "MGM",
+          "side": "short",
+          "signalDate": "2020-03-16",
+          "exitDate": "2020-04-29",
+          "ret": -0.44336433411229403
+        },
+        {
+          "symbol": "EPAM",
+          "side": "short",
+          "signalDate": "2022-02-28",
+          "exitDate": "2022-05-02",
+          "ret": -0.4332336554063364
+        },
+        {
+          "symbol": "BIIB",
+          "side": "short",
+          "signalDate": "2020-10-26",
+          "exitDate": "2020-11-04",
+          "ret": -0.40570223734481237
+        },
+        {
+          "symbol": "BIDU",
+          "side": "short",
+          "signalDate": "2022-03-11",
+          "exitDate": "2022-03-22",
+          "ret": -0.365797654092594
+        },
+        {
+          "symbol": "UHS",
+          "side": "short",
+          "signalDate": "2020-03-18",
+          "exitDate": "2020-04-29",
+          "ret": -0.36057827542184173
+        },
+        {
+          "symbol": "BBWI",
+          "side": "short",
+          "signalDate": "2020-03-17",
+          "exitDate": "2020-05-18",
+          "ret": -0.33394205142445876
+        }
+      ]
+    },
+    {
+      "id": "US|b",
+      "market": "US",
+      "variant": "b",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -20.7,
+        "grossReturnPct": -20.7,
+        "costDragPp": 0,
+        "maxDrawdownPct": 60.29,
+        "benchmarkReturnPct": 0,
+        "tStat": -5.51,
+        "tN": 3822,
+        "pf": 0.77,
+        "pfInfinite": false,
+        "win": 34.8,
+        "trades": 3822,
+        "sharpe": 0.0019377947556773565
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 154,
+          "win": 25.3,
+          "pf": 0.361,
+          "pfInfinite": false,
+          "returnPct": -12.42,
+          "maxDrawdownPct": 14.55,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 186,
+          "win": 40.9,
+          "pf": 1.171,
+          "pfInfinite": false,
+          "returnPct": 19.29,
+          "maxDrawdownPct": 6.72,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 190,
+          "win": 33.2,
+          "pf": 0.944,
+          "pfInfinite": false,
+          "returnPct": 4.6,
+          "maxDrawdownPct": 10.14,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 258,
+          "win": 49.6,
+          "pf": 1.696,
+          "pfInfinite": false,
+          "returnPct": 7.87,
+          "maxDrawdownPct": 20.77,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 3822,
+      "truncated": 76,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 1.85,
+          "trades": 173
+        },
+        {
+          "year": 2012,
+          "returnPct": 5.54,
+          "trades": 104
+        },
+        {
+          "year": 2013,
+          "returnPct": -11.11,
+          "trades": 78
+        },
+        {
+          "year": 2014,
+          "returnPct": -3.56,
+          "trades": 131
+        },
+        {
+          "year": 2015,
+          "returnPct": 7.04,
+          "trades": 263
+        },
+        {
+          "year": 2016,
+          "returnPct": -14.99,
+          "trades": 227
+        },
+        {
+          "year": 2017,
+          "returnPct": 0.53,
+          "trades": 220
+        },
+        {
+          "year": 2018,
+          "returnPct": 8.89,
+          "trades": 310
+        },
+        {
+          "year": 2019,
+          "returnPct": -20.48,
+          "trades": 279
+        },
+        {
+          "year": 2020,
+          "returnPct": -3.96,
+          "trades": 182
+        },
+        {
+          "year": 2021,
+          "returnPct": -0.57,
+          "trades": 74
+        },
+        {
+          "year": 2022,
+          "returnPct": -15.53,
+          "trades": 499
+        },
+        {
+          "year": 2023,
+          "returnPct": 10,
+          "trades": 353
+        },
+        {
+          "year": 2024,
+          "returnPct": 1.8,
+          "trades": 185
+        },
+        {
+          "year": 2025,
+          "returnPct": 5.5,
+          "trades": 407
+        },
+        {
+          "year": 2026,
+          "returnPct": 14.03,
+          "trades": 337
+        }
+      ],
+      "concurrent": 131,
+      "rebound": -41,
+      "worst": [
+        {
+          "symbol": "PCG",
+          "side": "short",
+          "signalDate": "2019-01-08",
+          "exitDate": "2019-02-04",
+          "ret": -0.571142123097753
+        },
+        {
+          "symbol": "SMCI",
+          "side": "short",
+          "signalDate": "2024-11-13",
+          "exitDate": "2024-11-21",
+          "ret": -0.4790473699268073
+        },
+        {
+          "symbol": "BBWI",
+          "side": "short",
+          "signalDate": "2020-03-17",
+          "exitDate": "2020-04-08",
+          "ret": -0.3858880602828345
+        },
+        {
+          "symbol": "UHS",
+          "side": "short",
+          "signalDate": "2020-03-18",
+          "exitDate": "2020-04-08",
+          "ret": -0.3492602625716017
+        },
+        {
+          "symbol": "RRC",
+          "side": "short",
+          "signalDate": "2016-01-19",
+          "exitDate": "2016-01-27",
+          "ret": -0.3419329421631402
+        },
+        {
+          "symbol": "BIDU",
+          "side": "short",
+          "signalDate": "2022-03-11",
+          "exitDate": "2022-03-16",
+          "ret": -0.3342184500605516
+        },
+        {
+          "symbol": "MGM",
+          "side": "short",
+          "signalDate": "2020-03-16",
+          "exitDate": "2020-04-07",
+          "ret": -0.33322835285266994
+        },
+        {
+          "symbol": "PDD",
+          "side": "short",
+          "signalDate": "2022-03-03",
+          "exitDate": "2022-03-16",
+          "ret": -0.30817857371120727
+        },
+        {
+          "symbol": "LKQ",
+          "side": "short",
+          "signalDate": "2020-03-23",
+          "exitDate": "2020-04-09",
+          "ret": -0.3041661813399733
+        },
+        {
+          "symbol": "CNX",
+          "side": "short",
+          "signalDate": "2015-12-07",
+          "exitDate": "2015-12-24",
+          "ret": -0.29632454208347914
+        }
+      ]
+    },
+    {
+      "id": "US|c",
+      "market": "US",
+      "variant": "c",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -46.81,
+        "grossReturnPct": -46.81,
+        "costDragPp": 0,
+        "maxDrawdownPct": 70.79,
+        "benchmarkReturnPct": 0,
+        "tStat": -6.18,
+        "tN": 3352,
+        "pf": 0.724,
+        "pfInfinite": false,
+        "win": 31.8,
+        "trades": 3352,
+        "sharpe": -0.03395077278198692
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 126,
+          "win": 27.8,
+          "pf": 0.408,
+          "pfInfinite": false,
+          "returnPct": -9.12,
+          "maxDrawdownPct": 14.9,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 170,
+          "win": 34.1,
+          "pf": 0.809,
+          "pfInfinite": false,
+          "returnPct": 13.79,
+          "maxDrawdownPct": 6.69,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 160,
+          "win": 31.3,
+          "pf": 0.944,
+          "pfInfinite": false,
+          "returnPct": 5.53,
+          "maxDrawdownPct": 10.92,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 251,
+          "win": 47,
+          "pf": 1.788,
+          "pfInfinite": false,
+          "returnPct": 4.18,
+          "maxDrawdownPct": 19.46,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 3352,
+      "truncated": 78,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 11.61,
+          "trades": 133
+        },
+        {
+          "year": 2012,
+          "returnPct": 2.42,
+          "trades": 94
+        },
+        {
+          "year": 2013,
+          "returnPct": -25.55,
+          "trades": 73
+        },
+        {
+          "year": 2014,
+          "returnPct": -4.7,
+          "trades": 104
+        },
+        {
+          "year": 2015,
+          "returnPct": 11.93,
+          "trades": 213
+        },
+        {
+          "year": 2016,
+          "returnPct": -14.78,
+          "trades": 216
+        },
+        {
+          "year": 2017,
+          "returnPct": 1.79,
+          "trades": 189
+        },
+        {
+          "year": 2018,
+          "returnPct": 11.49,
+          "trades": 253
+        },
+        {
+          "year": 2019,
+          "returnPct": -17.32,
+          "trades": 267
+        },
+        {
+          "year": 2020,
+          "returnPct": -24.57,
+          "trades": 177
+        },
+        {
+          "year": 2021,
+          "returnPct": 1.19,
+          "trades": 63
+        },
+        {
+          "year": 2022,
+          "returnPct": -17.27,
+          "trades": 433
+        },
+        {
+          "year": 2023,
+          "returnPct": -1.63,
+          "trades": 310
+        },
+        {
+          "year": 2024,
+          "returnPct": 5.34,
+          "trades": 150
+        },
+        {
+          "year": 2025,
+          "returnPct": 3.51,
+          "trades": 357
+        },
+        {
+          "year": 2026,
+          "returnPct": 8.18,
+          "trades": 320
+        }
+      ],
+      "concurrent": 132,
+      "rebound": -44.47,
+      "worst": [
+        {
+          "symbol": "PCG",
+          "side": "short",
+          "signalDate": "2018-11-15",
+          "exitDate": "2019-02-19",
+          "ret": -0.6327475019217467
+        },
+        {
+          "symbol": "SMCI",
+          "side": "short",
+          "signalDate": "2024-11-13",
+          "exitDate": "2024-11-25",
+          "ret": -0.6167557038786742
+        },
+        {
+          "symbol": "PDD",
+          "side": "short",
+          "signalDate": "2022-03-03",
+          "exitDate": "2022-04-29",
+          "ret": -0.4630316612955875
+        },
+        {
+          "symbol": "APA",
+          "side": "short",
+          "signalDate": "2020-03-09",
+          "exitDate": "2020-04-29",
+          "ret": -0.4458766877498903
+        },
+        {
+          "symbol": "MGM",
+          "side": "short",
+          "signalDate": "2020-03-16",
+          "exitDate": "2020-04-29",
+          "ret": -0.4446977614597184
+        },
+        {
+          "symbol": "EPAM",
+          "side": "short",
+          "signalDate": "2022-02-28",
+          "exitDate": "2022-05-02",
+          "ret": -0.43459882954943874
+        },
+        {
+          "symbol": "BIIB",
+          "side": "short",
+          "signalDate": "2020-10-26",
+          "exitDate": "2020-11-04",
+          "ret": -0.40795595688392305
+        },
+        {
+          "symbol": "BIDU",
+          "side": "short",
+          "signalDate": "2022-03-11",
+          "exitDate": "2022-03-22",
+          "ret": -0.36725819007460103
+        },
+        {
+          "symbol": "UHS",
+          "side": "short",
+          "signalDate": "2020-03-18",
+          "exitDate": "2020-04-29",
+          "ret": -0.36202276589337257
+        },
+        {
+          "symbol": "BBWI",
+          "side": "short",
+          "signalDate": "2020-03-17",
+          "exitDate": "2020-05-18",
+          "ret": -0.33566459085983535
+        }
+      ]
+    },
+    {
+      "id": "US|d",
+      "market": "US",
+      "variant": "d",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -47.75,
+        "grossReturnPct": -47.75,
+        "costDragPp": 0,
+        "maxDrawdownPct": 70.29,
+        "benchmarkReturnPct": 0,
+        "tStat": -6.93,
+        "tN": 3822,
+        "pf": 0.722,
+        "pfInfinite": false,
+        "win": 33.4,
+        "trades": 3822,
+        "sharpe": -0.03774096563381235
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 154,
+          "win": 24.7,
+          "pf": 0.34,
+          "pfInfinite": false,
+          "returnPct": -13.45,
+          "maxDrawdownPct": 15.05,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 186,
+          "win": 39.8,
+          "pf": 1.102,
+          "pfInfinite": false,
+          "returnPct": 17.84,
+          "maxDrawdownPct": 6.9,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 190,
+          "win": 32.1,
+          "pf": 0.889,
+          "pfInfinite": false,
+          "returnPct": 3.52,
+          "maxDrawdownPct": 10.29,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 258,
+          "win": 48.1,
+          "pf": 1.599,
+          "pfInfinite": false,
+          "returnPct": 6.41,
+          "maxDrawdownPct": 21.3,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 3822,
+      "truncated": 76,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": -0.22,
+          "trades": 173
+        },
+        {
+          "year": 2012,
+          "returnPct": 2.85,
+          "trades": 104
+        },
+        {
+          "year": 2013,
+          "returnPct": -13.83,
+          "trades": 78
+        },
+        {
+          "year": 2014,
+          "returnPct": -6.66,
+          "trades": 131
+        },
+        {
+          "year": 2015,
+          "returnPct": 4.89,
+          "trades": 263
+        },
+        {
+          "year": 2016,
+          "returnPct": -17.51,
+          "trades": 227
+        },
+        {
+          "year": 2017,
+          "returnPct": -2.17,
+          "trades": 220
+        },
+        {
+          "year": 2018,
+          "returnPct": 6.67,
+          "trades": 310
+        },
+        {
+          "year": 2019,
+          "returnPct": -23.09,
+          "trades": 279
+        },
+        {
+          "year": 2020,
+          "returnPct": -6.58,
+          "trades": 182
+        },
+        {
+          "year": 2021,
+          "returnPct": -2.71,
+          "trades": 74
+        },
+        {
+          "year": 2022,
+          "returnPct": -17.7,
+          "trades": 499
+        },
+        {
+          "year": 2023,
+          "returnPct": 6.71,
+          "trades": 353
+        },
+        {
+          "year": 2024,
+          "returnPct": -0.97,
+          "trades": 185
+        },
+        {
+          "year": 2025,
+          "returnPct": 3.01,
+          "trades": 407
+        },
+        {
+          "year": 2026,
+          "returnPct": 11.95,
+          "trades": 337
+        }
+      ],
+      "concurrent": 131,
+      "rebound": -44.75,
+      "worst": [
+        {
+          "symbol": "PCG",
+          "side": "short",
+          "signalDate": "2019-01-08",
+          "exitDate": "2019-02-04",
+          "ret": -0.57202770036088
+        },
+        {
+          "symbol": "SMCI",
+          "side": "short",
+          "signalDate": "2024-11-13",
+          "exitDate": "2024-11-21",
+          "ret": -0.48037220733639663
+        },
+        {
+          "symbol": "BBWI",
+          "side": "short",
+          "signalDate": "2020-03-17",
+          "exitDate": "2020-04-08",
+          "ret": -0.38735697181459605
+        },
+        {
+          "symbol": "UHS",
+          "side": "short",
+          "signalDate": "2020-03-18",
+          "exitDate": "2020-04-08",
+          "ret": -0.3507186673568209
+        },
+        {
+          "symbol": "RRC",
+          "side": "short",
+          "signalDate": "2016-01-19",
+          "exitDate": "2016-01-27",
+          "ret": -0.3434867133036138
+        },
+        {
+          "symbol": "BIDU",
+          "side": "short",
+          "signalDate": "2022-03-11",
+          "exitDate": "2022-03-16",
+          "ret": -0.3364301346510292
+        },
+        {
+          "symbol": "MGM",
+          "side": "short",
+          "signalDate": "2020-03-16",
+          "exitDate": "2020-04-07",
+          "ret": -0.33478799837849904
+        },
+        {
+          "symbol": "PDD",
+          "side": "short",
+          "signalDate": "2022-03-03",
+          "exitDate": "2022-03-16",
+          "ret": -0.31137876665213393
+        },
+        {
+          "symbol": "LKQ",
+          "side": "short",
+          "signalDate": "2020-03-23",
+          "exitDate": "2020-04-09",
+          "ret": -0.30577796897320053
+        },
+        {
+          "symbol": "CNX",
+          "side": "short",
+          "signalDate": "2015-12-07",
+          "exitDate": "2015-12-24",
+          "ret": -0.29788188253340386
+        }
+      ]
+    },
+    {
+      "id": "US|e",
+      "market": "US",
+      "variant": "e",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -77.51,
+        "grossReturnPct": -77.51,
+        "costDragPp": 0,
+        "maxDrawdownPct": 79.6,
+        "benchmarkReturnPct": 0,
+        "tStat": -7.39,
+        "tN": 1604,
+        "pf": 0.594,
+        "pfInfinite": false,
+        "win": 30.9,
+        "trades": 1604,
+        "sharpe": -0.12983022514578102
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 3,
+          "win": 0,
+          "pf": 0,
+          "pfInfinite": false,
+          "returnPct": -0.47,
+          "maxDrawdownPct": 1.83,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 113,
+          "win": 39.8,
+          "pf": 1.166,
+          "pfInfinite": false,
+          "returnPct": 5.25,
+          "maxDrawdownPct": 10.02,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 2,
+          "win": 0,
+          "pf": 0,
+          "pfInfinite": false,
+          "returnPct": -0.58,
+          "maxDrawdownPct": 3.01,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 49,
+          "win": 63.3,
+          "pf": 3.914,
+          "pfInfinite": false,
+          "returnPct": -6.01,
+          "maxDrawdownPct": 19.52,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 1604,
+      "truncated": 0,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 1.24,
+          "trades": 113
+        },
+        {
+          "year": 2012,
+          "returnPct": -22.28,
+          "trades": 51
+        },
+        {
+          "year": 2013,
+          "returnPct": -21.19,
+          "trades": 5
+        },
+        {
+          "year": 2014,
+          "returnPct": 7.32,
+          "trades": 35
+        },
+        {
+          "year": 2015,
+          "returnPct": 4.29,
+          "trades": 118
+        },
+        {
+          "year": 2016,
+          "returnPct": -27.07,
+          "trades": 155
+        },
+        {
+          "year": 2017,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2018,
+          "returnPct": 0.82,
+          "trades": 98
+        },
+        {
+          "year": 2019,
+          "returnPct": -11.09,
+          "trades": 147
+        },
+        {
+          "year": 2020,
+          "returnPct": -15.12,
+          "trades": 137
+        },
+        {
+          "year": 2021,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2022,
+          "returnPct": -14.84,
+          "trades": 409
+        },
+        {
+          "year": 2023,
+          "returnPct": -26.67,
+          "trades": 168
+        },
+        {
+          "year": 2024,
+          "returnPct": -4.46,
+          "trades": 1
+        },
+        {
+          "year": 2025,
+          "returnPct": 4.75,
+          "trades": 116
+        },
+        {
+          "year": 2026,
+          "returnPct": -6.55,
+          "trades": 51
+        }
+      ],
+      "concurrent": 130,
+      "rebound": -48.38,
+      "worst": [
+        {
+          "symbol": "PCG",
+          "side": "short",
+          "signalDate": "2018-11-15",
+          "exitDate": "2019-02-19",
+          "ret": -0.6327475019217467
+        },
+        {
+          "symbol": "PDD",
+          "side": "short",
+          "signalDate": "2022-03-03",
+          "exitDate": "2022-04-29",
+          "ret": -0.4630316612955875
+        },
+        {
+          "symbol": "APA",
+          "side": "short",
+          "signalDate": "2020-03-09",
+          "exitDate": "2020-04-29",
+          "ret": -0.4458766877498903
+        },
+        {
+          "symbol": "MGM",
+          "side": "short",
+          "signalDate": "2020-03-16",
+          "exitDate": "2020-04-29",
+          "ret": -0.4446977614597184
+        },
+        {
+          "symbol": "EPAM",
+          "side": "short",
+          "signalDate": "2022-02-28",
+          "exitDate": "2022-05-02",
+          "ret": -0.43459882954943874
+        },
+        {
+          "symbol": "BIDU",
+          "side": "short",
+          "signalDate": "2022-03-11",
+          "exitDate": "2022-03-22",
+          "ret": -0.36725819007460103
+        },
+        {
+          "symbol": "UHS",
+          "side": "short",
+          "signalDate": "2020-03-18",
+          "exitDate": "2020-04-29",
+          "ret": -0.36202276589337257
+        },
+        {
+          "symbol": "BBWI",
+          "side": "short",
+          "signalDate": "2020-03-17",
+          "exitDate": "2020-05-18",
+          "ret": -0.33566459085983535
+        },
+        {
+          "symbol": "LKQ",
+          "side": "short",
+          "signalDate": "2020-03-23",
+          "exitDate": "2020-04-28",
+          "ret": -0.3133495375342973
+        },
+        {
+          "symbol": "CNX",
+          "side": "short",
+          "signalDate": "2016-01-13",
+          "exitDate": "2016-01-29",
+          "ret": -0.2997872105359579
+        }
+      ]
+    },
+    {
+      "id": "US|f",
+      "market": "US",
+      "variant": "f",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -18.35,
+        "grossReturnPct": -18.35,
+        "costDragPp": 0,
+        "maxDrawdownPct": 44.34,
+        "benchmarkReturnPct": 0,
+        "tStat": -3.46,
+        "tN": 4529,
+        "pf": 0.821,
+        "pfInfinite": false,
+        "win": 32.3,
+        "trades": 4529,
+        "sharpe": -0.021326141509257303
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 214,
+          "win": 26.6,
+          "pf": 0.568,
+          "pfInfinite": false,
+          "returnPct": -6.14,
+          "maxDrawdownPct": 8.49,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 204,
+          "win": 38.2,
+          "pf": 0.898,
+          "pfInfinite": false,
+          "returnPct": -0.38,
+          "maxDrawdownPct": 5.68,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 204,
+          "win": 28.4,
+          "pf": 0.615,
+          "pfInfinite": false,
+          "returnPct": 10.45,
+          "maxDrawdownPct": 6.55,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 366,
+          "win": 45.9,
+          "pf": 2.514,
+          "pfInfinite": false,
+          "returnPct": 1.33,
+          "maxDrawdownPct": 10.47,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 4529,
+      "truncated": 78,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 13.61,
+          "trades": 133
+        },
+        {
+          "year": 2012,
+          "returnPct": -10.34,
+          "trades": 118
+        },
+        {
+          "year": 2013,
+          "returnPct": 8.03,
+          "trades": 105
+        },
+        {
+          "year": 2014,
+          "returnPct": 1.6,
+          "trades": 188
+        },
+        {
+          "year": 2015,
+          "returnPct": 7.97,
+          "trades": 258
+        },
+        {
+          "year": 2016,
+          "returnPct": -11.44,
+          "trades": 267
+        },
+        {
+          "year": 2017,
+          "returnPct": -0.92,
+          "trades": 273
+        },
+        {
+          "year": 2018,
+          "returnPct": 6.3,
+          "trades": 353
+        },
+        {
+          "year": 2019,
+          "returnPct": -13.4,
+          "trades": 320
+        },
+        {
+          "year": 2020,
+          "returnPct": -2.29,
+          "trades": 275
+        },
+        {
+          "year": 2021,
+          "returnPct": -2.24,
+          "trades": 168
+        },
+        {
+          "year": 2022,
+          "returnPct": -5.58,
+          "trades": 496
+        },
+        {
+          "year": 2023,
+          "returnPct": -5.68,
+          "trades": 408
+        },
+        {
+          "year": 2024,
+          "returnPct": -9.03,
+          "trades": 248
+        },
+        {
+          "year": 2025,
+          "returnPct": -2.36,
+          "trades": 461
+        },
+        {
+          "year": 2026,
+          "returnPct": 10.81,
+          "trades": 458
+        }
+      ],
+      "concurrent": 140,
+      "rebound": -40.72,
+      "worst": [
+        {
+          "symbol": "PCG",
+          "side": "short",
+          "signalDate": "2018-11-15",
+          "exitDate": "2019-02-19",
+          "ret": -0.6317957067762439
+        },
+        {
+          "symbol": "SMCI",
+          "side": "short",
+          "signalDate": "2024-11-13",
+          "exitDate": "2024-11-25",
+          "ret": -0.6157519711845674
+        },
+        {
+          "symbol": "PDD",
+          "side": "short",
+          "signalDate": "2022-03-03",
+          "exitDate": "2022-04-29",
+          "ret": -0.46159384754287225
+        },
+        {
+          "symbol": "APA",
+          "side": "short",
+          "signalDate": "2020-03-09",
+          "exitDate": "2020-04-29",
+          "ret": -0.44434767794102226
+        },
+        {
+          "symbol": "MGM",
+          "side": "short",
+          "signalDate": "2020-03-16",
+          "exitDate": "2020-04-29",
+          "ret": -0.44336433411229403
+        },
+        {
+          "symbol": "EPAM",
+          "side": "short",
+          "signalDate": "2022-02-28",
+          "exitDate": "2022-05-02",
+          "ret": -0.4332336554063364
+        },
+        {
+          "symbol": "BIIB",
+          "side": "short",
+          "signalDate": "2020-10-26",
+          "exitDate": "2020-11-04",
+          "ret": -0.40570223734481237
+        },
+        {
+          "symbol": "EW",
+          "side": "long",
+          "signalDate": "2024-03-21",
+          "exitDate": "2024-07-25",
+          "ret": -0.3884086334167517
+        },
+        {
+          "symbol": "APA",
+          "side": "long",
+          "signalDate": "2021-03-05",
+          "exitDate": "2021-08-16",
+          "ret": -0.37666778592821537
+        },
+        {
+          "symbol": "CLX",
+          "side": "long",
+          "signalDate": "2020-03-17",
+          "exitDate": "2020-11-09",
+          "ret": -0.3704482904106493
+        }
+      ]
+    },
+    {
+      "id": "UK|a",
+      "market": "UK",
+      "variant": "a",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -53.81,
+        "grossReturnPct": -53.81,
+        "costDragPp": 0,
+        "maxDrawdownPct": 75.56,
+        "benchmarkReturnPct": 0,
+        "tStat": -5.39,
+        "tN": 768,
+        "pf": 0.577,
+        "pfInfinite": false,
+        "win": 29.8,
+        "trades": 768,
+        "sharpe": -0.053148385726695044
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 31,
+          "win": 35.5,
+          "pf": 1.037,
+          "pfInfinite": false,
+          "returnPct": 7.05,
+          "maxDrawdownPct": 9.26,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 31,
+          "win": 48.4,
+          "pf": 1.352,
+          "pfInfinite": false,
+          "returnPct": 5.18,
+          "maxDrawdownPct": 12.13,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 24,
+          "win": 45.8,
+          "pf": 1.559,
+          "pfInfinite": false,
+          "returnPct": 19.54,
+          "maxDrawdownPct": 11.92,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 36,
+          "win": 27.8,
+          "pf": 1.132,
+          "pfInfinite": false,
+          "returnPct": -17.57,
+          "maxDrawdownPct": 21.26,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 768,
+      "truncated": 6,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 12.92,
+          "trades": 31
+        },
+        {
+          "year": 2012,
+          "returnPct": -15.83,
+          "trades": 20
+        },
+        {
+          "year": 2013,
+          "returnPct": 18.02,
+          "trades": 19
+        },
+        {
+          "year": 2014,
+          "returnPct": -3.4,
+          "trades": 55
+        },
+        {
+          "year": 2015,
+          "returnPct": -0.33,
+          "trades": 49
+        },
+        {
+          "year": 2016,
+          "returnPct": -30.5,
+          "trades": 64
+        },
+        {
+          "year": 2017,
+          "returnPct": -3.82,
+          "trades": 35
+        },
+        {
+          "year": 2018,
+          "returnPct": -15.77,
+          "trades": 66
+        },
+        {
+          "year": 2019,
+          "returnPct": -12.87,
+          "trades": 72
+        },
+        {
+          "year": 2020,
+          "returnPct": -16.29,
+          "trades": 55
+        },
+        {
+          "year": 2021,
+          "returnPct": -19.2,
+          "trades": 20
+        },
+        {
+          "year": 2022,
+          "returnPct": -0.59,
+          "trades": 81
+        },
+        {
+          "year": 2023,
+          "returnPct": 0.54,
+          "trades": 44
+        },
+        {
+          "year": 2024,
+          "returnPct": 8.28,
+          "trades": 47
+        },
+        {
+          "year": 2025,
+          "returnPct": 33.63,
+          "trades": 59
+        },
+        {
+          "year": 2026,
+          "returnPct": -10.89,
+          "trades": 51
+        }
+      ],
+      "concurrent": 30,
+      "rebound": -31.66,
+      "worst": [
+        {
+          "symbol": "FRES.L",
+          "side": "short",
+          "signalDate": "2022-01-26",
+          "exitDate": "2022-03-08",
+          "ret": -0.27497921280737636
+        },
+        {
+          "symbol": "EZJ.L",
+          "side": "short",
+          "signalDate": "2020-04-03",
+          "exitDate": "2020-05-26",
+          "ret": -0.261252788263703
+        },
+        {
+          "symbol": "RR.L",
+          "side": "short",
+          "signalDate": "2015-11-12",
+          "exitDate": "2016-02-12",
+          "ret": -0.25902657612782776
+        },
+        {
+          "symbol": "IAG.L",
+          "side": "short",
+          "signalDate": "2020-07-31",
+          "exitDate": "2020-08-27",
+          "ret": -0.2545205936142262
+        },
+        {
+          "symbol": "NXT.L",
+          "side": "short",
+          "signalDate": "2020-04-03",
+          "exitDate": "2020-04-29",
+          "ret": -0.2377521083207439
+        },
+        {
+          "symbol": "FRES.L",
+          "side": "short",
+          "signalDate": "2018-11-23",
+          "exitDate": "2018-12-27",
+          "ret": -0.20920805953705757
+        },
+        {
+          "symbol": "HMSO.L",
+          "side": "short",
+          "signalDate": "2018-01-18",
+          "exitDate": "2018-03-19",
+          "ret": -0.20602836002457425
+        },
+        {
+          "symbol": "LSEG.L",
+          "side": "short",
+          "signalDate": "2022-03-01",
+          "exitDate": "2022-03-04",
+          "ret": -0.19853180444755503
+        },
+        {
+          "symbol": "ITV.L",
+          "side": "short",
+          "signalDate": "2011-08-19",
+          "exitDate": "2011-09-27",
+          "ret": -0.19615136573072323
+        },
+        {
+          "symbol": "BARC.L",
+          "side": "short",
+          "signalDate": "2020-04-01",
+          "exitDate": "2020-05-07",
+          "ret": -0.1867710223159259
+        }
+      ]
+    },
+    {
+      "id": "UK|b",
+      "market": "UK",
+      "variant": "b",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -85.95,
+        "grossReturnPct": -85.95,
+        "costDragPp": 0,
+        "maxDrawdownPct": 88.29,
+        "benchmarkReturnPct": 0,
+        "tStat": -6.39,
+        "tN": 889,
+        "pf": 0.539,
+        "pfInfinite": false,
+        "win": 31.4,
+        "trades": 889,
+        "sharpe": -0.15927468120273353
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 38,
+          "win": 28.9,
+          "pf": 0.658,
+          "pfInfinite": false,
+          "returnPct": 1.09,
+          "maxDrawdownPct": 11.1,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 34,
+          "win": 50,
+          "pf": 1.133,
+          "pfInfinite": false,
+          "returnPct": -4.93,
+          "maxDrawdownPct": 18.25,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 28,
+          "win": 53.6,
+          "pf": 2.411,
+          "pfInfinite": false,
+          "returnPct": 22.01,
+          "maxDrawdownPct": 9.73,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 38,
+          "win": 21.1,
+          "pf": 0.496,
+          "pfInfinite": false,
+          "returnPct": -27.87,
+          "maxDrawdownPct": 29.16,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 889,
+      "truncated": 6,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": -6.7,
+          "trades": 42
+        },
+        {
+          "year": 2012,
+          "returnPct": -3.19,
+          "trades": 23
+        },
+        {
+          "year": 2013,
+          "returnPct": 4.66,
+          "trades": 25
+        },
+        {
+          "year": 2014,
+          "returnPct": -16.99,
+          "trades": 69
+        },
+        {
+          "year": 2015,
+          "returnPct": 5.5,
+          "trades": 59
+        },
+        {
+          "year": 2016,
+          "returnPct": -45.28,
+          "trades": 71
+        },
+        {
+          "year": 2017,
+          "returnPct": -7.25,
+          "trades": 38
+        },
+        {
+          "year": 2018,
+          "returnPct": -19.53,
+          "trades": 76
+        },
+        {
+          "year": 2019,
+          "returnPct": -26.04,
+          "trades": 79
+        },
+        {
+          "year": 2020,
+          "returnPct": -25.45,
+          "trades": 61
+        },
+        {
+          "year": 2021,
+          "returnPct": -18.54,
+          "trades": 22
+        },
+        {
+          "year": 2022,
+          "returnPct": -4.68,
+          "trades": 93
+        },
+        {
+          "year": 2023,
+          "returnPct": 7.23,
+          "trades": 49
+        },
+        {
+          "year": 2024,
+          "returnPct": -3.04,
+          "trades": 61
+        },
+        {
+          "year": 2025,
+          "returnPct": 17.58,
+          "trades": 65
+        },
+        {
+          "year": 2026,
+          "returnPct": -20.59,
+          "trades": 56
+        }
+      ],
+      "concurrent": 25,
+      "rebound": -36.21,
+      "worst": [
+        {
+          "symbol": "BT-A.L",
+          "side": "short",
+          "signalDate": "2020-02-05",
+          "exitDate": "2020-03-18",
+          "ret": -0.31649196466504037
+        },
+        {
+          "symbol": "JD.L",
+          "side": "short",
+          "signalDate": "2022-05-25",
+          "exitDate": "2022-06-27",
+          "ret": -0.2769308501572646
+        },
+        {
+          "symbol": "NXT.L",
+          "side": "short",
+          "signalDate": "2020-04-03",
+          "exitDate": "2020-04-27",
+          "ret": -0.2239321189098279
+        },
+        {
+          "symbol": "IMB.L",
+          "side": "short",
+          "signalDate": "2020-02-27",
+          "exitDate": "2020-04-03",
+          "ret": -0.21275081093299708
+        },
+        {
+          "symbol": "CPI.L",
+          "side": "short",
+          "signalDate": "2016-09-29",
+          "exitDate": "2016-10-03",
+          "ret": -0.2042698311681247
+        },
+        {
+          "symbol": "JD.L",
+          "side": "short",
+          "signalDate": "2025-03-31",
+          "exitDate": "2025-04-10",
+          "ret": -0.2006552816188416
+        },
+        {
+          "symbol": "EZJ.L",
+          "side": "short",
+          "signalDate": "2020-04-03",
+          "exitDate": "2020-05-26",
+          "ret": -0.19826454176627106
+        },
+        {
+          "symbol": "IAG.L",
+          "side": "short",
+          "signalDate": "2020-07-31",
+          "exitDate": "2020-08-11",
+          "ret": -0.19155196913639394
+        },
+        {
+          "symbol": "ULVR.L",
+          "side": "short",
+          "signalDate": "2026-06-01",
+          "exitDate": "2026-07-07",
+          "ret": -0.19034380891667002
+        },
+        {
+          "symbol": "FRES.L",
+          "side": "short",
+          "signalDate": "2018-11-23",
+          "exitDate": "2018-12-20",
+          "ret": -0.18934185593523623
+        }
+      ]
+    },
+    {
+      "id": "UK|c",
+      "market": "UK",
+      "variant": "c",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -64.55,
+        "grossReturnPct": -64.55,
+        "costDragPp": 0,
+        "maxDrawdownPct": 79.62,
+        "benchmarkReturnPct": 0,
+        "tStat": -6.03,
+        "tN": 768,
+        "pf": 0.542,
+        "pfInfinite": false,
+        "win": 28.6,
+        "trades": 768,
+        "sharpe": -0.0783011232276466
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 31,
+          "win": 35.5,
+          "pf": 0.978,
+          "pfInfinite": false,
+          "returnPct": 6.34,
+          "maxDrawdownPct": 9.44,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 31,
+          "win": 45.2,
+          "pf": 1.259,
+          "pfInfinite": false,
+          "returnPct": 4.31,
+          "maxDrawdownPct": 12.48,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 24,
+          "win": 45.8,
+          "pf": 1.449,
+          "pfInfinite": false,
+          "returnPct": 18.8,
+          "maxDrawdownPct": 11.99,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 36,
+          "win": 27.8,
+          "pf": 1.072,
+          "pfInfinite": false,
+          "returnPct": -18.59,
+          "maxDrawdownPct": 21.91,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 768,
+      "truncated": 6,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 11.73,
+          "trades": 31
+        },
+        {
+          "year": 2012,
+          "returnPct": -17.31,
+          "trades": 20
+        },
+        {
+          "year": 2013,
+          "returnPct": 16.23,
+          "trades": 19
+        },
+        {
+          "year": 2014,
+          "returnPct": -4.96,
+          "trades": 55
+        },
+        {
+          "year": 2015,
+          "returnPct": -2.01,
+          "trades": 49
+        },
+        {
+          "year": 2016,
+          "returnPct": -32.24,
+          "trades": 64
+        },
+        {
+          "year": 2017,
+          "returnPct": -5.24,
+          "trades": 35
+        },
+        {
+          "year": 2018,
+          "returnPct": -17.02,
+          "trades": 66
+        },
+        {
+          "year": 2019,
+          "returnPct": -14.78,
+          "trades": 72
+        },
+        {
+          "year": 2020,
+          "returnPct": -17.84,
+          "trades": 55
+        },
+        {
+          "year": 2021,
+          "returnPct": -20.58,
+          "trades": 20
+        },
+        {
+          "year": 2022,
+          "returnPct": -2.07,
+          "trades": 81
+        },
+        {
+          "year": 2023,
+          "returnPct": -1.06,
+          "trades": 44
+        },
+        {
+          "year": 2024,
+          "returnPct": 6.91,
+          "trades": 47
+        },
+        {
+          "year": 2025,
+          "returnPct": 31.63,
+          "trades": 59
+        },
+        {
+          "year": 2026,
+          "returnPct": -12.28,
+          "trades": 51
+        }
+      ],
+      "concurrent": 30,
+      "rebound": -34.74,
+      "worst": [
+        {
+          "symbol": "FRES.L",
+          "side": "short",
+          "signalDate": "2022-01-26",
+          "exitDate": "2022-03-08",
+          "ret": -0.27672471975931767
+        },
+        {
+          "symbol": "EZJ.L",
+          "side": "short",
+          "signalDate": "2020-04-03",
+          "exitDate": "2020-05-26",
+          "ret": -0.26323265715671973
+        },
+        {
+          "symbol": "RR.L",
+          "side": "short",
+          "signalDate": "2015-11-12",
+          "exitDate": "2016-02-12",
+          "ret": -0.2608775591309974
+        },
+        {
+          "symbol": "IAG.L",
+          "side": "short",
+          "signalDate": "2020-07-31",
+          "exitDate": "2020-08-27",
+          "ret": -0.2562723080863828
+        },
+        {
+          "symbol": "NXT.L",
+          "side": "short",
+          "signalDate": "2020-04-03",
+          "exitDate": "2020-04-29",
+          "ret": -0.23944653447117425
+        },
+        {
+          "symbol": "FRES.L",
+          "side": "short",
+          "signalDate": "2018-11-23",
+          "exitDate": "2018-12-27",
+          "ret": -0.2109987094887129
+        },
+        {
+          "symbol": "HMSO.L",
+          "side": "short",
+          "signalDate": "2018-01-18",
+          "exitDate": "2018-03-19",
+          "ret": -0.2083684839349732
+        },
+        {
+          "symbol": "LSEG.L",
+          "side": "short",
+          "signalDate": "2022-03-01",
+          "exitDate": "2022-03-04",
+          "ret": -0.20045938980136457
+        },
+        {
+          "symbol": "ITV.L",
+          "side": "short",
+          "signalDate": "2011-08-19",
+          "exitDate": "2011-09-27",
+          "ret": -0.19797147110750613
+        },
+        {
+          "symbol": "BARC.L",
+          "side": "short",
+          "signalDate": "2020-04-01",
+          "exitDate": "2020-05-07",
+          "ret": -0.18863121804506566
+        }
+      ]
+    },
+    {
+      "id": "UK|d",
+      "market": "UK",
+      "variant": "d",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -90.13,
+        "grossReturnPct": -90.13,
+        "costDragPp": 0,
+        "maxDrawdownPct": 91,
+        "benchmarkReturnPct": 0,
+        "tStat": -7.15,
+        "tN": 889,
+        "pf": 0.503,
+        "pfInfinite": false,
+        "win": 30.6,
+        "trades": 889,
+        "sharpe": -0.1888598532011034
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 38,
+          "win": 28.9,
+          "pf": 0.613,
+          "pfInfinite": false,
+          "returnPct": 0.08,
+          "maxDrawdownPct": 11.49,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 34,
+          "win": 50,
+          "pf": 1.058,
+          "pfInfinite": false,
+          "returnPct": -6.18,
+          "maxDrawdownPct": 18.96,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 28,
+          "win": 53.6,
+          "pf": 2.221,
+          "pfInfinite": false,
+          "returnPct": 21.05,
+          "maxDrawdownPct": 9.9,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 38,
+          "win": 21.1,
+          "pf": 0.471,
+          "pfInfinite": false,
+          "returnPct": -28.94,
+          "maxDrawdownPct": 30.06,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 889,
+      "truncated": 6,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": -8.5,
+          "trades": 42
+        },
+        {
+          "year": 2012,
+          "returnPct": -5.3,
+          "trades": 23
+        },
+        {
+          "year": 2013,
+          "returnPct": 2.65,
+          "trades": 25
+        },
+        {
+          "year": 2014,
+          "returnPct": -19.03,
+          "trades": 69
+        },
+        {
+          "year": 2015,
+          "returnPct": 3.12,
+          "trades": 59
+        },
+        {
+          "year": 2016,
+          "returnPct": -47.14,
+          "trades": 71
+        },
+        {
+          "year": 2017,
+          "returnPct": -8.59,
+          "trades": 38
+        },
+        {
+          "year": 2018,
+          "returnPct": -21.05,
+          "trades": 76
+        },
+        {
+          "year": 2019,
+          "returnPct": -28.29,
+          "trades": 79
+        },
+        {
+          "year": 2020,
+          "returnPct": -27.27,
+          "trades": 61
+        },
+        {
+          "year": 2021,
+          "returnPct": -19.89,
+          "trades": 22
+        },
+        {
+          "year": 2022,
+          "returnPct": -6.91,
+          "trades": 93
+        },
+        {
+          "year": 2023,
+          "returnPct": 5.15,
+          "trades": 49
+        },
+        {
+          "year": 2024,
+          "returnPct": -4.98,
+          "trades": 61
+        },
+        {
+          "year": 2025,
+          "returnPct": 15.1,
+          "trades": 65
+        },
+        {
+          "year": 2026,
+          "returnPct": -22.15,
+          "trades": 56
+        }
+      ],
+      "concurrent": 25,
+      "rebound": -39.75,
+      "worst": [
+        {
+          "symbol": "BT-A.L",
+          "side": "short",
+          "signalDate": "2020-02-05",
+          "exitDate": "2020-03-18",
+          "ret": -0.3183940308802391
+        },
+        {
+          "symbol": "JD.L",
+          "side": "short",
+          "signalDate": "2022-05-25",
+          "exitDate": "2022-06-27",
+          "ret": -0.2785472111033783
+        },
+        {
+          "symbol": "NXT.L",
+          "side": "short",
+          "signalDate": "2020-04-03",
+          "exitDate": "2020-04-27",
+          "ret": -0.2256970619625539
+        },
+        {
+          "symbol": "IMB.L",
+          "side": "short",
+          "signalDate": "2020-02-27",
+          "exitDate": "2020-04-03",
+          "ret": -0.21455621222696886
+        },
+        {
+          "symbol": "CPI.L",
+          "side": "short",
+          "signalDate": "2016-09-29",
+          "exitDate": "2016-10-03",
+          "ret": -0.2065394721578675
+        },
+        {
+          "symbol": "JD.L",
+          "side": "short",
+          "signalDate": "2025-03-31",
+          "exitDate": "2025-04-10",
+          "ret": -0.2026840116193488
+        },
+        {
+          "symbol": "EZJ.L",
+          "side": "short",
+          "signalDate": "2020-04-03",
+          "exitDate": "2020-05-26",
+          "ret": -0.20024441065928777
+        },
+        {
+          "symbol": "IAG.L",
+          "side": "short",
+          "signalDate": "2020-07-31",
+          "exitDate": "2020-08-11",
+          "ret": -0.1933665480847082
+        },
+        {
+          "symbol": "ULVR.L",
+          "side": "short",
+          "signalDate": "2026-06-01",
+          "exitDate": "2026-07-07",
+          "ret": -0.19235351014653146
+        },
+        {
+          "symbol": "FRES.L",
+          "side": "short",
+          "signalDate": "2018-11-23",
+          "exitDate": "2018-12-20",
+          "ret": -0.19117413635962666
+        }
+      ]
+    },
+    {
+      "id": "UK|e",
+      "market": "UK",
+      "variant": "e",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -67.66,
+        "grossReturnPct": -67.66,
+        "costDragPp": 0,
+        "maxDrawdownPct": 76.06,
+        "benchmarkReturnPct": 0,
+        "tStat": -6.93,
+        "tN": 534,
+        "pf": 0.445,
+        "pfInfinite": false,
+        "win": 25.1,
+        "trades": 534,
+        "sharpe": -0.12224825559084848
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 21,
+          "win": 28.6,
+          "pf": 0.745,
+          "pfInfinite": false,
+          "returnPct": 16.06,
+          "maxDrawdownPct": 5.9,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 21,
+          "win": 47.6,
+          "pf": 1.64,
+          "pfInfinite": false,
+          "returnPct": -11.49,
+          "maxDrawdownPct": 14.87,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 0,
+          "win": null,
+          "pf": null,
+          "pfInfinite": false,
+          "returnPct": 0,
+          "maxDrawdownPct": 0,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 4,
+          "win": 0,
+          "pf": 0,
+          "pfInfinite": false,
+          "returnPct": -1.35,
+          "maxDrawdownPct": 1.35,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 534,
+      "truncated": 4,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 23.57,
+          "trades": 29
+        },
+        {
+          "year": 2012,
+          "returnPct": -8.08,
+          "trades": 18
+        },
+        {
+          "year": 2013,
+          "returnPct": -10.44,
+          "trades": 9
+        },
+        {
+          "year": 2014,
+          "returnPct": -5.19,
+          "trades": 29
+        },
+        {
+          "year": 2015,
+          "returnPct": -2.62,
+          "trades": 49
+        },
+        {
+          "year": 2016,
+          "returnPct": -38.51,
+          "trades": 64
+        },
+        {
+          "year": 2017,
+          "returnPct": -0.71,
+          "trades": 3
+        },
+        {
+          "year": 2018,
+          "returnPct": -13.1,
+          "trades": 53
+        },
+        {
+          "year": 2019,
+          "returnPct": -6.51,
+          "trades": 62
+        },
+        {
+          "year": 2020,
+          "returnPct": -17.25,
+          "trades": 50
+        },
+        {
+          "year": 2021,
+          "returnPct": -9.8,
+          "trades": 7
+        },
+        {
+          "year": 2022,
+          "returnPct": 4.97,
+          "trades": 76
+        },
+        {
+          "year": 2023,
+          "returnPct": -6.13,
+          "trades": 24
+        },
+        {
+          "year": 2024,
+          "returnPct": -8.63,
+          "trades": 20
+        },
+        {
+          "year": 2025,
+          "returnPct": 4.72,
+          "trades": 37
+        },
+        {
+          "year": 2026,
+          "returnPct": -1.35,
+          "trades": 4
+        }
+      ],
+      "concurrent": 30,
+      "rebound": -33.23,
+      "worst": [
+        {
+          "symbol": "EZJ.L",
+          "side": "short",
+          "signalDate": "2020-04-03",
+          "exitDate": "2020-05-26",
+          "ret": -0.26323265715671973
+        },
+        {
+          "symbol": "RR.L",
+          "side": "short",
+          "signalDate": "2015-11-12",
+          "exitDate": "2016-02-12",
+          "ret": -0.2608775591309974
+        },
+        {
+          "symbol": "IAG.L",
+          "side": "short",
+          "signalDate": "2020-07-31",
+          "exitDate": "2020-08-27",
+          "ret": -0.2562723080863828
+        },
+        {
+          "symbol": "NXT.L",
+          "side": "short",
+          "signalDate": "2020-04-03",
+          "exitDate": "2020-04-29",
+          "ret": -0.23944653447117425
+        },
+        {
+          "symbol": "FRES.L",
+          "side": "short",
+          "signalDate": "2018-11-23",
+          "exitDate": "2018-12-27",
+          "ret": -0.2109987094887129
+        },
+        {
+          "symbol": "HMSO.L",
+          "side": "short",
+          "signalDate": "2018-02-05",
+          "exitDate": "2018-03-19",
+          "ret": -0.20606191099835247
+        },
+        {
+          "symbol": "LSEG.L",
+          "side": "short",
+          "signalDate": "2022-03-01",
+          "exitDate": "2022-03-04",
+          "ret": -0.20045938980136457
+        },
+        {
+          "symbol": "ITV.L",
+          "side": "short",
+          "signalDate": "2011-08-19",
+          "exitDate": "2011-09-27",
+          "ret": -0.19797147110750613
+        },
+        {
+          "symbol": "BARC.L",
+          "side": "short",
+          "signalDate": "2020-04-01",
+          "exitDate": "2020-05-07",
+          "ret": -0.18863121804506566
+        },
+        {
+          "symbol": "IMB.L",
+          "side": "short",
+          "signalDate": "2020-02-27",
+          "exitDate": "2020-04-09",
+          "ret": -0.17611500072334618
+        }
+      ]
+    },
+    {
+      "id": "UK|f",
+      "market": "UK",
+      "variant": "f",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -32.87,
+        "grossReturnPct": -32.87,
+        "costDragPp": 0,
+        "maxDrawdownPct": 53.87,
+        "benchmarkReturnPct": 0,
+        "tStat": -1.2,
+        "tN": 1013,
+        "pf": 0.838,
+        "pfInfinite": false,
+        "win": 31.2,
+        "trades": 1013,
+        "sharpe": -0.03640040098807003
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 46,
+          "win": 32.6,
+          "pf": 0.804,
+          "pfInfinite": false,
+          "returnPct": 9.15,
+          "maxDrawdownPct": 3.5,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 36,
+          "win": 50,
+          "pf": 1.796,
+          "pfInfinite": false,
+          "returnPct": 10.69,
+          "maxDrawdownPct": 6.02,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 36,
+          "win": 47.2,
+          "pf": 5.157,
+          "pfInfinite": false,
+          "returnPct": 9.79,
+          "maxDrawdownPct": 4.02,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 58,
+          "win": 37.9,
+          "pf": 3.11,
+          "pfInfinite": false,
+          "returnPct": -11.68,
+          "maxDrawdownPct": 15.62,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 1013,
+      "truncated": 6,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 8.71,
+          "trades": 31
+        },
+        {
+          "year": 2012,
+          "returnPct": -3.15,
+          "trades": 25
+        },
+        {
+          "year": 2013,
+          "returnPct": 1.18,
+          "trades": 31
+        },
+        {
+          "year": 2014,
+          "returnPct": -9.79,
+          "trades": 74
+        },
+        {
+          "year": 2015,
+          "returnPct": 2.33,
+          "trades": 60
+        },
+        {
+          "year": 2016,
+          "returnPct": 6.44,
+          "trades": 71
+        },
+        {
+          "year": 2017,
+          "returnPct": -7.49,
+          "trades": 54
+        },
+        {
+          "year": 2018,
+          "returnPct": -14.37,
+          "trades": 86
+        },
+        {
+          "year": 2019,
+          "returnPct": -10.94,
+          "trades": 81
+        },
+        {
+          "year": 2020,
+          "returnPct": 2.25,
+          "trades": 72
+        },
+        {
+          "year": 2021,
+          "returnPct": -12.09,
+          "trades": 46
+        },
+        {
+          "year": 2022,
+          "returnPct": -9.9,
+          "trades": 94
+        },
+        {
+          "year": 2023,
+          "returnPct": -5.78,
+          "trades": 65
+        },
+        {
+          "year": 2024,
+          "returnPct": 7.5,
+          "trades": 68
+        },
+        {
+          "year": 2025,
+          "returnPct": 20.31,
+          "trades": 72
+        },
+        {
+          "year": 2026,
+          "returnPct": -7.87,
+          "trades": 83
+        }
+      ],
+      "concurrent": 36,
+      "rebound": -35.7,
+      "worst": [
+        {
+          "symbol": "OCDO.L",
+          "side": "long",
+          "signalDate": "2023-07-26",
+          "exitDate": "2023-09-28",
+          "ret": -0.35861366965836816
+        },
+        {
+          "symbol": "MRO.L",
+          "side": "long",
+          "signalDate": "2025-03-05",
+          "exitDate": "2025-03-07",
+          "ret": -0.3006926649020817
+        },
+        {
+          "symbol": "FRES.L",
+          "side": "short",
+          "signalDate": "2022-01-26",
+          "exitDate": "2022-03-08",
+          "ret": -0.27497921280737636
+        },
+        {
+          "symbol": "BBY.L",
+          "side": "long",
+          "signalDate": "2014-01-07",
+          "exitDate": "2014-05-06",
+          "ret": -0.2679708840429067
+        },
+        {
+          "symbol": "EZJ.L",
+          "side": "short",
+          "signalDate": "2020-04-03",
+          "exitDate": "2020-05-26",
+          "ret": -0.261252788263703
+        },
+        {
+          "symbol": "AAL.L",
+          "side": "long",
+          "signalDate": "2024-05-10",
+          "exitDate": "2024-09-03",
+          "ret": -0.2595879856371146
+        },
+        {
+          "symbol": "RR.L",
+          "side": "short",
+          "signalDate": "2015-11-12",
+          "exitDate": "2016-02-12",
+          "ret": -0.25902657612782776
+        },
+        {
+          "symbol": "IAG.L",
+          "side": "short",
+          "signalDate": "2020-07-31",
+          "exitDate": "2020-08-27",
+          "ret": -0.2545205936142262
+        },
+        {
+          "symbol": "FRES.L",
+          "side": "long",
+          "signalDate": "2023-01-04",
+          "exitDate": "2023-02-22",
+          "ret": -0.24365592598476382
+        },
+        {
+          "symbol": "JD.L",
+          "side": "long",
+          "signalDate": "2023-02-03",
+          "exitDate": "2023-06-27",
+          "ret": -0.24165125607653082
+        }
+      ]
+    },
+    {
+      "id": "France|a",
+      "market": "France",
+      "variant": "a",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": 10.67,
+        "grossReturnPct": 10.67,
+        "costDragPp": 0,
+        "maxDrawdownPct": 58.02,
+        "benchmarkReturnPct": 0,
+        "tStat": -2.04,
+        "tN": 306,
+        "pf": 0.704,
+        "pfInfinite": false,
+        "win": 30.1,
+        "trades": 306,
+        "sharpe": 0.03538610248028287
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 16,
+          "win": 25,
+          "pf": 0.447,
+          "pfInfinite": false,
+          "returnPct": -20.2,
+          "maxDrawdownPct": 26.3,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 20,
+          "win": 35,
+          "pf": 1.191,
+          "pfInfinite": false,
+          "returnPct": -0.59,
+          "maxDrawdownPct": 12.52,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 9,
+          "win": 44.4,
+          "pf": 0.943,
+          "pfInfinite": false,
+          "returnPct": -2.9,
+          "maxDrawdownPct": 10.49,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 23,
+          "win": 30.4,
+          "pf": 1.42,
+          "pfInfinite": false,
+          "returnPct": 10.93,
+          "maxDrawdownPct": 9.17,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 306,
+      "truncated": 8,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 29.46,
+          "trades": 14
+        },
+        {
+          "year": 2012,
+          "returnPct": -18.07,
+          "trades": 17
+        },
+        {
+          "year": 2013,
+          "returnPct": 16.76,
+          "trades": 8
+        },
+        {
+          "year": 2014,
+          "returnPct": -12.89,
+          "trades": 18
+        },
+        {
+          "year": 2015,
+          "returnPct": 24.42,
+          "trades": 10
+        },
+        {
+          "year": 2016,
+          "returnPct": -13.71,
+          "trades": 25
+        },
+        {
+          "year": 2017,
+          "returnPct": 1.23,
+          "trades": 11
+        },
+        {
+          "year": 2018,
+          "returnPct": -4.16,
+          "trades": 24
+        },
+        {
+          "year": 2019,
+          "returnPct": 19.19,
+          "trades": 22
+        },
+        {
+          "year": 2020,
+          "returnPct": 7.91,
+          "trades": 20
+        },
+        {
+          "year": 2021,
+          "returnPct": 44.63,
+          "trades": 2
+        },
+        {
+          "year": 2022,
+          "returnPct": -28.05,
+          "trades": 35
+        },
+        {
+          "year": 2023,
+          "returnPct": 4.14,
+          "trades": 12
+        },
+        {
+          "year": 2024,
+          "returnPct": -30.76,
+          "trades": 28
+        },
+        {
+          "year": 2025,
+          "returnPct": -4.91,
+          "trades": 31
+        },
+        {
+          "year": 2026,
+          "returnPct": 7.31,
+          "trades": 29
+        }
+      ],
+      "concurrent": 14,
+      "rebound": -3.84,
+      "worst": [
+        {
+          "symbol": "VIV.PA",
+          "side": "short",
+          "signalDate": "2024-12-09",
+          "exitDate": "2025-02-14",
+          "ret": -0.4647544840528677
+        },
+        {
+          "symbol": "MT.AS",
+          "side": "short",
+          "signalDate": "2020-03-09",
+          "exitDate": "2020-04-29",
+          "ret": -0.2511477409883148
+        },
+        {
+          "symbol": "ENGI.PA",
+          "side": "short",
+          "signalDate": "2011-07-14",
+          "exitDate": "2011-09-27",
+          "ret": -0.20812985536416884
+        },
+        {
+          "symbol": "BN.PA",
+          "side": "short",
+          "signalDate": "2020-03-02",
+          "exitDate": "2020-04-17",
+          "ret": -0.2031793202109775
+        },
+        {
+          "symbol": "SAF.PA",
+          "side": "short",
+          "signalDate": "2020-03-17",
+          "exitDate": "2020-05-18",
+          "ret": -0.1855563332382617
+        },
+        {
+          "symbol": "ERF.PA",
+          "side": "short",
+          "signalDate": "2024-06-24",
+          "exitDate": "2024-07-25",
+          "ret": -0.1687383608270957
+        },
+        {
+          "symbol": "STMPA.PA",
+          "side": "short",
+          "signalDate": "2011-08-10",
+          "exitDate": "2011-09-26",
+          "ret": -0.16679293196908518
+        },
+        {
+          "symbol": "RMS.PA",
+          "side": "short",
+          "signalDate": "2022-05-06",
+          "exitDate": "2022-07-06",
+          "ret": -0.16411640303449515
+        },
+        {
+          "symbol": "VIE.PA",
+          "side": "short",
+          "signalDate": "2018-09-25",
+          "exitDate": "2018-10-30",
+          "ret": -0.15507474952549405
+        },
+        {
+          "symbol": "BNP.PA",
+          "side": "short",
+          "signalDate": "2011-09-12",
+          "exitDate": "2011-10-10",
+          "ret": -0.15106430851561647
+        }
+      ]
+    },
+    {
+      "id": "France|b",
+      "market": "France",
+      "variant": "b",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -39.37,
+        "grossReturnPct": -39.37,
+        "costDragPp": 0,
+        "maxDrawdownPct": 62.36,
+        "benchmarkReturnPct": 0,
+        "tStat": -2.19,
+        "tN": 349,
+        "pf": 0.7,
+        "pfInfinite": false,
+        "win": 37,
+        "trades": 349,
+        "sharpe": -0.023478681570923175
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 18,
+          "win": 22.2,
+          "pf": 0.092,
+          "pfInfinite": false,
+          "returnPct": -19.88,
+          "maxDrawdownPct": 29.11,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 22,
+          "win": 40.9,
+          "pf": 1.219,
+          "pfInfinite": false,
+          "returnPct": -6.66,
+          "maxDrawdownPct": 17.59,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 15,
+          "win": 46.7,
+          "pf": 0.963,
+          "pfInfinite": false,
+          "returnPct": -6.96,
+          "maxDrawdownPct": 15.96,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 20,
+          "win": 45,
+          "pf": 0.86,
+          "pfInfinite": false,
+          "returnPct": -6.13,
+          "maxDrawdownPct": 15.12,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 349,
+      "truncated": 7,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 12.43,
+          "trades": 19
+        },
+        {
+          "year": 2012,
+          "returnPct": -21.3,
+          "trades": 19
+        },
+        {
+          "year": 2013,
+          "returnPct": 8.07,
+          "trades": 9
+        },
+        {
+          "year": 2014,
+          "returnPct": -5.04,
+          "trades": 16
+        },
+        {
+          "year": 2015,
+          "returnPct": -5,
+          "trades": 15
+        },
+        {
+          "year": 2016,
+          "returnPct": 0.21,
+          "trades": 25
+        },
+        {
+          "year": 2017,
+          "returnPct": -4.03,
+          "trades": 12
+        },
+        {
+          "year": 2018,
+          "returnPct": -7.38,
+          "trades": 35
+        },
+        {
+          "year": 2019,
+          "returnPct": 5.51,
+          "trades": 23
+        },
+        {
+          "year": 2020,
+          "returnPct": -4.88,
+          "trades": 21
+        },
+        {
+          "year": 2021,
+          "returnPct": 40.21,
+          "trades": 7
+        },
+        {
+          "year": 2022,
+          "returnPct": -14.64,
+          "trades": 33
+        },
+        {
+          "year": 2023,
+          "returnPct": 8.8,
+          "trades": 16
+        },
+        {
+          "year": 2024,
+          "returnPct": -31.75,
+          "trades": 36
+        },
+        {
+          "year": 2025,
+          "returnPct": 4.2,
+          "trades": 33
+        },
+        {
+          "year": 2026,
+          "returnPct": -15.09,
+          "trades": 30
+        }
+      ],
+      "concurrent": 11,
+      "rebound": -15.95,
+      "worst": [
+        {
+          "symbol": "VIV.PA",
+          "side": "short",
+          "signalDate": "2024-12-09",
+          "exitDate": "2024-12-31",
+          "ret": -0.35025228395550134
+        },
+        {
+          "symbol": "BN.PA",
+          "side": "short",
+          "signalDate": "2020-03-02",
+          "exitDate": "2020-03-20",
+          "ret": -0.32417120350102446
+        },
+        {
+          "symbol": "AC.PA",
+          "side": "short",
+          "signalDate": "2020-03-11",
+          "exitDate": "2020-04-09",
+          "ret": -0.2230341412118616
+        },
+        {
+          "symbol": "SAF.PA",
+          "side": "short",
+          "signalDate": "2020-03-17",
+          "exitDate": "2020-03-26",
+          "ret": -0.21720739315150117
+        },
+        {
+          "symbol": "GLE.PA",
+          "side": "short",
+          "signalDate": "2012-01-09",
+          "exitDate": "2012-01-19",
+          "ret": -0.1726500705024736
+        },
+        {
+          "symbol": "VIE.PA",
+          "side": "short",
+          "signalDate": "2018-09-25",
+          "exitDate": "2018-10-30",
+          "ret": -0.1513817858830202
+        },
+        {
+          "symbol": "STLAP.PA",
+          "side": "short",
+          "signalDate": "2025-09-10",
+          "exitDate": "2025-10-02",
+          "ret": -0.14856637511703974
+        },
+        {
+          "symbol": "BNP.PA",
+          "side": "short",
+          "signalDate": "2011-09-12",
+          "exitDate": "2011-10-06",
+          "ret": -0.1476471974463548
+        },
+        {
+          "symbol": "WLN.PA",
+          "side": "short",
+          "signalDate": "2022-04-08",
+          "exitDate": "2022-05-05",
+          "ret": -0.1451413627133109
+        },
+        {
+          "symbol": "MT.AS",
+          "side": "short",
+          "signalDate": "2016-01-11",
+          "exitDate": "2016-02-22",
+          "ret": -0.14251286674818786
+        }
+      ]
+    },
+    {
+      "id": "France|c",
+      "market": "France",
+      "variant": "c",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -11.51,
+        "grossReturnPct": -11.51,
+        "costDragPp": 0,
+        "maxDrawdownPct": 60.52,
+        "benchmarkReturnPct": 0,
+        "tStat": -2.4,
+        "tN": 306,
+        "pf": 0.664,
+        "pfInfinite": false,
+        "win": 29.4,
+        "trades": 306,
+        "sharpe": 0.015176131192624395
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 16,
+          "win": 25,
+          "pf": 0.43,
+          "pfInfinite": false,
+          "returnPct": -20.73,
+          "maxDrawdownPct": 26.73,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 20,
+          "win": 35,
+          "pf": 1.125,
+          "pfInfinite": false,
+          "returnPct": -1.68,
+          "maxDrawdownPct": 13.24,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 9,
+          "win": 44.4,
+          "pf": 0.87,
+          "pfInfinite": false,
+          "returnPct": -3.49,
+          "maxDrawdownPct": 10.49,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 23,
+          "win": 30.4,
+          "pf": 1.313,
+          "pfInfinite": false,
+          "returnPct": 9.76,
+          "maxDrawdownPct": 9.34,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 306,
+      "truncated": 8,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 28.51,
+          "trades": 14
+        },
+        {
+          "year": 2012,
+          "returnPct": -19.45,
+          "trades": 17
+        },
+        {
+          "year": 2013,
+          "returnPct": 15.55,
+          "trades": 8
+        },
+        {
+          "year": 2014,
+          "returnPct": -14.29,
+          "trades": 18
+        },
+        {
+          "year": 2015,
+          "returnPct": 23.28,
+          "trades": 10
+        },
+        {
+          "year": 2016,
+          "returnPct": -15.34,
+          "trades": 25
+        },
+        {
+          "year": 2017,
+          "returnPct": -0.54,
+          "trades": 11
+        },
+        {
+          "year": 2018,
+          "returnPct": -5.42,
+          "trades": 24
+        },
+        {
+          "year": 2019,
+          "returnPct": 17.13,
+          "trades": 22
+        },
+        {
+          "year": 2020,
+          "returnPct": 6.56,
+          "trades": 20
+        },
+        {
+          "year": 2021,
+          "returnPct": 44.15,
+          "trades": 2
+        },
+        {
+          "year": 2022,
+          "returnPct": -29.5,
+          "trades": 35
+        },
+        {
+          "year": 2023,
+          "returnPct": 2.94,
+          "trades": 12
+        },
+        {
+          "year": 2024,
+          "returnPct": -31.87,
+          "trades": 28
+        },
+        {
+          "year": 2025,
+          "returnPct": -6.52,
+          "trades": 31
+        },
+        {
+          "year": 2026,
+          "returnPct": 5.72,
+          "trades": 29
+        }
+      ],
+      "concurrent": 14,
+      "rebound": -7.39,
+      "worst": [
+        {
+          "symbol": "VIV.PA",
+          "side": "short",
+          "signalDate": "2024-12-09",
+          "exitDate": "2025-02-14",
+          "ret": -0.4659477306300911
+        },
+        {
+          "symbol": "MT.AS",
+          "side": "short",
+          "signalDate": "2020-03-09",
+          "exitDate": "2020-04-29",
+          "ret": -0.2529732200225039
+        },
+        {
+          "symbol": "ENGI.PA",
+          "side": "short",
+          "signalDate": "2011-07-14",
+          "exitDate": "2011-09-27",
+          "ret": -0.20993922642091878
+        },
+        {
+          "symbol": "BN.PA",
+          "side": "short",
+          "signalDate": "2020-03-02",
+          "exitDate": "2020-04-17",
+          "ret": -0.204910657425171
+        },
+        {
+          "symbol": "SAF.PA",
+          "side": "short",
+          "signalDate": "2020-03-17",
+          "exitDate": "2020-05-18",
+          "ret": -0.18741897125367635
+        },
+        {
+          "symbol": "ERF.PA",
+          "side": "short",
+          "signalDate": "2024-06-24",
+          "exitDate": "2024-07-25",
+          "ret": -0.17066714536032634
+        },
+        {
+          "symbol": "STMPA.PA",
+          "side": "short",
+          "signalDate": "2011-08-10",
+          "exitDate": "2011-09-26",
+          "ret": -0.16863549088694252
+        },
+        {
+          "symbol": "RMS.PA",
+          "side": "short",
+          "signalDate": "2022-05-06",
+          "exitDate": "2022-07-06",
+          "ret": -0.16605845138929143
+        },
+        {
+          "symbol": "VIE.PA",
+          "side": "short",
+          "signalDate": "2018-09-25",
+          "exitDate": "2018-10-30",
+          "ret": -0.15701463153197837
+        },
+        {
+          "symbol": "BNP.PA",
+          "side": "short",
+          "signalDate": "2011-09-12",
+          "exitDate": "2011-10-10",
+          "ret": -0.15290516278442945
+        }
+      ]
+    },
+    {
+      "id": "France|d",
+      "market": "France",
+      "variant": "d",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -54.65,
+        "grossReturnPct": -54.65,
+        "costDragPp": 0,
+        "maxDrawdownPct": 71.62,
+        "benchmarkReturnPct": 0,
+        "tStat": -2.68,
+        "tN": 349,
+        "pf": 0.647,
+        "pfInfinite": false,
+        "win": 35.5,
+        "trades": 349,
+        "sharpe": -0.05047243469042844
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 18,
+          "win": 22.2,
+          "pf": 0.08,
+          "pfInfinite": false,
+          "returnPct": -20.78,
+          "maxDrawdownPct": 29.44,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 22,
+          "win": 40.9,
+          "pf": 1.138,
+          "pfInfinite": false,
+          "returnPct": -7.99,
+          "maxDrawdownPct": 18.6,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 15,
+          "win": 40,
+          "pf": 0.909,
+          "pfInfinite": false,
+          "returnPct": -7.81,
+          "maxDrawdownPct": 16.41,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 20,
+          "win": 40,
+          "pf": 0.778,
+          "pfInfinite": false,
+          "returnPct": -7.34,
+          "maxDrawdownPct": 15.83,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 349,
+      "truncated": 7,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 10.99,
+          "trades": 19
+        },
+        {
+          "year": 2012,
+          "returnPct": -22.79,
+          "trades": 19
+        },
+        {
+          "year": 2013,
+          "returnPct": 6.63,
+          "trades": 9
+        },
+        {
+          "year": 2014,
+          "returnPct": -6.48,
+          "trades": 16
+        },
+        {
+          "year": 2015,
+          "returnPct": -6.64,
+          "trades": 15
+        },
+        {
+          "year": 2016,
+          "returnPct": -1.57,
+          "trades": 25
+        },
+        {
+          "year": 2017,
+          "returnPct": -5.59,
+          "trades": 12
+        },
+        {
+          "year": 2018,
+          "returnPct": -9.43,
+          "trades": 35
+        },
+        {
+          "year": 2019,
+          "returnPct": 2.97,
+          "trades": 23
+        },
+        {
+          "year": 2020,
+          "returnPct": -6.56,
+          "trades": 21
+        },
+        {
+          "year": 2021,
+          "returnPct": 39.12,
+          "trades": 7
+        },
+        {
+          "year": 2022,
+          "returnPct": -16.5,
+          "trades": 33
+        },
+        {
+          "year": 2023,
+          "returnPct": 6.79,
+          "trades": 16
+        },
+        {
+          "year": 2024,
+          "returnPct": -33.29,
+          "trades": 36
+        },
+        {
+          "year": 2025,
+          "returnPct": 1.73,
+          "trades": 33
+        },
+        {
+          "year": 2026,
+          "returnPct": -16.62,
+          "trades": 30
+        }
+      ],
+      "concurrent": 11,
+      "rebound": -19.83,
+      "worst": [
+        {
+          "symbol": "VIV.PA",
+          "side": "short",
+          "signalDate": "2024-12-09",
+          "exitDate": "2024-12-31",
+          "ret": -0.3515531621096992
+        },
+        {
+          "symbol": "BN.PA",
+          "side": "short",
+          "signalDate": "2020-03-02",
+          "exitDate": "2020-03-20",
+          "ret": -0.3257119971510555
+        },
+        {
+          "symbol": "AC.PA",
+          "side": "short",
+          "signalDate": "2020-03-11",
+          "exitDate": "2020-04-09",
+          "ret": -0.22475674970237136
+        },
+        {
+          "symbol": "SAF.PA",
+          "side": "short",
+          "signalDate": "2020-03-17",
+          "exitDate": "2020-03-26",
+          "ret": -0.21900917122453223
+        },
+        {
+          "symbol": "GLE.PA",
+          "side": "short",
+          "signalDate": "2012-01-09",
+          "exitDate": "2012-01-19",
+          "ret": -0.1745642148878942
+        },
+        {
+          "symbol": "VIE.PA",
+          "side": "short",
+          "signalDate": "2018-09-25",
+          "exitDate": "2018-10-30",
+          "ret": -0.15332166788950452
+        },
+        {
+          "symbol": "STLAP.PA",
+          "side": "short",
+          "signalDate": "2025-09-10",
+          "exitDate": "2025-10-02",
+          "ret": -0.15062034669107438
+        },
+        {
+          "symbol": "BNP.PA",
+          "side": "short",
+          "signalDate": "2011-09-12",
+          "exitDate": "2011-10-06",
+          "ret": -0.14957084137609855
+        },
+        {
+          "symbol": "WLN.PA",
+          "side": "short",
+          "signalDate": "2022-04-08",
+          "exitDate": "2022-05-05",
+          "ret": -0.14715714434626181
+        },
+        {
+          "symbol": "MT.AS",
+          "side": "short",
+          "signalDate": "2016-01-11",
+          "exitDate": "2016-02-22",
+          "ret": -0.14454566651687162
+        }
+      ]
+    },
+    {
+      "id": "France|e",
+      "market": "France",
+      "variant": "e",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -65.28,
+        "grossReturnPct": -65.28,
+        "costDragPp": 0,
+        "maxDrawdownPct": 73.04,
+        "benchmarkReturnPct": 0,
+        "tStat": -3.4,
+        "tN": 221,
+        "pf": 0.513,
+        "pfInfinite": false,
+        "win": 28.5,
+        "trades": 221,
+        "sharpe": -0.12154799668333797
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 15,
+          "win": 26.7,
+          "pf": 0.414,
+          "pfInfinite": false,
+          "returnPct": -21.9,
+          "maxDrawdownPct": 30,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 8,
+          "win": 37.5,
+          "pf": 0.622,
+          "pfInfinite": false,
+          "returnPct": -8.68,
+          "maxDrawdownPct": 14.16,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 0,
+          "win": null,
+          "pf": null,
+          "pfInfinite": false,
+          "returnPct": 1.61,
+          "maxDrawdownPct": 4.1,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 19,
+          "win": 31.6,
+          "pf": 1.084,
+          "pfInfinite": false,
+          "returnPct": -0.95,
+          "maxDrawdownPct": 13.24,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 221,
+      "truncated": 8,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": -6.65,
+          "trades": 13
+        },
+        {
+          "year": 2012,
+          "returnPct": -26.41,
+          "trades": 15
+        },
+        {
+          "year": 2013,
+          "returnPct": 0.84,
+          "trades": 1
+        },
+        {
+          "year": 2014,
+          "returnPct": -11.68,
+          "trades": 10
+        },
+        {
+          "year": 2015,
+          "returnPct": 25.58,
+          "trades": 10
+        },
+        {
+          "year": 2016,
+          "returnPct": -15.23,
+          "trades": 25
+        },
+        {
+          "year": 2017,
+          "returnPct": 3.23,
+          "trades": 1
+        },
+        {
+          "year": 2018,
+          "returnPct": -1.57,
+          "trades": 16
+        },
+        {
+          "year": 2019,
+          "returnPct": -2.54,
+          "trades": 18
+        },
+        {
+          "year": 2020,
+          "returnPct": -4.49,
+          "trades": 18
+        },
+        {
+          "year": 2021,
+          "returnPct": -5.14,
+          "trades": 0
+        },
+        {
+          "year": 2022,
+          "returnPct": -18.15,
+          "trades": 32
+        },
+        {
+          "year": 2023,
+          "returnPct": 6.66,
+          "trades": 6
+        },
+        {
+          "year": 2024,
+          "returnPct": -20.86,
+          "trades": 22
+        },
+        {
+          "year": 2025,
+          "returnPct": -14.57,
+          "trades": 15
+        },
+        {
+          "year": 2026,
+          "returnPct": 0.64,
+          "trades": 19
+        }
+      ],
+      "concurrent": 14,
+      "rebound": -9.15,
+      "worst": [
+        {
+          "symbol": "VIV.PA",
+          "side": "short",
+          "signalDate": "2024-12-09",
+          "exitDate": "2025-02-14",
+          "ret": -0.4659477306300911
+        },
+        {
+          "symbol": "MT.AS",
+          "side": "short",
+          "signalDate": "2020-03-09",
+          "exitDate": "2020-04-29",
+          "ret": -0.2529732200225039
+        },
+        {
+          "symbol": "ENGI.PA",
+          "side": "short",
+          "signalDate": "2011-07-14",
+          "exitDate": "2011-09-27",
+          "ret": -0.20993922642091878
+        },
+        {
+          "symbol": "BN.PA",
+          "side": "short",
+          "signalDate": "2020-03-02",
+          "exitDate": "2020-04-17",
+          "ret": -0.204910657425171
+        },
+        {
+          "symbol": "SAF.PA",
+          "side": "short",
+          "signalDate": "2020-03-17",
+          "exitDate": "2020-05-18",
+          "ret": -0.18741897125367635
+        },
+        {
+          "symbol": "STMPA.PA",
+          "side": "short",
+          "signalDate": "2025-04-04",
+          "exitDate": "2025-05-09",
+          "ret": -0.17593219570274743
+        },
+        {
+          "symbol": "STMPA.PA",
+          "side": "short",
+          "signalDate": "2011-08-10",
+          "exitDate": "2011-09-26",
+          "ret": -0.16863549088694252
+        },
+        {
+          "symbol": "RMS.PA",
+          "side": "short",
+          "signalDate": "2022-05-06",
+          "exitDate": "2022-07-06",
+          "ret": -0.16605845138929143
+        },
+        {
+          "symbol": "BNP.PA",
+          "side": "short",
+          "signalDate": "2011-09-12",
+          "exitDate": "2011-10-10",
+          "ret": -0.15290516278442945
+        },
+        {
+          "symbol": "AIR.PA",
+          "side": "short",
+          "signalDate": "2014-12-11",
+          "exitDate": "2015-01-15",
+          "ret": -0.14850577467681336
+        }
+      ]
+    },
+    {
+      "id": "France|f",
+      "market": "France",
+      "variant": "f",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -14.12,
+        "grossReturnPct": -14.12,
+        "costDragPp": 0,
+        "maxDrawdownPct": 62.21,
+        "benchmarkReturnPct": 0,
+        "tStat": -0.64,
+        "tN": 406,
+        "pf": 0.903,
+        "pfInfinite": false,
+        "win": 31.8,
+        "trades": 406,
+        "sharpe": 0.0008611343723440002
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 18,
+          "win": 33.3,
+          "pf": 0.947,
+          "pfInfinite": false,
+          "returnPct": -7.59,
+          "maxDrawdownPct": 15.86,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 21,
+          "win": 33.3,
+          "pf": 1.098,
+          "pfInfinite": false,
+          "returnPct": 6.47,
+          "maxDrawdownPct": 6.73,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 12,
+          "win": 33.3,
+          "pf": 0.505,
+          "pfInfinite": false,
+          "returnPct": 7.85,
+          "maxDrawdownPct": 5.85,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 31,
+          "win": 48.4,
+          "pf": 5.825,
+          "pfInfinite": false,
+          "returnPct": 8.76,
+          "maxDrawdownPct": 8.23,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 406,
+      "truncated": 8,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2011,
+          "returnPct": 29.46,
+          "trades": 14
+        },
+        {
+          "year": 2012,
+          "returnPct": -23.35,
+          "trades": 17
+        },
+        {
+          "year": 2013,
+          "returnPct": -22.98,
+          "trades": 15
+        },
+        {
+          "year": 2014,
+          "returnPct": 11.56,
+          "trades": 23
+        },
+        {
+          "year": 2015,
+          "returnPct": 3.34,
+          "trades": 19
+        },
+        {
+          "year": 2016,
+          "returnPct": -7.47,
+          "trades": 27
+        },
+        {
+          "year": 2017,
+          "returnPct": -6.61,
+          "trades": 21
+        },
+        {
+          "year": 2018,
+          "returnPct": 4.52,
+          "trades": 33
+        },
+        {
+          "year": 2019,
+          "returnPct": 2.82,
+          "trades": 25
+        },
+        {
+          "year": 2020,
+          "returnPct": -12.96,
+          "trades": 30
+        },
+        {
+          "year": 2021,
+          "returnPct": 12.46,
+          "trades": 8
+        },
+        {
+          "year": 2022,
+          "returnPct": -6.59,
+          "trades": 44
+        },
+        {
+          "year": 2023,
+          "returnPct": 1.33,
+          "trades": 22
+        },
+        {
+          "year": 2024,
+          "returnPct": -15.85,
+          "trades": 36
+        },
+        {
+          "year": 2025,
+          "returnPct": 21.13,
+          "trades": 33
+        },
+        {
+          "year": 2026,
+          "returnPct": 11.12,
+          "trades": 39
+        }
+      ],
+      "concurrent": 15,
+      "rebound": -24.48,
+      "worst": [
+        {
+          "symbol": "VIV.PA",
+          "side": "short",
+          "signalDate": "2024-12-09",
+          "exitDate": "2025-02-14",
+          "ret": -0.4647544840528677
+        },
+        {
+          "symbol": "MT.AS",
+          "side": "short",
+          "signalDate": "2020-03-09",
+          "exitDate": "2020-04-29",
+          "ret": -0.2511477409883148
+        },
+        {
+          "symbol": "RNO.PA",
+          "side": "long",
+          "signalDate": "2021-02-04",
+          "exitDate": "2021-07-07",
+          "ret": -0.23981268409221213
+        },
+        {
+          "symbol": "STLAP.PA",
+          "side": "long",
+          "signalDate": "2023-03-01",
+          "exitDate": "2023-05-03",
+          "ret": -0.21165512207853887
+        },
+        {
+          "symbol": "ENGI.PA",
+          "side": "short",
+          "signalDate": "2011-07-14",
+          "exitDate": "2011-09-27",
+          "ret": -0.20812985536416884
+        },
+        {
+          "symbol": "STMPA.PA",
+          "side": "long",
+          "signalDate": "2023-02-02",
+          "exitDate": "2023-05-03",
+          "ret": -0.20587562355994016
+        },
+        {
+          "symbol": "BN.PA",
+          "side": "short",
+          "signalDate": "2020-03-02",
+          "exitDate": "2020-04-17",
+          "ret": -0.2031793202109775
+        },
+        {
+          "symbol": "CS.PA",
+          "side": "long",
+          "signalDate": "2017-01-03",
+          "exitDate": "2017-09-06",
+          "ret": -0.19867682322433167
+        },
+        {
+          "symbol": "RNO.PA",
+          "side": "long",
+          "signalDate": "2023-01-12",
+          "exitDate": "2023-04-21",
+          "ret": -0.19458629804372884
+        },
+        {
+          "symbol": "CA.PA",
+          "side": "long",
+          "signalDate": "2021-01-13",
+          "exitDate": "2021-09-03",
+          "ret": -0.1919787084945842
+        }
+      ]
+    },
+    {
+      "id": "Germany|a",
+      "market": "Germany",
+      "variant": "a",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": 0.02,
+        "grossReturnPct": 0.02,
+        "costDragPp": 0,
+        "maxDrawdownPct": 77.9,
+        "benchmarkReturnPct": 0,
+        "tStat": -0.84,
+        "tN": 290,
+        "pf": 0.867,
+        "pfInfinite": false,
+        "win": 37.9,
+        "trades": 290,
+        "sharpe": 0.031138781106791993
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-02",
+          "to": "2025-04-03",
+          "trades": 14,
+          "win": 42.9,
+          "pf": 0.428,
+          "pfInfinite": false,
+          "returnPct": -1.11,
+          "maxDrawdownPct": 12.6,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-04",
+          "to": "2025-10-03",
+          "trades": 14,
+          "win": 50,
+          "pf": 1.365,
+          "pfInfinite": false,
+          "returnPct": 21.46,
+          "maxDrawdownPct": 6.75,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-06",
+          "to": "2026-04-07",
+          "trades": 17,
+          "win": 35.3,
+          "pf": 0.421,
+          "pfInfinite": false,
+          "returnPct": -6.74,
+          "maxDrawdownPct": 12.28,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-08",
+          "to": "2026-10-06",
+          "trades": 18,
+          "win": 55.6,
+          "pf": 1.756,
+          "pfInfinite": false,
+          "returnPct": 5.92,
+          "maxDrawdownPct": 10.13,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 290,
+      "truncated": 6,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 30.96,
+          "trades": 8
+        },
+        {
+          "year": 2011,
+          "returnPct": 27.17,
+          "trades": 12
+        },
+        {
+          "year": 2012,
+          "returnPct": -16.82,
+          "trades": 11
+        },
+        {
+          "year": 2013,
+          "returnPct": 20.29,
+          "trades": 11
+        },
+        {
+          "year": 2014,
+          "returnPct": 5.14,
+          "trades": 10
+        },
+        {
+          "year": 2015,
+          "returnPct": 61.43,
+          "trades": 8
+        },
+        {
+          "year": 2016,
+          "returnPct": -13.5,
+          "trades": 20
+        },
+        {
+          "year": 2017,
+          "returnPct": -12.57,
+          "trades": 7
+        },
+        {
+          "year": 2018,
+          "returnPct": 8.42,
+          "trades": 18
+        },
+        {
+          "year": 2019,
+          "returnPct": -17.41,
+          "trades": 25
+        },
+        {
+          "year": 2020,
+          "returnPct": -7.39,
+          "trades": 10
+        },
+        {
+          "year": 2021,
+          "returnPct": -29.59,
+          "trades": 8
+        },
+        {
+          "year": 2022,
+          "returnPct": -9.15,
+          "trades": 39
+        },
+        {
+          "year": 2023,
+          "returnPct": -0.43,
+          "trades": 18
+        },
+        {
+          "year": 2024,
+          "returnPct": -26.04,
+          "trades": 21
+        },
+        {
+          "year": 2025,
+          "returnPct": 15.47,
+          "trades": 30
+        },
+        {
+          "year": 2026,
+          "returnPct": 3.67,
+          "trades": 34
+        }
+      ],
+      "concurrent": 11,
+      "rebound": 10.19,
+      "worst": [
+        {
+          "symbol": "TKA.DE",
+          "side": "short",
+          "signalDate": "2019-05-07",
+          "exitDate": "2019-05-10",
+          "ret": -0.2628748653350621
+        },
+        {
+          "symbol": "HFG.DE",
+          "side": "short",
+          "signalDate": "2022-05-24",
+          "exitDate": "2022-07-07",
+          "ret": -0.2547060139349413
+        },
+        {
+          "symbol": "HFG.DE",
+          "side": "short",
+          "signalDate": "2022-04-26",
+          "exitDate": "2022-05-02",
+          "ret": -0.23986835353993585
+        },
+        {
+          "symbol": "BNR.DE",
+          "side": "short",
+          "signalDate": "2026-03-06",
+          "exitDate": "2026-03-24",
+          "ret": -0.22776649118426162
+        },
+        {
+          "symbol": "ENR.DE",
+          "side": "short",
+          "signalDate": "2022-01-24",
+          "exitDate": "2022-02-28",
+          "ret": -0.22766055739537527
+        },
+        {
+          "symbol": "RWE.DE",
+          "side": "short",
+          "signalDate": "2011-09-02",
+          "exitDate": "2011-09-29",
+          "ret": -0.1883863034188913
+        },
+        {
+          "symbol": "ZAL.DE",
+          "side": "short",
+          "signalDate": "2026-02-03",
+          "exitDate": "2026-03-13",
+          "ret": -0.18732486351177857
+        },
+        {
+          "symbol": "VNA.DE",
+          "side": "short",
+          "signalDate": "2025-03-24",
+          "exitDate": "2025-04-15",
+          "ret": -0.17778254259022364
+        },
+        {
+          "symbol": "HFG.DE",
+          "side": "short",
+          "signalDate": "2022-07-21",
+          "exitDate": "2022-08-15",
+          "ret": -0.17354576363478724
+        },
+        {
+          "symbol": "VOW3.DE",
+          "side": "short",
+          "signalDate": "2020-03-18",
+          "exitDate": "2020-04-28",
+          "ret": -0.16664374613445743
+        }
+      ]
+    },
+    {
+      "id": "Germany|b",
+      "market": "Germany",
+      "variant": "b",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": 25.87,
+        "grossReturnPct": 25.87,
+        "costDragPp": 0,
+        "maxDrawdownPct": 74.53,
+        "benchmarkReturnPct": 0,
+        "tStat": -0.76,
+        "tN": 339,
+        "pf": 0.887,
+        "pfInfinite": false,
+        "win": 40.7,
+        "trades": 339,
+        "sharpe": 0.04860005813099148
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-02",
+          "to": "2025-04-03",
+          "trades": 18,
+          "win": 38.9,
+          "pf": 0.458,
+          "pfInfinite": false,
+          "returnPct": -7.87,
+          "maxDrawdownPct": 21.03,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-04",
+          "to": "2025-10-03",
+          "trades": 13,
+          "win": 61.5,
+          "pf": 6.368,
+          "pfInfinite": false,
+          "returnPct": 7.96,
+          "maxDrawdownPct": 10.69,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-06",
+          "to": "2026-04-07",
+          "trades": 22,
+          "win": 36.4,
+          "pf": 0.264,
+          "pfInfinite": false,
+          "returnPct": -9.73,
+          "maxDrawdownPct": 15.65,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-08",
+          "to": "2026-10-06",
+          "trades": 24,
+          "win": 50,
+          "pf": 0.721,
+          "pfInfinite": false,
+          "returnPct": -8.29,
+          "maxDrawdownPct": 13.96,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 339,
+      "truncated": 6,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 30.97,
+          "trades": 9
+        },
+        {
+          "year": 2011,
+          "returnPct": 26.96,
+          "trades": 15
+        },
+        {
+          "year": 2012,
+          "returnPct": -7.29,
+          "trades": 10
+        },
+        {
+          "year": 2013,
+          "returnPct": 28.85,
+          "trades": 15
+        },
+        {
+          "year": 2014,
+          "returnPct": 14.08,
+          "trades": 13
+        },
+        {
+          "year": 2015,
+          "returnPct": 62.65,
+          "trades": 13
+        },
+        {
+          "year": 2016,
+          "returnPct": -20.06,
+          "trades": 24
+        },
+        {
+          "year": 2017,
+          "returnPct": -10.61,
+          "trades": 8
+        },
+        {
+          "year": 2018,
+          "returnPct": 2.85,
+          "trades": 23
+        },
+        {
+          "year": 2019,
+          "returnPct": -18.46,
+          "trades": 27
+        },
+        {
+          "year": 2020,
+          "returnPct": -10.42,
+          "trades": 10
+        },
+        {
+          "year": 2021,
+          "returnPct": -27.56,
+          "trades": 9
+        },
+        {
+          "year": 2022,
+          "returnPct": 4.25,
+          "trades": 43
+        },
+        {
+          "year": 2023,
+          "returnPct": 16.19,
+          "trades": 20
+        },
+        {
+          "year": 2024,
+          "returnPct": -16.66,
+          "trades": 25
+        },
+        {
+          "year": 2025,
+          "returnPct": -1.28,
+          "trades": 32
+        },
+        {
+          "year": 2026,
+          "returnPct": -11.89,
+          "trades": 43
+        }
+      ],
+      "concurrent": 11,
+      "rebound": 56.01,
+      "worst": [
+        {
+          "symbol": "HFG.DE",
+          "side": "short",
+          "signalDate": "2022-04-26",
+          "exitDate": "2022-07-06",
+          "ret": -0.2518818383632978
+        },
+        {
+          "symbol": "ENR.DE",
+          "side": "short",
+          "signalDate": "2022-01-24",
+          "exitDate": "2022-02-28",
+          "ret": -0.21130557395950555
+        },
+        {
+          "symbol": "SRT3.DE",
+          "side": "short",
+          "signalDate": "2022-06-16",
+          "exitDate": "2022-07-04",
+          "ret": -0.1622252840709043
+        },
+        {
+          "symbol": "SRT3.DE",
+          "side": "short",
+          "signalDate": "2024-07-19",
+          "exitDate": "2024-07-26",
+          "ret": -0.16156787569561837
+        },
+        {
+          "symbol": "IFX.DE",
+          "side": "short",
+          "signalDate": "2018-10-26",
+          "exitDate": "2018-12-03",
+          "ret": -0.16008668750119637
+        },
+        {
+          "symbol": "SAP.DE",
+          "side": "short",
+          "signalDate": "2026-05-13",
+          "exitDate": "2026-05-19",
+          "ret": -0.1536520629626812
+        },
+        {
+          "symbol": "DHL.DE",
+          "side": "short",
+          "signalDate": "2022-06-08",
+          "exitDate": "2022-07-18",
+          "ret": -0.15233797710155972
+        },
+        {
+          "symbol": "TKA.DE",
+          "side": "short",
+          "signalDate": "2019-05-07",
+          "exitDate": "2019-05-10",
+          "ret": -0.14845628965951985
+        },
+        {
+          "symbol": "BNR.DE",
+          "side": "short",
+          "signalDate": "2026-03-06",
+          "exitDate": "2026-03-23",
+          "ret": -0.1470542714974169
+        },
+        {
+          "symbol": "ZAL.DE",
+          "side": "short",
+          "signalDate": "2023-10-03",
+          "exitDate": "2023-10-18",
+          "ret": -0.14647032269766536
+        }
+      ]
+    },
+    {
+      "id": "Germany|c",
+      "market": "Germany",
+      "variant": "c",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -19.21,
+        "grossReturnPct": -19.21,
+        "costDragPp": 0,
+        "maxDrawdownPct": 80.39,
+        "benchmarkReturnPct": 0,
+        "tStat": -1.2,
+        "tN": 290,
+        "pf": 0.817,
+        "pfInfinite": false,
+        "win": 37.9,
+        "trades": 290,
+        "sharpe": 0.014781713491789111
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-02",
+          "to": "2025-04-03",
+          "trades": 14,
+          "win": 42.9,
+          "pf": 0.374,
+          "pfInfinite": false,
+          "returnPct": -2.05,
+          "maxDrawdownPct": 13.24,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-04",
+          "to": "2025-10-03",
+          "trades": 14,
+          "win": 50,
+          "pf": 1.278,
+          "pfInfinite": false,
+          "returnPct": 20.7,
+          "maxDrawdownPct": 7.04,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-06",
+          "to": "2026-04-07",
+          "trades": 17,
+          "win": 35.3,
+          "pf": 0.395,
+          "pfInfinite": false,
+          "returnPct": -7.42,
+          "maxDrawdownPct": 12.56,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-08",
+          "to": "2026-10-06",
+          "trades": 18,
+          "win": 55.6,
+          "pf": 1.665,
+          "pfInfinite": false,
+          "returnPct": 5.1,
+          "maxDrawdownPct": 10.38,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 290,
+      "truncated": 6,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 30.1,
+          "trades": 8
+        },
+        {
+          "year": 2011,
+          "returnPct": 25.68,
+          "trades": 12
+        },
+        {
+          "year": 2012,
+          "returnPct": -17.89,
+          "trades": 11
+        },
+        {
+          "year": 2013,
+          "returnPct": 18.79,
+          "trades": 11
+        },
+        {
+          "year": 2014,
+          "returnPct": 4.39,
+          "trades": 10
+        },
+        {
+          "year": 2015,
+          "returnPct": 60.07,
+          "trades": 8
+        },
+        {
+          "year": 2016,
+          "returnPct": -15.01,
+          "trades": 20
+        },
+        {
+          "year": 2017,
+          "returnPct": -13.19,
+          "trades": 7
+        },
+        {
+          "year": 2018,
+          "returnPct": 7.07,
+          "trades": 18
+        },
+        {
+          "year": 2019,
+          "returnPct": -18.85,
+          "trades": 25
+        },
+        {
+          "year": 2020,
+          "returnPct": -8.09,
+          "trades": 10
+        },
+        {
+          "year": 2021,
+          "returnPct": -30.42,
+          "trades": 8
+        },
+        {
+          "year": 2022,
+          "returnPct": -10.68,
+          "trades": 39
+        },
+        {
+          "year": 2023,
+          "returnPct": -2.05,
+          "trades": 18
+        },
+        {
+          "year": 2024,
+          "returnPct": -27.31,
+          "trades": 21
+        },
+        {
+          "year": 2025,
+          "returnPct": 13.52,
+          "trades": 30
+        },
+        {
+          "year": 2026,
+          "returnPct": 2.43,
+          "trades": 34
+        }
+      ],
+      "concurrent": 11,
+      "rebound": 5.4,
+      "worst": [
+        {
+          "symbol": "TKA.DE",
+          "side": "short",
+          "signalDate": "2019-05-07",
+          "exitDate": "2019-05-10",
+          "ret": -0.2651231975053929
+        },
+        {
+          "symbol": "HFG.DE",
+          "side": "short",
+          "signalDate": "2022-05-24",
+          "exitDate": "2022-07-07",
+          "ret": -0.25638463376221376
+        },
+        {
+          "symbol": "HFG.DE",
+          "side": "short",
+          "signalDate": "2022-04-26",
+          "exitDate": "2022-05-02",
+          "ret": -0.2416122723100511
+        },
+        {
+          "symbol": "ENR.DE",
+          "side": "short",
+          "signalDate": "2022-01-24",
+          "exitDate": "2022-02-28",
+          "ret": -0.22963834853506448
+        },
+        {
+          "symbol": "BNR.DE",
+          "side": "short",
+          "signalDate": "2026-03-06",
+          "exitDate": "2026-03-24",
+          "ret": -0.22963250490607734
+        },
+        {
+          "symbol": "RWE.DE",
+          "side": "short",
+          "signalDate": "2011-09-02",
+          "exitDate": "2011-09-29",
+          "ret": -0.1901741290916522
+        },
+        {
+          "symbol": "ZAL.DE",
+          "side": "short",
+          "signalDate": "2026-02-03",
+          "exitDate": "2026-03-13",
+          "ret": -0.18928211771443026
+        },
+        {
+          "symbol": "VNA.DE",
+          "side": "short",
+          "signalDate": "2025-03-24",
+          "exitDate": "2025-04-15",
+          "ret": -0.17965012495495547
+        },
+        {
+          "symbol": "HFG.DE",
+          "side": "short",
+          "signalDate": "2022-07-21",
+          "exitDate": "2022-08-15",
+          "ret": -0.17544955720558686
+        },
+        {
+          "symbol": "VOW3.DE",
+          "side": "short",
+          "signalDate": "2020-03-18",
+          "exitDate": "2020-04-28",
+          "ret": -0.16853101206699173
+        }
+      ]
+    },
+    {
+      "id": "Germany|d",
+      "market": "Germany",
+      "variant": "d",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -6.4,
+        "grossReturnPct": -6.4,
+        "costDragPp": 0,
+        "maxDrawdownPct": 78.79,
+        "benchmarkReturnPct": 0,
+        "tStat": -1.23,
+        "tN": 339,
+        "pf": 0.824,
+        "pfInfinite": false,
+        "win": 39.2,
+        "trades": 339,
+        "sharpe": 0.02788738533076676
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-02",
+          "to": "2025-04-03",
+          "trades": 18,
+          "win": 38.9,
+          "pf": 0.42,
+          "pfInfinite": false,
+          "returnPct": -9.06,
+          "maxDrawdownPct": 21.76,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-04",
+          "to": "2025-10-03",
+          "trades": 13,
+          "win": 61.5,
+          "pf": 5.55,
+          "pfInfinite": false,
+          "returnPct": 6.84,
+          "maxDrawdownPct": 11.21,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-06",
+          "to": "2026-04-07",
+          "trades": 22,
+          "win": 31.8,
+          "pf": 0.237,
+          "pfInfinite": false,
+          "returnPct": -11.01,
+          "maxDrawdownPct": 16.82,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-08",
+          "to": "2026-10-06",
+          "trades": 24,
+          "win": 50,
+          "pf": 0.676,
+          "pfInfinite": false,
+          "returnPct": -9.71,
+          "maxDrawdownPct": 15.27,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 339,
+      "truncated": 6,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 29.44,
+          "trades": 9
+        },
+        {
+          "year": 2011,
+          "returnPct": 24.88,
+          "trades": 15
+        },
+        {
+          "year": 2012,
+          "returnPct": -8.43,
+          "trades": 10
+        },
+        {
+          "year": 2013,
+          "returnPct": 26.48,
+          "trades": 15
+        },
+        {
+          "year": 2014,
+          "returnPct": 12.93,
+          "trades": 13
+        },
+        {
+          "year": 2015,
+          "returnPct": 60.11,
+          "trades": 13
+        },
+        {
+          "year": 2016,
+          "returnPct": -21.87,
+          "trades": 24
+        },
+        {
+          "year": 2017,
+          "returnPct": -11.49,
+          "trades": 8
+        },
+        {
+          "year": 2018,
+          "returnPct": 0.97,
+          "trades": 23
+        },
+        {
+          "year": 2019,
+          "returnPct": -20.33,
+          "trades": 27
+        },
+        {
+          "year": 2020,
+          "returnPct": -11.32,
+          "trades": 10
+        },
+        {
+          "year": 2021,
+          "returnPct": -28.67,
+          "trades": 9
+        },
+        {
+          "year": 2022,
+          "returnPct": 2.26,
+          "trades": 43
+        },
+        {
+          "year": 2023,
+          "returnPct": 13.78,
+          "trades": 20
+        },
+        {
+          "year": 2024,
+          "returnPct": -18.49,
+          "trades": 25
+        },
+        {
+          "year": 2025,
+          "returnPct": -3.89,
+          "trades": 32
+        },
+        {
+          "year": 2026,
+          "returnPct": -13.79,
+          "trades": 43
+        }
+      ],
+      "concurrent": 11,
+      "rebound": 48.2,
+      "worst": [
+        {
+          "symbol": "HFG.DE",
+          "side": "short",
+          "signalDate": "2022-04-26",
+          "exitDate": "2022-07-06",
+          "ret": -0.2536744250016524
+        },
+        {
+          "symbol": "ENR.DE",
+          "side": "short",
+          "signalDate": "2022-01-24",
+          "exitDate": "2022-02-28",
+          "ret": -0.21328336509919477
+        },
+        {
+          "symbol": "SRT3.DE",
+          "side": "short",
+          "signalDate": "2022-06-16",
+          "exitDate": "2022-07-04",
+          "ret": -0.1641172982319431
+        },
+        {
+          "symbol": "SRT3.DE",
+          "side": "short",
+          "signalDate": "2024-07-19",
+          "exitDate": "2024-07-26",
+          "ret": -0.16353181677687334
+        },
+        {
+          "symbol": "IFX.DE",
+          "side": "short",
+          "signalDate": "2018-10-26",
+          "exitDate": "2018-12-03",
+          "ret": -0.1619583732807739
+        },
+        {
+          "symbol": "SAP.DE",
+          "side": "short",
+          "signalDate": "2026-05-13",
+          "exitDate": "2026-05-19",
+          "ret": -0.1556819849480141
+        },
+        {
+          "symbol": "DHL.DE",
+          "side": "short",
+          "signalDate": "2022-06-08",
+          "exitDate": "2022-07-18",
+          "ret": -0.15421522014691336
+        },
+        {
+          "symbol": "TKA.DE",
+          "side": "short",
+          "signalDate": "2019-05-07",
+          "exitDate": "2019-05-10",
+          "ret": -0.15070462182985067
+        },
+        {
+          "symbol": "BNR.DE",
+          "side": "short",
+          "signalDate": "2026-03-06",
+          "exitDate": "2026-03-23",
+          "ret": -0.14897490104226552
+        },
+        {
+          "symbol": "ZAL.DE",
+          "side": "short",
+          "signalDate": "2023-10-03",
+          "exitDate": "2023-10-18",
+          "ret": -0.14843534154212923
+        }
+      ]
+    },
+    {
+      "id": "Germany|e",
+      "market": "Germany",
+      "variant": "e",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -22.82,
+        "grossReturnPct": -22.82,
+        "costDragPp": 0,
+        "maxDrawdownPct": 46.61,
+        "benchmarkReturnPct": 0,
+        "tStat": -1.45,
+        "tN": 197,
+        "pf": 0.751,
+        "pfInfinite": false,
+        "win": 37.6,
+        "trades": 197,
+        "sharpe": -0.00044061544083824167
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-02",
+          "to": "2025-04-03",
+          "trades": 6,
+          "win": 16.7,
+          "pf": 0.174,
+          "pfInfinite": false,
+          "returnPct": -6.28,
+          "maxDrawdownPct": 10.27,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-04",
+          "to": "2025-10-03",
+          "trades": 0,
+          "win": null,
+          "pf": null,
+          "pfInfinite": false,
+          "returnPct": 0,
+          "maxDrawdownPct": 0,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-06",
+          "to": "2026-04-07",
+          "trades": 8,
+          "win": 37.5,
+          "pf": 0.263,
+          "pfInfinite": false,
+          "returnPct": -6.44,
+          "maxDrawdownPct": 18.28,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-08",
+          "to": "2026-10-06",
+          "trades": 14,
+          "win": 64.3,
+          "pf": 1.716,
+          "pfInfinite": false,
+          "returnPct": 2.61,
+          "maxDrawdownPct": 8.68,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 197,
+      "truncated": 6,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 13.82,
+          "trades": 5
+        },
+        {
+          "year": 2011,
+          "returnPct": -6.93,
+          "trades": 7
+        },
+        {
+          "year": 2012,
+          "returnPct": -19.76,
+          "trades": 10
+        },
+        {
+          "year": 2013,
+          "returnPct": -11.48,
+          "trades": 5
+        },
+        {
+          "year": 2014,
+          "returnPct": -4.04,
+          "trades": 9
+        },
+        {
+          "year": 2015,
+          "returnPct": 46.18,
+          "trades": 8
+        },
+        {
+          "year": 2016,
+          "returnPct": -7.04,
+          "trades": 17
+        },
+        {
+          "year": 2017,
+          "returnPct": 0,
+          "trades": 0
+        },
+        {
+          "year": 2018,
+          "returnPct": 10.16,
+          "trades": 14
+        },
+        {
+          "year": 2019,
+          "returnPct": -2.02,
+          "trades": 23
+        },
+        {
+          "year": 2020,
+          "returnPct": -1.73,
+          "trades": 9
+        },
+        {
+          "year": 2021,
+          "returnPct": -11.1,
+          "trades": 4
+        },
+        {
+          "year": 2022,
+          "returnPct": -14.93,
+          "trades": 39
+        },
+        {
+          "year": 2023,
+          "returnPct": 9.78,
+          "trades": 8
+        },
+        {
+          "year": 2024,
+          "returnPct": -3.23,
+          "trades": 8
+        },
+        {
+          "year": 2025,
+          "returnPct": -3.75,
+          "trades": 6
+        },
+        {
+          "year": 2026,
+          "returnPct": -4.11,
+          "trades": 25
+        }
+      ],
+      "concurrent": 11,
+      "rebound": -27.45,
+      "worst": [
+        {
+          "symbol": "HFG.DE",
+          "side": "short",
+          "signalDate": "2022-05-24",
+          "exitDate": "2022-07-07",
+          "ret": -0.25638463376221376
+        },
+        {
+          "symbol": "HFG.DE",
+          "side": "short",
+          "signalDate": "2022-04-26",
+          "exitDate": "2022-05-02",
+          "ret": -0.2416122723100511
+        },
+        {
+          "symbol": "ZAL.DE",
+          "side": "short",
+          "signalDate": "2026-03-03",
+          "exitDate": "2026-03-13",
+          "ret": -0.2346845415988078
+        },
+        {
+          "symbol": "ENR.DE",
+          "side": "short",
+          "signalDate": "2022-01-24",
+          "exitDate": "2022-02-28",
+          "ret": -0.22963834853506448
+        },
+        {
+          "symbol": "BNR.DE",
+          "side": "short",
+          "signalDate": "2026-03-06",
+          "exitDate": "2026-03-24",
+          "ret": -0.22963250490607734
+        },
+        {
+          "symbol": "CBK.DE",
+          "side": "short",
+          "signalDate": "2013-07-02",
+          "exitDate": "2013-08-08",
+          "ret": -0.17725792566244025
+        },
+        {
+          "symbol": "HFG.DE",
+          "side": "short",
+          "signalDate": "2022-07-21",
+          "exitDate": "2022-08-15",
+          "ret": -0.17544955720558686
+        },
+        {
+          "symbol": "VOW3.DE",
+          "side": "short",
+          "signalDate": "2020-03-18",
+          "exitDate": "2020-04-28",
+          "ret": -0.16853101206699173
+        },
+        {
+          "symbol": "DHL.DE",
+          "side": "short",
+          "signalDate": "2022-06-08",
+          "exitDate": "2022-07-18",
+          "ret": -0.15493682662057606
+        },
+        {
+          "symbol": "FRE.DE",
+          "side": "short",
+          "signalDate": "2022-02-24",
+          "exitDate": "2022-04-08",
+          "ret": -0.14601591905352418
+        }
+      ]
+    },
+    {
+      "id": "Germany|f",
+      "market": "Germany",
+      "variant": "f",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": 14.11,
+        "grossReturnPct": 14.11,
+        "costDragPp": 0,
+        "maxDrawdownPct": 72.97,
+        "benchmarkReturnPct": 0,
+        "tStat": -0.01,
+        "tN": 375,
+        "pf": 0.998,
+        "pfInfinite": false,
+        "win": 36,
+        "trades": 375,
+        "sharpe": 0.03730251732133486
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-02",
+          "to": "2025-04-03",
+          "trades": 16,
+          "win": 37.5,
+          "pf": 0.299,
+          "pfInfinite": false,
+          "returnPct": -3.89,
+          "maxDrawdownPct": 14.64,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-04",
+          "to": "2025-10-03",
+          "trades": 17,
+          "win": 41.2,
+          "pf": 0.636,
+          "pfInfinite": false,
+          "returnPct": 17.43,
+          "maxDrawdownPct": 6.57,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-06",
+          "to": "2026-04-07",
+          "trades": 20,
+          "win": 30,
+          "pf": 0.291,
+          "pfInfinite": false,
+          "returnPct": 7.5,
+          "maxDrawdownPct": 6.52,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-08",
+          "to": "2026-10-06",
+          "trades": 23,
+          "win": 56.5,
+          "pf": 4.621,
+          "pfInfinite": false,
+          "returnPct": 1.5,
+          "maxDrawdownPct": 11.72,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 375,
+      "truncated": 6,
+      "years": [
+        {
+          "year": 2010,
+          "returnPct": 30.96,
+          "trades": 8
+        },
+        {
+          "year": 2011,
+          "returnPct": 14.81,
+          "trades": 13
+        },
+        {
+          "year": 2012,
+          "returnPct": -0.09,
+          "trades": 12
+        },
+        {
+          "year": 2013,
+          "returnPct": 1.64,
+          "trades": 14
+        },
+        {
+          "year": 2014,
+          "returnPct": 5.12,
+          "trades": 17
+        },
+        {
+          "year": 2015,
+          "returnPct": 35.85,
+          "trades": 13
+        },
+        {
+          "year": 2016,
+          "returnPct": -10.75,
+          "trades": 23
+        },
+        {
+          "year": 2017,
+          "returnPct": -10.77,
+          "trades": 17
+        },
+        {
+          "year": 2018,
+          "returnPct": -1.56,
+          "trades": 25
+        },
+        {
+          "year": 2019,
+          "returnPct": -25.97,
+          "trades": 28
+        },
+        {
+          "year": 2020,
+          "returnPct": -15.8,
+          "trades": 15
+        },
+        {
+          "year": 2021,
+          "returnPct": -21.82,
+          "trades": 15
+        },
+        {
+          "year": 2022,
+          "returnPct": -2.87,
+          "trades": 42
+        },
+        {
+          "year": 2023,
+          "returnPct": 10.5,
+          "trades": 27
+        },
+        {
+          "year": 2024,
+          "returnPct": 6.04,
+          "trades": 25
+        },
+        {
+          "year": 2025,
+          "returnPct": 13.93,
+          "trades": 34
+        },
+        {
+          "year": 2026,
+          "returnPct": 5.65,
+          "trades": 47
+        }
+      ],
+      "concurrent": 16,
+      "rebound": 17.64,
+      "worst": [
+        {
+          "symbol": "ENR.DE",
+          "side": "long",
+          "signalDate": "2023-04-03",
+          "exitDate": "2023-06-23",
+          "ret": -0.2922094538530281
+        },
+        {
+          "symbol": "TKA.DE",
+          "side": "short",
+          "signalDate": "2019-05-07",
+          "exitDate": "2019-05-10",
+          "ret": -0.2628748653350621
+        },
+        {
+          "symbol": "HFG.DE",
+          "side": "short",
+          "signalDate": "2022-05-24",
+          "exitDate": "2022-07-07",
+          "ret": -0.2547060139349413
+        },
+        {
+          "symbol": "ZAL.DE",
+          "side": "long",
+          "signalDate": "2026-07-27",
+          "exitDate": "2026-08-17",
+          "ret": -0.2544119174690762
+        },
+        {
+          "symbol": "HFG.DE",
+          "side": "short",
+          "signalDate": "2022-04-26",
+          "exitDate": "2022-05-02",
+          "ret": -0.23986835353993585
+        },
+        {
+          "symbol": "ZAL.DE",
+          "side": "long",
+          "signalDate": "2024-12-03",
+          "exitDate": "2025-05-21",
+          "ret": -0.23457843275188817
+        },
+        {
+          "symbol": "BNR.DE",
+          "side": "short",
+          "signalDate": "2026-03-06",
+          "exitDate": "2026-03-24",
+          "ret": -0.22776649118426162
+        },
+        {
+          "symbol": "ENR.DE",
+          "side": "short",
+          "signalDate": "2022-01-24",
+          "exitDate": "2022-02-28",
+          "ret": -0.22766055739537527
+        },
+        {
+          "symbol": "VOW3.DE",
+          "side": "long",
+          "signalDate": "2017-01-09",
+          "exitDate": "2017-06-07",
+          "ret": -0.22378465034618078
+        },
+        {
+          "symbol": "BMW.DE",
+          "side": "long",
+          "signalDate": "2017-01-03",
+          "exitDate": "2017-06-15",
+          "ret": -0.22020313900796662
+        }
+      ]
+    }
+  ],
+  "sanity": [
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2012-10-09",
+      "exitDate": "2012-12-18",
+      "ret": 0.04086237818712224
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2012-10-09",
+      "exitDate": "2012-12-11",
+      "ret": 0.04666484134329352
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2012-10-09",
+      "exitDate": "2012-12-18",
+      "ret": 0.03854491266909332
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2012-10-09",
+      "exitDate": "2012-12-11",
+      "ret": 0.04431082253389085
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2012-10-09",
+      "exitDate": "2012-12-18",
+      "ret": 0.04086237818712224
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2012-11-08",
+      "exitDate": "2012-12-18",
+      "ret": 0.038209238696298
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "INTC",
+      "side": "long",
+      "signalDate": "2014-06-13",
+      "exitDate": "2015-02-27",
+      "ret": 0.029845895453491034
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2015-07-08",
+      "exitDate": "2015-09-03",
+      "ret": -0.04339199850684927
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2015-07-08",
+      "exitDate": "2015-08-10",
+      "ret": 0.016865419221160804
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2015-07-08",
+      "exitDate": "2015-09-03",
+      "ret": -0.04553925304537332
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2015-07-08",
+      "exitDate": "2015-08-10",
+      "ret": 0.014595219087504274
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2015-07-08",
+      "exitDate": "2015-09-03",
+      "ret": -0.04553925304537332
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2015-07-08",
+      "exitDate": "2015-09-03",
+      "ret": -0.04339199850684927
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2015-08-20",
+      "exitDate": "2015-08-31",
+      "ret": -0.0731738122767206
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2015-08-20",
+      "exitDate": "2015-08-31",
+      "ret": -0.07526098769770606
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "INTC",
+      "side": "long",
+      "signalDate": "2016-09-16",
+      "exitDate": "2017-03-13",
+      "ret": -0.1618472960714239
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2020-10-28",
+      "exitDate": "2020-12-01",
+      "ret": -0.005811255587259145
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2020-10-28",
+      "exitDate": "2020-11-24",
+      "ret": 0.035288131134242784
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2020-10-28",
+      "exitDate": "2020-12-01",
+      "ret": -0.008036752084629062
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2020-10-28",
+      "exitDate": "2020-11-24",
+      "ret": 0.03298031266129686
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2020-10-28",
+      "exitDate": "2020-12-01",
+      "ret": -0.005811255587259145
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2022-07-29",
+      "exitDate": "2022-10-28",
+      "ret": 0.1464258218129555
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2022-07-29",
+      "exitDate": "2022-10-28",
+      "ret": 0.1691434693630418
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2022-07-29",
+      "exitDate": "2022-10-28",
+      "ret": 0.14366173193722598
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2022-07-29",
+      "exitDate": "2022-10-28",
+      "ret": 0.1663793794873123
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2022-07-29",
+      "exitDate": "2022-10-28",
+      "ret": 0.14366173193722598
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2022-07-29",
+      "exitDate": "2022-10-28",
+      "ret": 0.1464258218129555
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2023-02-27",
+      "exitDate": "2023-03-14",
+      "ret": -0.12838403131941478
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2023-02-27",
+      "exitDate": "2023-03-14",
+      "ret": -0.10368403773216928
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2023-02-27",
+      "exitDate": "2023-03-14",
+      "ret": -0.13035163948710438
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2023-02-27",
+      "exitDate": "2023-03-14",
+      "ret": -0.10565164589985898
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2023-02-27",
+      "exitDate": "2023-03-14",
+      "ret": -0.12838403131941478
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "INTC",
+      "side": "long",
+      "signalDate": "2023-09-06",
+      "exitDate": "2024-04-05",
+      "ret": -0.10182277965693276
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2024-08-01",
+      "exitDate": "2024-09-25",
+      "ret": -0.05760438574906035
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2024-08-01",
+      "exitDate": "2024-08-30",
+      "ret": 0.03495797691783409
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2024-08-01",
+      "exitDate": "2024-09-25",
+      "ret": -0.05975936655374059
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2024-08-01",
+      "exitDate": "2024-08-30",
+      "ret": 0.032511582169560294
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2024-08-01",
+      "exitDate": "2024-09-25",
+      "ret": -0.05760438574906035
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2024-09-06",
+      "exitDate": "2024-09-17",
+      "ret": -0.12049149565511041
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "INTC",
+      "side": "short",
+      "signalDate": "2024-09-06",
+      "exitDate": "2024-09-17",
+      "ret": -0.12254634539212594
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "INTC",
+      "side": "long",
+      "signalDate": "2025-09-18",
+      "exitDate": "2026-10-05",
+      "ret": 2.3648192465830644
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2012-11-08",
+      "exitDate": "2012-12-07",
+      "ret": -0.015259320890464112
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2012-11-08",
+      "exitDate": "2012-11-30",
+      "ret": -0.001305364550096666
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2012-11-08",
+      "exitDate": "2012-12-07",
+      "ret": -0.017435308124193583
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2012-11-08",
+      "exitDate": "2012-11-30",
+      "ret": -0.0035241872276837727
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2012-11-08",
+      "exitDate": "2012-12-07",
+      "ret": -0.017435308124193583
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2012-11-08",
+      "exitDate": "2012-12-07",
+      "ret": -0.015259320890464112
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-01-29",
+      "exitDate": "2014-02-07",
+      "ret": -0.024116163395918933
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-01-29",
+      "exitDate": "2014-02-21",
+      "ret": -0.008661783374412702
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-01-29",
+      "exitDate": "2014-02-07",
+      "ret": -0.026263976187131055
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-01-29",
+      "exitDate": "2014-02-21",
+      "ret": -0.010870639748756683
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-01-29",
+      "exitDate": "2014-02-07",
+      "ret": -0.024116163395918933
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-09-08",
+      "exitDate": "2014-09-24",
+      "ret": -0.032819299716698946
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-09-08",
+      "exitDate": "2014-09-16",
+      "ret": -0.01854620357899861
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-09-08",
+      "exitDate": "2014-09-24",
+      "ret": -0.034970290071743015
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-09-08",
+      "exitDate": "2014-09-16",
+      "ret": -0.020708915100411507
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-09-08",
+      "exitDate": "2014-09-24",
+      "ret": -0.032819299716698946
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-10-13",
+      "exitDate": "2014-10-30",
+      "ret": 0.026061887929218264
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-10-13",
+      "exitDate": "2014-10-31",
+      "ret": 0.03805568442980789
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-10-13",
+      "exitDate": "2014-10-30",
+      "ret": 0.023797044264812106
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-10-13",
+      "exitDate": "2014-10-31",
+      "ret": 0.03579219724857019
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-10-13",
+      "exitDate": "2014-10-30",
+      "ret": 0.023797044264812106
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-10-13",
+      "exitDate": "2014-10-30",
+      "ret": 0.026061887929218264
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-12-15",
+      "exitDate": "2014-12-18",
+      "ret": -0.02367010967021388
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-12-15",
+      "exitDate": "2014-12-23",
+      "ret": -0.02919616348924181
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-12-15",
+      "exitDate": "2014-12-18",
+      "ret": -0.025817242439616805
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-12-15",
+      "exitDate": "2014-12-23",
+      "ret": -0.031351114428913474
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2014-12-15",
+      "exitDate": "2014-12-18",
+      "ret": -0.02367010967021388
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "MCD",
+      "side": "long",
+      "signalDate": "2015-10-05",
+      "exitDate": "2016-06-27",
+      "ret": 0.13139321696652995
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2024-07-09",
+      "exitDate": "2024-07-17",
+      "ret": -0.05763967650410051
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2024-07-09",
+      "exitDate": "2024-08-01",
+      "ret": -0.1101187390955003
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2024-07-09",
+      "exitDate": "2024-07-17",
+      "ret": -0.0597791008050792
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2024-07-09",
+      "exitDate": "2024-08-01",
+      "ret": -0.11213560478219076
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2024-07-09",
+      "exitDate": "2024-07-17",
+      "ret": -0.05763967650410051
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2026-06-25",
+      "exitDate": "2026-07-07",
+      "ret": -0.042592825321272065
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2026-06-25",
+      "exitDate": "2026-07-07",
+      "ret": -0.057279634327294104
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2026-06-25",
+      "exitDate": "2026-07-07",
+      "ret": -0.044735385069982536
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2026-06-25",
+      "exitDate": "2026-07-07",
+      "ret": -0.059422194076004575
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2026-06-25",
+      "exitDate": "2026-07-07",
+      "ret": -0.042592825321272065
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2026-08-27",
+      "exitDate": "2026-10-05",
+      "ret": 0.11788189132439508
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2026-08-27",
+      "exitDate": "2026-10-05",
+      "ret": 0.11788189132439508
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2026-08-27",
+      "exitDate": "2026-10-05",
+      "ret": 0.11541898597968991
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2026-08-27",
+      "exitDate": "2026-10-05",
+      "ret": 0.11541898597968991
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "MCD",
+      "side": "short",
+      "signalDate": "2026-08-27",
+      "exitDate": "2026-10-05",
+      "ret": 0.11788189132439508
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-02-08",
+      "exitDate": "2022-04-04",
+      "ret": -0.05855400882366901
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-02-08",
+      "exitDate": "2022-03-18",
+      "ret": 0.011253150299397774
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-02-08",
+      "exitDate": "2022-04-04",
+      "ret": -0.06070108019341758
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-02-08",
+      "exitDate": "2022-03-18",
+      "ret": 0.008983281308556412
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-02-08",
+      "exitDate": "2022-04-04",
+      "ret": -0.05855400882366901
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-02-11",
+      "exitDate": "2022-04-04",
+      "ret": -0.047508877927512905
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-04-22",
+      "exitDate": "2022-05-02",
+      "ret": -0.18038590697293122
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-04-22",
+      "exitDate": "2022-04-28",
+      "ret": -0.1382574600829547
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-04-22",
+      "exitDate": "2022-05-02",
+      "ret": -0.18228314925685474
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-04-22",
+      "exitDate": "2022-04-28",
+      "ret": -0.1405170200697753
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-04-22",
+      "exitDate": "2022-05-02",
+      "ret": -0.18228314925685474
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-04-22",
+      "exitDate": "2022-05-02",
+      "ret": -0.18038590697293122
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-06-13",
+      "exitDate": "2022-07-20",
+      "ret": -0.07132537580532505
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-06-13",
+      "exitDate": "2022-07-19",
+      "ret": -0.037460576815479874
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-06-13",
+      "exitDate": "2022-07-20",
+      "ret": -0.07345005832989837
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-06-13",
+      "exitDate": "2022-07-19",
+      "ret": -0.039637746610170055
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-06-13",
+      "exitDate": "2022-07-20",
+      "ret": -0.07345005832989837
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-06-13",
+      "exitDate": "2022-07-20",
+      "ret": -0.07132537580532505
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-09-13",
+      "exitDate": "2022-12-01",
+      "ret": 0.18648112127357996
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-09-13",
+      "exitDate": "2022-11-11",
+      "ret": 0.2502924163847928
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-09-13",
+      "exitDate": "2022-12-01",
+      "ret": 0.18380401049268924
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-09-13",
+      "exitDate": "2022-11-11",
+      "ret": 0.24754003364591926
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-09-13",
+      "exitDate": "2022-12-01",
+      "ret": 0.18380401049268924
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "META",
+      "side": "short",
+      "signalDate": "2022-09-13",
+      "exitDate": "2022-12-01",
+      "ret": 0.18648112127357996
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "META",
+      "side": "long",
+      "signalDate": "2023-04-27",
+      "exitDate": "2025-03-31",
+      "ret": 0.7969337287278333
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2016-10-07",
+      "exitDate": "2016-12-05",
+      "ret": 0.019535014532497508
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2016-10-07",
+      "exitDate": "2016-12-05",
+      "ret": 0.012901496037527771
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2016-10-07",
+      "exitDate": "2016-12-05",
+      "ret": 0.017233757975698483
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2016-10-07",
+      "exitDate": "2016-12-05",
+      "ret": 0.010600239480728524
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2016-10-07",
+      "exitDate": "2016-12-05",
+      "ret": 0.019535014532497508
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "side": "long",
+      "signalDate": "2017-12-13",
+      "exitDate": "2018-10-24",
+      "ret": 0.12510393694188804
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-03-14",
+      "exitDate": "2022-03-29",
+      "ret": -0.05858232030487487
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-03-14",
+      "exitDate": "2022-03-22",
+      "ret": -0.05236277179744364
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-03-14",
+      "exitDate": "2022-03-29",
+      "ret": -0.060700862715549975
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-03-14",
+      "exitDate": "2022-03-22",
+      "ret": -0.05450207708203636
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-03-14",
+      "exitDate": "2022-03-29",
+      "ret": -0.060700862715549975
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-03-14",
+      "exitDate": "2022-03-29",
+      "ret": -0.05858232030487487
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-05-06",
+      "exitDate": "2022-06-02",
+      "ret": -0.06515860168640941
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-05-06",
+      "exitDate": "2022-05-31",
+      "ret": -0.04419587411791337
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-05-06",
+      "exitDate": "2022-06-02",
+      "ret": -0.06726523453956001
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-05-06",
+      "exitDate": "2022-05-31",
+      "ret": -0.0463828224884979
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-05-06",
+      "exitDate": "2022-06-02",
+      "ret": -0.06726523453956001
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-05-06",
+      "exitDate": "2022-06-02",
+      "ret": -0.06515860168640941
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-06-22",
+      "exitDate": "2022-07-20",
+      "ret": -0.02163907594871539
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-06-22",
+      "exitDate": "2022-07-20",
+      "ret": -0.019827760222874802
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-06-22",
+      "exitDate": "2022-07-20",
+      "ret": -0.02382239631598093
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-06-22",
+      "exitDate": "2022-07-20",
+      "ret": -0.02201108059014034
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-06-22",
+      "exitDate": "2022-07-20",
+      "ret": -0.02382239631598093
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-06-22",
+      "exitDate": "2022-07-20",
+      "ret": -0.02163907594871539
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-09-30",
+      "exitDate": "2022-11-10",
+      "ret": -0.09903324481584819
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-09-30",
+      "exitDate": "2022-11-01",
+      "ret": -0.07395233320628469
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-09-30",
+      "exitDate": "2022-11-10",
+      "ret": -0.10107380412575828
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-09-30",
+      "exitDate": "2022-11-01",
+      "ret": -0.07605416628816886
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-09-30",
+      "exitDate": "2022-11-10",
+      "ret": -0.10107380412575828
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2022-09-30",
+      "exitDate": "2022-11-10",
+      "ret": -0.09903324481584819
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2024-04-04",
+      "exitDate": "2024-05-30",
+      "ret": -0.039761138355726144
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2024-04-04",
+      "exitDate": "2024-04-17",
+      "ret": -0.08680520670566771
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2024-04-04",
+      "exitDate": "2024-05-30",
+      "ret": -0.04193854801004504
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2024-04-04",
+      "exitDate": "2024-04-17",
+      "ret": -0.0888570806331993
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2024-04-04",
+      "exitDate": "2024-05-30",
+      "ret": -0.039761138355726144
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2024-06-28",
+      "exitDate": "2024-08-15",
+      "ret": -0.08376727466067091
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2024-06-28",
+      "exitDate": "2024-08-13",
+      "ret": -0.030012901319070306
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2024-06-28",
+      "exitDate": "2024-08-15",
+      "ret": -0.08586055754111355
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2024-06-28",
+      "exitDate": "2024-08-13",
+      "ret": -0.032176437485916254
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2024-06-28",
+      "exitDate": "2024-08-15",
+      "ret": -0.08376727466067091
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2025-03-21",
+      "exitDate": "2025-05-16",
+      "ret": 0.09056920139862168
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2025-03-21",
+      "exitDate": "2025-05-07",
+      "ret": 0.1116228374807069
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2025-03-21",
+      "exitDate": "2025-05-16",
+      "ret": 0.08814866835828594
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2025-03-21",
+      "exitDate": "2025-05-07",
+      "ret": 0.10910723074416717
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2025-03-21",
+      "exitDate": "2025-05-16",
+      "ret": 0.08814866835828594
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2025-03-21",
+      "exitDate": "2025-05-16",
+      "ret": 0.09056920139862168
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-03-20",
+      "exitDate": "2026-05-28",
+      "ret": 0.23906069771760396
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-03-20",
+      "exitDate": "2026-04-22",
+      "ret": 0.19881244536520715
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-03-20",
+      "exitDate": "2026-05-28",
+      "ret": 0.23625398980393086
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-03-20",
+      "exitDate": "2026-04-22",
+      "ret": 0.19618670606605249
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-03-20",
+      "exitDate": "2026-05-28",
+      "ret": 0.23625398980393086
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-03-20",
+      "exitDate": "2026-05-28",
+      "ret": 0.23906069771760396
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-05-11",
+      "exitDate": "2026-05-27",
+      "ret": -0.05494883413811902
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-05-11",
+      "exitDate": "2026-05-27",
+      "ret": -0.0570545468823882
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-06-24",
+      "exitDate": "2026-07-02",
+      "ret": -0.05022794493624849
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-06-24",
+      "exitDate": "2026-10-05",
+      "ret": 0.2526328462419938
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-06-24",
+      "exitDate": "2026-07-02",
+      "ret": -0.05237691015385537
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-06-24",
+      "exitDate": "2026-10-05",
+      "ret": 0.24987448520652222
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-06-24",
+      "exitDate": "2026-07-02",
+      "ret": -0.05022794493624849
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-08-12",
+      "exitDate": "2026-10-05",
+      "ret": 0.18225164006210126
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-08-12",
+      "exitDate": "2026-10-05",
+      "ret": 0.17965177303774427
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "side": "short",
+      "signalDate": "2026-08-12",
+      "exitDate": "2026-10-05",
+      "ret": 0.18225164006210126
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2016-09-19",
+      "exitDate": "2016-11-07",
+      "ret": -0.031210528060694687
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2016-09-19",
+      "exitDate": "2016-10-24",
+      "ret": -0.020765368000508877
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2016-09-19",
+      "exitDate": "2016-11-07",
+      "ret": -0.03337326280342878
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2016-09-19",
+      "exitDate": "2016-10-24",
+      "ret": -0.022950544839791087
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2016-09-19",
+      "exitDate": "2016-11-07",
+      "ret": -0.031210528060694687
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "SBUX",
+      "side": "long",
+      "signalDate": "2018-11-08",
+      "exitDate": "2019-11-07",
+      "ret": 0.07454676303671892
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2022-01-20",
+      "exitDate": "2022-06-02",
+      "ret": 0.08648609192294443
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2022-01-20",
+      "exitDate": "2022-03-29",
+      "ret": 0.09652487204739257
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2022-01-20",
+      "exitDate": "2022-06-02",
+      "ret": 0.08402703927742805
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2022-01-20",
+      "exitDate": "2022-03-29",
+      "ret": 0.09411208217454292
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2022-01-20",
+      "exitDate": "2022-06-02",
+      "ret": 0.08648609192294443
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2022-01-26",
+      "exitDate": "2022-06-02",
+      "ret": 0.11115637663952138
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2022-04-21",
+      "exitDate": "2022-05-04",
+      "ret": -0.05955100429959492
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2022-04-21",
+      "exitDate": "2022-05-04",
+      "ret": -0.06177622291115392
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2022-05-09",
+      "exitDate": "2022-05-31",
+      "ret": -0.023053541289083657
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2022-05-09",
+      "exitDate": "2022-05-31",
+      "ret": -0.0252393944070588
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "SBUX",
+      "side": "long",
+      "signalDate": "2023-01-13",
+      "exitDate": "2023-05-30",
+      "ret": -0.13585309258991574
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2024-04-02",
+      "exitDate": "2024-06-04",
+      "ret": 0.0641538060646547
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2024-04-02",
+      "exitDate": "2024-04-25",
+      "ret": -0.02722544818538164
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2024-04-02",
+      "exitDate": "2024-06-04",
+      "ret": 0.06178548356633318
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2024-04-02",
+      "exitDate": "2024-04-25",
+      "ret": -0.02939176041229319
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2024-04-02",
+      "exitDate": "2024-06-04",
+      "ret": 0.0641538060646547
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2024-05-01",
+      "exitDate": "2024-05-21",
+      "ret": 0.014493810435210142
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2024-05-01",
+      "exitDate": "2024-05-21",
+      "ret": 0.012266419651308036
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "SBUX",
+      "side": "long",
+      "signalDate": "2025-01-29",
+      "exitDate": "2025-04-03",
+      "ret": -0.08858689628978889
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2025-10-10",
+      "exitDate": "2025-10-21",
+      "ret": -0.07122656899261814
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2025-10-10",
+      "exitDate": "2025-10-20",
+      "ret": -0.07449254862520982
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2025-10-10",
+      "exitDate": "2025-10-21",
+      "ret": -0.0733088083867176
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2025-10-10",
+      "exitDate": "2025-10-20",
+      "ret": -0.0765337116096918
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "SBUX",
+      "side": "short",
+      "signalDate": "2025-10-10",
+      "exitDate": "2025-10-21",
+      "ret": -0.07122656899261814
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "SBUX",
+      "side": "long",
+      "signalDate": "2026-05-01",
+      "exitDate": "2026-09-15",
+      "ret": -0.1391355080072172
+    },
+    {
+      "market": "Germany",
+      "variant": "a",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2014-08-15",
+      "exitDate": "2014-09-05",
+      "ret": -0.04754447251586902
+    },
+    {
+      "market": "Germany",
+      "variant": "b",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2014-08-15",
+      "exitDate": "2014-09-04",
+      "ret": -0.0388651968228636
+    },
+    {
+      "market": "Germany",
+      "variant": "c",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2014-08-15",
+      "exitDate": "2014-09-05",
+      "ret": -0.04965955042263315
+    },
+    {
+      "market": "Germany",
+      "variant": "d",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2014-08-15",
+      "exitDate": "2014-09-04",
+      "ret": -0.04103330141895034
+    },
+    {
+      "market": "Germany",
+      "variant": "e",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2014-08-15",
+      "exitDate": "2014-09-05",
+      "ret": -0.04965955042263315
+    },
+    {
+      "market": "Germany",
+      "variant": "f",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2014-08-15",
+      "exitDate": "2014-09-05",
+      "ret": -0.04754447251586902
+    },
+    {
+      "market": "Germany",
+      "variant": "a",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2014-09-29",
+      "exitDate": "2014-10-31",
+      "ret": -0.06071105378776165
+    },
+    {
+      "market": "Germany",
+      "variant": "b",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2014-09-29",
+      "exitDate": "2014-10-30",
+      "ret": -0.05157428051770463
+    },
+    {
+      "market": "Germany",
+      "variant": "c",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2014-09-29",
+      "exitDate": "2014-10-31",
+      "ret": -0.06281977399801453
+    },
+    {
+      "market": "Germany",
+      "variant": "d",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2014-09-29",
+      "exitDate": "2014-10-30",
+      "ret": -0.05371119821585979
+    },
+    {
+      "market": "Germany",
+      "variant": "e",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2014-09-29",
+      "exitDate": "2014-10-31",
+      "ret": -0.06281977399801453
+    },
+    {
+      "market": "Germany",
+      "variant": "f",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2014-09-29",
+      "exitDate": "2014-10-31",
+      "ret": -0.06071105378776165
+    },
+    {
+      "market": "Germany",
+      "variant": "f",
+      "symbol": "VOW3.DE",
+      "side": "long",
+      "signalDate": "2015-02-18",
+      "exitDate": "2015-07-08",
+      "ret": -0.016217567631469754
+    },
+    {
+      "market": "Germany",
+      "variant": "a",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2015-09-21",
+      "exitDate": "2015-11-23",
+      "ret": 0.19086408234764574
+    },
+    {
+      "market": "Germany",
+      "variant": "b",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2015-09-21",
+      "exitDate": "2015-09-22",
+      "ret": -0.009149908137799367
+    },
+    {
+      "market": "Germany",
+      "variant": "c",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2015-09-21",
+      "exitDate": "2015-11-23",
+      "ret": 0.1881787444257883
+    },
+    {
+      "market": "Germany",
+      "variant": "d",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2015-09-21",
+      "exitDate": "2015-09-22",
+      "ret": -0.011349908137799347
+    },
+    {
+      "market": "Germany",
+      "variant": "e",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2015-09-21",
+      "exitDate": "2015-11-23",
+      "ret": 0.1881787444257883
+    },
+    {
+      "market": "Germany",
+      "variant": "f",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2015-09-21",
+      "exitDate": "2015-11-23",
+      "ret": 0.19086408234764574
+    },
+    {
+      "market": "Germany",
+      "variant": "b",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2015-09-28",
+      "exitDate": "2015-10-23",
+      "ret": -0.013865850607409858
+    },
+    {
+      "market": "Germany",
+      "variant": "d",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2015-09-28",
+      "exitDate": "2015-10-23",
+      "ret": -0.016098714735560682
+    },
+    {
+      "market": "Germany",
+      "variant": "f",
+      "symbol": "VOW3.DE",
+      "side": "long",
+      "signalDate": "2017-01-09",
+      "exitDate": "2017-06-07",
+      "ret": -0.22378465034618078
+    },
+    {
+      "market": "Germany",
+      "variant": "a",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2020-03-18",
+      "exitDate": "2020-04-28",
+      "ret": -0.16664374613445743
+    },
+    {
+      "market": "Germany",
+      "variant": "b",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2020-03-18",
+      "exitDate": "2020-04-07",
+      "ret": -0.12563533100240365
+    },
+    {
+      "market": "Germany",
+      "variant": "c",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2020-03-18",
+      "exitDate": "2020-04-28",
+      "ret": -0.16853101206699173
+    },
+    {
+      "market": "Germany",
+      "variant": "d",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2020-03-18",
+      "exitDate": "2020-04-07",
+      "ret": -0.12760055305169649
+    },
+    {
+      "market": "Germany",
+      "variant": "e",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2020-03-18",
+      "exitDate": "2020-04-28",
+      "ret": -0.16853101206699173
+    },
+    {
+      "market": "Germany",
+      "variant": "f",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2020-03-18",
+      "exitDate": "2020-04-28",
+      "ret": -0.16664374613445743
+    },
+    {
+      "market": "Germany",
+      "variant": "f",
+      "symbol": "VOW3.DE",
+      "side": "long",
+      "signalDate": "2021-03-05",
+      "exitDate": "2021-09-08",
+      "ret": -0.08866289868840971
+    },
+    {
+      "market": "Germany",
+      "variant": "a",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2022-12-20",
+      "exitDate": "2023-02-01",
+      "ret": 0.06200307509969627
+    },
+    {
+      "market": "Germany",
+      "variant": "b",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2022-12-20",
+      "exitDate": "2023-01-05",
+      "ret": -0.02874858767558608
+    },
+    {
+      "market": "Germany",
+      "variant": "c",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2022-12-20",
+      "exitDate": "2023-02-01",
+      "ret": 0.059667296405674364
+    },
+    {
+      "market": "Germany",
+      "variant": "d",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2022-12-20",
+      "exitDate": "2023-01-05",
+      "ret": -0.030924553024226253
+    },
+    {
+      "market": "Germany",
+      "variant": "f",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2022-12-20",
+      "exitDate": "2023-02-01",
+      "ret": 0.06200307509969627
+    },
+    {
+      "market": "Germany",
+      "variant": "a",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2023-08-23",
+      "exitDate": "2023-11-14",
+      "ret": 0.04089743336769325
+    },
+    {
+      "market": "Germany",
+      "variant": "b",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2023-08-23",
+      "exitDate": "2023-09-13",
+      "ret": -0.002243632192279521
+    },
+    {
+      "market": "Germany",
+      "variant": "c",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2023-08-23",
+      "exitDate": "2023-11-14",
+      "ret": 0.03861469284418151
+    },
+    {
+      "market": "Germany",
+      "variant": "d",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2023-08-23",
+      "exitDate": "2023-09-13",
+      "ret": -0.004520370864992795
+    },
+    {
+      "market": "Germany",
+      "variant": "f",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2023-08-23",
+      "exitDate": "2023-11-14",
+      "ret": 0.04089743336769325
+    },
+    {
+      "market": "Germany",
+      "variant": "e",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2023-08-24",
+      "exitDate": "2023-11-14",
+      "ret": 0.021431140276965133
+    },
+    {
+      "market": "Germany",
+      "variant": "b",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2023-10-24",
+      "exitDate": "2023-11-03",
+      "ret": -0.006187354002681222
+    },
+    {
+      "market": "Germany",
+      "variant": "d",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2023-10-24",
+      "exitDate": "2023-11-03",
+      "ret": -0.008429319996848927
+    },
+    {
+      "market": "Germany",
+      "variant": "a",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-08-02",
+      "exitDate": "2024-09-27",
+      "ret": 0.12253657225810177
+    },
+    {
+      "market": "Germany",
+      "variant": "b",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-08-02",
+      "exitDate": "2024-08-23",
+      "ret": 0.07508305154713746
+    },
+    {
+      "market": "Germany",
+      "variant": "c",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-08-02",
+      "exitDate": "2024-09-27",
+      "ret": 0.1200143709494863
+    },
+    {
+      "market": "Germany",
+      "variant": "d",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-08-02",
+      "exitDate": "2024-08-23",
+      "ret": 0.07272817415632415
+    },
+    {
+      "market": "Germany",
+      "variant": "f",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-08-02",
+      "exitDate": "2024-09-27",
+      "ret": 0.12253657225810177
+    },
+    {
+      "market": "Germany",
+      "variant": "e",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-08-05",
+      "exitDate": "2024-09-27",
+      "ret": 0.11481065156443737
+    },
+    {
+      "market": "Germany",
+      "variant": "b",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-09-06",
+      "exitDate": "2024-09-27",
+      "ret": 0.018294677463888576
+    },
+    {
+      "market": "Germany",
+      "variant": "d",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-09-06",
+      "exitDate": "2024-09-27",
+      "ret": 0.016035623480034955
+    },
+    {
+      "market": "Germany",
+      "variant": "a",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-11-01",
+      "exitDate": "2024-12-12",
+      "ret": 0.021825798960966925
+    },
+    {
+      "market": "Germany",
+      "variant": "b",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-11-01",
+      "exitDate": "2024-12-10",
+      "ret": 0.03932094345027726
+    },
+    {
+      "market": "Germany",
+      "variant": "c",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-11-01",
+      "exitDate": "2024-12-12",
+      "ret": 0.019535252239328393
+    },
+    {
+      "market": "Germany",
+      "variant": "d",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-11-01",
+      "exitDate": "2024-12-10",
+      "ret": 0.03698018914458978
+    },
+    {
+      "market": "Germany",
+      "variant": "f",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-11-01",
+      "exitDate": "2024-12-12",
+      "ret": 0.021825798960966925
+    },
+    {
+      "market": "Germany",
+      "variant": "e",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2024-11-13",
+      "exitDate": "2024-12-12",
+      "ret": -0.02851192269620717
+    },
+    {
+      "market": "Germany",
+      "variant": "a",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2026-06-22",
+      "exitDate": "2026-08-27",
+      "ret": 0.1230062000495542
+    },
+    {
+      "market": "Germany",
+      "variant": "b",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2026-06-22",
+      "exitDate": "2026-07-07",
+      "ret": 0.04362781833340956
+    },
+    {
+      "market": "Germany",
+      "variant": "c",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2026-06-22",
+      "exitDate": "2026-08-27",
+      "ret": 0.1204442162504975
+    },
+    {
+      "market": "Germany",
+      "variant": "d",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2026-06-22",
+      "exitDate": "2026-07-07",
+      "ret": 0.04124279105938644
+    },
+    {
+      "market": "Germany",
+      "variant": "e",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2026-06-22",
+      "exitDate": "2026-08-27",
+      "ret": 0.1204442162504975
+    },
+    {
+      "market": "Germany",
+      "variant": "f",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2026-06-22",
+      "exitDate": "2026-08-27",
+      "ret": 0.1230062000495542
+    },
+    {
+      "market": "Germany",
+      "variant": "a",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2026-10-01",
+      "exitDate": "2026-10-07",
+      "ret": -0.03713919218025208
+    },
+    {
+      "market": "Germany",
+      "variant": "b",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2026-10-01",
+      "exitDate": "2026-10-07",
+      "ret": -0.03713919218025208
+    },
+    {
+      "market": "Germany",
+      "variant": "c",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2026-10-01",
+      "exitDate": "2026-10-07",
+      "ret": -0.039323002152982234
+    },
+    {
+      "market": "Germany",
+      "variant": "d",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2026-10-01",
+      "exitDate": "2026-10-07",
+      "ret": -0.039323002152982234
+    },
+    {
+      "market": "Germany",
+      "variant": "e",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2026-10-01",
+      "exitDate": "2026-10-07",
+      "ret": -0.039323002152982234
+    },
+    {
+      "market": "Germany",
+      "variant": "f",
+      "symbol": "VOW3.DE",
+      "side": "short",
+      "signalDate": "2026-10-01",
+      "exitDate": "2026-10-07",
+      "ret": -0.03713919218025208
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "generatedAt": "2026-10-05T01:41:43.599Z",
+  "provider": "Financial Modeling Prep",
+  "secretLogged": false,
+  "documentedHistoricalCoverage": "FMP documents named historical constituent endpoints for US S&P 500/Nasdaq/Dow; no documented equivalent for these six international indexes.",
+  "results": [
+    {
+      "market": "UK",
+      "name": "FTSE 100",
+      "symbol": "^FTSE",
+      "endpoint": "/stable/historical-index-constituent",
+      "httpStatus": 429,
+      "rows": 0,
+      "usable": false,
+      "conclusion": "NO_FMP_DATED_MEMBERSHIP"
+    },
+    {
+      "market": "Germany",
+      "name": "DAX",
+      "symbol": "^GDAXI",
+      "endpoint": "/stable/historical-index-constituent",
+      "httpStatus": 429,
+      "rows": 0,
+      "usable": false,
+      "conclusion": "NO_FMP_DATED_MEMBERSHIP"
+    },
+    {
+      "market": "France",
+      "name": "CAC 40",
+      "symbol": "^FCHI",
+      "endpoint": "/stable/historical-index-constituent",
+      "httpStatus": 429,
+      "rows": 0,
+      "usable": false,
+      "conclusion": "NO_FMP_DATED_MEMBERSHIP"
+    },
+    {
+      "market": "Hong Kong",
+      "name": "Hang Seng",
+      "symbol": "^HSI",
+      "endpoint": "/stable/historical-index-constituent",
+      "httpStatus": 429,
+      "rows": 0,
+      "usable": false,
+      "conclusion": "NO_FMP_DATED_MEMBERSHIP"
+    },
+    {
+      "market": "Japan",
+      "name": "Nikkei 225",
+      "symbol": "^N225",
+      "endpoint": "/stable/historical-index-constituent",
+      "httpStatus": 429,
+      "rows": 0,
+      "usable": false,
+      "conclusion": "NO_FMP_DATED_MEMBERSHIP"
+    },
+    {
+      "market": "India",
+      "name": "Nifty 50",
+      "symbol": "^NSEI",
+      "endpoint": "/stable/historical-index-constituent",
+      "httpStatus": 429,
+      "rows": 0,
+      "usable": false,
+      "conclusion": "NO_FMP_DATED_MEMBERSHIP"
+    }
+  ],
+  "studyLabel": "All six non-US equity markets use current index lists and are SURVIVORSHIP_BIAS."
+}

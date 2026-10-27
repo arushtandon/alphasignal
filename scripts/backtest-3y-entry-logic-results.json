@@ -1,0 +1,767 @@
+{
+  "ranAt": "2026-09-15T11:13:05.709Z",
+  "windowBars": 756,
+  "entryStep": 3,
+  "range": "5y",
+  "tickers": [
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "JPM",
+    "V",
+    "MA",
+    "JNJ",
+    "UNH",
+    "PG",
+    "HD",
+    "AVGO",
+    "XOM",
+    "KO",
+    "NFLX",
+    "AMD",
+    "CRM",
+    "FOX",
+    "FOXA",
+    "BX",
+    "CRL",
+    "SNDK",
+    "7733.T",
+    "4503.T",
+    "2914.T",
+    "5713.T",
+    "6758.T",
+    "6501.T",
+    "0322.HK",
+    "0316.HK",
+    "BA.L",
+    "MNDI.L",
+    "SHEL.L",
+    "SAP.DE",
+    "MCD",
+    "DBK.DE",
+    "SU.PA",
+    "HINDUNILVR.NS",
+    "0175.HK",
+    "8801.T",
+    "HG=F",
+    "MTX.DE",
+    "HO.PA",
+    "NWG.L",
+    "ITC.NS",
+    "1299.HK",
+    "8002.T",
+    "GC=F",
+    "BAC",
+    "ENR.DE",
+    "ACA.PA",
+    "STAN.L",
+    "ONGC.NS",
+    "2318.HK",
+    "1803.T",
+    "BZ=F",
+    "SBUX",
+    "SIE.DE",
+    "OR.PA",
+    "HIK.L",
+    "NTPC.NS",
+    "2331.HK",
+    "1802.T",
+    "CL=F",
+    "BKNG",
+    "ALV.DE",
+    "AIR.PA",
+    "HSBA.L",
+    "TATACONSUM.NS",
+    "0017.HK",
+    "9005.T",
+    "PA=F",
+    "AIR.DE",
+    "BNP.PA",
+    "RIO.L",
+    "TATASTEEL.NS",
+    "0101.HK",
+    "9008.T",
+    "BTC-USD",
+    "MBG.DE",
+    "BN.PA",
+    "GLEN.L",
+    "POWERGRID.NS",
+    "1876.HK",
+    "6861.T",
+    "ETH-USD",
+    "P911.DE",
+    "ORA.PA",
+    "DGE.L",
+    "SBIN.NS",
+    "6098.HK",
+    "SI=F",
+    "PAH3.DE",
+    "MC.PA",
+    "ULVR.L",
+    "INDUSINDBK.NS",
+    "0001.HK",
+    "5401.T",
+    "PL=F",
+    "VNA.DE",
+    "ENGI.PA",
+    "ENT.L",
+    "ICICIBANK.NS",
+    "0005.HK",
+    "GE",
+    "HEI.DE",
+    "STLAP.PA",
+    "HLMA.L",
+    "LT.NS",
+    "0669.HK",
+    "6098.T",
+    "LRCX",
+    "SRT3.DE",
+    "RNO.PA",
+    "PRU.L",
+    "TITAN.NS",
+    "0386.HK",
+    "8306.T",
+    "PANW",
+    "QIA.DE",
+    "SAN.PA",
+    "SN.L",
+    "TECHM.NS",
+    "0960.HK",
+    "4751.T",
+    "CRWD",
+    "TTE.PA",
+    "GSK.L",
+    "ADANIPORTS.NS",
+    "3968.HK",
+    "8804.T",
+    "FTNT",
+    "NESTLEIND.NS",
+    "1378.HK",
+    "9532.T",
+    "6690.HK",
+    "BRK-B",
+    "TMO",
+    "ON"
+  ],
+  "note": "Current entry engine: confirmed MA200 break, index ROC momentum, MA100/Fib S/R, close-call hold. Sector overlay uses SPY series (same tide for every name in this run). Closed trades only.",
+  "brackets": [
+    {
+      "key": "buy:short",
+      "hz": "short",
+      "side": "buy",
+      "aggregate": {
+        "totalTrades": 32,
+        "winRate": 59.4,
+        "avgReturnPct": 0.086,
+        "meanProfitFactor": 1.063,
+        "sharpe": -0.015,
+        "maxDrawdownPct": 19.78,
+        "cvar95Pct": -5.544,
+        "compoundedReturnPct": -2.656,
+        "portfolioDays": 29
+      },
+      "pass": false,
+      "tickersWithTrades": 28,
+      "skipped": 0,
+      "errors": 0,
+      "rejections": {
+        "actionable": 32141,
+        "sideAllowed": 32806,
+        "confidence": 33000,
+        "rewardRisk": 718
+      },
+      "top": [
+        {
+          "ticker": "ETH-USD",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 15.36,
+          "profitFactor": 99,
+          "range": "2024-08-21 → 2026-09-15"
+        },
+        {
+          "ticker": "0386.HK",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 4.28,
+          "profitFactor": 99,
+          "range": "2023-08-17 → 2026-09-15"
+        },
+        {
+          "ticker": "ADANIPORTS.NS",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 3.07,
+          "profitFactor": 99,
+          "range": "2023-08-25 → 2026-09-15"
+        },
+        {
+          "ticker": "PANW",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 2.84,
+          "profitFactor": 99,
+          "range": "2023-09-08 → 2026-09-14"
+        },
+        {
+          "ticker": "BKNG",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 2.52,
+          "profitFactor": 99,
+          "range": "2023-09-08 → 2026-09-14"
+        }
+      ],
+      "worst": [
+        {
+          "ticker": "CRL",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -5.35,
+          "profitFactor": 0,
+          "range": "2023-09-08 → 2026-09-14"
+        },
+        {
+          "ticker": "6861.T",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -5.13,
+          "profitFactor": 0,
+          "range": "2023-08-14 → 2026-09-15"
+        },
+        {
+          "ticker": "DGE.L",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -4.69,
+          "profitFactor": 0,
+          "range": "2023-09-19 → 2026-09-15"
+        },
+        {
+          "ticker": "ICICIBANK.NS",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -4.62,
+          "profitFactor": 0,
+          "range": "2023-08-28 → 2026-09-15"
+        },
+        {
+          "ticker": "PAH3.DE",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -4.39,
+          "profitFactor": 0,
+          "range": "2023-09-21 → 2026-09-15"
+        }
+      ]
+    },
+    {
+      "key": "sell:short",
+      "hz": "short",
+      "side": "sell",
+      "aggregate": {
+        "totalTrades": 2,
+        "winRate": 50,
+        "avgReturnPct": -0.727,
+        "meanProfitFactor": 0.671,
+        "sharpe": -0.197,
+        "maxDrawdownPct": 4.417,
+        "cvar95Pct": -4.417,
+        "compoundedReturnPct": -1.586,
+        "portfolioDays": 2
+      },
+      "pass": false,
+      "tickersWithTrades": 2,
+      "skipped": 0,
+      "errors": 0,
+      "rejections": {
+        "actionable": 32181,
+        "sideAllowed": 34672,
+        "confidence": 33038,
+        "rewardRisk": 21
+      },
+      "top": [
+        {
+          "ticker": "7733.T",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 2.96,
+          "profitFactor": 99,
+          "range": "2023-08-14 → 2026-09-15"
+        },
+        {
+          "ticker": "TTE.PA",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -4.42,
+          "profitFactor": 0,
+          "range": "2023-09-27 → 2026-09-15"
+        }
+      ],
+      "worst": [
+        {
+          "ticker": "TTE.PA",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -4.42,
+          "profitFactor": 0,
+          "range": "2023-09-27 → 2026-09-15"
+        },
+        {
+          "ticker": "7733.T",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 2.96,
+          "profitFactor": 99,
+          "range": "2023-08-14 → 2026-09-15"
+        }
+      ]
+    },
+    {
+      "key": "buy:medium",
+      "hz": "medium",
+      "side": "buy",
+      "aggregate": {
+        "totalTrades": 23,
+        "winRate": 52.2,
+        "avgReturnPct": -0.311,
+        "meanProfitFactor": 0.802,
+        "sharpe": -0.432,
+        "maxDrawdownPct": 21.249,
+        "cvar95Pct": -7.057,
+        "compoundedReturnPct": -8.154,
+        "portfolioDays": 23
+      },
+      "pass": false,
+      "tickersWithTrades": 23,
+      "skipped": 0,
+      "errors": 0,
+      "rejections": {
+        "actionable": 32607,
+        "sideAllowed": 34314,
+        "confidence": 31606,
+        "rewardRisk": 401
+      },
+      "top": [
+        {
+          "ticker": "SHEL.L",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 5.21,
+          "profitFactor": 99,
+          "range": "2023-09-20 → 2026-09-15"
+        },
+        {
+          "ticker": "BX",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 4.71,
+          "profitFactor": 99,
+          "range": "2023-09-08 → 2026-09-14"
+        },
+        {
+          "ticker": "MA",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 3.03,
+          "profitFactor": 99,
+          "range": "2023-09-08 → 2026-09-14"
+        },
+        {
+          "ticker": "KO",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 2.61,
+          "profitFactor": 99,
+          "range": "2023-09-08 → 2026-09-14"
+        },
+        {
+          "ticker": "VNA.DE",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 2.55,
+          "profitFactor": 99,
+          "range": "2023-09-21 → 2026-09-15"
+        }
+      ],
+      "worst": [
+        {
+          "ticker": "ONGC.NS",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -7.17,
+          "profitFactor": 0,
+          "range": "2023-08-28 → 2026-09-15"
+        },
+        {
+          "ticker": "6690.HK",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -6.94,
+          "profitFactor": 0,
+          "range": "2023-08-17 → 2026-09-15"
+        },
+        {
+          "ticker": "HLMA.L",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -4.93,
+          "profitFactor": 0,
+          "range": "2023-09-20 → 2026-09-15"
+        },
+        {
+          "ticker": "LT.NS",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -4.3,
+          "profitFactor": 0,
+          "range": "2023-08-28 → 2026-09-15"
+        },
+        {
+          "ticker": "NESTLEIND.NS",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -3.49,
+          "profitFactor": 0,
+          "range": "2023-08-28 → 2026-09-15"
+        }
+      ]
+    },
+    {
+      "key": "sell:medium",
+      "hz": "medium",
+      "side": "sell",
+      "aggregate": {
+        "totalTrades": 69,
+        "winRate": 23.2,
+        "avgReturnPct": -1.814,
+        "meanProfitFactor": 0.434,
+        "sharpe": -2.285,
+        "maxDrawdownPct": 61.37,
+        "cvar95Pct": -8.363,
+        "compoundedReturnPct": -61.37,
+        "portfolioDays": 57
+      },
+      "pass": false,
+      "tickersWithTrades": 49,
+      "skipped": 0,
+      "errors": 0,
+      "rejections": {
+        "actionable": 32540,
+        "sideAllowed": 33548,
+        "confidence": 31544,
+        "rewardRisk": 1113,
+        "openMark": 5
+      },
+      "top": [
+        {
+          "ticker": "ENT.L",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 8.79,
+          "profitFactor": 99,
+          "range": "2023-09-20 → 2026-09-15"
+        },
+        {
+          "ticker": "CRL",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 8.25,
+          "profitFactor": 99,
+          "range": "2023-09-08 → 2026-09-14"
+        },
+        {
+          "ticker": "MNDI.L",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 6.83,
+          "profitFactor": 99,
+          "range": "2023-09-20 → 2026-09-15"
+        },
+        {
+          "ticker": "AIR.DE",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 6.18,
+          "profitFactor": 99,
+          "range": "2023-09-21 → 2026-09-15"
+        },
+        {
+          "ticker": "GLEN.L",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 5.1,
+          "profitFactor": 99,
+          "range": "2023-09-15 → 2026-09-15"
+        }
+      ],
+      "worst": [
+        {
+          "ticker": "4751.T",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -14.86,
+          "profitFactor": 0,
+          "range": "2023-08-14 → 2026-09-15"
+        },
+        {
+          "ticker": "GOOGL",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -7.86,
+          "profitFactor": 0,
+          "range": "2023-09-08 → 2026-09-14"
+        },
+        {
+          "ticker": "FTNT",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -7.69,
+          "profitFactor": 0,
+          "range": "2023-09-08 → 2026-09-14"
+        },
+        {
+          "ticker": "CL=F",
+          "trades": 2,
+          "winRate": 0,
+          "avgReturnPct": -7.26,
+          "profitFactor": 0,
+          "range": "2023-09-13 → 2026-09-15"
+        },
+        {
+          "ticker": "HLMA.L",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -6.69,
+          "profitFactor": 0,
+          "range": "2023-09-20 → 2026-09-15"
+        }
+      ]
+    },
+    {
+      "key": "buy:long",
+      "hz": "long",
+      "side": "buy",
+      "aggregate": {
+        "totalTrades": 20,
+        "winRate": 45,
+        "avgReturnPct": 5.429,
+        "meanProfitFactor": 2.016,
+        "sharpe": 1.28,
+        "maxDrawdownPct": 45.047,
+        "cvar95Pct": -16.802,
+        "compoundedReturnPct": 114.6,
+        "portfolioDays": 20
+      },
+      "pass": true,
+      "tickersWithTrades": 18,
+      "skipped": 0,
+      "errors": 0,
+      "rejections": {
+        "actionable": 32479,
+        "sideAllowed": 34200,
+        "confidence": 33770,
+        "rewardRisk": 400,
+        "openMark": 5
+      },
+      "top": [
+        {
+          "ticker": "1378.HK",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 46.83,
+          "profitFactor": 99,
+          "range": "2023-08-17 → 2026-09-15"
+        },
+        {
+          "ticker": "CL=F",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 37.49,
+          "profitFactor": 99,
+          "range": "2023-09-13 → 2026-09-15"
+        },
+        {
+          "ticker": "SIE.DE",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 22.77,
+          "profitFactor": 99,
+          "range": "2023-09-21 → 2026-09-15"
+        },
+        {
+          "ticker": "CRM",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 21.28,
+          "profitFactor": 99,
+          "range": "2023-09-08 → 2026-09-14"
+        },
+        {
+          "ticker": "HG=F",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 20.91,
+          "profitFactor": 99,
+          "range": "2023-09-14 → 2026-09-15"
+        }
+      ],
+      "worst": [
+        {
+          "ticker": "BX",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -16.8,
+          "profitFactor": 0,
+          "range": "2023-09-08 → 2026-09-14"
+        },
+        {
+          "ticker": "TITAN.NS",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -13.69,
+          "profitFactor": 0,
+          "range": "2023-08-28 → 2026-09-15"
+        },
+        {
+          "ticker": "HIK.L",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -13,
+          "profitFactor": 0,
+          "range": "2023-09-20 → 2026-09-15"
+        },
+        {
+          "ticker": "ONGC.NS",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -8.76,
+          "profitFactor": 0,
+          "range": "2023-08-28 → 2026-09-15"
+        },
+        {
+          "ticker": "STAN.L",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -8.57,
+          "profitFactor": 0,
+          "range": "2023-09-20 → 2026-09-15"
+        }
+      ]
+    },
+    {
+      "key": "sell:long",
+      "hz": "long",
+      "side": "sell",
+      "aggregate": {
+        "totalTrades": 10,
+        "winRate": 30,
+        "avgReturnPct": -5.309,
+        "meanProfitFactor": 0.507,
+        "sharpe": -0.933,
+        "maxDrawdownPct": 60.378,
+        "cvar95Pct": -24.718,
+        "compoundedReturnPct": -50.206,
+        "portfolioDays": 10
+      },
+      "pass": false,
+      "tickersWithTrades": 10,
+      "skipped": 0,
+      "errors": 0,
+      "rejections": {
+        "actionable": 32665,
+        "sideAllowed": 33406,
+        "confidence": 33933,
+        "rewardRisk": 232,
+        "openMark": 1
+      },
+      "top": [
+        {
+          "ticker": "1299.HK",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 25.67,
+          "profitFactor": 99,
+          "range": "2023-08-17 → 2026-09-15"
+        },
+        {
+          "ticker": "0669.HK",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 23.61,
+          "profitFactor": 99,
+          "range": "2023-08-17 → 2026-09-15"
+        },
+        {
+          "ticker": "CL=F",
+          "trades": 1,
+          "winRate": 100,
+          "avgReturnPct": 5.33,
+          "profitFactor": 99,
+          "range": "2023-09-13 → 2026-09-15"
+        },
+        {
+          "ticker": "FTNT",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -4.9,
+          "profitFactor": 0,
+          "range": "2023-09-08 → 2026-09-14"
+        },
+        {
+          "ticker": "FOXA",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -7.59,
+          "profitFactor": 0,
+          "range": "2023-09-08 → 2026-09-14"
+        }
+      ],
+      "worst": [
+        {
+          "ticker": "P911.DE",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -24.72,
+          "profitFactor": 0,
+          "range": "2023-09-21 → 2026-09-15"
+        },
+        {
+          "ticker": "MBG.DE",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -19.95,
+          "profitFactor": 0,
+          "range": "2023-09-21 → 2026-09-15"
+        },
+        {
+          "ticker": "PRU.L",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -19.03,
+          "profitFactor": 0,
+          "range": "2023-09-20 → 2026-09-15"
+        },
+        {
+          "ticker": "0386.HK",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -16.49,
+          "profitFactor": 0,
+          "range": "2023-08-17 → 2026-09-15"
+        },
+        {
+          "ticker": "AAPL",
+          "trades": 1,
+          "winRate": 0,
+          "avgReturnPct": -15.02,
+          "profitFactor": 0,
+          "range": "2023-09-08 → 2026-09-14"
+        }
+      ]
+    }
+  ]
+}

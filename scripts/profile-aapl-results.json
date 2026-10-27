@@ -1,0 +1,2673 @@
+{
+  "generatedAt": "2026-09-30T06:10:32.221Z",
+  "study": "cache-backed-performance-program-v2",
+  "mode": "BACKTEST_ONLY",
+  "liveBehaviorChanged": false,
+  "preregistration": "docs/performance-program-preregistration.md",
+  "methodology": {
+    "statementSource": "data/research/fmp cache only",
+    "priceHarness": "server.fetchOHLCV + server.backtestSignal",
+    "provider": "existing fundamentalsAt decision-date injection",
+    "folds": "4 x date-aligned 504/126/126",
+    "embargoBars": {
+      "medium": 63,
+      "long": 180
+    },
+    "primary": "PIT Piotroski + PIT Altman Z with decision-date USD FX normalization and LSE GBp-to-GBP scaling",
+    "secondary": "Piotroski-only NON_PARITY; never promotion eligible",
+    "preliminarySample": true,
+    "sampledPerMarket": 1,
+    "notionalUsd": 10000,
+    "exitGrid": "Existing live hybrid simulator with research-only TP1 R, stop-cap, time-cap, and TP1-only injection; no exit logic is duplicated.",
+    "bh": "Benjamini-Hochberg over every executed cell/variant"
+  },
+  "fx": {
+    "GBP": {
+      "source": "GBPUSD=X",
+      "inverse": false,
+      "cached": true,
+      "bars": 2601
+    },
+    "EUR": {
+      "source": "EURUSD=X",
+      "inverse": false,
+      "cached": true,
+      "bars": 2601
+    },
+    "HKD": {
+      "source": "HKDUSD=X",
+      "inverse": false,
+      "cached": true,
+      "bars": 2601
+    },
+    "JPY": {
+      "source": "JPYUSD=X",
+      "inverse": false,
+      "cached": true,
+      "bars": 2601
+    }
+  },
+  "universeCoverage": {
+    "US": {
+      "requested": 1,
+      "loaded": 1
+    }
+  },
+  "execution": {
+    "checkpoint": "scripts\\profile-aapl-checkpoint.json",
+    "workerSlots": 30,
+    "cpuReserve": 2,
+    "priority": "below-normal",
+    "priceRetry": {
+      "attempts": 5,
+      "baseMs": 500
+    },
+    "phaseTimingsMs": {
+      "fx": 13.1,
+      "loadPricesAndStatements": 285.4,
+      "dataLoading": 285.5,
+      "stage2ExitGrid": 0,
+      "stage1BDE": 82165.8,
+      "stage1SignalEntryDecision": 82026.2,
+      "stage1ExitSimulation": 5.4,
+      "stage1Other": 134.2,
+      "aggregation": 0.2
+    }
+  },
+  "cells": [
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "variant": "PIT_PIOTROSKI_PLUS_ALTMAN_EXACT_LIVE_OVERLAY",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "variant": "PIO_ONLY_NON_PARITY",
+      "parity": "NON_PARITY",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "gate": "Piotroski>=5",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "gate": "Piotroski>=6",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "gate": "Piotroski>=7",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "PIT_PIOTROSKI_PLUS_ALTMAN_EXACT_LIVE_OVERLAY",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "PIO_ONLY_NON_PARITY",
+      "parity": "NON_PARITY",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "gate": "Piotroski>=5",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "gate": "Piotroski>=6",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "gate": "Piotroski>=7",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "E",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "PIT_F_SCORE_LE_3",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "E",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "variant": "CONTROL_NO_F_SCORE",
+      "parity": "CONTROL",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "PIT_PIOTROSKI_PLUS_ALTMAN_EXACT_LIVE_OVERLAY",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "variant": "PIO_ONLY_NON_PARITY",
+      "parity": "NON_PARITY",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "gate": "Piotroski>=5",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "gate": "Piotroski>=6",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "gate": "Piotroski>=7",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "PIT_PIOTROSKI_PLUS_ALTMAN_EXACT_LIVE_OVERLAY",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "PIO_ONLY_NON_PARITY",
+      "parity": "NON_PARITY",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "gate": "Piotroski>=5",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "gate": "Piotroski>=6",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "gate": "Piotroski>=7",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "E",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "PIT_F_SCORE_LE_3",
+      "parity": "PRIMARY_EXACT",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    },
+    {
+      "part": "E",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "variant": "CONTROL_NO_F_SCORE",
+      "parity": "CONTROL",
+      "tested": true,
+      "status": "INSUFFICIENT_NO_HOLDOUT_TRADES",
+      "coverage": {
+        "decisions": 1145,
+        "piotroskiUsable": 1145,
+        "fullGateUsable": 1145,
+        "piotroskiPct": 100,
+        "fullGatePct": 100,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "baseline": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "development": [
+        {
+          "fold": 1,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 2,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        },
+        {
+          "fold": 3,
+          "validation": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          },
+          "metrics": {
+            "trades": 0,
+            "wins": 0,
+            "winRate": null,
+            "profitFactor": null,
+            "pnlUsd": 0,
+            "averageWinPct": null,
+            "averageLossPct": null
+          }
+        }
+      ],
+      "holdout": {
+        "trades": 0,
+        "wins": 0,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": 0,
+        "averageWinPct": null,
+        "averageLossPct": null
+      },
+      "promotion": {
+        "confidence": "INSUFFICIENT",
+        "eligible": false,
+        "pValue": null
+      },
+      "bhStatus": "BH_FAIL_0.05"
+    }
+  ],
+  "bestConfigSummary": null,
+  "rankedForwardCandidates": []
+}

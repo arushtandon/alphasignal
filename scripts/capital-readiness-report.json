@@ -1,0 +1,979 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-20T07:26:36.634Z",
+  "methodology": {
+    "pointInTimeBars": true,
+    "nextBarEntry": true,
+    "modeledCosts": true,
+    "exactDecisionPolicy": true,
+    "windows": [
+      252,
+      504,
+      1260
+    ],
+    "tickers": [
+      "AAPL",
+      "MSFT",
+      "NVDA",
+      "AMZN",
+      "GOOGL",
+      "META",
+      "TSLA",
+      "JPM",
+      "V",
+      "MA",
+      "JNJ",
+      "UNH",
+      "PG",
+      "HD",
+      "AVGO",
+      "LLY",
+      "XOM",
+      "CVX",
+      "KO",
+      "PEP",
+      "COST",
+      "WMT",
+      "NFLX",
+      "AMD",
+      "CRM",
+      "ORCL",
+      "IBM",
+      "GS",
+      "BAC",
+      "MCD",
+      "INTC",
+      "QCOM",
+      "TXN",
+      "AMAT",
+      "CAT",
+      "BA",
+      "GE",
+      "DIS",
+      "NKE",
+      "SBUX"
+    ]
+  },
+  "passed": [],
+  "failed": [
+    "buy:short:252",
+    "buy:medium:252",
+    "buy:long:252",
+    "sell:short:252",
+    "sell:medium:252",
+    "sell:long:252",
+    "buy:short:504",
+    "buy:medium:504",
+    "buy:long:504",
+    "sell:short:504",
+    "sell:medium:504",
+    "sell:long:504",
+    "buy:short:1260",
+    "buy:medium:1260",
+    "buy:long:1260",
+    "sell:short:1260",
+    "sell:medium:1260",
+    "sell:long:1260"
+  ],
+  "runs": [
+    {
+      "key": "buy:short:252",
+      "windowBars": 252,
+      "side": "buy",
+      "horizon": "short",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 100,
+          "minWinRate": 55,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 2658,
+          "sideAllowed": 2714,
+          "confidence": 2905,
+          "rewardRisk": 105
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "buy:medium:252",
+      "windowBars": 252,
+      "side": "buy",
+      "horizon": "medium",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 100,
+          "minWinRate": 52,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "rewardRisk": 141,
+          "confidence": 911,
+          "actionable": 936,
+          "sideAllowed": 1053
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "buy:long:252",
+      "windowBars": 252,
+      "side": "buy",
+      "horizon": "long",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 100,
+          "minWinRate": 52,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "rewardRisk": 121,
+          "confidence": 1024,
+          "actionable": 870,
+          "sideAllowed": 1003
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "sell:short:252",
+      "windowBars": 252,
+      "side": "sell",
+      "horizon": "short",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 50,
+          "minWinRate": 50,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 2870,
+          "sideAllowed": 3300,
+          "confidence": 3138
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "sell:medium:252",
+      "windowBars": 252,
+      "side": "sell",
+      "horizon": "medium",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 50,
+          "minWinRate": 50,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 1599,
+          "sideAllowed": 2661,
+          "confidence": 1673,
+          "rewardRisk": 74
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "sell:long:252",
+      "windowBars": 252,
+      "side": "sell",
+      "horizon": "long",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 50,
+          "minWinRate": 50,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "sideAllowed": 3119,
+          "confidence": 2176,
+          "actionable": 1972,
+          "rewardRisk": 19
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "buy:short:504",
+      "windowBars": 504,
+      "side": "buy",
+      "horizon": "short",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 100,
+          "minWinRate": 55,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 2991,
+          "sideAllowed": 3061,
+          "confidence": 3242,
+          "rewardRisk": 92
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "buy:medium:504",
+      "windowBars": 504,
+      "side": "buy",
+      "horizon": "medium",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 100,
+          "minWinRate": 52,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 771,
+          "sideAllowed": 863,
+          "confidence": 769,
+          "rewardRisk": 182
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "buy:long:504",
+      "windowBars": 504,
+      "side": "buy",
+      "horizon": "long",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 100,
+          "minWinRate": 52,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "rewardRisk": 129,
+          "actionable": 677,
+          "sideAllowed": 768,
+          "confidence": 780
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "sell:short:504",
+      "windowBars": 504,
+      "side": "sell",
+      "horizon": "short",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 50,
+          "minWinRate": 50,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 3141,
+          "sideAllowed": 3550,
+          "confidence": 3411,
+          "rewardRisk": 2
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "sell:medium:504",
+      "windowBars": 504,
+      "side": "sell",
+      "horizon": "medium",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 50,
+          "minWinRate": 50,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 1852,
+          "sideAllowed": 3141,
+          "confidence": 1986,
+          "rewardRisk": 78
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "sell:long:504",
+      "windowBars": 504,
+      "side": "sell",
+      "horizon": "long",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 50,
+          "minWinRate": 50,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 2114,
+          "sideAllowed": 3386,
+          "confidence": 2298,
+          "rewardRisk": 22
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "buy:short:1260",
+      "windowBars": 1260,
+      "side": "buy",
+      "horizon": "short",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 100,
+          "minWinRate": 55,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 6864,
+          "sideAllowed": 7079,
+          "confidence": 7453,
+          "rewardRisk": 195
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "buy:medium:1260",
+      "windowBars": 1260,
+      "side": "buy",
+      "horizon": "medium",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 100,
+          "minWinRate": 52,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 296,
+          "sideAllowed": 324,
+          "confidence": 284,
+          "rewardRisk": 6
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "buy:long:1260",
+      "windowBars": 1260,
+      "side": "buy",
+      "horizon": "long",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 100,
+          "minWinRate": 52,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 545,
+          "sideAllowed": 605,
+          "confidence": 605,
+          "rewardRisk": 54
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "sell:short:1260",
+      "windowBars": 1260,
+      "side": "sell",
+      "horizon": "short",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 50,
+          "minWinRate": 50,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 11233,
+          "sideAllowed": 12738,
+          "confidence": 12279,
+          "rewardRisk": 10
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "sell:medium:1260",
+      "windowBars": 1260,
+      "side": "sell",
+      "horizon": "medium",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 50,
+          "minWinRate": 50,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 5362,
+          "sideAllowed": 8552,
+          "confidence": 5702,
+          "rewardRisk": 245
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    },
+    {
+      "key": "sell:long:1260",
+      "windowBars": 1260,
+      "side": "sell",
+      "horizon": "long",
+      "metrics": {
+        "totalTrades": 0,
+        "winRate": null,
+        "avgReturnPct": null,
+        "meanProfitFactor": null,
+        "sharpe": null,
+        "maxDrawdownPct": null,
+        "cvar95Pct": null,
+        "portfolioDays": 0
+      },
+      "promotion": {
+        "pass": false,
+        "checks": {
+          "sample": false,
+          "winRate": false,
+          "expectancy": false,
+          "profitFactor": false,
+          "sharpe": false,
+          "drawdown": true
+        },
+        "thresholds": {
+          "minTrades": 50,
+          "minWinRate": 50,
+          "minProfitFactor": 1.5,
+          "minSharpe": 1.2,
+          "maxDrawdownPct": 10
+        }
+      },
+      "diagnostics": {
+        "tickersTested": 40,
+        "tickersWithTrades": 0,
+        "rejectionCounts": {
+          "actionable": 7331,
+          "sideAllowed": 11168,
+          "confidence": 7899,
+          "rewardRisk": 71
+        }
+      },
+      "policyVersions": {
+        "decision": "capital-readiness-v1",
+        "exit": "hybrid-exit-v1",
+        "costs": "implementation-cost-v1"
+      },
+      "deltaVsBaseline": null
+    }
+  ]
+}

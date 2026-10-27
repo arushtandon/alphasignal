@@ -1,0 +1,2065 @@
+{
+  "generatedAt": "2026-09-25T11:38:59.209Z",
+  "study": "omitted-geo-rescue-v1",
+  "methodology": {
+    "preregistration": "docs/omitted-geo-rescue-rerun-preregistration.md",
+    "holdoutCutoff": null,
+    "holdoutValidity": "OVERLAP_RISK: trailing 126-session fold overlaps prior studies because no newer clean 126-session period exists",
+    "liveRulesChanged": false,
+    "fmpPointInTimeVerified": false
+  },
+  "sourceStatus": {
+    "France": {
+      "target": "SBF 120",
+      "requiredAsOfOnOrBefore": "2023-03-20",
+      "source": "Euronext historical composition export",
+      "status": "REQUIRES_DATED_SNAPSHOT",
+      "reason": "A current component list would introduce survivorship bias into the 2023 holdout."
+    },
+    "Germany": {
+      "target": "HDAX (DAX + MDAX + TecDAX, de-duplicated)",
+      "requiredAsOfOnOrBefore": "2023-03-20",
+      "source": "STOXX/Deutsche Börse dated DAX, MDAX and TecDAX selection lists",
+      "status": "REQUIRES_DATED_SNAPSHOT",
+      "reason": "Public current HDAX membership cannot be used for a 2023 holdout."
+    },
+    "HK": {
+      "southboundFlow": {
+        "source": "HKEX Stock Connect Historical Daily or licensed equivalent",
+        "status": "REQUIRES_DATED_SERIES",
+        "reason": "Historical daily Southbound net-flow data is subscription/licence gated."
+      },
+      "ahPremium": {
+        "source": "point-in-time A/H security mapping plus both listed prices",
+        "status": "REQUIRES_DATED_MAPPING",
+        "reason": "A current dual-list mapping would leak post-holdout corporate actions/listings."
+      }
+    },
+    "UK": {
+      "revenuePartition": {
+        "source": "point-in-time annual-report geographic revenue classifications",
+        "status": "REQUIRES_DATED_CLASSIFICATION",
+        "reason": "Current domestic/overseas labels are not safe to apply historically."
+      }
+    }
+  },
+  "commodityAdditions": [
+    "ZC=F",
+    "ZW=F",
+    "ZS=F",
+    "KC=F",
+    "CC=F",
+    "CT=F",
+    "SB=F",
+    "LE=F",
+    "HE=F",
+    "RB=F",
+    "HO=F",
+    "LBS=F",
+    "DBC",
+    "PDBC",
+    "GSG",
+    "USO",
+    "BNO",
+    "UNG",
+    "CPER",
+    "DBA",
+    "WEAT",
+    "CORN",
+    "SOYB",
+    "GLD",
+    "SLV"
+  ],
+  "cells": [
+    {
+      "market": "France",
+      "horizon": "short",
+      "side": "buy",
+      "frozenModel": "rsi2_lt_5__prior_close__t3__sl2__full",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-16",
+            "to": "2024-02-20"
+          },
+          "validation": {
+            "from": "2024-02-21",
+            "to": "2024-08-20"
+          },
+          "embargo": {
+            "from": "2024-08-21",
+            "to": "2024-09-18",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-19",
+            "to": "2025-03-21"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-18",
+            "to": "2024-08-20"
+          },
+          "validation": {
+            "from": "2024-08-21",
+            "to": "2025-02-21"
+          },
+          "embargo": {
+            "from": "2025-02-24",
+            "to": "2025-03-21",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-24",
+            "to": "2025-09-22"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-17",
+            "to": "2025-02-21"
+          },
+          "validation": {
+            "from": "2025-02-24",
+            "to": "2025-08-22"
+          },
+          "embargo": {
+            "from": "2025-08-25",
+            "to": "2025-09-22",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-23",
+            "to": "2026-03-24"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-21",
+            "to": "2025-08-22"
+          },
+          "validation": {
+            "from": "2025-08-25",
+            "to": "2026-02-24"
+          },
+          "embargo": {
+            "from": "2026-02-25",
+            "to": "2026-03-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-25",
+            "to": "2026-09-24"
+          }
+        }
+      ],
+      "requestedUniverse": 40,
+      "loadedUniverse": 39,
+      "universeExpansion": "BLOCKED_REQUIRES_DATED_CONSTITUENT_SNAPSHOT",
+      "development": {
+        "trades": 444,
+        "winRate": 36.3,
+        "avgReturnPct": -0.357,
+        "profitFactor": 0.479,
+        "sharpe": -3.049,
+        "maxDrawdownPct": 85.35,
+        "cvar95Pct": -5.443,
+        "compoundedReturnPct": -81.123,
+        "pnlUsd": -15868.51,
+        "avgWinPct": 0.907,
+        "avgLossPct": -1.077
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 105,
+          "winRate": 37.1,
+          "avgReturnPct": -0.231,
+          "profitFactor": 0.357,
+          "sharpe": -2.728,
+          "maxDrawdownPct": 22.381,
+          "cvar95Pct": -2.892,
+          "compoundedReturnPct": -21.902,
+          "pnlUsd": -2429.44,
+          "avgWinPct": 0.346,
+          "avgLossPct": -0.572
+        },
+        {
+          "trades": 156,
+          "winRate": 35.9,
+          "avgReturnPct": -0.341,
+          "profitFactor": 0.589,
+          "sharpe": -1.799,
+          "maxDrawdownPct": 44.095,
+          "cvar95Pct": -6.165,
+          "compoundedReturnPct": -43.823,
+          "pnlUsd": -5322.28,
+          "avgWinPct": 1.359,
+          "avgLossPct": -1.293
+        },
+        {
+          "trades": 183,
+          "winRate": 36.1,
+          "avgReturnPct": -0.444,
+          "profitFactor": 0.41,
+          "sharpe": -3.354,
+          "maxDrawdownPct": 66.592,
+          "cvar95Pct": -5.506,
+          "compoundedReturnPct": -56.973,
+          "pnlUsd": -8116.78,
+          "avgWinPct": 0.855,
+          "avgLossPct": -1.176
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 174,
+        "winRate": 37.4,
+        "avgReturnPct": -0.187,
+        "profitFactor": 0.553,
+        "sharpe": -1.896,
+        "maxDrawdownPct": 30.571,
+        "cvar95Pct": -4.485,
+        "compoundedReturnPct": -28.799,
+        "pnlUsd": -3245.41,
+        "avgWinPct": 0.618,
+        "avgLossPct": -0.666
+      },
+      "factorEligibility": {
+        "liquidity_top_decile": {
+          "eligible": true,
+          "reason": null
+        },
+        "hk_southbound_flow": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "hk_ah_discount": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "uk_revenue_partition": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "uk_weak_gbp": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "earnings_fundamental": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        }
+      },
+      "mtcPass": false,
+      "holdoutWinRatePValue": 0.999697,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.9996973776064362,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      }
+    },
+    {
+      "market": "France",
+      "horizon": "medium",
+      "side": "buy",
+      "frozenModel": "rsi2_lt_5__ma20__t21__sl2.5__full",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-15",
+            "to": "2023-12-15"
+          },
+          "validation": {
+            "from": "2023-12-18",
+            "to": "2024-06-18"
+          },
+          "embargo": {
+            "from": "2024-06-20",
+            "to": "2024-09-18",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-19",
+            "to": "2025-03-21"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-16",
+            "to": "2024-06-18"
+          },
+          "validation": {
+            "from": "2024-06-20",
+            "to": "2024-12-17"
+          },
+          "embargo": {
+            "from": "2024-12-18",
+            "to": "2025-03-21",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-24",
+            "to": "2025-09-22"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-15",
+            "to": "2024-12-17"
+          },
+          "validation": {
+            "from": "2024-12-18",
+            "to": "2025-06-23"
+          },
+          "embargo": {
+            "from": "2025-06-24",
+            "to": "2025-09-22",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-23",
+            "to": "2026-03-24"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-20",
+            "to": "2025-06-23"
+          },
+          "validation": {
+            "from": "2025-06-24",
+            "to": "2025-12-19"
+          },
+          "embargo": {
+            "from": "2025-12-22",
+            "to": "2026-03-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-25",
+            "to": "2026-09-24"
+          }
+        }
+      ],
+      "requestedUniverse": 40,
+      "loadedUniverse": 39,
+      "universeExpansion": "BLOCKED_REQUIRES_DATED_CONSTITUENT_SNAPSHOT",
+      "development": {
+        "trades": 310,
+        "winRate": 53.9,
+        "avgReturnPct": -0.474,
+        "profitFactor": 0.718,
+        "sharpe": -1.616,
+        "maxDrawdownPct": 88.463,
+        "cvar95Pct": -9.179,
+        "compoundedReturnPct": -83.473,
+        "pnlUsd": -14694.45,
+        "avgWinPct": 2.237,
+        "avgLossPct": -3.64
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 56,
+          "winRate": 62.5,
+          "avgReturnPct": -0.067,
+          "profitFactor": 0.92,
+          "sharpe": -0.205,
+          "maxDrawdownPct": 22.104,
+          "cvar95Pct": -6.155,
+          "compoundedReturnPct": -5.25,
+          "pnlUsd": -373.11,
+          "avgWinPct": 1.22,
+          "avgLossPct": -2.21
+        },
+        {
+          "trades": 126,
+          "winRate": 50.8,
+          "avgReturnPct": 0.048,
+          "profitFactor": 1.028,
+          "sharpe": 0.092,
+          "maxDrawdownPct": 64.2,
+          "cvar95Pct": -8.923,
+          "compoundedReturnPct": -13.026,
+          "pnlUsd": 603.86,
+          "avgWinPct": 3.473,
+          "avgLossPct": -3.488
+        },
+        {
+          "trades": 128,
+          "winRate": 53.1,
+          "avgReturnPct": -1.166,
+          "profitFactor": 0.421,
+          "sharpe": -3.315,
+          "maxDrawdownPct": 82.65,
+          "cvar95Pct": -9.45,
+          "compoundedReturnPct": -79.945,
+          "pnlUsd": -14925.21,
+          "avgWinPct": 1.597,
+          "avgLossPct": -4.298
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 113,
+        "winRate": 53.1,
+        "avgReturnPct": -0.804,
+        "profitFactor": 0.531,
+        "sharpe": -2.174,
+        "maxDrawdownPct": 65.833,
+        "cvar95Pct": -11.113,
+        "compoundedReturnPct": -63.327,
+        "pnlUsd": -9083.96,
+        "avgWinPct": 1.717,
+        "avgLossPct": -3.658
+      },
+      "factorEligibility": {
+        "liquidity_top_decile": {
+          "eligible": true,
+          "reason": null
+        },
+        "hk_southbound_flow": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "hk_ah_discount": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "uk_revenue_partition": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "uk_weak_gbp": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "earnings_fundamental": {
+          "eligible": false,
+          "reason": "ineligible: no verified point-in-time FMP history"
+        }
+      },
+      "mtcPass": false,
+      "holdoutWinRatePValue": 0.286328,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.2863282378969737,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      }
+    },
+    {
+      "market": "Germany",
+      "horizon": "short",
+      "side": "buy",
+      "frozenModel": "williams_r10_lt_minus_95__one_atr__t10__sl2.5__full",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-16",
+            "to": "2024-02-20"
+          },
+          "validation": {
+            "from": "2024-02-21",
+            "to": "2024-08-20"
+          },
+          "embargo": {
+            "from": "2024-08-21",
+            "to": "2024-09-18",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-19",
+            "to": "2025-03-21"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-18",
+            "to": "2024-08-20"
+          },
+          "validation": {
+            "from": "2024-08-21",
+            "to": "2025-02-21"
+          },
+          "embargo": {
+            "from": "2025-02-24",
+            "to": "2025-03-21",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-24",
+            "to": "2025-09-22"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-17",
+            "to": "2025-02-21"
+          },
+          "validation": {
+            "from": "2025-02-24",
+            "to": "2025-08-22"
+          },
+          "embargo": {
+            "from": "2025-08-25",
+            "to": "2025-09-22",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-23",
+            "to": "2026-03-24"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-21",
+            "to": "2025-08-22"
+          },
+          "validation": {
+            "from": "2025-08-25",
+            "to": "2026-02-24"
+          },
+          "embargo": {
+            "from": "2026-02-25",
+            "to": "2026-03-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-25",
+            "to": "2026-09-24"
+          }
+        }
+      ],
+      "requestedUniverse": 40,
+      "loadedUniverse": 37,
+      "universeExpansion": "BLOCKED_REQUIRES_DATED_CONSTITUENT_SNAPSHOT",
+      "development": {
+        "trades": 136,
+        "winRate": 65.4,
+        "avgReturnPct": -0.538,
+        "profitFactor": 0.71,
+        "sharpe": -1.567,
+        "maxDrawdownPct": 66.62,
+        "cvar95Pct": -9.815,
+        "compoundedReturnPct": -57.074,
+        "pnlUsd": -7311.84,
+        "avgWinPct": 2.008,
+        "avgLossPct": -5.359
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 45,
+          "winRate": 73.3,
+          "avgReturnPct": 0.17,
+          "profitFactor": 1.142,
+          "sharpe": 0.36,
+          "maxDrawdownPct": 24.624,
+          "cvar95Pct": -7.326,
+          "compoundedReturnPct": 5.532,
+          "pnlUsd": 764.95,
+          "avgWinPct": 1.866,
+          "avgLossPct": -4.493
+        },
+        {
+          "trades": 55,
+          "winRate": 56.4,
+          "avgReturnPct": -1.26,
+          "profitFactor": 0.436,
+          "sharpe": -2.308,
+          "maxDrawdownPct": 55.705,
+          "cvar95Pct": -9.9,
+          "compoundedReturnPct": -52.491,
+          "pnlUsd": -6931.64,
+          "avgWinPct": 1.729,
+          "avgLossPct": -5.122
+        },
+        {
+          "trades": 36,
+          "winRate": 69.4,
+          "avgReturnPct": -0.318,
+          "profitFactor": 0.847,
+          "sharpe": -0.404,
+          "maxDrawdownPct": 26.024,
+          "cvar95Pct": -10.195,
+          "compoundedReturnPct": -14.384,
+          "pnlUsd": -1145.15,
+          "avgWinPct": 2.542,
+          "avgLossPct": -6.819
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 32,
+        "winRate": 62.5,
+        "avgReturnPct": -0.096,
+        "profitFactor": 0.93,
+        "sharpe": -0.164,
+        "maxDrawdownPct": 20.984,
+        "cvar95Pct": -7.264,
+        "compoundedReturnPct": -4.694,
+        "pnlUsd": -307.47,
+        "avgWinPct": 2.052,
+        "avgLossPct": -3.676
+      },
+      "factorEligibility": {
+        "liquidity_top_decile": {
+          "eligible": true,
+          "reason": null
+        },
+        "hk_southbound_flow": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "hk_ah_discount": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "uk_revenue_partition": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "uk_weak_gbp": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "earnings_fundamental": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        }
+      },
+      "mtcPass": false,
+      "holdoutWinRatePValue": 0.107664,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.10766357486136258,
+        "pass": false,
+        "highWinLowPf": true,
+        "promotable": false,
+        "rejectionReason": "rejected bleeder: win target with PF below 1.3"
+      }
+    },
+    {
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "buy",
+      "frozenModel": "williams_r10_lt_minus_95__one_atr__t21__sl2.5__full",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-15",
+            "to": "2023-12-15"
+          },
+          "validation": {
+            "from": "2023-12-18",
+            "to": "2024-06-18"
+          },
+          "embargo": {
+            "from": "2024-06-20",
+            "to": "2024-09-18",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-19",
+            "to": "2025-03-21"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-16",
+            "to": "2024-06-18"
+          },
+          "validation": {
+            "from": "2024-06-20",
+            "to": "2024-12-17"
+          },
+          "embargo": {
+            "from": "2024-12-18",
+            "to": "2025-03-21",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-24",
+            "to": "2025-09-22"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-15",
+            "to": "2024-12-17"
+          },
+          "validation": {
+            "from": "2024-12-18",
+            "to": "2025-06-23"
+          },
+          "embargo": {
+            "from": "2025-06-24",
+            "to": "2025-09-22",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-23",
+            "to": "2026-03-24"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-20",
+            "to": "2025-06-23"
+          },
+          "validation": {
+            "from": "2025-06-24",
+            "to": "2025-12-19"
+          },
+          "embargo": {
+            "from": "2025-12-22",
+            "to": "2026-03-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-25",
+            "to": "2026-09-24"
+          }
+        }
+      ],
+      "requestedUniverse": 40,
+      "loadedUniverse": 37,
+      "universeExpansion": "BLOCKED_REQUIRES_DATED_CONSTITUENT_SNAPSHOT",
+      "development": {
+        "trades": 133,
+        "winRate": 71.4,
+        "avgReturnPct": -0.503,
+        "profitFactor": 0.741,
+        "sharpe": -1.366,
+        "maxDrawdownPct": 66.31,
+        "cvar95Pct": -10.018,
+        "compoundedReturnPct": -54.829,
+        "pnlUsd": -6688.54,
+        "avgWinPct": 2.015,
+        "avgLossPct": -6.798
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 45,
+          "winRate": 80,
+          "avgReturnPct": 0.112,
+          "profitFactor": 1.084,
+          "sharpe": 0.208,
+          "maxDrawdownPct": 30.066,
+          "cvar95Pct": -8.689,
+          "compoundedReturnPct": 2.088,
+          "pnlUsd": 505.04,
+          "avgWinPct": 1.812,
+          "avgLossPct": -6.689
+        },
+        {
+          "trades": 52,
+          "winRate": 65.4,
+          "avgReturnPct": -1.079,
+          "profitFactor": 0.521,
+          "sharpe": -1.805,
+          "maxDrawdownPct": 53.67,
+          "cvar95Pct": -9.9,
+          "compoundedReturnPct": -45.863,
+          "pnlUsd": -5608.24,
+          "avgWinPct": 1.795,
+          "avgLossPct": -6.507
+        },
+        {
+          "trades": 36,
+          "winRate": 69.4,
+          "avgReturnPct": -0.44,
+          "profitFactor": 0.804,
+          "sharpe": -0.545,
+          "maxDrawdownPct": 26.024,
+          "cvar95Pct": -10.195,
+          "compoundedReturnPct": -18.268,
+          "pnlUsd": -1585.35,
+          "avgWinPct": 2.605,
+          "avgLossPct": -7.362
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 31,
+        "winRate": 71,
+        "avgReturnPct": -0.014,
+        "profitFactor": 0.991,
+        "sharpe": -0.021,
+        "maxDrawdownPct": 17.838,
+        "cvar95Pct": -7.454,
+        "compoundedReturnPct": -2.642,
+        "pnlUsd": -43.96,
+        "avgWinPct": 2.223,
+        "avgLossPct": -5.484
+      },
+      "factorEligibility": {
+        "liquidity_top_decile": {
+          "eligible": true,
+          "reason": null
+        },
+        "hk_southbound_flow": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "hk_ah_discount": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "uk_revenue_partition": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "uk_weak_gbp": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "earnings_fundamental": {
+          "eligible": false,
+          "reason": "ineligible: no verified point-in-time FMP history"
+        }
+      },
+      "mtcPass": false,
+      "holdoutWinRatePValue": 0.014725,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.014724686741828918,
+        "pass": false,
+        "highWinLowPf": true,
+        "promotable": false,
+        "rejectionReason": "rejected bleeder: win target with PF below 1.3"
+      }
+    },
+    {
+      "market": "HK",
+      "horizon": "short",
+      "side": "buy",
+      "frozenModel": "close_below_lower_bb20_2__one_atr__t10__sl2.5__full",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-16",
+            "to": "2024-02-20"
+          },
+          "validation": {
+            "from": "2024-02-21",
+            "to": "2024-08-20"
+          },
+          "embargo": {
+            "from": "2024-08-21",
+            "to": "2024-09-18",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-19",
+            "to": "2025-03-21"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-18",
+            "to": "2024-08-20"
+          },
+          "validation": {
+            "from": "2024-08-21",
+            "to": "2025-02-21"
+          },
+          "embargo": {
+            "from": "2025-02-24",
+            "to": "2025-03-21",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-24",
+            "to": "2025-09-22"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-17",
+            "to": "2025-02-21"
+          },
+          "validation": {
+            "from": "2025-02-24",
+            "to": "2025-08-22"
+          },
+          "embargo": {
+            "from": "2025-08-25",
+            "to": "2025-09-22",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-23",
+            "to": "2026-03-24"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-21",
+            "to": "2025-08-22"
+          },
+          "validation": {
+            "from": "2025-08-25",
+            "to": "2026-02-24"
+          },
+          "embargo": {
+            "from": "2026-02-25",
+            "to": "2026-03-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-25",
+            "to": "2026-09-24"
+          }
+        }
+      ],
+      "requestedUniverse": 78,
+      "loadedUniverse": 64,
+      "universeExpansion": "BLOCKED_REQUIRES_DATED_CONSTITUENT_SNAPSHOT",
+      "development": {
+        "trades": 182,
+        "winRate": 59.3,
+        "avgReturnPct": -0.532,
+        "profitFactor": 0.764,
+        "sharpe": -1.458,
+        "maxDrawdownPct": 73.699,
+        "cvar95Pct": -11.8,
+        "compoundedReturnPct": -69.815,
+        "pnlUsd": -9676.21,
+        "avgWinPct": 2.896,
+        "avgLossPct": -5.535
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 37,
+          "winRate": 43.2,
+          "avgReturnPct": -2.07,
+          "profitFactor": 0.366,
+          "sharpe": -2.596,
+          "maxDrawdownPct": 55.875,
+          "cvar95Pct": -9.897,
+          "compoundedReturnPct": -55.875,
+          "pnlUsd": -7658.72,
+          "avgWinPct": 2.767,
+          "avgLossPct": -5.755
+        },
+        {
+          "trades": 56,
+          "winRate": 73.2,
+          "avgReturnPct": 0.776,
+          "profitFactor": 1.43,
+          "sharpe": 1.07,
+          "maxDrawdownPct": 38.783,
+          "cvar95Pct": -13.633,
+          "compoundedReturnPct": 41.798,
+          "pnlUsd": 4343.07,
+          "avgWinPct": 3.524,
+          "avgLossPct": -6.736
+        },
+        {
+          "trades": 89,
+          "winRate": 57.3,
+          "avgReturnPct": -0.715,
+          "profitFactor": 0.661,
+          "sharpe": -1.522,
+          "maxDrawdownPct": 60.478,
+          "cvar95Pct": -11.282,
+          "compoundedReturnPct": -51.757,
+          "pnlUsd": -6360.56,
+          "avgWinPct": 2.432,
+          "avgLossPct": -4.938
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 11,
+        "winRate": 72.7,
+        "avgReturnPct": 0.697,
+        "profitFactor": 1.755,
+        "sharpe": 0.749,
+        "maxDrawdownPct": 9.891,
+        "cvar95Pct": -6.749,
+        "compoundedReturnPct": 7.422,
+        "pnlUsd": 767.17,
+        "avgWinPct": 2.229,
+        "avgLossPct": -3.388
+      },
+      "factorEligibility": {
+        "liquidity_top_decile": {
+          "eligible": true,
+          "reason": null
+        },
+        "hk_southbound_flow": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "hk_ah_discount": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "uk_revenue_partition": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "uk_weak_gbp": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "earnings_fundamental": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        }
+      },
+      "mtcPass": false,
+      "holdoutWinRatePValue": 0.113281,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.11328124999999997,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      }
+    },
+    {
+      "market": "HK",
+      "horizon": "medium",
+      "side": "buy",
+      "frozenModel": "close_below_lower_bb20_2__one_atr__t21__sl2.5__partial",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-15",
+            "to": "2023-12-15"
+          },
+          "validation": {
+            "from": "2023-12-18",
+            "to": "2024-06-18"
+          },
+          "embargo": {
+            "from": "2024-06-20",
+            "to": "2024-09-18",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-19",
+            "to": "2025-03-21"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-16",
+            "to": "2024-06-18"
+          },
+          "validation": {
+            "from": "2024-06-20",
+            "to": "2024-12-17"
+          },
+          "embargo": {
+            "from": "2024-12-18",
+            "to": "2025-03-21",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-24",
+            "to": "2025-09-22"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-15",
+            "to": "2024-12-17"
+          },
+          "validation": {
+            "from": "2024-12-18",
+            "to": "2025-06-23"
+          },
+          "embargo": {
+            "from": "2025-06-24",
+            "to": "2025-09-22",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-23",
+            "to": "2026-03-24"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-20",
+            "to": "2025-06-23"
+          },
+          "validation": {
+            "from": "2025-06-24",
+            "to": "2025-12-19"
+          },
+          "embargo": {
+            "from": "2025-12-22",
+            "to": "2026-03-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-25",
+            "to": "2026-09-24"
+          }
+        }
+      ],
+      "requestedUniverse": 78,
+      "loadedUniverse": 64,
+      "universeExpansion": "BLOCKED_REQUIRES_DATED_CONSTITUENT_SNAPSHOT",
+      "development": {
+        "trades": 178,
+        "winRate": 71.3,
+        "avgReturnPct": 0.093,
+        "profitFactor": 1.045,
+        "sharpe": 0.221,
+        "maxDrawdownPct": 70.783,
+        "cvar95Pct": -12.619,
+        "compoundedReturnPct": -11.18,
+        "pnlUsd": 1655.65,
+        "avgWinPct": 2.998,
+        "avgLossPct": -7.14
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 37,
+          "winRate": 75.7,
+          "avgReturnPct": 0.894,
+          "profitFactor": 1.554,
+          "sharpe": 1.015,
+          "maxDrawdownPct": 26.95,
+          "cvar95Pct": -9.936,
+          "compoundedReturnPct": 31.989,
+          "pnlUsd": 3309.48,
+          "avgWinPct": 3.316,
+          "avgLossPct": -6.638
+        },
+        {
+          "trades": 55,
+          "winRate": 74.5,
+          "avgReturnPct": 1.372,
+          "profitFactor": 1.738,
+          "sharpe": 1.576,
+          "maxDrawdownPct": 40.24,
+          "cvar95Pct": -13.633,
+          "compoundedReturnPct": 89.111,
+          "pnlUsd": 7546.32,
+          "avgWinPct": 4.336,
+          "avgLossPct": -7.309
+        },
+        {
+          "trades": 86,
+          "winRate": 67.4,
+          "avgReturnPct": -1.07,
+          "profitFactor": 0.545,
+          "sharpe": -2.023,
+          "maxDrawdownPct": 70.783,
+          "cvar95Pct": -12.422,
+          "compoundedReturnPct": -64.416,
+          "pnlUsd": -9200.15,
+          "avgWinPct": 1.898,
+          "avgLossPct": -7.218
+        }
+      ],
+      "stableDevelopmentFolds": 2,
+      "holdout": {
+        "trades": 9,
+        "winRate": 77.8,
+        "avgReturnPct": 1.162,
+        "profitFactor": 1.836,
+        "sharpe": 0.742,
+        "maxDrawdownPct": 12.117,
+        "cvar95Pct": -6.749,
+        "compoundedReturnPct": 9.983,
+        "pnlUsd": 1045.61,
+        "avgWinPct": 3.28,
+        "avgLossPct": -6.253
+      },
+      "factorEligibility": {
+        "liquidity_top_decile": {
+          "eligible": true,
+          "reason": null
+        },
+        "hk_southbound_flow": {
+          "eligible": true,
+          "reason": null
+        },
+        "hk_ah_discount": {
+          "eligible": true,
+          "reason": null
+        },
+        "uk_revenue_partition": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "uk_weak_gbp": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "earnings_fundamental": {
+          "eligible": false,
+          "reason": "ineligible: no verified point-in-time FMP history"
+        }
+      },
+      "mtcPass": false,
+      "holdoutWinRatePValue": 0.089844,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.08984375,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "short",
+      "side": "buy",
+      "frozenModel": "rsi2_lt_5__prior_close__t3__sl2__full",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-16",
+            "to": "2024-02-20"
+          },
+          "validation": {
+            "from": "2024-02-21",
+            "to": "2024-08-20"
+          },
+          "embargo": {
+            "from": "2024-08-21",
+            "to": "2024-09-18",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-19",
+            "to": "2025-03-21"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-18",
+            "to": "2024-08-20"
+          },
+          "validation": {
+            "from": "2024-08-21",
+            "to": "2025-02-21"
+          },
+          "embargo": {
+            "from": "2025-02-24",
+            "to": "2025-03-21",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-24",
+            "to": "2025-09-22"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-17",
+            "to": "2025-02-21"
+          },
+          "validation": {
+            "from": "2025-02-24",
+            "to": "2025-08-22"
+          },
+          "embargo": {
+            "from": "2025-08-25",
+            "to": "2025-09-22",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-23",
+            "to": "2026-03-24"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-21",
+            "to": "2025-08-22"
+          },
+          "validation": {
+            "from": "2025-08-25",
+            "to": "2026-02-24"
+          },
+          "embargo": {
+            "from": "2026-02-25",
+            "to": "2026-03-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-25",
+            "to": "2026-09-24"
+          }
+        }
+      ],
+      "requestedUniverse": 100,
+      "loadedUniverse": 92,
+      "universeExpansion": "BLOCKED_REQUIRES_DATED_CONSTITUENT_SNAPSHOT",
+      "development": {
+        "trades": 1511,
+        "winRate": 15.6,
+        "avgReturnPct": -0.764,
+        "profitFactor": 0.179,
+        "sharpe": -7.687,
+        "maxDrawdownPct": 99.999,
+        "cvar95Pct": -5.512,
+        "compoundedReturnPct": -99.999,
+        "pnlUsd": -115423.68,
+        "avgWinPct": 1.073,
+        "avgLossPct": -1.102
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 408,
+          "winRate": 9.1,
+          "avgReturnPct": -0.79,
+          "profitFactor": 0.059,
+          "sharpe": -11.031,
+          "maxDrawdownPct": 96.179,
+          "cvar95Pct": -4.652,
+          "compoundedReturnPct": -96.179,
+          "pnlUsd": -32246.5,
+          "avgWinPct": 0.544,
+          "avgLossPct": -0.923
+        },
+        {
+          "trades": 417,
+          "winRate": 9.4,
+          "avgReturnPct": -0.954,
+          "profitFactor": 0.132,
+          "sharpe": -8.362,
+          "maxDrawdownPct": 98.289,
+          "cvar95Pct": -6.087,
+          "compoundedReturnPct": -98.289,
+          "pnlUsd": -39789.29,
+          "avgWinPct": 1.551,
+          "avgLossPct": -1.213
+        },
+        {
+          "trades": 686,
+          "winRate": 23.2,
+          "avgReturnPct": -0.632,
+          "profitFactor": 0.283,
+          "sharpe": -6.128,
+          "maxDrawdownPct": 99.077,
+          "cvar95Pct": -5.388,
+          "compoundedReturnPct": -98.828,
+          "pnlUsd": -43387.89,
+          "avgWinPct": 1.079,
+          "avgLossPct": -1.149
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 568,
+        "winRate": 15.8,
+        "avgReturnPct": -0.837,
+        "profitFactor": 0.136,
+        "sharpe": -7.35,
+        "maxDrawdownPct": 99.235,
+        "cvar95Pct": -7.141,
+        "compoundedReturnPct": -99.234,
+        "pnlUsd": -47534.27,
+        "avgWinPct": 0.834,
+        "avgLossPct": -1.151
+      },
+      "factorEligibility": {
+        "liquidity_top_decile": {
+          "eligible": true,
+          "reason": null
+        },
+        "hk_southbound_flow": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "hk_ah_discount": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "uk_revenue_partition": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "uk_weak_gbp": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "earnings_fundamental": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        }
+      },
+      "mtcPass": false,
+      "holdoutWinRatePValue": 1,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.999999999999999,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      }
+    },
+    {
+      "market": "UK",
+      "horizon": "medium",
+      "side": "buy",
+      "frozenModel": "rsi2_lt_5__prior_close__t10__sl2__full",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-15",
+            "to": "2023-12-15"
+          },
+          "validation": {
+            "from": "2023-12-18",
+            "to": "2024-06-18"
+          },
+          "embargo": {
+            "from": "2024-06-20",
+            "to": "2024-09-18",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-19",
+            "to": "2025-03-21"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-16",
+            "to": "2024-06-18"
+          },
+          "validation": {
+            "from": "2024-06-20",
+            "to": "2024-12-17"
+          },
+          "embargo": {
+            "from": "2024-12-18",
+            "to": "2025-03-21",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-24",
+            "to": "2025-09-22"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-15",
+            "to": "2024-12-17"
+          },
+          "validation": {
+            "from": "2024-12-18",
+            "to": "2025-06-23"
+          },
+          "embargo": {
+            "from": "2025-06-24",
+            "to": "2025-09-22",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-23",
+            "to": "2026-03-24"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-20",
+            "to": "2025-06-23"
+          },
+          "validation": {
+            "from": "2025-06-24",
+            "to": "2025-12-19"
+          },
+          "embargo": {
+            "from": "2025-12-22",
+            "to": "2026-03-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-25",
+            "to": "2026-09-24"
+          }
+        }
+      ],
+      "requestedUniverse": 100,
+      "loadedUniverse": 92,
+      "universeExpansion": "BLOCKED_REQUIRES_DATED_CONSTITUENT_SNAPSHOT",
+      "development": {
+        "trades": 1464,
+        "winRate": 18.1,
+        "avgReturnPct": -0.741,
+        "profitFactor": 0.218,
+        "sharpe": -6.216,
+        "maxDrawdownPct": 99.999,
+        "cvar95Pct": -6.581,
+        "compoundedReturnPct": -99.999,
+        "pnlUsd": -108463.54,
+        "avgWinPct": 1.142,
+        "avgLossPct": -1.157
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 402,
+          "winRate": 10.7,
+          "avgReturnPct": -0.814,
+          "profitFactor": 0.079,
+          "sharpe": -8.965,
+          "maxDrawdownPct": 96.422,
+          "cvar95Pct": -5.603,
+          "compoundedReturnPct": -96.422,
+          "pnlUsd": -32735.57,
+          "avgWinPct": 0.651,
+          "avgLossPct": -0.99
+        },
+        {
+          "trades": 404,
+          "winRate": 12.4,
+          "avgReturnPct": -0.858,
+          "profitFactor": 0.181,
+          "sharpe": -6.888,
+          "maxDrawdownPct": 97.157,
+          "cvar95Pct": -6.469,
+          "compoundedReturnPct": -97.157,
+          "pnlUsd": -34644.48,
+          "avgWinPct": 1.536,
+          "avgLossPct": -1.196
+        },
+        {
+          "trades": 658,
+          "winRate": 26.1,
+          "avgReturnPct": -0.624,
+          "profitFactor": 0.325,
+          "sharpe": -4.79,
+          "maxDrawdownPct": 98.83,
+          "cvar95Pct": -7.088,
+          "compoundedReturnPct": -98.599,
+          "pnlUsd": -41083.5,
+          "avgWinPct": 1.15,
+          "avgLossPct": -1.252
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 557,
+        "winRate": 18.9,
+        "avgReturnPct": -0.778,
+        "profitFactor": 0.169,
+        "sharpe": -6.235,
+        "maxDrawdownPct": 98.854,
+        "cvar95Pct": -7.935,
+        "compoundedReturnPct": -98.852,
+        "pnlUsd": -43345.14,
+        "avgWinPct": 0.841,
+        "avgLossPct": -1.154
+      },
+      "factorEligibility": {
+        "liquidity_top_decile": {
+          "eligible": true,
+          "reason": null
+        },
+        "hk_southbound_flow": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "hk_ah_discount": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "uk_revenue_partition": {
+          "eligible": true,
+          "reason": null
+        },
+        "uk_weak_gbp": {
+          "eligible": true,
+          "reason": null
+        },
+        "earnings_fundamental": {
+          "eligible": false,
+          "reason": "ineligible: no verified point-in-time FMP history"
+        }
+      },
+      "mtcPass": false,
+      "holdoutWinRatePValue": 1,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 1,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      }
+    },
+    {
+      "market": "Commodities",
+      "horizon": "short",
+      "side": "buy",
+      "frozenModel": "rsi2_lt_5__prior_close__t3__sl2__full",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-16",
+            "to": "2024-02-20"
+          },
+          "validation": {
+            "from": "2024-02-21",
+            "to": "2024-08-20"
+          },
+          "embargo": {
+            "from": "2024-08-21",
+            "to": "2024-09-18",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-19",
+            "to": "2025-03-21"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-18",
+            "to": "2024-08-20"
+          },
+          "validation": {
+            "from": "2024-08-21",
+            "to": "2025-02-21"
+          },
+          "embargo": {
+            "from": "2025-02-24",
+            "to": "2025-03-21",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-24",
+            "to": "2025-09-22"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-17",
+            "to": "2025-02-21"
+          },
+          "validation": {
+            "from": "2025-02-24",
+            "to": "2025-08-22"
+          },
+          "embargo": {
+            "from": "2025-08-25",
+            "to": "2025-09-22",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-23",
+            "to": "2026-03-24"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-21",
+            "to": "2025-08-22"
+          },
+          "validation": {
+            "from": "2025-08-25",
+            "to": "2026-02-24"
+          },
+          "embargo": {
+            "from": "2026-02-25",
+            "to": "2026-03-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-25",
+            "to": "2026-09-24"
+          }
+        }
+      ],
+      "requestedUniverse": 35,
+      "loadedUniverse": 34,
+      "universeExpansion": "COMPLETED",
+      "development": {
+        "trades": 322,
+        "winRate": 21.7,
+        "avgReturnPct": -0.671,
+        "profitFactor": 0.233,
+        "sharpe": -5.863,
+        "maxDrawdownPct": 90.008,
+        "cvar95Pct": -6.23,
+        "compoundedReturnPct": -89.184,
+        "pnlUsd": -21620.06,
+        "avgWinPct": 0.937,
+        "avgLossPct": -1.118
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 80,
+          "winRate": 18.8,
+          "avgReturnPct": -0.909,
+          "profitFactor": 0.098,
+          "sharpe": -4.709,
+          "maxDrawdownPct": 52.84,
+          "cvar95Pct": -6.641,
+          "compoundedReturnPct": -52.427,
+          "pnlUsd": -7271.93,
+          "avgWinPct": 0.526,
+          "avgLossPct": -1.24
+        },
+        {
+          "trades": 114,
+          "winRate": 18.4,
+          "avgReturnPct": -0.799,
+          "profitFactor": 0.096,
+          "sharpe": -5.405,
+          "maxDrawdownPct": 60.53,
+          "cvar95Pct": -6.111,
+          "compoundedReturnPct": -60.53,
+          "pnlUsd": -9111.38,
+          "avgWinPct": 0.458,
+          "avgLossPct": -1.083
+        },
+        {
+          "trades": 128,
+          "winRate": 26.6,
+          "avgReturnPct": -0.409,
+          "profitFactor": 0.479,
+          "sharpe": -2.269,
+          "maxDrawdownPct": 46.785,
+          "cvar95Pct": -6.099,
+          "compoundedReturnPct": -42.4,
+          "pnlUsd": -5236.76,
+          "avgWinPct": 1.413,
+          "avgLossPct": -1.068
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 229,
+        "winRate": 27.1,
+        "avgReturnPct": -0.694,
+        "profitFactor": 0.211,
+        "sharpe": -6.287,
+        "maxDrawdownPct": 80.871,
+        "cvar95Pct": -5.71,
+        "compoundedReturnPct": -80.359,
+        "pnlUsd": -15891.14,
+        "avgWinPct": 0.687,
+        "avgLossPct": -1.206
+      },
+      "factorEligibility": {
+        "liquidity_top_decile": {
+          "eligible": true,
+          "reason": null
+        },
+        "hk_southbound_flow": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "hk_ah_discount": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "uk_revenue_partition": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "uk_weak_gbp": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        },
+        "earnings_fundamental": {
+          "eligible": false,
+          "reason": "ineligible: factor-horizon mismatch"
+        }
+      },
+      "mtcPass": false,
+      "holdoutWinRatePValue": 1,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.999999999999526,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      }
+    },
+    {
+      "market": "Commodities",
+      "horizon": "medium",
+      "side": "buy",
+      "frozenModel": "rsi2_lt_5__prior_close__t10__sl2__full",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-15",
+            "to": "2023-12-15"
+          },
+          "validation": {
+            "from": "2023-12-18",
+            "to": "2024-06-18"
+          },
+          "embargo": {
+            "from": "2024-06-20",
+            "to": "2024-09-18",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-19",
+            "to": "2025-03-21"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-16",
+            "to": "2024-06-18"
+          },
+          "validation": {
+            "from": "2024-06-20",
+            "to": "2024-12-17"
+          },
+          "embargo": {
+            "from": "2024-12-18",
+            "to": "2025-03-21",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-24",
+            "to": "2025-09-22"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-15",
+            "to": "2024-12-17"
+          },
+          "validation": {
+            "from": "2024-12-18",
+            "to": "2025-06-23"
+          },
+          "embargo": {
+            "from": "2025-06-24",
+            "to": "2025-09-22",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-23",
+            "to": "2026-03-24"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-20",
+            "to": "2025-06-23"
+          },
+          "validation": {
+            "from": "2025-06-24",
+            "to": "2025-12-19"
+          },
+          "embargo": {
+            "from": "2025-12-22",
+            "to": "2026-03-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-25",
+            "to": "2026-09-24"
+          }
+        }
+      ],
+      "requestedUniverse": 35,
+      "loadedUniverse": 34,
+      "universeExpansion": "COMPLETED",
+      "development": {
+        "trades": 309,
+        "winRate": 26.2,
+        "avgReturnPct": -0.796,
+        "profitFactor": 0.221,
+        "sharpe": -5.58,
+        "maxDrawdownPct": 92.847,
+        "cvar95Pct": -8.031,
+        "compoundedReturnPct": -92.214,
+        "pnlUsd": -24599.28,
+        "avgWinPct": 0.86,
+        "avgLossPct": -1.384
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 77,
+          "winRate": 26,
+          "avgReturnPct": -0.836,
+          "profitFactor": 0.172,
+          "sharpe": -3.584,
+          "maxDrawdownPct": 49.019,
+          "cvar95Pct": -7.499,
+          "compoundedReturnPct": -48.465,
+          "pnlUsd": -6433.68,
+          "avgWinPct": 0.669,
+          "avgLossPct": -1.363
+        },
+        {
+          "trades": 111,
+          "winRate": 19.8,
+          "avgReturnPct": -0.887,
+          "profitFactor": 0.105,
+          "sharpe": -4.938,
+          "maxDrawdownPct": 63.585,
+          "cvar95Pct": -6.963,
+          "compoundedReturnPct": -63.585,
+          "pnlUsd": -9850.47,
+          "avgWinPct": 0.528,
+          "avgLossPct": -1.237
+        },
+        {
+          "trades": 121,
+          "winRate": 32.2,
+          "avgReturnPct": -0.687,
+          "profitFactor": 0.349,
+          "sharpe": -2.816,
+          "maxDrawdownPct": 61.803,
+          "cvar95Pct": -8.657,
+          "compoundedReturnPct": -58.511,
+          "pnlUsd": -8315.12,
+          "avgWinPct": 1.145,
+          "avgLossPct": -1.558
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 216,
+        "winRate": 30.6,
+        "avgReturnPct": -0.724,
+        "profitFactor": 0.263,
+        "sharpe": -4.548,
+        "maxDrawdownPct": 81.656,
+        "cvar95Pct": -8.845,
+        "compoundedReturnPct": -80.435,
+        "pnlUsd": -15634.16,
+        "avgWinPct": 0.844,
+        "avgLossPct": -1.414
+      },
+      "factorEligibility": {
+        "liquidity_top_decile": {
+          "eligible": true,
+          "reason": null
+        },
+        "hk_southbound_flow": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "hk_ah_discount": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "uk_revenue_partition": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "uk_weak_gbp": {
+          "eligible": false,
+          "reason": "ineligible: factor-geography mismatch"
+        },
+        "earnings_fundamental": {
+          "eligible": false,
+          "reason": "ineligible: no verified point-in-time FMP history"
+        }
+      },
+      "mtcPass": false,
+      "holdoutWinRatePValue": 1,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.9999999976901564,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      }
+    }
+  ]
+}

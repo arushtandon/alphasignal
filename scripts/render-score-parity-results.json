@@ -1,0 +1,1205 @@
+{
+  "generatedAt": "2026-10-02T10:58:27.150Z",
+  "mode": "BACKTEST_ONLY",
+  "renderHistory": {
+    "fetchedAt": "2026-10-02T10:58:18.424Z",
+    "sourceOrigin": "https://alphasignal-dvg5.onrender.com",
+    "rows": 1939
+  },
+  "danelfin": {
+    "retiredOn": "2026-09-09",
+    "comparisonFrom": "2026-09-10"
+  },
+  "scope": "Every Render history Buy/Sell pick whose SGT recommendation date is on or after comparisonFrom.",
+  "knownReplayDifferences": [
+    "History horizon scores are mutable: applyAnalyticsSnapshotToTrade overwrites them during revalidation. Rows marked MUTABLE_REVALIDATED do not preserve the publication-time score and cannot establish original recommendation-score parity.",
+    "The replay injects cache-derived PIT Piotroski and Altman Z. Render history stores the live FMP snapshot/score captured at recommendation time; these are intentionally not the same time-series source.",
+    "The replay has historical benchmark regime but no dated live board shortlist, open-position suppression, board lock, live quote repricing, or publication-time cross-horizon selection state.",
+    "No dated sector and company-earnings overlay event stream is injected into this audit; those live inputs are therefore UNKNOWN rather than treated as parity failures."
+  ],
+  "perMarketHorizon": {
+    "Commodities|long": {
+      "picks": 2,
+      "replayed": 0,
+      "scoreLiveMinusReplay": {
+        "n": 0,
+        "min": null,
+        "median": null,
+        "max": null,
+        "mean": null
+      },
+      "confidenceLiveMinusReplay": {
+        "n": 0,
+        "min": null,
+        "median": null,
+        "max": null,
+        "mean": null
+      },
+      "statusCounts": {
+        "NO_REPLAY_COVERAGE_FOR_MARKET": 2
+      }
+    },
+    "France|long": {
+      "picks": 1,
+      "replayed": 1,
+      "scoreLiveMinusReplay": {
+        "n": 1,
+        "min": 13,
+        "median": 13,
+        "max": 13,
+        "mean": 13
+      },
+      "confidenceLiveMinusReplay": {
+        "n": 1,
+        "min": 28,
+        "median": 28,
+        "max": 28,
+        "mean": 28
+      },
+      "statusCounts": {
+        "MATCHED_DECISION_DATE": 1
+      }
+    },
+    "Hong Kong|short": {
+      "picks": 1,
+      "replayed": 1,
+      "scoreLiveMinusReplay": {
+        "n": 1,
+        "min": -65,
+        "median": -65,
+        "max": -65,
+        "mean": -65
+      },
+      "confidenceLiveMinusReplay": {
+        "n": 1,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "statusCounts": {
+        "MATCHED_DECISION_DATE": 1
+      }
+    },
+    "India|medium": {
+      "picks": 5,
+      "replayed": 0,
+      "scoreLiveMinusReplay": {
+        "n": 0,
+        "min": null,
+        "median": null,
+        "max": null,
+        "mean": null
+      },
+      "confidenceLiveMinusReplay": {
+        "n": 0,
+        "min": null,
+        "median": null,
+        "max": null,
+        "mean": null
+      },
+      "statusCounts": {
+        "NO_REPLAY_COVERAGE_FOR_MARKET": 5
+      }
+    },
+    "Japan|long": {
+      "picks": 1,
+      "replayed": 1,
+      "scoreLiveMinusReplay": {
+        "n": 1,
+        "min": -68,
+        "median": -68,
+        "max": -68,
+        "mean": -68
+      },
+      "confidenceLiveMinusReplay": {
+        "n": 1,
+        "min": 0,
+        "median": 0,
+        "max": 0,
+        "mean": 0
+      },
+      "statusCounts": {
+        "MATCHED_DECISION_DATE": 1
+      }
+    },
+    "Japan|medium": {
+      "picks": 6,
+      "replayed": 6,
+      "scoreLiveMinusReplay": {
+        "n": 6,
+        "min": -27,
+        "median": 1.5,
+        "max": 37,
+        "mean": 4.166666666666667
+      },
+      "confidenceLiveMinusReplay": {
+        "n": 6,
+        "min": 4,
+        "median": 11,
+        "max": 28,
+        "mean": 14.666666666666666
+      },
+      "statusCounts": {
+        "MATCHED_DECISION_DATE": 6
+      }
+    },
+    "Japan|short": {
+      "picks": 2,
+      "replayed": 2,
+      "scoreLiveMinusReplay": {
+        "n": 2,
+        "min": -61,
+        "median": -48.5,
+        "max": -36,
+        "mean": -48.5
+      },
+      "confidenceLiveMinusReplay": {
+        "n": 2,
+        "min": 0,
+        "median": 6,
+        "max": 12,
+        "mean": 6
+      },
+      "statusCounts": {
+        "MATCHED_DECISION_DATE": 2
+      }
+    }
+  },
+  "picks": [
+    {
+      "ticker": "3407.T",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "date": "2026-10-02",
+      "liveScore": 69,
+      "liveConfidence": 66,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:40:51.009Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 11.465147358795807,
+        "forwardPE": null,
+        "pegRatio": 0.1852565300918946,
+        "revenueGrowth": 1.2,
+        "earningsGrowth": 17.6,
+        "_fmpSector": "Industrials",
+        "_source": "fmp"
+      },
+      "status": "MATCHED_DECISION_DATE",
+      "signalDate": "2026-10-01",
+      "paddedDecisionTail": true,
+      "replayScore": 63,
+      "replayConfidence": 50,
+      "record": {
+        "baseTechnicalScore": 63,
+        "qualityAndStructuralDelta": 0,
+        "replayPostOverlayScore": 63,
+        "replayConfidence": 50,
+        "supertrend": {
+          "direction": "bear",
+          "flippedBull": false,
+          "flippedBear": false
+        },
+        "marketTier": "fmp_quality",
+        "quality": {
+          "usable": true,
+          "piotroski": 6,
+          "altmanZ": null
+        },
+        "overlayConditions": [
+          "Below medium Supertrend — buy capped"
+        ],
+        "preOverlayConditions": [
+          "Confirmed MA200 break — held, not extended",
+          "OBV institutional accumulation",
+          "Below medium Supertrend — buy capped",
+          "Market uptrend tailwind"
+        ],
+        "postOverlayConditions": [
+          "Confirmed MA200 break — held, not extended",
+          "OBV institutional accumulation",
+          "Below medium Supertrend — buy capped",
+          "Market uptrend tailwind"
+        ],
+        "canonicalGate": "canonicalPolicy",
+        "rejectionReasons": [
+          "confidence"
+        ]
+      },
+      "scoreDifferenceLiveMinusReplay": 6,
+      "confidenceDifferenceLiveMinusReplay": 16
+    },
+    {
+      "ticker": "9503.T",
+      "market": "Japan",
+      "horizon": "short",
+      "side": "buy",
+      "date": "2026-09-30",
+      "liveScore": 11,
+      "liveConfidence": 62,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:41:01.231Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 7.0171931227509,
+        "forwardPE": null,
+        "pegRatio": null,
+        "revenueGrowth": -6.5,
+        "earningsGrowth": -9.6,
+        "_fmpSector": "Utilities",
+        "_source": "fmp"
+      },
+      "status": "MATCHED_DECISION_DATE",
+      "signalDate": "2026-09-29",
+      "paddedDecisionTail": false,
+      "replayScore": 72,
+      "replayConfidence": 62,
+      "record": {
+        "baseTechnicalScore": 84,
+        "qualityAndStructuralDelta": -12,
+        "replayPostOverlayScore": 72,
+        "replayConfidence": 62,
+        "supertrend": {
+          "direction": "bear",
+          "flippedBull": false,
+          "flippedBear": false
+        },
+        "marketTier": "fmp_quality",
+        "quality": {
+          "usable": false,
+          "piotroski": null,
+          "altmanZ": null
+        },
+        "overlayConditions": [],
+        "preOverlayConditions": [
+          "SD channel: near lower band",
+          "At MA50 support",
+          "RSI(2) 4 washed out",
+          "At lower Bollinger band"
+        ],
+        "postOverlayConditions": [
+          "SD channel: near lower band",
+          "At MA50 support",
+          "RSI(2) 4 washed out",
+          "At lower Bollinger band"
+        ],
+        "canonicalGate": "entryEligible",
+        "rejectionReasons": []
+      },
+      "scoreDifferenceLiveMinusReplay": -61,
+      "confidenceDifferenceLiveMinusReplay": 0
+    },
+    {
+      "ticker": "9744.T",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "date": "2026-09-29",
+      "liveScore": 45,
+      "liveConfidence": 66,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:41:11.857Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 16.519412328974603,
+        "forwardPE": null,
+        "pegRatio": 0.868939884295589,
+        "revenueGrowth": 3.5,
+        "earningsGrowth": 18.1,
+        "_fmpSector": "Industrials",
+        "_source": "fmp"
+      },
+      "status": "MATCHED_DECISION_DATE",
+      "signalDate": "2026-09-28",
+      "paddedDecisionTail": false,
+      "replayScore": 72,
+      "replayConfidence": 62,
+      "record": {
+        "baseTechnicalScore": 92,
+        "qualityAndStructuralDelta": -20,
+        "replayPostOverlayScore": 72,
+        "replayConfidence": 62,
+        "supertrend": {
+          "direction": "bull",
+          "flippedBull": false,
+          "flippedBear": false
+        },
+        "marketTier": "fmp_quality",
+        "quality": {
+          "usable": false,
+          "piotroski": null,
+          "altmanZ": null
+        },
+        "overlayConditions": [
+          "Supertrend medium bullish"
+        ],
+        "preOverlayConditions": [
+          "Confirmed MA200 break — held, not extended",
+          "Weekly uptrend confirmed",
+          "OBV institutional accumulation",
+          "Supertrend medium bullish",
+          "Market uptrend tailwind"
+        ],
+        "postOverlayConditions": [
+          "Confirmed MA200 break — held, not extended",
+          "Weekly uptrend confirmed",
+          "OBV institutional accumulation",
+          "Supertrend medium bullish",
+          "Market uptrend tailwind"
+        ],
+        "canonicalGate": "rewardRisk",
+        "rejectionReasons": [
+          "rewardRisk"
+        ]
+      },
+      "scoreDifferenceLiveMinusReplay": -27,
+      "confidenceDifferenceLiveMinusReplay": 4
+    },
+    {
+      "ticker": "9007.T",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "date": "2026-09-28",
+      "liveScore": 47,
+      "liveConfidence": 62,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:41:20.338Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 16.740500098444574,
+        "forwardPE": null,
+        "pegRatio": null,
+        "revenueGrowth": -0.9,
+        "earningsGrowth": -28.1,
+        "_fmpSector": "Industrials",
+        "_source": "fmp"
+      },
+      "status": "MATCHED_DECISION_DATE",
+      "signalDate": "2026-09-25",
+      "paddedDecisionTail": false,
+      "replayScore": 72,
+      "replayConfidence": 56,
+      "record": {
+        "baseTechnicalScore": 91,
+        "qualityAndStructuralDelta": -19,
+        "replayPostOverlayScore": 72,
+        "replayConfidence": 56,
+        "supertrend": {
+          "direction": "bull",
+          "flippedBull": false,
+          "flippedBear": false
+        },
+        "marketTier": "fmp_quality",
+        "quality": {
+          "usable": false,
+          "piotroski": null,
+          "altmanZ": null
+        },
+        "overlayConditions": [
+          "Supertrend medium bullish"
+        ],
+        "preOverlayConditions": [
+          "Golden Cross: MA50 > MA200",
+          "Weekly uptrend confirmed",
+          "ADX 34.3 — strong trending regime",
+          "SD channel pullback in uptrend",
+          "Supertrend medium bullish",
+          "Market uptrend tailwind"
+        ],
+        "postOverlayConditions": [
+          "Golden Cross: MA50 > MA200",
+          "Weekly uptrend confirmed",
+          "ADX 34.3 — strong trending regime",
+          "SD channel pullback in uptrend",
+          "Supertrend medium bullish",
+          "Market uptrend tailwind"
+        ],
+        "canonicalGate": "canonicalPolicy",
+        "rejectionReasons": [
+          "confidence"
+        ]
+      },
+      "scoreDifferenceLiveMinusReplay": -25,
+      "confidenceDifferenceLiveMinusReplay": 6
+    },
+    {
+      "ticker": "EICHERMOT.NS",
+      "market": "India",
+      "horizon": "medium",
+      "side": "buy",
+      "date": "2026-09-24",
+      "liveScore": 30,
+      "liveConfidence": 62,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:41:35.611Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 32.88504490804543,
+        "forwardPE": null,
+        "pegRatio": 1.7034549841060367,
+        "revenueGrowth": 25,
+        "earningsGrowth": 16.5,
+        "_fmpSector": "Consumer Cyclical",
+        "_source": "fmp"
+      },
+      "status": "NO_REPLAY_COVERAGE_FOR_MARKET",
+      "scoreDifferenceLiveMinusReplay": null,
+      "confidenceDifferenceLiveMinusReplay": null
+    },
+    {
+      "ticker": "9532.T",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "buy",
+      "date": "2026-09-24",
+      "liveScore": 4,
+      "liveConfidence": 65,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:41:44.052Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 15.922528595899873,
+        "forwardPE": null,
+        "pegRatio": 0.78,
+        "revenueGrowth": 4,
+        "earningsGrowth": 20.5,
+        "_fmpSector": "Utilities",
+        "_source": "fmp"
+      },
+      "status": "MATCHED_DECISION_DATE",
+      "signalDate": "2026-09-18",
+      "paddedDecisionTail": false,
+      "replayScore": 72,
+      "replayConfidence": 65,
+      "record": {
+        "baseTechnicalScore": 92,
+        "qualityAndStructuralDelta": -20,
+        "replayPostOverlayScore": 72,
+        "replayConfidence": 65,
+        "supertrend": {
+          "direction": "bull",
+          "flippedBull": false,
+          "flippedBear": false
+        },
+        "marketTier": "fmp_quality",
+        "quality": {
+          "usable": false,
+          "piotroski": null,
+          "altmanZ": null
+        },
+        "overlayConditions": [
+          "Supertrend long bullish"
+        ],
+        "preOverlayConditions": [
+          "Confirmed MA200 break",
+          "Leader: near 52W high",
+          "Weekly uptrend",
+          "ADX 49.3 trending",
+          "SD channel VCP entry",
+          "OBV+HH/HL structure",
+          "Supertrend long bullish",
+          "Market uptrend tailwind"
+        ],
+        "postOverlayConditions": [
+          "Confirmed MA200 break",
+          "Leader: near 52W high",
+          "Weekly uptrend",
+          "ADX 49.3 trending",
+          "SD channel VCP entry",
+          "OBV+HH/HL structure",
+          "Supertrend long bullish",
+          "Market uptrend tailwind"
+        ],
+        "canonicalGate": "rewardRisk",
+        "rejectionReasons": [
+          "rewardRisk"
+        ]
+      },
+      "scoreDifferenceLiveMinusReplay": -68,
+      "confidenceDifferenceLiveMinusReplay": 0
+    },
+    {
+      "ticker": "GRASIM.NS",
+      "market": "India",
+      "horizon": "medium",
+      "side": "buy",
+      "date": "2026-09-22",
+      "liveScore": 45,
+      "liveConfidence": 62,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:42:00.517Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 35.2829064919595,
+        "forwardPE": null,
+        "pegRatio": 0.7974621972163278,
+        "revenueGrowth": 18.2,
+        "earningsGrowth": 34,
+        "_fmpSector": "Basic Materials",
+        "_source": "fmp"
+      },
+      "status": "NO_REPLAY_COVERAGE_FOR_MARKET",
+      "scoreDifferenceLiveMinusReplay": null,
+      "confidenceDifferenceLiveMinusReplay": null
+    },
+    {
+      "ticker": "8604.T",
+      "market": "Japan",
+      "horizon": "short",
+      "side": "buy",
+      "date": "2026-09-18",
+      "liveScore": 25,
+      "liveConfidence": 62,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:42:09.040Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 0.30511878778553003,
+        "forwardPE": null,
+        "pegRatio": 0.00008063115412790787,
+        "revenueGrowth": 5.6,
+        "earningsGrowth": 6.3,
+        "_fmpSector": "Financial Services",
+        "_source": "fmp"
+      },
+      "status": "MATCHED_DECISION_DATE",
+      "signalDate": "2026-09-17",
+      "paddedDecisionTail": false,
+      "replayScore": 61,
+      "replayConfidence": 50,
+      "record": {
+        "baseTechnicalScore": 78,
+        "qualityAndStructuralDelta": -17,
+        "replayPostOverlayScore": 61,
+        "replayConfidence": 50,
+        "supertrend": {
+          "direction": "bull",
+          "flippedBull": false,
+          "flippedBear": false
+        },
+        "marketTier": "fmp_quality",
+        "quality": {
+          "usable": true,
+          "piotroski": 6,
+          "altmanZ": 3.6558852658220404
+        },
+        "overlayConditions": [
+          "Supertrend short bullish"
+        ],
+        "preOverlayConditions": [
+          "SD channel: below lower band (statistical discount)",
+          "At MA50 support",
+          "Already extended above MA200 — not a break or bounce",
+          "RSI(2) 4.4 washed out",
+          "Supertrend short bullish"
+        ],
+        "postOverlayConditions": [
+          "SD channel: below lower band (statistical discount)",
+          "At MA50 support",
+          "Already extended above MA200 — not a break or bounce",
+          "RSI(2) 4.4 washed out",
+          "Supertrend short bullish"
+        ],
+        "canonicalGate": "canonicalPolicy",
+        "rejectionReasons": [
+          "actionable",
+          "sideAllowed",
+          "confidence"
+        ]
+      },
+      "scoreDifferenceLiveMinusReplay": -36,
+      "confidenceDifferenceLiveMinusReplay": 12
+    },
+    {
+      "ticker": "5901.T",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "date": "2026-09-18",
+      "liveScore": 61,
+      "liveConfidence": 70,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:42:19.004Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 12.332064487236902,
+        "forwardPE": null,
+        "pegRatio": 0.11403323111750335,
+        "revenueGrowth": 4.4,
+        "earningsGrowth": 145.5,
+        "_fmpSector": "Consumer Cyclical",
+        "_source": "fmp"
+      },
+      "status": "MATCHED_DECISION_DATE",
+      "signalDate": "2026-09-17",
+      "paddedDecisionTail": false,
+      "replayScore": 24,
+      "replayConfidence": 42,
+      "record": {
+        "baseTechnicalScore": 24,
+        "qualityAndStructuralDelta": 0,
+        "replayPostOverlayScore": 24,
+        "replayConfidence": 42,
+        "supertrend": {
+          "direction": "bull",
+          "flippedBull": false,
+          "flippedBear": false
+        },
+        "marketTier": "fmp_quality",
+        "quality": {
+          "usable": false,
+          "piotroski": null,
+          "altmanZ": null
+        },
+        "overlayConditions": [],
+        "preOverlayConditions": [
+          "Already extended above MA200 — not a break or bounce",
+          "Weekly uptrend confirmed",
+          "ADX 28.6 — strong trending regime",
+          "Market uptrend tailwind"
+        ],
+        "postOverlayConditions": [
+          "Already extended above MA200 — not a break or bounce",
+          "Weekly uptrend confirmed",
+          "ADX 28.6 — strong trending regime",
+          "Market uptrend tailwind"
+        ],
+        "canonicalGate": "canonicalPolicy",
+        "rejectionReasons": [
+          "actionable",
+          "sideAllowed",
+          "confidence"
+        ]
+      },
+      "scoreDifferenceLiveMinusReplay": 37,
+      "confidenceDifferenceLiveMinusReplay": 28
+    },
+    {
+      "ticker": "APOLLOHOSP.NS",
+      "market": "India",
+      "horizon": "medium",
+      "side": "buy",
+      "date": "2026-09-17",
+      "liveScore": 66,
+      "liveConfidence": 62,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:42:32.614Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 55.96188248245493,
+        "forwardPE": null,
+        "pegRatio": 1.7053491506697427,
+        "revenueGrowth": 15.8,
+        "earningsGrowth": 34.3,
+        "_fmpSector": "Healthcare",
+        "_source": "fmp"
+      },
+      "status": "NO_REPLAY_COVERAGE_FOR_MARKET",
+      "scoreDifferenceLiveMinusReplay": null,
+      "confidenceDifferenceLiveMinusReplay": null
+    },
+    {
+      "ticker": "BZ=F",
+      "market": "Commodities",
+      "horizon": "long",
+      "side": "buy",
+      "date": "2026-09-17",
+      "liveScore": 35,
+      "liveConfidence": 65,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:42:35.905Z",
+      "liveFmpScore": 0,
+      "liveFundSnapshot": null,
+      "status": "NO_REPLAY_COVERAGE_FOR_MARKET",
+      "scoreDifferenceLiveMinusReplay": null,
+      "confidenceDifferenceLiveMinusReplay": null
+    },
+    {
+      "ticker": "CL=F",
+      "market": "Commodities",
+      "horizon": "long",
+      "side": "buy",
+      "date": "2026-09-17",
+      "liveScore": 0,
+      "liveConfidence": 65,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:42:39.527Z",
+      "liveFmpScore": 0,
+      "liveFundSnapshot": null,
+      "status": "NO_REPLAY_COVERAGE_FOR_MARKET",
+      "scoreDifferenceLiveMinusReplay": null,
+      "confidenceDifferenceLiveMinusReplay": null
+    },
+    {
+      "ticker": "STMPA.PA",
+      "market": "France",
+      "horizon": "long",
+      "side": "buy",
+      "date": "2026-09-17",
+      "liveScore": 13,
+      "liveConfidence": 70,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-01T08:39:23.696Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 100.59506103822018,
+        "forwardPE": null,
+        "pegRatio": null,
+        "revenueGrowth": -7.4,
+        "earningsGrowth": -88.9,
+        "_fmpSector": "Technology",
+        "_source": "fmp"
+      },
+      "status": "MATCHED_DECISION_DATE",
+      "signalDate": "2026-09-16",
+      "paddedDecisionTail": false,
+      "replayScore": 0,
+      "replayConfidence": 42,
+      "record": {
+        "baseTechnicalScore": 0,
+        "qualityAndStructuralDelta": 0,
+        "replayPostOverlayScore": 0,
+        "replayConfidence": 42,
+        "supertrend": {
+          "direction": "bear",
+          "flippedBull": false,
+          "flippedBear": false
+        },
+        "marketTier": "fmp_quality",
+        "quality": {
+          "usable": false,
+          "piotroski": null,
+          "altmanZ": null
+        },
+        "overlayConditions": [],
+        "preOverlayConditions": [
+          "Weekly downtrend"
+        ],
+        "postOverlayConditions": [
+          "Weekly downtrend"
+        ],
+        "canonicalGate": "canonicalPolicy",
+        "rejectionReasons": [
+          "actionable",
+          "sideAllowed",
+          "confidence"
+        ]
+      },
+      "scoreDifferenceLiveMinusReplay": 13,
+      "confidenceDifferenceLiveMinusReplay": 28
+    },
+    {
+      "ticker": "TITAN.NS",
+      "market": "India",
+      "horizon": "medium",
+      "side": "buy",
+      "date": "2026-09-16",
+      "liveScore": 38,
+      "liveConfidence": 62,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:43:37.191Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 69.45093817286988,
+        "forwardPE": null,
+        "pegRatio": 1.2552747288067065,
+        "revenueGrowth": 27,
+        "earningsGrowth": 52,
+        "_fmpSector": "Consumer Cyclical",
+        "_source": "fmp"
+      },
+      "status": "NO_REPLAY_COVERAGE_FOR_MARKET",
+      "scoreDifferenceLiveMinusReplay": null,
+      "confidenceDifferenceLiveMinusReplay": null
+    },
+    {
+      "ticker": "0267.HK",
+      "market": "Hong Kong",
+      "horizon": "short",
+      "side": "buy",
+      "date": "2026-09-15",
+      "liveScore": 7,
+      "liveConfidence": 62,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-09-28T12:13:43.036Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 5.65531914893617,
+        "forwardPE": null,
+        "pegRatio": 0.10957180851063825,
+        "revenueGrowth": -12.2,
+        "earningsGrowth": 9.4,
+        "_fmpSector": "Industrials",
+        "_source": "fmp"
+      },
+      "status": "MATCHED_DECISION_DATE",
+      "signalDate": "2026-09-14",
+      "paddedDecisionTail": false,
+      "replayScore": 72,
+      "replayConfidence": 62,
+      "record": {
+        "baseTechnicalScore": 92,
+        "qualityAndStructuralDelta": -20,
+        "replayPostOverlayScore": 72,
+        "replayConfidence": 62,
+        "supertrend": {
+          "direction": "bull",
+          "flippedBull": false,
+          "flippedBear": false
+        },
+        "marketTier": "fmp_quality",
+        "quality": {
+          "usable": false,
+          "piotroski": null,
+          "altmanZ": null
+        },
+        "overlayConditions": [
+          "Supertrend short bullish"
+        ],
+        "preOverlayConditions": [
+          "SD channel: below lower band (statistical discount)",
+          "At support $13.30",
+          "RSI(2) 14.4 oversold",
+          "Supertrend short bullish"
+        ],
+        "postOverlayConditions": [
+          "SD channel: below lower band (statistical discount)",
+          "At support $13.30",
+          "RSI(2) 14.4 oversold",
+          "Supertrend short bullish"
+        ],
+        "canonicalGate": "rewardRisk",
+        "rejectionReasons": [
+          "rewardRisk"
+        ]
+      },
+      "scoreDifferenceLiveMinusReplay": -65,
+      "confidenceDifferenceLiveMinusReplay": 0
+    },
+    {
+      "ticker": "9432.T",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "date": "2026-09-11",
+      "liveScore": 48,
+      "liveConfidence": 62,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-09-25T11:20:18.940Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 13.714953271028037,
+        "forwardPE": null,
+        "pegRatio": 1.6064148237253622,
+        "revenueGrowth": 5.1,
+        "earningsGrowth": 3.7,
+        "_fmpSector": "Communication Services",
+        "_source": "fmp"
+      },
+      "status": "MATCHED_DECISION_DATE",
+      "signalDate": "2026-09-10",
+      "paddedDecisionTail": false,
+      "replayScore": 51,
+      "replayConfidence": 56,
+      "record": {
+        "baseTechnicalScore": 73,
+        "qualityAndStructuralDelta": -22,
+        "replayPostOverlayScore": 51,
+        "replayConfidence": 56,
+        "supertrend": {
+          "direction": "bull",
+          "flippedBull": false,
+          "flippedBear": false
+        },
+        "marketTier": "fmp_quality",
+        "quality": {
+          "usable": true,
+          "piotroski": 5,
+          "altmanZ": 0.6366389953007848
+        },
+        "overlayConditions": [
+          "Supertrend medium bullish"
+        ],
+        "preOverlayConditions": [
+          "Already extended above MA200 — not a break or bounce",
+          "Weekly uptrend confirmed",
+          "ADX 53.1 — strong trending regime",
+          "Supertrend medium bullish",
+          "Market uptrend tailwind"
+        ],
+        "postOverlayConditions": [
+          "Already extended above MA200 — not a break or bounce",
+          "Weekly uptrend confirmed",
+          "ADX 53.1 — strong trending regime",
+          "Supertrend medium bullish",
+          "Market uptrend tailwind",
+          "Altman Z 0.6 distress — medium buy cut"
+        ],
+        "canonicalGate": "canonicalPolicy",
+        "rejectionReasons": [
+          "actionable",
+          "sideAllowed",
+          "confidence"
+        ]
+      },
+      "scoreDifferenceLiveMinusReplay": -3,
+      "confidenceDifferenceLiveMinusReplay": 6
+    },
+    {
+      "ticker": "5301.T",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "date": "2026-09-10",
+      "liveScore": 61,
+      "liveConfidence": 70,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:44:40.433Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 26.20689655172414,
+        "forwardPE": null,
+        "pegRatio": 0.16885062905172982,
+        "revenueGrowth": -7.8,
+        "earningsGrowth": 135.4,
+        "_fmpSector": "Basic Materials",
+        "_source": "fmp"
+      },
+      "status": "MATCHED_DECISION_DATE",
+      "signalDate": "2026-09-09",
+      "paddedDecisionTail": false,
+      "replayScore": 24,
+      "replayConfidence": 42,
+      "record": {
+        "baseTechnicalScore": 24,
+        "qualityAndStructuralDelta": 0,
+        "replayPostOverlayScore": 24,
+        "replayConfidence": 42,
+        "supertrend": {
+          "direction": "bull",
+          "flippedBull": false,
+          "flippedBear": false
+        },
+        "marketTier": "fmp_quality",
+        "quality": {
+          "usable": false,
+          "piotroski": null,
+          "altmanZ": null
+        },
+        "overlayConditions": [],
+        "preOverlayConditions": [
+          "Already extended above MA200 — not a break or bounce",
+          "ADX 45.2 — strong trending regime",
+          "Market uptrend tailwind"
+        ],
+        "postOverlayConditions": [
+          "Already extended above MA200 — not a break or bounce",
+          "ADX 45.2 — strong trending regime",
+          "Market uptrend tailwind"
+        ],
+        "canonicalGate": "canonicalPolicy",
+        "rejectionReasons": [
+          "actionable",
+          "sideAllowed",
+          "confidence"
+        ]
+      },
+      "scoreDifferenceLiveMinusReplay": 37,
+      "confidenceDifferenceLiveMinusReplay": 28
+    },
+    {
+      "ticker": "DIVISLAB.NS",
+      "market": "India",
+      "horizon": "medium",
+      "side": "buy",
+      "date": "2026-09-10",
+      "liveScore": 61,
+      "liveConfidence": 62,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-09-24T05:09:55.860Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 87.2300852839775,
+        "forwardPE": null,
+        "pegRatio": 3.247022197717208,
+        "revenueGrowth": 13.2,
+        "earningsGrowth": 17.2,
+        "_fmpSector": "Healthcare",
+        "_source": "fmp"
+      },
+      "status": "NO_REPLAY_COVERAGE_FOR_MARKET",
+      "scoreDifferenceLiveMinusReplay": null,
+      "confidenceDifferenceLiveMinusReplay": null
+    }
+  ],
+  "citedPicks": [
+    {
+      "ticker": "8604.T",
+      "market": "Japan",
+      "horizon": "short",
+      "side": "buy",
+      "date": "2026-09-18",
+      "liveScore": 25,
+      "liveConfidence": 62,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:42:09.040Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 0.30511878778553003,
+        "forwardPE": null,
+        "pegRatio": 0.00008063115412790787,
+        "revenueGrowth": 5.6,
+        "earningsGrowth": 6.3,
+        "_fmpSector": "Financial Services",
+        "_source": "fmp"
+      },
+      "status": "MATCHED_DECISION_DATE",
+      "signalDate": "2026-09-17",
+      "paddedDecisionTail": false,
+      "replayScore": 61,
+      "replayConfidence": 50,
+      "record": {
+        "baseTechnicalScore": 78,
+        "qualityAndStructuralDelta": -17,
+        "replayPostOverlayScore": 61,
+        "replayConfidence": 50,
+        "supertrend": {
+          "direction": "bull",
+          "flippedBull": false,
+          "flippedBear": false
+        },
+        "marketTier": "fmp_quality",
+        "quality": {
+          "usable": true,
+          "piotroski": 6,
+          "altmanZ": 3.6558852658220404
+        },
+        "overlayConditions": [
+          "Supertrend short bullish"
+        ],
+        "preOverlayConditions": [
+          "SD channel: below lower band (statistical discount)",
+          "At MA50 support",
+          "Already extended above MA200 — not a break or bounce",
+          "RSI(2) 4.4 washed out",
+          "Supertrend short bullish"
+        ],
+        "postOverlayConditions": [
+          "SD channel: below lower band (statistical discount)",
+          "At MA50 support",
+          "Already extended above MA200 — not a break or bounce",
+          "RSI(2) 4.4 washed out",
+          "Supertrend short bullish"
+        ],
+        "canonicalGate": "canonicalPolicy",
+        "rejectionReasons": [
+          "actionable",
+          "sideAllowed",
+          "confidence"
+        ]
+      },
+      "scoreDifferenceLiveMinusReplay": -36,
+      "confidenceDifferenceLiveMinusReplay": 12
+    },
+    {
+      "ticker": "5901.T",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "date": "2026-09-18",
+      "liveScore": 61,
+      "liveConfidence": 70,
+      "historyScoreProvenance": "MUTABLE_REVALIDATED",
+      "historyRevalidatedAt": "2026-10-02T08:42:19.004Z",
+      "liveFmpScore": null,
+      "liveFundSnapshot": {
+        "trailingPE": 12.332064487236902,
+        "forwardPE": null,
+        "pegRatio": 0.11403323111750335,
+        "revenueGrowth": 4.4,
+        "earningsGrowth": 145.5,
+        "_fmpSector": "Consumer Cyclical",
+        "_source": "fmp"
+      },
+      "status": "MATCHED_DECISION_DATE",
+      "signalDate": "2026-09-17",
+      "paddedDecisionTail": false,
+      "replayScore": 24,
+      "replayConfidence": 42,
+      "record": {
+        "baseTechnicalScore": 24,
+        "qualityAndStructuralDelta": 0,
+        "replayPostOverlayScore": 24,
+        "replayConfidence": 42,
+        "supertrend": {
+          "direction": "bull",
+          "flippedBull": false,
+          "flippedBear": false
+        },
+        "marketTier": "fmp_quality",
+        "quality": {
+          "usable": false,
+          "piotroski": null,
+          "altmanZ": null
+        },
+        "overlayConditions": [],
+        "preOverlayConditions": [
+          "Already extended above MA200 — not a break or bounce",
+          "Weekly uptrend confirmed",
+          "ADX 28.6 — strong trending regime",
+          "Market uptrend tailwind"
+        ],
+        "postOverlayConditions": [
+          "Already extended above MA200 — not a break or bounce",
+          "Weekly uptrend confirmed",
+          "ADX 28.6 — strong trending regime",
+          "Market uptrend tailwind"
+        ],
+        "canonicalGate": "canonicalPolicy",
+        "rejectionReasons": [
+          "actionable",
+          "sideAllowed",
+          "confidence"
+        ]
+      },
+      "scoreDifferenceLiveMinusReplay": 37,
+      "confidenceDifferenceLiveMinusReplay": 28
+    }
+  ],
+  "unparseableDates": [],
+  "unmappedTickers": [
+    {
+      "ticker": "BRK-B",
+      "horizon": "short",
+      "date": "2026-08-14"
+    },
+    {
+      "ticker": "NESN.SW",
+      "horizon": "short",
+      "date": "2026-06-15"
+    },
+    {
+      "ticker": "ASML.AS",
+      "horizon": "short",
+      "date": "2026-06-11"
+    },
+    {
+      "ticker": "ASML.AS",
+      "horizon": "short",
+      "date": "2026-06-11"
+    },
+    {
+      "ticker": "NESN.SW",
+      "horizon": "short",
+      "date": "2026-06-15"
+    },
+    {
+      "ticker": "ASML.AS",
+      "horizon": "short",
+      "date": "2026-06-11"
+    }
+  ]
+}

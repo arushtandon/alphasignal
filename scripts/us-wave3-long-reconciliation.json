@@ -1,0 +1,191 @@
+{
+  "generatedAt": "2026-10-05T07:40:34.646Z",
+  "rule": "current frozen Wave 3 baseline; full PIT US; entry-date window attribution; exits may follow window",
+  "currentSourceFiles": [
+    "scripts/backtest-factor-combinations.js",
+    "lib/research/cost-model.js",
+    "lib/research/us-universe.js"
+  ],
+  "contexts": 808,
+  "generatedTrades": 18425,
+  "replayWindows": [
+    {
+      "fold": 1,
+      "range": {
+        "from": "2024-09-30",
+        "to": "2025-04-01"
+      },
+      "metrics": {
+        "trades": 1278,
+        "winRate": 19.5,
+        "avgReturnPct": -2.068,
+        "profitFactor": 0.378,
+        "sharpe": -4.998,
+        "maxDrawdownPct": 100,
+        "cvar95Pct": -13.178,
+        "compoundedReturnPct": -100,
+        "pnlUsd": -264305,
+        "avgWinPct": 6.455,
+        "avgLossPct": -4.13,
+        "breakevenWinRate": 39.022,
+        "breakevenMargin": -19.522,
+        "picksPerMonth": null
+      }
+    },
+    {
+      "fold": 2,
+      "range": {
+        "from": "2025-04-02",
+        "to": "2025-10-01"
+      },
+      "metrics": {
+        "trades": 1029,
+        "winRate": 31.6,
+        "avgReturnPct": 2.526,
+        "profitFactor": 2.149,
+        "sharpe": 2.715,
+        "maxDrawdownPct": 73.758,
+        "cvar95Pct": -10.856,
+        "compoundedReturnPct": 5403066035.075,
+        "pnlUsd": 259945.17,
+        "avgWinPct": 14.958,
+        "avgLossPct": -3.213,
+        "breakevenWinRate": 17.682,
+        "breakevenMargin": 13.918,
+        "picksPerMonth": null
+      }
+    },
+    {
+      "fold": 3,
+      "range": {
+        "from": "2025-10-02",
+        "to": "2026-04-02"
+      },
+      "metrics": {
+        "trades": 1046,
+        "winRate": 31.5,
+        "avgReturnPct": 1.872,
+        "profitFactor": 1.634,
+        "sharpe": 1.767,
+        "maxDrawdownPct": 91.911,
+        "cvar95Pct": -12.858,
+        "compoundedReturnPct": 2130973.123,
+        "pnlUsd": 195792.44,
+        "avgWinPct": 15.341,
+        "avgLossPct": -4.309,
+        "breakevenWinRate": 21.927,
+        "breakevenMargin": 9.573,
+        "picksPerMonth": null
+      }
+    },
+    {
+      "fold": 4,
+      "range": {
+        "from": "2026-04-06",
+        "to": "2026-10-02"
+      },
+      "metrics": {
+        "trades": 1086,
+        "winRate": 23.2,
+        "avgReturnPct": -0.717,
+        "profitFactor": 0.763,
+        "sharpe": -1.218,
+        "maxDrawdownPct": 100,
+        "cvar95Pct": -14.516,
+        "compoundedReturnPct": -99.999,
+        "pnlUsd": -77899.64,
+        "avgWinPct": 9.978,
+        "avgLossPct": -3.949,
+        "breakevenWinRate": 28.355,
+        "breakevenMargin": -5.155,
+        "picksPerMonth": null
+      }
+    }
+  ],
+  "replayDevelopment": {
+    "trades": 3353,
+    "winRate": 26.9,
+    "avgReturnPct": 0.571,
+    "profitFactor": 1.199,
+    "sharpe": 0.683,
+    "maxDrawdownPct": 99.982,
+    "cvar95Pct": -12.5,
+    "compoundedReturnPct": -77.598,
+    "pnlUsd": 191432.62,
+    "avgWinPct": 12.753,
+    "avgLossPct": -3.919,
+    "breakevenWinRate": 23.507,
+    "breakevenMargin": 3.393,
+    "picksPerMonth": null
+  },
+  "comparedRuns": {
+    "staleValidatedSetupBook": {
+      "generatedAt": "2026-10-02T11:43:05.248Z",
+      "metrics": {
+        "trades": 3346,
+        "winRate": 20,
+        "avgReturnPct": -1.418,
+        "profitFactor": 0.573,
+        "sharpe": -2.445,
+        "maxDrawdownPct": 100,
+        "cvar95Pct": -14.561,
+        "compoundedReturnPct": -100,
+        "pnlUsd": -474558.35,
+        "averageWinPct": 9.51,
+        "averageLossPct": -4.149,
+        "exposureMonths": 21,
+        "picksPerMonth": 159.333
+      },
+      "scoring": "signal and exit both required inside each window"
+    },
+    "consistencyStudy": {
+      "generatedAt": "2026-10-05T07:18:53.749Z",
+      "metrics": {
+        "trades": 3353,
+        "winRate": 27,
+        "avgReturnPct": 0.567,
+        "profitFactor": 1.198,
+        "sharpe": 0.679,
+        "maxDrawdownPct": 100,
+        "cvar95Pct": -12.537,
+        "compoundedReturnPct": -80.752,
+        "pnlUsd": 190228.34,
+        "avgWinPct": 12.743,
+        "avgLossPct": -3.927,
+        "breakevenWinRate": 23.558,
+        "breakevenMargin": 3.442,
+        "picksPerMonth": 152.409
+      },
+      "scoring": "signal-date window attribution; exits allowed after window"
+    },
+    "correctedCurrentReplay": {
+      "metrics": {
+        "trades": 3353,
+        "winRate": 26.9,
+        "avgReturnPct": 0.571,
+        "profitFactor": 1.199,
+        "sharpe": 0.683,
+        "maxDrawdownPct": 99.982,
+        "cvar95Pct": -12.5,
+        "compoundedReturnPct": -77.598,
+        "pnlUsd": 191432.62,
+        "avgWinPct": 12.753,
+        "avgLossPct": -3.919,
+        "breakevenWinRate": 23.507,
+        "breakevenMargin": 3.393,
+        "picksPerMonth": null
+      },
+      "scoring": "entry-date window attribution; exits allowed after window"
+    }
+  },
+  "verdict": {
+    "correct": "PF_1_20_RUN",
+    "usLongWave3Eligible": true,
+    "explanation": [
+      "The PF 0.57 artifact was generated by the older validated-setup-book snapshot and is not reproducible from the current frozen Wave 3 simulator.",
+      "The current simulator reproduces the positive PF approximately 1.20 result on the same full PIT universe and implementation-cost-v1 path.",
+      "Entry-date rather than signal-date bucketing changes only boundary membership; it does not explain the sign reversal.",
+      "The old artifact stored aggregate metrics but not its trade ledger, so its exact historical code-state delta cannot be reconstructed from that result file alone."
+    ]
+  }
+}

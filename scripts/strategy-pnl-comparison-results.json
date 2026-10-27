@@ -1,0 +1,510 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-21T11:28:33.176Z",
+  "methodology": {
+    "tickers": [
+      "AAPL",
+      "MSFT",
+      "NVDA",
+      "AMZN",
+      "GOOGL",
+      "META",
+      "TSLA",
+      "JPM",
+      "V",
+      "MA",
+      "JNJ",
+      "UNH",
+      "PG",
+      "HD",
+      "AVGO",
+      "LLY",
+      "XOM",
+      "CVX",
+      "KO",
+      "PEP",
+      "COST",
+      "WMT",
+      "NFLX",
+      "AMD",
+      "CRM",
+      "ORCL",
+      "IBM",
+      "GS",
+      "BAC",
+      "MCD",
+      "INTC",
+      "QCOM",
+      "TXN",
+      "AMAT",
+      "CAT",
+      "BA",
+      "GE",
+      "DIS",
+      "NKE",
+      "SBUX"
+    ],
+    "windowBars": 756,
+    "entryStep": 3,
+    "nextOpenEntry": true,
+    "completedWeeklyBars": true,
+    "signalBarStops": true,
+    "closedTradesOnly": true,
+    "currentFundamentals": false,
+    "costs": true
+  },
+  "variants": [
+    {
+      "id": "production",
+      "label": "Current live policy (score + confidence ≥62)"
+    },
+    {
+      "id": "score_baseline",
+      "label": "Score ≥62 only (research baseline, no confidence overlay)"
+    },
+    {
+      "id": "candidate",
+      "label": "Strategy candidate: short stretch + medium/long patience + RS"
+    }
+  ],
+  "runs": [
+    {
+      "key": "buy:short",
+      "side": "buy",
+      "horizon": "short",
+      "variants": {
+        "production": {
+          "label": "Current live policy (score + confidence ≥62)",
+          "aggregate": {
+            "totalTrades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "meanProfitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "compoundedReturnPct": null
+          },
+          "tickersWithTrades": 0,
+          "rejectionCounts": {
+            "confidence": 9514,
+            "actionable": 8825,
+            "sideAllowed": 8952,
+            "marketPolicy": 265
+          }
+        },
+        "score_baseline": {
+          "label": "Score ≥62 only (research baseline, no confidence overlay)",
+          "aggregate": {
+            "totalTrades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "meanProfitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "compoundedReturnPct": null
+          },
+          "tickersWithTrades": 0,
+          "rejectionCounts": {
+            "marketPolicy": 1128,
+            "actionable": 8825,
+            "sideAllowed": 8952
+          }
+        },
+        "candidate": {
+          "label": "Strategy candidate: short stretch + medium/long patience + RS",
+          "aggregate": {
+            "totalTrades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "meanProfitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "compoundedReturnPct": null
+          },
+          "tickersWithTrades": 0,
+          "rejectionCounts": {
+            "marketPolicy": 1128,
+            "actionable": 8825,
+            "sideAllowed": 8952
+          }
+        }
+      },
+      "vsScoreBaseline": {
+        "winRate": 0,
+        "avgReturnPct": 0,
+        "profitFactor": 0,
+        "compoundedReturnPct": 0
+      }
+    },
+    {
+      "key": "buy:medium",
+      "side": "buy",
+      "horizon": "medium",
+      "variants": {
+        "production": {
+          "label": "Current live policy (score + confidence ≥62)",
+          "aggregate": {
+            "totalTrades": 4,
+            "winRate": 75,
+            "avgReturnPct": 3.391,
+            "meanProfitFactor": 5.1,
+            "sharpe": 1.063,
+            "maxDrawdownPct": 3.309,
+            "compoundedReturnPct": 13.625,
+            "portfolioDays": 4
+          },
+          "tickersWithTrades": 3,
+          "rejectionCounts": {
+            "actionable": 8036,
+            "sideAllowed": 8329,
+            "confidence": 8794,
+            "rewardRisk": 446,
+            "marketPolicy": 111
+          }
+        },
+        "score_baseline": {
+          "label": "Score ≥62 only (research baseline, no confidence overlay)",
+          "aggregate": {
+            "totalTrades": 6,
+            "winRate": 66.7,
+            "avgReturnPct": 1.896,
+            "meanProfitFactor": 2.774,
+            "sharpe": 0.829,
+            "maxDrawdownPct": 6.005,
+            "compoundedReturnPct": 11.103,
+            "portfolioDays": 6
+          },
+          "tickersWithTrades": 5,
+          "rejectionCounts": {
+            "actionable": 8035,
+            "sideAllowed": 8328,
+            "marketPolicy": 1082,
+            "rewardRisk": 653
+          }
+        },
+        "candidate": {
+          "label": "Strategy candidate: short stretch + medium/long patience + RS",
+          "aggregate": {
+            "totalTrades": 4,
+            "winRate": 50,
+            "avgReturnPct": 5.347,
+            "meanProfitFactor": 4.036,
+            "sharpe": 1.02,
+            "maxDrawdownPct": 3.735,
+            "compoundedReturnPct": 21.352,
+            "portfolioDays": 4
+          },
+          "tickersWithTrades": 4,
+          "rejectionCounts": {
+            "actionable": 8033,
+            "sideAllowed": 8326,
+            "marketPolicy": 1086,
+            "relStrength": 114,
+            "rewardRisk": 540,
+            "openMark": 1
+          }
+        }
+      },
+      "vsScoreBaseline": {
+        "winRate": -16.7,
+        "avgReturnPct": 3.451,
+        "profitFactor": 1.262,
+        "compoundedReturnPct": 10.249
+      }
+    },
+    {
+      "key": "buy:long",
+      "side": "buy",
+      "horizon": "long",
+      "variants": {
+        "production": {
+          "label": "Current live policy (score + confidence ≥62)",
+          "aggregate": {
+            "totalTrades": 1,
+            "winRate": 0,
+            "avgReturnPct": -7.088,
+            "meanProfitFactor": 0,
+            "sharpe": null,
+            "maxDrawdownPct": 7.088,
+            "compoundedReturnPct": -7.088,
+            "portfolioDays": 1
+          },
+          "tickersWithTrades": 1,
+          "rejectionCounts": {
+            "actionable": 8630,
+            "sideAllowed": 8911,
+            "confidence": 9360,
+            "rewardRisk": 528,
+            "marketPolicy": 68,
+            "openMark": 1
+          }
+        },
+        "score_baseline": {
+          "label": "Score ≥62 only (research baseline, no confidence overlay)",
+          "aggregate": {
+            "totalTrades": 1,
+            "winRate": 0,
+            "avgReturnPct": -7.088,
+            "meanProfitFactor": 0,
+            "sharpe": null,
+            "maxDrawdownPct": 7.088,
+            "compoundedReturnPct": -7.088,
+            "portfolioDays": 1
+          },
+          "tickersWithTrades": 1,
+          "rejectionCounts": {
+            "actionable": 8630,
+            "sideAllowed": 8911,
+            "marketPolicy": 636,
+            "rewardRisk": 529,
+            "openMark": 1
+          }
+        },
+        "candidate": {
+          "label": "Strategy candidate: short stretch + medium/long patience + RS",
+          "aggregate": {
+            "totalTrades": 1,
+            "winRate": 0,
+            "avgReturnPct": -7.088,
+            "meanProfitFactor": 0,
+            "sharpe": null,
+            "maxDrawdownPct": 7.088,
+            "compoundedReturnPct": -7.088,
+            "portfolioDays": 1
+          },
+          "tickersWithTrades": 1,
+          "rejectionCounts": {
+            "actionable": 8630,
+            "sideAllowed": 8911,
+            "marketPolicy": 636,
+            "relStrength": 95,
+            "rewardRisk": 434,
+            "openMark": 1
+          }
+        }
+      },
+      "vsScoreBaseline": {
+        "winRate": 0,
+        "avgReturnPct": 0,
+        "profitFactor": 0,
+        "compoundedReturnPct": 0
+      }
+    },
+    {
+      "key": "sell:short",
+      "side": "sell",
+      "horizon": "short",
+      "variants": {
+        "production": {
+          "label": "Current live policy (score + confidence ≥62)",
+          "aggregate": {
+            "totalTrades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "meanProfitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "compoundedReturnPct": null
+          },
+          "tickersWithTrades": 0,
+          "rejectionCounts": {
+            "sideAllowed": 9953,
+            "confidence": 9514,
+            "actionable": 8825,
+            "marketPolicy": 4
+          }
+        },
+        "score_baseline": {
+          "label": "Score ≥62 only (research baseline, no confidence overlay)",
+          "aggregate": {
+            "totalTrades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "meanProfitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "compoundedReturnPct": null
+          },
+          "tickersWithTrades": 0,
+          "rejectionCounts": {
+            "sideAllowed": 9953,
+            "actionable": 8825,
+            "marketPolicy": 116,
+            "rewardRisk": 11
+          }
+        },
+        "candidate": {
+          "label": "Strategy candidate: short stretch + medium/long patience + RS",
+          "aggregate": {
+            "totalTrades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "meanProfitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "compoundedReturnPct": null
+          },
+          "tickersWithTrades": 0,
+          "rejectionCounts": {
+            "sideAllowed": 9953,
+            "actionable": 8825,
+            "marketPolicy": 116,
+            "rewardRisk": 10,
+            "relStrength": 1
+          }
+        }
+      },
+      "vsScoreBaseline": {
+        "winRate": 0,
+        "avgReturnPct": 0,
+        "profitFactor": 0,
+        "compoundedReturnPct": 0
+      }
+    },
+    {
+      "key": "sell:medium",
+      "side": "sell",
+      "horizon": "medium",
+      "variants": {
+        "production": {
+          "label": "Current live policy (score + confidence ≥62)",
+          "aggregate": {
+            "totalTrades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "meanProfitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "compoundedReturnPct": null
+          },
+          "tickersWithTrades": 0,
+          "rejectionCounts": {
+            "actionable": 8041,
+            "sideAllowed": 9787,
+            "confidence": 8803,
+            "rewardRisk": 197,
+            "marketPolicy": 12
+          }
+        },
+        "score_baseline": {
+          "label": "Score ≥62 only (research baseline, no confidence overlay)",
+          "aggregate": {
+            "totalTrades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "meanProfitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "compoundedReturnPct": null
+          },
+          "tickersWithTrades": 0,
+          "rejectionCounts": {
+            "actionable": 8041,
+            "sideAllowed": 9787,
+            "rewardRisk": 237,
+            "marketPolicy": 56
+          }
+        },
+        "candidate": {
+          "label": "Strategy candidate: short stretch + medium/long patience + RS",
+          "aggregate": {
+            "totalTrades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "meanProfitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "compoundedReturnPct": null
+          },
+          "tickersWithTrades": 0,
+          "rejectionCounts": {
+            "actionable": 8041,
+            "sideAllowed": 9787,
+            "relStrength": 67,
+            "marketPolicy": 56,
+            "rewardRisk": 170
+          }
+        }
+      },
+      "vsScoreBaseline": {
+        "winRate": 0,
+        "avgReturnPct": 0,
+        "profitFactor": 0,
+        "compoundedReturnPct": 0
+      }
+    },
+    {
+      "key": "sell:long",
+      "side": "sell",
+      "horizon": "long",
+      "variants": {
+        "production": {
+          "label": "Current live policy (score + confidence ≥62)",
+          "aggregate": {
+            "totalTrades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "meanProfitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "compoundedReturnPct": null
+          },
+          "tickersWithTrades": 0,
+          "rejectionCounts": {
+            "actionable": 8632,
+            "sideAllowed": 9799,
+            "confidence": 9362,
+            "rewardRisk": 40
+          }
+        },
+        "score_baseline": {
+          "label": "Score ≥62 only (research baseline, no confidence overlay)",
+          "aggregate": {
+            "totalTrades": 1,
+            "winRate": 0,
+            "avgReturnPct": -14.075,
+            "meanProfitFactor": 0,
+            "sharpe": null,
+            "maxDrawdownPct": 14.075,
+            "compoundedReturnPct": -14.075,
+            "portfolioDays": 1
+          },
+          "tickersWithTrades": 1,
+          "rejectionCounts": {
+            "actionable": 8612,
+            "sideAllowed": 9779,
+            "marketPolicy": 85,
+            "rewardRisk": 192
+          }
+        },
+        "candidate": {
+          "label": "Strategy candidate: short stretch + medium/long patience + RS",
+          "aggregate": {
+            "totalTrades": 1,
+            "winRate": 0,
+            "avgReturnPct": -26.459,
+            "meanProfitFactor": 0,
+            "sharpe": null,
+            "maxDrawdownPct": 26.459,
+            "compoundedReturnPct": -26.459,
+            "portfolioDays": 1
+          },
+          "tickersWithTrades": 1,
+          "rejectionCounts": {
+            "actionable": 8609,
+            "sideAllowed": 9776,
+            "marketPolicy": 85,
+            "relStrength": 56,
+            "rewardRisk": 136
+          }
+        }
+      },
+      "vsScoreBaseline": {
+        "winRate": 0,
+        "avgReturnPct": -12.384,
+        "profitFactor": 0,
+        "compoundedReturnPct": -12.384
+      }
+    }
+  ]
+}

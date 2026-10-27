@@ -1,0 +1,1707 @@
+{
+  "version": 1,
+  "symbols": {
+    "US|medium|AAPL": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "AAPL",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.863Z"
+    },
+    "US|medium|MSFT": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "MSFT",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.864Z"
+    },
+    "US|medium|NVDA": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "NVDA",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.865Z"
+    },
+    "US|medium|AMZN": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "AMZN",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.866Z"
+    },
+    "US|medium|GOOGL": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "GOOGL",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.866Z"
+    },
+    "US|medium|GOOG": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "GOOG",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.867Z"
+    },
+    "US|medium|META": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "META",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.868Z"
+    },
+    "US|medium|TSLA": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "TSLA",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.869Z"
+    },
+    "US|medium|BRK-B": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "BRK-B",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.869Z"
+    },
+    "US|medium|AVGO": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "AVGO",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.870Z"
+    },
+    "US|medium|LLY": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "LLY",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.871Z"
+    },
+    "US|medium|JPM": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "JPM",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.872Z"
+    },
+    "US|medium|V": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "V",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.873Z"
+    },
+    "US|medium|UNH": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "UNH",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.874Z"
+    },
+    "US|medium|XOM": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "XOM",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.875Z"
+    },
+    "US|medium|MA": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "MA",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.876Z"
+    },
+    "US|medium|COST": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "COST",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.877Z"
+    },
+    "US|medium|HD": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "HD",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.878Z"
+    },
+    "US|medium|PG": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "PG",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.878Z"
+    },
+    "US|medium|JNJ": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "JNJ",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.880Z"
+    },
+    "US|medium|NFLX": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "NFLX",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.881Z"
+    },
+    "US|medium|ABBV": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "ABBV",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.881Z"
+    },
+    "US|medium|CRM": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "CRM",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.882Z"
+    },
+    "US|medium|BAC": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "BAC",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.883Z"
+    },
+    "US|medium|ORCL": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "ORCL",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.883Z"
+    },
+    "US|medium|MRK": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "MRK",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.884Z"
+    },
+    "US|medium|CVX": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "CVX",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.885Z"
+    },
+    "US|medium|KO": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "KO",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.885Z"
+    },
+    "US|medium|AMD": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "AMD",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.886Z"
+    },
+    "US|medium|PEP": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "PEP",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.887Z"
+    },
+    "US|medium|ADBE": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "ADBE",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.888Z"
+    },
+    "US|medium|WMT": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "WMT",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.888Z"
+    },
+    "US|medium|TMO": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "TMO",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.889Z"
+    },
+    "US|medium|MCD": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "MCD",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.890Z"
+    },
+    "US|medium|CSCO": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "CSCO",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.891Z"
+    },
+    "US|medium|ACN": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "ACN",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.891Z"
+    },
+    "US|medium|ABT": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "ABT",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.892Z"
+    },
+    "US|medium|LIN": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "LIN",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.893Z"
+    },
+    "US|medium|INTC": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "INTC",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.893Z"
+    },
+    "US|medium|QCOM": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "QCOM",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.894Z"
+    },
+    "US|medium|TXN": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "TXN",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.895Z"
+    },
+    "US|medium|DIS": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "DIS",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.896Z"
+    },
+    "US|medium|IBM": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "IBM",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.896Z"
+    },
+    "US|medium|GE": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "GE",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.897Z"
+    },
+    "US|medium|CAT": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "CAT",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.898Z"
+    },
+    "US|medium|GS": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "GS",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.899Z"
+    },
+    "US|medium|MS": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "MS",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.900Z"
+    },
+    "US|medium|INTU": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "INTU",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.900Z"
+    },
+    "US|medium|AMAT": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "AMAT",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.901Z"
+    },
+    "US|medium|MU": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "MU",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.902Z"
+    },
+    "US|medium|LRCX": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "LRCX",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.902Z"
+    },
+    "US|medium|KLAC": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "KLAC",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.903Z"
+    },
+    "US|medium|PANW": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "PANW",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.904Z"
+    },
+    "US|medium|SNPS": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "SNPS",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.905Z"
+    },
+    "US|medium|CDNS": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "CDNS",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.905Z"
+    },
+    "US|medium|CRWD": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "CRWD",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.906Z"
+    },
+    "US|medium|FTNT": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "FTNT",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.907Z"
+    },
+    "US|medium|MRVL": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "MRVL",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.908Z"
+    },
+    "US|medium|ON": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "ON",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.909Z"
+    },
+    "US|medium|BKNG": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "BKNG",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.909Z"
+    },
+    "US|medium|ISRG": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "ISRG",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.910Z"
+    },
+    "US|medium|NOW": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "NOW",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.911Z"
+    },
+    "US|medium|UBER": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "UBER",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.912Z"
+    },
+    "US|medium|PYPL": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "PYPL",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.913Z"
+    },
+    "US|medium|SBUX": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "SBUX",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.914Z"
+    },
+    "US|medium|GILD": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "GILD",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.915Z"
+    },
+    "US|medium|REGN": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "REGN",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.915Z"
+    },
+    "US|medium|VRTX": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "VRTX",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.916Z"
+    },
+    "US|long|AAPL": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "AAPL",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.917Z"
+    },
+    "US|long|MSFT": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "MSFT",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.917Z"
+    },
+    "US|long|NVDA": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "NVDA",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.918Z"
+    },
+    "US|long|AMZN": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "AMZN",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.919Z"
+    },
+    "US|long|GOOGL": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "GOOGL",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.920Z"
+    },
+    "US|long|GOOG": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "GOOG",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.920Z"
+    },
+    "US|long|META": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "META",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.921Z"
+    },
+    "US|long|TSLA": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "TSLA",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.922Z"
+    },
+    "US|long|BRK-B": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "BRK-B",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.922Z"
+    },
+    "US|long|AVGO": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "AVGO",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.923Z"
+    },
+    "US|long|LLY": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "LLY",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.924Z"
+    },
+    "US|long|JPM": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "JPM",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.926Z"
+    },
+    "US|long|V": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "V",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.926Z"
+    },
+    "US|long|UNH": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "UNH",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.927Z"
+    },
+    "US|long|XOM": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "XOM",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.928Z"
+    },
+    "US|long|MA": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "MA",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.929Z"
+    },
+    "US|long|COST": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "COST",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.929Z"
+    },
+    "US|long|HD": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "HD",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.930Z"
+    },
+    "US|long|PG": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "PG",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.931Z"
+    },
+    "US|long|JNJ": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "JNJ",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.932Z"
+    },
+    "US|long|NFLX": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "NFLX",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.933Z"
+    },
+    "US|long|ABBV": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "ABBV",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.934Z"
+    },
+    "US|long|CRM": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "CRM",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.935Z"
+    },
+    "US|long|BAC": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "BAC",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.936Z"
+    },
+    "US|long|ORCL": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "ORCL",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.936Z"
+    },
+    "US|long|MRK": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "MRK",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.938Z"
+    },
+    "US|long|CVX": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "CVX",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.939Z"
+    },
+    "US|long|KO": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "KO",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.939Z"
+    },
+    "US|long|AMD": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "AMD",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.940Z"
+    },
+    "US|long|PEP": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "PEP",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.941Z"
+    },
+    "US|long|ADBE": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "ADBE",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.941Z"
+    },
+    "US|long|WMT": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "WMT",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.942Z"
+    },
+    "US|long|TMO": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "TMO",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.943Z"
+    },
+    "US|long|MCD": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "MCD",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.944Z"
+    },
+    "US|long|CSCO": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "CSCO",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.945Z"
+    },
+    "US|long|ACN": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "ACN",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.945Z"
+    },
+    "US|long|ABT": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "ABT",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.946Z"
+    },
+    "US|long|LIN": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "LIN",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.948Z"
+    },
+    "US|long|INTC": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "INTC",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.948Z"
+    },
+    "US|long|QCOM": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "QCOM",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.949Z"
+    },
+    "US|long|TXN": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "TXN",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.950Z"
+    },
+    "US|long|DIS": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "DIS",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.950Z"
+    },
+    "US|long|IBM": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "IBM",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.951Z"
+    },
+    "US|long|GE": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "GE",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.952Z"
+    },
+    "US|long|CAT": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "CAT",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.952Z"
+    },
+    "US|long|GS": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "GS",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.953Z"
+    },
+    "US|long|MS": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "MS",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.954Z"
+    },
+    "US|long|INTU": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "INTU",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.954Z"
+    },
+    "US|long|AMAT": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "AMAT",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.955Z"
+    },
+    "US|long|MU": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "MU",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.956Z"
+    },
+    "US|long|LRCX": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "LRCX",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.957Z"
+    },
+    "US|long|KLAC": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "KLAC",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.958Z"
+    },
+    "US|long|PANW": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "PANW",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.958Z"
+    },
+    "US|long|SNPS": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "SNPS",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.959Z"
+    },
+    "US|long|CDNS": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "CDNS",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.960Z"
+    },
+    "US|long|CRWD": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "CRWD",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.961Z"
+    },
+    "US|long|FTNT": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "FTNT",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.961Z"
+    },
+    "US|long|MRVL": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "MRVL",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.962Z"
+    },
+    "US|long|ON": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "ON",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.963Z"
+    },
+    "US|long|BKNG": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "BKNG",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.964Z"
+    },
+    "US|long|ISRG": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "ISRG",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.964Z"
+    },
+    "US|long|NOW": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "NOW",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.965Z"
+    },
+    "US|long|UBER": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "UBER",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.966Z"
+    },
+    "US|long|PYPL": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "PYPL",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.967Z"
+    },
+    "US|long|SBUX": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "SBUX",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.967Z"
+    },
+    "US|long|GILD": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "GILD",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.968Z"
+    },
+    "US|long|REGN": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "REGN",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.969Z"
+    },
+    "US|long|VRTX": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "VRTX",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.969Z"
+    },
+    "Japan|medium|7203.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7203.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.970Z"
+    },
+    "Japan|medium|6758.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6758.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.971Z"
+    },
+    "Japan|medium|9984.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "9984.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.972Z"
+    },
+    "Japan|medium|6861.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6861.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.973Z"
+    },
+    "Japan|medium|8306.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "8306.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.973Z"
+    },
+    "Japan|medium|4519.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4519.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.974Z"
+    },
+    "Japan|medium|6954.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6954.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.975Z"
+    },
+    "Japan|medium|7974.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7974.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.976Z"
+    },
+    "Japan|medium|6902.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6902.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.976Z"
+    },
+    "Japan|medium|9432.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "9432.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.977Z"
+    },
+    "Japan|medium|8035.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "8035.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.978Z"
+    },
+    "Japan|medium|4063.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4063.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.979Z"
+    },
+    "Japan|medium|2914.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "2914.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.980Z"
+    },
+    "Japan|medium|6501.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6501.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.980Z"
+    },
+    "Japan|medium|4661.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4661.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.981Z"
+    },
+    "Japan|medium|9433.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "9433.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.982Z"
+    },
+    "Japan|medium|6098.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6098.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.983Z"
+    },
+    "Japan|medium|8058.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "8058.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.984Z"
+    },
+    "Japan|medium|8001.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "8001.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.984Z"
+    },
+    "Japan|medium|8031.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "8031.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.985Z"
+    },
+    "Japan|medium|8053.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "8053.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.986Z"
+    },
+    "Japan|medium|8002.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "8002.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.987Z"
+    },
+    "Japan|medium|6981.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6981.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.987Z"
+    },
+    "Japan|medium|6367.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6367.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.988Z"
+    },
+    "Japan|medium|6273.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6273.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.989Z"
+    },
+    "Japan|medium|6857.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6857.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.990Z"
+    },
+    "Japan|medium|7741.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7741.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.990Z"
+    },
+    "Japan|medium|4543.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4543.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.991Z"
+    },
+    "Japan|medium|4503.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4503.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.992Z"
+    },
+    "Japan|medium|4502.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4502.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.993Z"
+    },
+    "Japan|medium|4523.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4523.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.993Z"
+    },
+    "Japan|medium|4568.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4568.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.994Z"
+    },
+    "Japan|medium|4151.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4151.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.996Z"
+    },
+    "Japan|medium|4507.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4507.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.997Z"
+    },
+    "Japan|medium|4578.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4578.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.998Z"
+    },
+    "Japan|medium|4901.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4901.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:54.999Z"
+    },
+    "Japan|medium|3407.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "3407.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.000Z"
+    },
+    "Japan|medium|4188.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4188.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.001Z"
+    },
+    "Japan|medium|4005.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4005.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.002Z"
+    },
+    "Japan|medium|4061.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4061.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.002Z"
+    },
+    "Japan|medium|4042.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4042.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.003Z"
+    },
+    "Japan|medium|4183.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4183.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.004Z"
+    },
+    "Japan|medium|5108.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "5108.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.005Z"
+    },
+    "Japan|medium|5401.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "5401.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.006Z"
+    },
+    "Japan|medium|5411.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "5411.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.006Z"
+    },
+    "Japan|medium|5713.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "5713.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.007Z"
+    },
+    "Japan|medium|5802.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "5802.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.008Z"
+    },
+    "Japan|medium|5803.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "5803.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.009Z"
+    },
+    "Japan|medium|3402.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "3402.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.010Z"
+    },
+    "Japan|medium|3405.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "3405.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.011Z"
+    },
+    "Japan|medium|5019.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "5019.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.012Z"
+    },
+    "Japan|medium|5020.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "5020.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.013Z"
+    },
+    "Japan|medium|1605.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "1605.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.013Z"
+    },
+    "Japan|medium|1925.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "1925.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.014Z"
+    },
+    "Japan|medium|1928.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "1928.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.015Z"
+    },
+    "Japan|medium|1802.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "1802.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.016Z"
+    },
+    "Japan|medium|1801.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "1801.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.016Z"
+    },
+    "Japan|medium|1803.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "1803.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.017Z"
+    },
+    "Japan|medium|1812.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "1812.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.018Z"
+    },
+    "Japan|medium|5631.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "5631.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.019Z"
+    },
+    "Japan|medium|7011.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7011.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.020Z"
+    },
+    "Japan|medium|7012.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7012.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.021Z"
+    },
+    "Japan|medium|7013.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7013.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.022Z"
+    },
+    "Japan|medium|6326.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6326.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.022Z"
+    },
+    "Japan|medium|6301.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6301.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.023Z"
+    },
+    "Japan|medium|6305.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6305.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.024Z"
+    },
+    "Japan|medium|6471.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6471.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.025Z"
+    },
+    "Japan|medium|6472.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6472.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.025Z"
+    },
+    "Japan|medium|6473.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6473.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.026Z"
+    },
+    "Japan|medium|7951.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7951.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.027Z"
+    },
+    "Japan|medium|7731.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7731.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.028Z"
+    },
+    "Japan|medium|7733.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7733.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.028Z"
+    },
+    "Japan|medium|7752.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7752.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.029Z"
+    },
+    "Japan|medium|4902.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4902.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.030Z"
+    },
+    "Japan|medium|6752.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6752.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.031Z"
+    },
+    "Japan|medium|6753.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6753.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.032Z"
+    },
+    "Japan|medium|6645.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6645.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.033Z"
+    },
+    "Japan|medium|6770.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6770.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.033Z"
+    },
+    "Japan|medium|6701.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6701.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.034Z"
+    },
+    "Japan|medium|6702.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6702.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.035Z"
+    },
+    "Japan|medium|6504.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6504.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.036Z"
+    },
+    "Japan|medium|6506.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6506.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.036Z"
+    },
+    "Japan|medium|6532.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6532.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.037Z"
+    },
+    "Japan|medium|6594.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6594.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.038Z"
+    },
+    "Japan|medium|6724.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6724.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.039Z"
+    },
+    "Japan|medium|6762.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6762.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.040Z"
+    },
+    "Japan|medium|6841.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6841.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.040Z"
+    },
+    "Japan|medium|6920.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6920.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.041Z"
+    },
+    "Japan|medium|6952.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6952.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.042Z"
+    },
+    "Japan|medium|6963.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6963.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.043Z"
+    },
+    "Japan|medium|6971.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6971.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.044Z"
+    },
+    "Japan|medium|6976.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6976.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.045Z"
+    },
+    "Japan|medium|6988.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "6988.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.045Z"
+    },
+    "Japan|medium|7735.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7735.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.046Z"
+    },
+    "Japan|medium|3436.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "3436.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.047Z"
+    },
+    "Japan|medium|4062.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "4062.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.048Z"
+    },
+    "Japan|medium|7201.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7201.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.049Z"
+    },
+    "Japan|medium|7202.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7202.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.050Z"
+    },
+    "Japan|medium|7211.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7211.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.051Z"
+    },
+    "Japan|medium|7261.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7261.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.051Z"
+    },
+    "Japan|medium|7267.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7267.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.052Z"
+    },
+    "Japan|medium|7269.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7269.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.053Z"
+    },
+    "Japan|medium|7270.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7270.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.054Z"
+    },
+    "Japan|medium|7272.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7272.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.055Z"
+    },
+    "Japan|medium|3861.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "3861.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.056Z"
+    },
+    "Japan|medium|3863.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "3863.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.057Z"
+    },
+    "Japan|medium|7912.T": {
+      "market": "Japan",
+      "horizon": "medium",
+      "symbol": "7912.T",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:45:55.058Z"
+    }
+  },
+  "timings": {}
+}

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "study": "validated-setup-book-v1",
+  "state": "complete",
+  "completedAt": "2026-10-02T11:43:05.248Z",
+  "output": "scripts/validated-setup-book-results.json",
+  "cells": 37
+}

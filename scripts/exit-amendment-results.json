@@ -1,0 +1,2373 @@
+{
+  "generatedAt": "2026-10-05T11:50:24.321Z",
+  "preregistration": "docs/exit-amendment-preregistration.md",
+  "cells": [
+    {
+      "id": "JAPAN_MEDIUM_MR",
+      "kind": "mean_reversion",
+      "label": "JAPAN_MEDIUM_MR",
+      "approved": true,
+      "windows": [
+        {
+          "fold": 1,
+          "range": {
+            "from": "2024-09-26",
+            "to": "2025-03-28"
+          },
+          "baseline": {
+            "trades": 58,
+            "winRate": 79.3,
+            "avgReturnPct": 0.619,
+            "profitFactor": 1.47,
+            "sharpe": 1.213,
+            "maxDrawdownPct": 24.186,
+            "cvar95Pct": -8.633,
+            "compoundedReturnPct": 36.851,
+            "pnlUsd": 3589.46,
+            "avgWinPct": 2.44,
+            "avgLossPct": -6.361,
+            "breakevenWinRate": 72.279,
+            "breakevenMargin": 7.021,
+            "picksPerMonth": 8.286
+          },
+          "amended": {
+            "trades": 58,
+            "winRate": 81,
+            "avgReturnPct": 0.658,
+            "profitFactor": 1.502,
+            "sharpe": 1.289,
+            "maxDrawdownPct": 24.186,
+            "cvar95Pct": -8.633,
+            "compoundedReturnPct": 39.976,
+            "pnlUsd": 3817.02,
+            "avgWinPct": 2.429,
+            "avgLossPct": -6.906,
+            "breakevenWinRate": 73.985,
+            "breakevenMargin": 7.015,
+            "picksPerMonth": 8.286
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 2,
+            "p90": 14,
+            "max": 34
+          },
+          "maxConcurrent": 10,
+          "cap": 5
+        },
+        {
+          "fold": 2,
+          "range": {
+            "from": "2025-03-31",
+            "to": "2025-09-29"
+          },
+          "baseline": {
+            "trades": 196,
+            "winRate": 74.5,
+            "avgReturnPct": 0.23,
+            "profitFactor": 1.188,
+            "sharpe": 1.003,
+            "maxDrawdownPct": 46.857,
+            "cvar95Pct": -7.555,
+            "compoundedReturnPct": 41.51,
+            "pnlUsd": 4503.6,
+            "avgWinPct": 1.954,
+            "avgLossPct": -4.804,
+            "breakevenWinRate": 71.089,
+            "breakevenMargin": 3.411,
+            "picksPerMonth": 28
+          },
+          "amended": {
+            "trades": 196,
+            "winRate": 74,
+            "avgReturnPct": 0.201,
+            "profitFactor": 1.156,
+            "sharpe": 0.809,
+            "maxDrawdownPct": 51.732,
+            "cvar95Pct": -8.307,
+            "compoundedReturnPct": 31.305,
+            "pnlUsd": 3932.79,
+            "avgWinPct": 2.005,
+            "avgLossPct": -4.929,
+            "breakevenWinRate": 71.086,
+            "breakevenMargin": 2.914,
+            "picksPerMonth": 28
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 4,
+            "p90": 13,
+            "max": 35
+          },
+          "maxConcurrent": 42,
+          "cap": 5
+        },
+        {
+          "fold": 3,
+          "range": {
+            "from": "2025-09-30",
+            "to": "2026-03-31"
+          },
+          "baseline": {
+            "trades": 237,
+            "winRate": 85.2,
+            "avgReturnPct": 1.276,
+            "profitFactor": 2.346,
+            "sharpe": 5.181,
+            "maxDrawdownPct": 17.766,
+            "cvar95Pct": -9.957,
+            "compoundedReturnPct": 1597.244,
+            "pnlUsd": 30230.62,
+            "avgWinPct": 2.609,
+            "avgLossPct": -6.418,
+            "breakevenWinRate": 71.101,
+            "breakevenMargin": 14.099,
+            "picksPerMonth": 33.857
+          },
+          "amended": {
+            "trades": 237,
+            "winRate": 84,
+            "avgReturnPct": 1.423,
+            "profitFactor": 2.403,
+            "sharpe": 5.11,
+            "maxDrawdownPct": 24.225,
+            "cvar95Pct": -11.471,
+            "compoundedReturnPct": 2180.538,
+            "pnlUsd": 33728.42,
+            "avgWinPct": 2.903,
+            "avgLossPct": -6.327,
+            "breakevenWinRate": 68.547,
+            "breakevenMargin": 15.453,
+            "picksPerMonth": 33.857
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 3,
+            "p90": 12,
+            "max": 37
+          },
+          "maxConcurrent": 56,
+          "cap": 5
+        },
+        {
+          "fold": 4,
+          "range": {
+            "from": "2026-04-01",
+            "to": "2026-09-30"
+          },
+          "baseline": {
+            "trades": 200,
+            "winRate": 75.5,
+            "avgReturnPct": 1.198,
+            "profitFactor": 1.851,
+            "sharpe": 3.366,
+            "maxDrawdownPct": 44.333,
+            "cvar95Pct": -13.709,
+            "compoundedReturnPct": 732.799,
+            "pnlUsd": 23969.64,
+            "avgWinPct": 3.453,
+            "avgLossPct": -5.751,
+            "breakevenWinRate": 62.479,
+            "breakevenMargin": 13.021,
+            "picksPerMonth": 33.333
+          },
+          "amended": {
+            "trades": 170,
+            "winRate": 82.9,
+            "avgReturnPct": 1.707,
+            "profitFactor": 2.238,
+            "sharpe": 3.872,
+            "maxDrawdownPct": 56.33,
+            "cvar95Pct": -15.64,
+            "compoundedReturnPct": 1229.606,
+            "pnlUsd": 29022.91,
+            "avgWinPct": 3.721,
+            "avgLossPct": -8.085,
+            "breakevenWinRate": 68.481,
+            "breakevenMargin": 14.419,
+            "picksPerMonth": 28.333
+          },
+          "unresolved": 30,
+          "hold": {
+            "median": 3,
+            "p90": 13,
+            "max": 65
+          },
+          "maxConcurrent": 38,
+          "cap": 5
+        }
+      ],
+      "trades": 4457
+    },
+    {
+      "id": "JAPAN_SHORT_MR",
+      "kind": "mean_reversion",
+      "label": "JAPAN_SHORT_MR",
+      "approved": true,
+      "windows": [
+        {
+          "fold": 1,
+          "range": {
+            "from": "2024-09-26",
+            "to": "2025-03-28"
+          },
+          "baseline": {
+            "trades": 59,
+            "winRate": 66.1,
+            "avgReturnPct": 0.28,
+            "profitFactor": 1.222,
+            "sharpe": 0.633,
+            "maxDrawdownPct": 27.911,
+            "cvar95Pct": -6.681,
+            "compoundedReturnPct": 14.026,
+            "pnlUsd": 1651.92,
+            "avgWinPct": 2.334,
+            "avgLossPct": -3.725,
+            "breakevenWinRate": 61.481,
+            "breakevenMargin": 4.619,
+            "picksPerMonth": 8.429
+          },
+          "amended": {
+            "trades": 59,
+            "winRate": 81.4,
+            "avgReturnPct": 0.645,
+            "profitFactor": 1.501,
+            "sharpe": 1.229,
+            "maxDrawdownPct": 23.514,
+            "cvar95Pct": -8.633,
+            "compoundedReturnPct": 39.318,
+            "pnlUsd": 3808.44,
+            "avgWinPct": 2.376,
+            "avgLossPct": -6.906,
+            "breakevenWinRate": 74.402,
+            "breakevenMargin": 6.998,
+            "picksPerMonth": 8.429
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 3,
+            "p90": 15,
+            "max": 35
+          },
+          "maxConcurrent": 12,
+          "cap": 3
+        },
+        {
+          "fold": 2,
+          "range": {
+            "from": "2025-03-31",
+            "to": "2025-09-29"
+          },
+          "baseline": {
+            "trades": 222,
+            "winRate": 57.2,
+            "avgReturnPct": 0,
+            "profitFactor": 1,
+            "sharpe": -0.001,
+            "maxDrawdownPct": 47.859,
+            "cvar95Pct": -5.557,
+            "compoundedReturnPct": -7.285,
+            "pnlUsd": -2.68,
+            "avgWinPct": 1.802,
+            "avgLossPct": -2.41,
+            "breakevenWinRate": 57.21,
+            "breakevenMargin": -0.01,
+            "picksPerMonth": 31.714
+          },
+          "amended": {
+            "trades": 222,
+            "winRate": 74.3,
+            "avgReturnPct": 0.22,
+            "profitFactor": 1.171,
+            "sharpe": 0.894,
+            "maxDrawdownPct": 59.56,
+            "cvar95Pct": -8.416,
+            "compoundedReturnPct": 39.954,
+            "pnlUsd": 4879.84,
+            "avgWinPct": 2.029,
+            "avgLossPct": -5.018,
+            "breakevenWinRate": 71.205,
+            "breakevenMargin": 3.095,
+            "picksPerMonth": 31.714
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 5,
+            "p90": 17,
+            "max": 36
+          },
+          "maxConcurrent": 56,
+          "cap": 3
+        },
+        {
+          "fold": 3,
+          "range": {
+            "from": "2025-09-30",
+            "to": "2026-03-31"
+          },
+          "baseline": {
+            "trades": 245,
+            "winRate": 71.4,
+            "avgReturnPct": 0.75,
+            "profitFactor": 1.665,
+            "sharpe": 3.088,
+            "maxDrawdownPct": 55.017,
+            "cvar95Pct": -9.981,
+            "compoundedReturnPct": 421.02,
+            "pnlUsd": 18369.65,
+            "avgWinPct": 2.628,
+            "avgLossPct": -3.946,
+            "breakevenWinRate": 60.023,
+            "breakevenMargin": 11.377,
+            "picksPerMonth": 35
+          },
+          "amended": {
+            "trades": 245,
+            "winRate": 84.5,
+            "avgReturnPct": 1.799,
+            "profitFactor": 2.829,
+            "sharpe": 6.203,
+            "maxDrawdownPct": 23.24,
+            "cvar95Pct": -11.277,
+            "compoundedReturnPct": 6016.544,
+            "pnlUsd": 44070.02,
+            "avgWinPct": 3.293,
+            "avgLossPct": -6.34,
+            "breakevenWinRate": 65.817,
+            "breakevenMargin": 18.683,
+            "picksPerMonth": 35
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 5,
+            "p90": 17,
+            "max": 37
+          },
+          "maxConcurrent": 62,
+          "cap": 3
+        },
+        {
+          "fold": 4,
+          "range": {
+            "from": "2026-04-01",
+            "to": "2026-09-30"
+          },
+          "baseline": {
+            "trades": 211,
+            "winRate": 62.1,
+            "avgReturnPct": 0.668,
+            "profitFactor": 1.464,
+            "sharpe": 1.964,
+            "maxDrawdownPct": 57.541,
+            "cvar95Pct": -11.236,
+            "compoundedReturnPct": 213.745,
+            "pnlUsd": 14097.75,
+            "avgWinPct": 3.396,
+            "avgLossPct": -3.799,
+            "breakevenWinRate": 52.8,
+            "breakevenMargin": 9.3,
+            "picksPerMonth": 35.167
+          },
+          "amended": {
+            "trades": 171,
+            "winRate": 81.3,
+            "avgReturnPct": 2.024,
+            "profitFactor": 2.357,
+            "sharpe": 4.175,
+            "maxDrawdownPct": 56.317,
+            "cvar95Pct": -15.761,
+            "compoundedReturnPct": 2070.956,
+            "pnlUsd": 34611.54,
+            "avgWinPct": 4.325,
+            "avgLossPct": -7.972,
+            "breakevenWinRate": 64.827,
+            "breakevenMargin": 16.473,
+            "picksPerMonth": 28.5
+          },
+          "unresolved": 40,
+          "hold": {
+            "median": 5,
+            "p90": 14,
+            "max": 65
+          },
+          "maxConcurrent": 45,
+          "cap": 3
+        }
+      ],
+      "trades": 4457
+    },
+    {
+      "id": "COMMODITIES_MEDIUM_MR",
+      "kind": "mean_reversion",
+      "label": "COMMODITIES_MEDIUM_MR",
+      "approved": false,
+      "windows": [
+        {
+          "fold": 1,
+          "range": {
+            "from": "2024-09-30",
+            "to": "2025-04-01"
+          },
+          "baseline": {
+            "trades": 10,
+            "winRate": 70,
+            "avgReturnPct": 0.915,
+            "profitFactor": 1.954,
+            "sharpe": 0.789,
+            "maxDrawdownPct": 9.297,
+            "cvar95Pct": -6.077,
+            "compoundedReturnPct": 8.883,
+            "pnlUsd": 915.12,
+            "avgWinPct": 2.678,
+            "avgLossPct": -3.199,
+            "breakevenWinRate": 54.43,
+            "breakevenMargin": 15.57,
+            "picksPerMonth": 1.25
+          },
+          "amended": {
+            "trades": 10,
+            "winRate": 70,
+            "avgReturnPct": 1.094,
+            "profitFactor": 2.14,
+            "sharpe": 0.923,
+            "maxDrawdownPct": 9.297,
+            "cvar95Pct": -6.077,
+            "compoundedReturnPct": 10.803,
+            "pnlUsd": 1094.41,
+            "avgWinPct": 2.934,
+            "avgLossPct": -3.199,
+            "breakevenWinRate": 52.157,
+            "breakevenMargin": 17.843,
+            "picksPerMonth": 1.25
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 4,
+            "p90": 8,
+            "max": 8
+          },
+          "maxConcurrent": 4,
+          "cap": 3
+        },
+        {
+          "fold": 2,
+          "range": {
+            "from": "2025-04-02",
+            "to": "2025-10-01"
+          },
+          "baseline": {
+            "trades": 9,
+            "winRate": 77.8,
+            "avgReturnPct": 0.111,
+            "profitFactor": 1.08,
+            "sharpe": 0.09,
+            "maxDrawdownPct": 6.307,
+            "cvar95Pct": -6.307,
+            "compoundedReturnPct": 0.437,
+            "pnlUsd": 99.65,
+            "avgWinPct": 1.92,
+            "avgLossPct": -6.221,
+            "breakevenWinRate": 76.418,
+            "breakevenMargin": 1.382,
+            "picksPerMonth": 1.286
+          },
+          "amended": {
+            "trades": 9,
+            "winRate": 66.7,
+            "avgReturnPct": -0.12,
+            "profitFactor": 0.914,
+            "sharpe": -0.099,
+            "maxDrawdownPct": 6.307,
+            "cvar95Pct": -6.307,
+            "compoundedReturnPct": -1.607,
+            "pnlUsd": -107.8,
+            "avgWinPct": 1.92,
+            "avgLossPct": -4.198,
+            "breakevenWinRate": 68.625,
+            "breakevenMargin": -1.925,
+            "picksPerMonth": 1.286
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 6,
+            "p90": 20,
+            "max": 20
+          },
+          "maxConcurrent": 3,
+          "cap": 3
+        },
+        {
+          "fold": 3,
+          "range": {
+            "from": "2025-10-02",
+            "to": "2026-04-02"
+          },
+          "baseline": {
+            "trades": 19,
+            "winRate": 78.9,
+            "avgReturnPct": 1.848,
+            "profitFactor": 3.764,
+            "sharpe": 2.095,
+            "maxDrawdownPct": 9.625,
+            "cvar95Pct": -8.503,
+            "compoundedReturnPct": 39.764,
+            "pnlUsd": 3510.27,
+            "avgWinPct": 3.187,
+            "avgLossPct": -3.175,
+            "breakevenWinRate": 49.909,
+            "breakevenMargin": 28.991,
+            "picksPerMonth": 2.714
+          },
+          "amended": {
+            "trades": 19,
+            "winRate": 73.7,
+            "avgReturnPct": 2.076,
+            "profitFactor": 3.961,
+            "sharpe": 2.006,
+            "maxDrawdownPct": 9.625,
+            "cvar95Pct": -8.503,
+            "compoundedReturnPct": 45.194,
+            "pnlUsd": 3944.18,
+            "avgWinPct": 3.769,
+            "avgLossPct": -2.664,
+            "breakevenWinRate": 41.416,
+            "breakevenMargin": 32.284,
+            "picksPerMonth": 2.714
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 4,
+            "p90": 17,
+            "max": 19
+          },
+          "maxConcurrent": 7,
+          "cap": 3
+        },
+        {
+          "fold": 4,
+          "range": {
+            "from": "2026-04-06",
+            "to": "2026-10-02"
+          },
+          "baseline": {
+            "trades": 26,
+            "winRate": 84.6,
+            "avgReturnPct": 0.996,
+            "profitFactor": 2.048,
+            "sharpe": 1.211,
+            "maxDrawdownPct": 15.557,
+            "cvar95Pct": -9.669,
+            "compoundedReturnPct": 26.461,
+            "pnlUsd": 2588.94,
+            "avgWinPct": 2.3,
+            "avgLossPct": -6.175,
+            "breakevenWinRate": 72.866,
+            "breakevenMargin": 11.734,
+            "picksPerMonth": 3.714
+          },
+          "amended": {
+            "trades": 24,
+            "winRate": 83.3,
+            "avgReturnPct": 1.548,
+            "profitFactor": 2.512,
+            "sharpe": 1.576,
+            "maxDrawdownPct": 15.557,
+            "cvar95Pct": -9.669,
+            "compoundedReturnPct": 40.71,
+            "pnlUsd": 3715.33,
+            "avgWinPct": 3.086,
+            "avgLossPct": -6.144,
+            "breakevenWinRate": 66.562,
+            "breakevenMargin": 16.738,
+            "picksPerMonth": 3.429
+          },
+          "unresolved": 2,
+          "hold": {
+            "median": 6,
+            "p90": 22,
+            "max": 28
+          },
+          "maxConcurrent": 8,
+          "cap": 3
+        }
+      ],
+      "trades": 502
+    },
+    {
+      "id": "US_SHORT_MR",
+      "kind": "mean_reversion",
+      "label": "US_SHORT_MR",
+      "approved": false,
+      "windows": [
+        {
+          "fold": 1,
+          "range": {
+            "from": "2024-09-26",
+            "to": "2025-03-28"
+          },
+          "baseline": {
+            "trades": 795,
+            "winRate": 52.5,
+            "avgReturnPct": -0.456,
+            "profitFactor": 0.661,
+            "sharpe": -2.667,
+            "maxDrawdownPct": 99.526,
+            "cvar95Pct": -6.259,
+            "compoundedReturnPct": -98.042,
+            "pnlUsd": -36262.55,
+            "avgWinPct": 1.695,
+            "avgLossPct": -2.829,
+            "breakevenWinRate": 62.534,
+            "breakevenMargin": -10.034,
+            "picksPerMonth": 113.571
+          },
+          "amended": {
+            "trades": 795,
+            "winRate": 55,
+            "avgReturnPct": -1.084,
+            "profitFactor": 0.481,
+            "sharpe": -4.781,
+            "maxDrawdownPct": 99.996,
+            "cvar95Pct": -8.66,
+            "compoundedReturnPct": -99.99,
+            "pnlUsd": -86189.38,
+            "avgWinPct": 1.828,
+            "avgLossPct": -4.639,
+            "breakevenWinRate": 71.734,
+            "breakevenMargin": -16.734,
+            "picksPerMonth": 113.571
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 5,
+            "p90": 13,
+            "max": 47
+          },
+          "maxConcurrent": 203,
+          "cap": 2
+        },
+        {
+          "fold": 2,
+          "range": {
+            "from": "2025-03-31",
+            "to": "2025-09-29"
+          },
+          "baseline": {
+            "trades": 342,
+            "winRate": 64.9,
+            "avgReturnPct": 0.265,
+            "profitFactor": 1.298,
+            "sharpe": 1.63,
+            "maxDrawdownPct": 31.971,
+            "cvar95Pct": -5.908,
+            "compoundedReturnPct": 120.573,
+            "pnlUsd": 9065.34,
+            "avgWinPct": 1.778,
+            "avgLossPct": -2.533,
+            "breakevenWinRate": 58.764,
+            "breakevenMargin": 6.136,
+            "picksPerMonth": 48.857
+          },
+          "amended": {
+            "trades": 342,
+            "winRate": 75.1,
+            "avgReturnPct": 0.497,
+            "profitFactor": 1.417,
+            "sharpe": 2.245,
+            "maxDrawdownPct": 37.128,
+            "cvar95Pct": -6.809,
+            "compoundedReturnPct": 340.863,
+            "pnlUsd": 16981.99,
+            "avgWinPct": 2.247,
+            "avgLossPct": -4.796,
+            "breakevenWinRate": 68.096,
+            "breakevenMargin": 7.004,
+            "picksPerMonth": 48.857
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 6,
+            "p90": 15,
+            "max": 51
+          },
+          "maxConcurrent": 46,
+          "cap": 2
+        },
+        {
+          "fold": 3,
+          "range": {
+            "from": "2025-09-30",
+            "to": "2026-03-31"
+          },
+          "baseline": {
+            "trades": 743,
+            "winRate": 64.7,
+            "avgReturnPct": 0.4,
+            "profitFactor": 1.337,
+            "sharpe": 1.833,
+            "maxDrawdownPct": 72.525,
+            "cvar95Pct": -7.449,
+            "compoundedReturnPct": 1141.982,
+            "pnlUsd": 29712.48,
+            "avgWinPct": 2.451,
+            "avgLossPct": -3.366,
+            "breakevenWinRate": 57.864,
+            "breakevenMargin": 6.836,
+            "picksPerMonth": 106.143
+          },
+          "amended": {
+            "trades": 741,
+            "winRate": 74.6,
+            "avgReturnPct": 0.573,
+            "profitFactor": 1.4,
+            "sharpe": 2.189,
+            "maxDrawdownPct": 85.755,
+            "cvar95Pct": -9.031,
+            "compoundedReturnPct": 3528.061,
+            "pnlUsd": 42493.39,
+            "avgWinPct": 2.688,
+            "avgLossPct": -5.646,
+            "breakevenWinRate": 67.747,
+            "breakevenMargin": 6.853,
+            "picksPerMonth": 105.857
+          },
+          "unresolved": 2,
+          "hold": {
+            "median": 4,
+            "p90": 12,
+            "max": 43
+          },
+          "maxConcurrent": 122,
+          "cap": 2
+        },
+        {
+          "fold": 4,
+          "range": {
+            "from": "2026-04-01",
+            "to": "2026-09-30"
+          },
+          "baseline": {
+            "trades": 675,
+            "winRate": 58.8,
+            "avgReturnPct": 0.313,
+            "profitFactor": 1.246,
+            "sharpe": 1.331,
+            "maxDrawdownPct": 83.682,
+            "cvar95Pct": -7.444,
+            "compoundedReturnPct": 416.536,
+            "pnlUsd": 21105.57,
+            "avgWinPct": 2.692,
+            "avgLossPct": -3.085,
+            "breakevenWinRate": 53.402,
+            "breakevenMargin": 5.398,
+            "picksPerMonth": 112.5
+          },
+          "amended": {
+            "trades": 610,
+            "winRate": 67,
+            "avgReturnPct": 0.05,
+            "profitFactor": 1.027,
+            "sharpe": 0.169,
+            "maxDrawdownPct": 96.702,
+            "cvar95Pct": -9.557,
+            "compoundedReturnPct": -30.64,
+            "pnlUsd": 3030.83,
+            "avgWinPct": 2.87,
+            "avgLossPct": -5.69,
+            "breakevenWinRate": 66.469,
+            "breakevenMargin": 0.531,
+            "picksPerMonth": 101.667
+          },
+          "unresolved": 65,
+          "hold": {
+            "median": 5,
+            "p90": 13,
+            "max": 32
+          },
+          "maxConcurrent": 105,
+          "cap": 2
+        }
+      ],
+      "trades": 13164
+    },
+    {
+      "id": "Japan|long",
+      "kind": "current_engine",
+      "market": "Japan",
+      "horizon": "long",
+      "label": "Japan|long",
+      "approved": true,
+      "windows": [
+        {
+          "fold": 1,
+          "range": {
+            "from": "2024-09-26",
+            "to": "2025-03-28"
+          },
+          "baseline": {
+            "trades": 13,
+            "winRate": 23.1,
+            "avgReturnPct": -3.938,
+            "profitFactor": 0.556,
+            "sharpe": -0.897,
+            "maxDrawdownPct": 48.79,
+            "cvar95Pct": -20.301,
+            "compoundedReturnPct": -48.79,
+            "pnlUsd": -5119.35,
+            "avgWinPct": 21.412,
+            "avgLossPct": -11.543,
+            "breakevenWinRate": 35.026,
+            "breakevenMargin": -11.926,
+            "picksPerMonth": 1.857
+          },
+          "amended": {
+            "trades": 13,
+            "winRate": 53.8,
+            "avgReturnPct": 4.965,
+            "profitFactor": 1.64,
+            "sharpe": 0.761,
+            "maxDrawdownPct": 37.226,
+            "cvar95Pct": -20.301,
+            "compoundedReturnPct": 40.14,
+            "pnlUsd": 6454.79,
+            "avgWinPct": 23.638,
+            "avgLossPct": -16.82,
+            "breakevenWinRate": 41.574,
+            "breakevenMargin": 12.226,
+            "picksPerMonth": 1.857
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 72,
+            "p90": 246,
+            "max": 283
+          },
+          "maxConcurrent": 11,
+          "cap": 3
+        },
+        {
+          "fold": 2,
+          "range": {
+            "from": "2025-03-31",
+            "to": "2025-09-29"
+          },
+          "baseline": {
+            "trades": 9,
+            "winRate": 66.7,
+            "avgReturnPct": 10.721,
+            "profitFactor": 5.133,
+            "sharpe": 2.295,
+            "maxDrawdownPct": 14.982,
+            "cvar95Pct": -9.94,
+            "compoundedReturnPct": 133.556,
+            "pnlUsd": 9649.29,
+            "avgWinPct": 19.973,
+            "avgLossPct": -7.782,
+            "breakevenWinRate": 28.039,
+            "breakevenMargin": 38.661,
+            "picksPerMonth": 1.286
+          },
+          "amended": {
+            "trades": 9,
+            "winRate": 77.8,
+            "avgReturnPct": 16.884,
+            "profitFactor": 8.577,
+            "sharpe": 3.153,
+            "maxDrawdownPct": 19.048,
+            "cvar95Pct": -10.113,
+            "compoundedReturnPct": 274.436,
+            "pnlUsd": 15195.27,
+            "avgWinPct": 24.572,
+            "avgLossPct": -10.027,
+            "breakevenWinRate": 28.98,
+            "breakevenMargin": 48.82,
+            "picksPerMonth": 1.286
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 113,
+            "p90": 190,
+            "max": 190
+          },
+          "maxConcurrent": 8,
+          "cap": 3
+        },
+        {
+          "fold": 3,
+          "range": {
+            "from": "2025-09-30",
+            "to": "2026-03-31"
+          },
+          "baseline": {
+            "trades": 14,
+            "winRate": 50,
+            "avgReturnPct": 4.139,
+            "profitFactor": 1.797,
+            "sharpe": 0.973,
+            "maxDrawdownPct": 45.204,
+            "cvar95Pct": -20.087,
+            "compoundedReturnPct": 51.096,
+            "pnlUsd": 5795.22,
+            "avgWinPct": 18.662,
+            "avgLossPct": -10.383,
+            "breakevenWinRate": 35.748,
+            "breakevenMargin": 14.252,
+            "picksPerMonth": 2
+          },
+          "amended": {
+            "trades": 12,
+            "winRate": 66.7,
+            "avgReturnPct": 6.921,
+            "profitFactor": 2.516,
+            "sharpe": 1.505,
+            "maxDrawdownPct": 44.755,
+            "cvar95Pct": -20.087,
+            "compoundedReturnPct": 95.779,
+            "pnlUsd": 8305.64,
+            "avgWinPct": 17.231,
+            "avgLossPct": -13.697,
+            "breakevenWinRate": 44.288,
+            "breakevenMargin": 22.412,
+            "picksPerMonth": 1.714
+          },
+          "unresolved": 2,
+          "hold": {
+            "median": 39,
+            "p90": 73,
+            "max": 193
+          },
+          "maxConcurrent": 9,
+          "cap": 3
+        },
+        {
+          "fold": 4,
+          "range": {
+            "from": "2026-04-01",
+            "to": "2026-09-30"
+          },
+          "baseline": {
+            "trades": 6,
+            "winRate": 16.7,
+            "avgReturnPct": -1.574,
+            "profitFactor": 0.786,
+            "sharpe": -0.215,
+            "maxDrawdownPct": 26.546,
+            "cvar95Pct": -14.65,
+            "compoundedReturnPct": -15.355,
+            "pnlUsd": -944.59,
+            "avgWinPct": 34.628,
+            "avgLossPct": -8.815,
+            "breakevenWinRate": 20.291,
+            "breakevenMargin": -3.591,
+            "picksPerMonth": 1
+          },
+          "amended": {
+            "trades": 2,
+            "winRate": 50,
+            "avgReturnPct": 7.432,
+            "profitFactor": 1.752,
+            "sharpe": 0.273,
+            "maxDrawdownPct": 19.764,
+            "cvar95Pct": -19.764,
+            "compoundedReturnPct": 8.021,
+            "pnlUsd": 1486.44,
+            "avgWinPct": 34.628,
+            "avgLossPct": -19.764,
+            "breakevenWinRate": 36.336,
+            "breakevenMargin": 13.664,
+            "picksPerMonth": 0.333
+          },
+          "unresolved": 4,
+          "hold": {
+            "median": 53,
+            "p90": 57,
+            "max": 57
+          },
+          "maxConcurrent": 2,
+          "cap": 3
+        }
+      ],
+      "trades": 380
+    },
+    {
+      "id": "Hong Kong|medium",
+      "kind": "current_engine",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "label": "Hong Kong|medium",
+      "approved": false,
+      "windows": [
+        {
+          "fold": 1,
+          "range": {
+            "from": "2024-09-26",
+            "to": "2025-03-28"
+          },
+          "baseline": {
+            "trades": 12,
+            "winRate": 33.3,
+            "avgReturnPct": -0.849,
+            "profitFactor": 0.508,
+            "sharpe": -0.868,
+            "maxDrawdownPct": 14.896,
+            "cvar95Pct": -6.396,
+            "compoundedReturnPct": -10.297,
+            "pnlUsd": -1018.65,
+            "avgWinPct": 2.631,
+            "avgLossPct": -2.589,
+            "breakevenWinRate": 49.596,
+            "breakevenMargin": -16.296,
+            "picksPerMonth": 1.714
+          },
+          "amended": {
+            "trades": 12,
+            "winRate": 50,
+            "avgReturnPct": 2.375,
+            "profitFactor": 1.355,
+            "sharpe": 0.47,
+            "maxDrawdownPct": 36.625,
+            "cvar95Pct": -20.243,
+            "compoundedReturnPct": 12.752,
+            "pnlUsd": 2850.29,
+            "avgWinPct": 18.147,
+            "avgLossPct": -13.397,
+            "breakevenWinRate": 42.47,
+            "breakevenMargin": 7.53,
+            "picksPerMonth": 1.714
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 41,
+            "p90": 179,
+            "max": 214
+          },
+          "maxConcurrent": 10,
+          "cap": 3
+        },
+        {
+          "fold": 2,
+          "range": {
+            "from": "2025-03-31",
+            "to": "2025-09-29"
+          },
+          "baseline": {
+            "trades": 8,
+            "winRate": 50,
+            "avgReturnPct": 2.635,
+            "profitFactor": 2.506,
+            "sharpe": 1.034,
+            "maxDrawdownPct": 11.744,
+            "cvar95Pct": -7.047,
+            "compoundedReturnPct": 21.027,
+            "pnlUsd": 2107.87,
+            "avgWinPct": 8.77,
+            "avgLossPct": -3.5,
+            "breakevenWinRate": 28.527,
+            "breakevenMargin": 21.473,
+            "picksPerMonth": 1.143
+          },
+          "amended": {
+            "trades": 8,
+            "winRate": 50,
+            "avgReturnPct": 6.521,
+            "profitFactor": 2.129,
+            "sharpe": 0.814,
+            "maxDrawdownPct": 24.732,
+            "cvar95Pct": -19.508,
+            "compoundedReturnPct": 42.003,
+            "pnlUsd": 5216.51,
+            "avgWinPct": 24.593,
+            "avgLossPct": -11.552,
+            "breakevenWinRate": 31.96,
+            "breakevenMargin": 18.04,
+            "picksPerMonth": 1.143
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 33,
+            "p90": 248,
+            "max": 248
+          },
+          "maxConcurrent": 5,
+          "cap": 3
+        },
+        {
+          "fold": 3,
+          "range": {
+            "from": "2025-09-30",
+            "to": "2026-03-31"
+          },
+          "baseline": {
+            "trades": 2,
+            "winRate": 50,
+            "avgReturnPct": -0.782,
+            "profitFactor": 0.46,
+            "sharpe": -0.37,
+            "maxDrawdownPct": 2.893,
+            "cvar95Pct": -2.893,
+            "compoundedReturnPct": -1.602,
+            "pnlUsd": -156.3,
+            "avgWinPct": 1.33,
+            "avgLossPct": -2.893,
+            "breakevenWinRate": 68.507,
+            "breakevenMargin": -18.507,
+            "picksPerMonth": 0.286
+          },
+          "amended": {
+            "trades": 2,
+            "winRate": 50,
+            "avgReturnPct": 0.057,
+            "profitFactor": 1.013,
+            "sharpe": 0.007,
+            "maxDrawdownPct": 8.529,
+            "cvar95Pct": -8.529,
+            "compoundedReturnPct": -0.622,
+            "pnlUsd": 11.49,
+            "avgWinPct": 8.644,
+            "avgLossPct": -8.529,
+            "breakevenWinRate": 49.665,
+            "breakevenMargin": 0.335,
+            "picksPerMonth": 0.286
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 12,
+            "p90": 30,
+            "max": 30
+          },
+          "maxConcurrent": 1,
+          "cap": 3
+        },
+        {
+          "fold": 4,
+          "range": {
+            "from": "2026-04-01",
+            "to": "2026-09-30"
+          },
+          "baseline": {
+            "trades": 4,
+            "winRate": 75,
+            "avgReturnPct": 2.068,
+            "profitFactor": 8.482,
+            "sharpe": 1.122,
+            "maxDrawdownPct": 1.106,
+            "cvar95Pct": -1.106,
+            "compoundedReturnPct": 8.325,
+            "pnlUsd": 827.27,
+            "avgWinPct": 3.126,
+            "avgLossPct": -1.106,
+            "breakevenWinRate": 26.128,
+            "breakevenMargin": 48.872,
+            "picksPerMonth": 0.667
+          },
+          "amended": {
+            "trades": 3,
+            "winRate": 0,
+            "avgReturnPct": -9.435,
+            "profitFactor": 0,
+            "sharpe": -12.97,
+            "maxDrawdownPct": 25.733,
+            "cvar95Pct": -10.705,
+            "compoundedReturnPct": -25.733,
+            "pnlUsd": -2830.55,
+            "avgWinPct": null,
+            "avgLossPct": -9.435,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.5
+          },
+          "unresolved": 1,
+          "hold": {
+            "median": 30,
+            "p90": 31,
+            "max": 31
+          },
+          "maxConcurrent": 2,
+          "cap": 3
+        }
+      ],
+      "trades": 63
+    },
+    {
+      "id": "Hong Kong|long",
+      "kind": "current_engine",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "label": "Hong Kong|long",
+      "approved": true,
+      "windows": [
+        {
+          "fold": 1,
+          "range": {
+            "from": "2024-09-26",
+            "to": "2025-03-28"
+          },
+          "baseline": {
+            "trades": 1,
+            "winRate": 0,
+            "avgReturnPct": -8.516,
+            "profitFactor": 0,
+            "sharpe": null,
+            "maxDrawdownPct": 8.516,
+            "cvar95Pct": -8.516,
+            "compoundedReturnPct": -8.516,
+            "pnlUsd": -851.62,
+            "avgWinPct": null,
+            "avgLossPct": -8.516,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.143
+          },
+          "amended": {
+            "trades": 1,
+            "winRate": 0,
+            "avgReturnPct": -12.55,
+            "profitFactor": 0,
+            "sharpe": null,
+            "maxDrawdownPct": 12.55,
+            "cvar95Pct": -12.55,
+            "compoundedReturnPct": -12.55,
+            "pnlUsd": -1254.98,
+            "avgWinPct": null,
+            "avgLossPct": -12.55,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.143
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 34,
+            "p90": 34,
+            "max": 34
+          },
+          "maxConcurrent": 1,
+          "cap": 3
+        },
+        {
+          "fold": 2,
+          "range": {
+            "from": "2025-03-31",
+            "to": "2025-09-29"
+          },
+          "baseline": {
+            "trades": 5,
+            "winRate": 80,
+            "avgReturnPct": 15.821,
+            "profitFactor": 14.015,
+            "sharpe": 2.585,
+            "maxDrawdownPct": 6.078,
+            "cvar95Pct": -6.078,
+            "compoundedReturnPct": 102.265,
+            "pnlUsd": 7910.42,
+            "avgWinPct": 21.296,
+            "avgLossPct": -6.078,
+            "breakevenWinRate": 22.204,
+            "breakevenMargin": 57.796,
+            "picksPerMonth": 0.714
+          },
+          "amended": {
+            "trades": 5,
+            "winRate": 100,
+            "avgReturnPct": 20.409,
+            "profitFactor": 99,
+            "sharpe": 7.094,
+            "maxDrawdownPct": 0,
+            "cvar95Pct": 12.75,
+            "compoundedReturnPct": 151.665,
+            "pnlUsd": 10204.32,
+            "avgWinPct": 20.409,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.714
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 150,
+            "p90": 175,
+            "max": 175
+          },
+          "maxConcurrent": 5,
+          "cap": 3
+        },
+        {
+          "fold": 3,
+          "range": {
+            "from": "2025-09-30",
+            "to": "2026-03-31"
+          },
+          "baseline": {
+            "trades": 5,
+            "winRate": 20,
+            "avgReturnPct": -2.23,
+            "profitFactor": 0.583,
+            "sharpe": -0.453,
+            "maxDrawdownPct": 24.554,
+            "cvar95Pct": -14.057,
+            "compoundedReturnPct": -12.809,
+            "pnlUsd": -1114.87,
+            "avgWinPct": 15.567,
+            "avgLossPct": -6.679,
+            "breakevenWinRate": 30.023,
+            "breakevenMargin": -10.023,
+            "picksPerMonth": 0.714
+          },
+          "amended": {
+            "trades": 2,
+            "winRate": 50,
+            "avgReturnPct": 0.755,
+            "profitFactor": 1.107,
+            "sharpe": 0.051,
+            "maxDrawdownPct": 14.057,
+            "cvar95Pct": -14.057,
+            "compoundedReturnPct": -0.678,
+            "pnlUsd": 151.04,
+            "avgWinPct": 15.567,
+            "avgLossPct": -14.057,
+            "breakevenWinRate": 47.451,
+            "breakevenMargin": 2.549,
+            "picksPerMonth": 0.286
+          },
+          "unresolved": 3,
+          "hold": {
+            "median": 47,
+            "p90": 124,
+            "max": 124
+          },
+          "maxConcurrent": 2,
+          "cap": 3
+        },
+        {
+          "fold": 4,
+          "range": {
+            "from": "2026-04-01",
+            "to": "2026-09-30"
+          },
+          "baseline": {
+            "trades": 2,
+            "winRate": 0,
+            "avgReturnPct": -22.525,
+            "profitFactor": 0,
+            "sharpe": -4.144,
+            "maxDrawdownPct": 40.271,
+            "cvar95Pct": -27.961,
+            "compoundedReturnPct": -40.271,
+            "pnlUsd": -4504.93,
+            "avgWinPct": null,
+            "avgLossPct": -22.525,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.333
+          },
+          "amended": {
+            "trades": 2,
+            "winRate": 0,
+            "avgReturnPct": -22.525,
+            "profitFactor": 0,
+            "sharpe": -4.144,
+            "maxDrawdownPct": 40.271,
+            "cvar95Pct": -27.961,
+            "compoundedReturnPct": -40.271,
+            "pnlUsd": -4504.93,
+            "avgWinPct": null,
+            "avgLossPct": -22.525,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.333
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 36,
+            "p90": 47,
+            "max": 47
+          },
+          "maxConcurrent": 2,
+          "cap": 3
+        }
+      ],
+      "trades": 40
+    },
+    {
+      "id": "Germany|medium",
+      "kind": "current_engine",
+      "market": "Germany",
+      "horizon": "medium",
+      "label": "Germany|medium",
+      "approved": true,
+      "windows": [
+        {
+          "fold": 1,
+          "range": {
+            "from": "2024-09-26",
+            "to": "2025-03-28"
+          },
+          "baseline": {
+            "trades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "cvar95Pct": null,
+            "pnlUsd": 0,
+            "avgWinPct": null,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0
+          },
+          "amended": {
+            "trades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "cvar95Pct": null,
+            "pnlUsd": 0,
+            "avgWinPct": null,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": null,
+            "p90": null,
+            "max": null
+          },
+          "maxConcurrent": 0,
+          "cap": 3
+        },
+        {
+          "fold": 2,
+          "range": {
+            "from": "2025-03-31",
+            "to": "2025-09-29"
+          },
+          "baseline": {
+            "trades": 2,
+            "winRate": 50,
+            "avgReturnPct": -0.142,
+            "profitFactor": 0.865,
+            "sharpe": -0.072,
+            "maxDrawdownPct": 2.105,
+            "cvar95Pct": -2.105,
+            "compoundedReturnPct": -0.322,
+            "pnlUsd": -28.37,
+            "avgWinPct": 1.821,
+            "avgLossPct": -2.105,
+            "breakevenWinRate": 53.613,
+            "breakevenMargin": -3.613,
+            "picksPerMonth": 0.286
+          },
+          "amended": {
+            "trades": 2,
+            "winRate": 50,
+            "avgReturnPct": 0.544,
+            "profitFactor": 1.153,
+            "sharpe": 0.071,
+            "maxDrawdownPct": 7.09,
+            "cvar95Pct": -7.09,
+            "compoundedReturnPct": 0.508,
+            "pnlUsd": 108.8,
+            "avgWinPct": 8.178,
+            "avgLossPct": -7.09,
+            "breakevenWinRate": 46.437,
+            "breakevenMargin": 3.563,
+            "picksPerMonth": 0.286
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 53,
+            "p90": 120,
+            "max": 120
+          },
+          "maxConcurrent": 2,
+          "cap": 3
+        },
+        {
+          "fold": 3,
+          "range": {
+            "from": "2025-09-30",
+            "to": "2026-03-31"
+          },
+          "baseline": {
+            "trades": 1,
+            "winRate": 100,
+            "avgReturnPct": 1.767,
+            "profitFactor": 99,
+            "sharpe": null,
+            "maxDrawdownPct": 0,
+            "cvar95Pct": 1.767,
+            "compoundedReturnPct": 1.767,
+            "pnlUsd": 176.75,
+            "avgWinPct": 1.767,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.143
+          },
+          "amended": {
+            "trades": 1,
+            "winRate": 100,
+            "avgReturnPct": 12.011,
+            "profitFactor": 99,
+            "sharpe": null,
+            "maxDrawdownPct": 0,
+            "cvar95Pct": 12.011,
+            "compoundedReturnPct": 12.011,
+            "pnlUsd": 1201.09,
+            "avgWinPct": 12.011,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.143
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 31,
+            "p90": 31,
+            "max": 31
+          },
+          "maxConcurrent": 1,
+          "cap": 3
+        },
+        {
+          "fold": 4,
+          "range": {
+            "from": "2026-04-01",
+            "to": "2026-09-30"
+          },
+          "baseline": {
+            "trades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "cvar95Pct": null,
+            "pnlUsd": 0,
+            "avgWinPct": null,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0
+          },
+          "amended": {
+            "trades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "cvar95Pct": null,
+            "pnlUsd": 0,
+            "avgWinPct": null,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": null,
+            "p90": null,
+            "max": null
+          },
+          "maxConcurrent": 0,
+          "cap": 3
+        }
+      ],
+      "trades": 45
+    },
+    {
+      "id": "Germany|long",
+      "kind": "current_engine",
+      "market": "Germany",
+      "horizon": "long",
+      "label": "Germany|long",
+      "approved": true,
+      "windows": [
+        {
+          "fold": 1,
+          "range": {
+            "from": "2024-09-26",
+            "to": "2025-03-28"
+          },
+          "baseline": {
+            "trades": 4,
+            "winRate": 75,
+            "avgReturnPct": 8.223,
+            "profitFactor": 3.271,
+            "sharpe": 1.033,
+            "maxDrawdownPct": 14.484,
+            "cvar95Pct": -14.484,
+            "compoundedReturnPct": 32.394,
+            "pnlUsd": 3289.27,
+            "avgWinPct": 15.792,
+            "avgLossPct": -14.484,
+            "breakevenWinRate": 47.839,
+            "breakevenMargin": 27.161,
+            "picksPerMonth": 0.571
+          },
+          "amended": {
+            "trades": 4,
+            "winRate": 75,
+            "avgReturnPct": 12.42,
+            "profitFactor": 4.43,
+            "sharpe": 1.174,
+            "maxDrawdownPct": 14.484,
+            "cvar95Pct": -14.484,
+            "compoundedReturnPct": 51.035,
+            "pnlUsd": 4968.14,
+            "avgWinPct": 21.388,
+            "avgLossPct": -14.484,
+            "breakevenWinRate": 40.376,
+            "breakevenMargin": 34.624,
+            "picksPerMonth": 0.571
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 99,
+            "p90": 276,
+            "max": 276
+          },
+          "maxConcurrent": 4,
+          "cap": 3
+        },
+        {
+          "fold": 2,
+          "range": {
+            "from": "2025-03-31",
+            "to": "2025-09-29"
+          },
+          "baseline": {
+            "trades": 2,
+            "winRate": 0,
+            "avgReturnPct": -9.129,
+            "profitFactor": 0,
+            "sharpe": -4.931,
+            "maxDrawdownPct": 17.459,
+            "cvar95Pct": -10.981,
+            "compoundedReturnPct": -17.459,
+            "pnlUsd": -1825.85,
+            "avgWinPct": null,
+            "avgLossPct": -9.129,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.286
+          },
+          "amended": {
+            "trades": 2,
+            "winRate": 50,
+            "avgReturnPct": 7.379,
+            "profitFactor": 2.344,
+            "sharpe": 0.402,
+            "maxDrawdownPct": 10.981,
+            "cvar95Pct": -10.981,
+            "compoundedReturnPct": 11.932,
+            "pnlUsd": 1475.84,
+            "avgWinPct": 25.739,
+            "avgLossPct": -10.981,
+            "breakevenWinRate": 29.904,
+            "breakevenMargin": 20.096,
+            "picksPerMonth": 0.286
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 12,
+            "p90": 196,
+            "max": 196
+          },
+          "maxConcurrent": 2,
+          "cap": 3
+        },
+        {
+          "fold": 3,
+          "range": {
+            "from": "2025-09-30",
+            "to": "2026-03-31"
+          },
+          "baseline": {
+            "trades": 2,
+            "winRate": 50,
+            "avgReturnPct": -1.005,
+            "profitFactor": 0.842,
+            "sharpe": -0.086,
+            "maxDrawdownPct": 12.721,
+            "cvar95Pct": -12.721,
+            "compoundedReturnPct": -3.372,
+            "pnlUsd": -200.97,
+            "avgWinPct": 10.711,
+            "avgLossPct": -12.721,
+            "breakevenWinRate": 54.288,
+            "breakevenMargin": -4.288,
+            "picksPerMonth": 0.286
+          },
+          "amended": {
+            "trades": 2,
+            "winRate": 50,
+            "avgReturnPct": -1.005,
+            "profitFactor": 0.842,
+            "sharpe": -0.086,
+            "maxDrawdownPct": 12.721,
+            "cvar95Pct": -12.721,
+            "compoundedReturnPct": -3.372,
+            "pnlUsd": -200.97,
+            "avgWinPct": 10.711,
+            "avgLossPct": -12.721,
+            "breakevenWinRate": 54.288,
+            "breakevenMargin": -4.288,
+            "picksPerMonth": 0.286
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 1,
+            "p90": 48,
+            "max": 48
+          },
+          "maxConcurrent": 2,
+          "cap": 3
+        },
+        {
+          "fold": 4,
+          "range": {
+            "from": "2026-04-01",
+            "to": "2026-09-30"
+          },
+          "baseline": {
+            "trades": 1,
+            "winRate": 0,
+            "avgReturnPct": -4.146,
+            "profitFactor": 0,
+            "sharpe": null,
+            "maxDrawdownPct": 4.146,
+            "cvar95Pct": -4.146,
+            "compoundedReturnPct": -4.146,
+            "pnlUsd": -414.62,
+            "avgWinPct": null,
+            "avgLossPct": -4.146,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.167
+          },
+          "amended": {
+            "trades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "cvar95Pct": null,
+            "pnlUsd": 0,
+            "avgWinPct": null,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0
+          },
+          "unresolved": 1,
+          "hold": {
+            "median": null,
+            "p90": null,
+            "max": null
+          },
+          "maxConcurrent": 0,
+          "cap": 3
+        }
+      ],
+      "trades": 47
+    },
+    {
+      "id": "France|long",
+      "kind": "current_engine",
+      "market": "France",
+      "horizon": "long",
+      "label": "France|long",
+      "approved": true,
+      "windows": [
+        {
+          "fold": 1,
+          "range": {
+            "from": "2024-09-26",
+            "to": "2025-03-28"
+          },
+          "baseline": {
+            "trades": 2,
+            "winRate": 0,
+            "avgReturnPct": -9.774,
+            "profitFactor": 0,
+            "sharpe": -2.202,
+            "maxDrawdownPct": 18.79,
+            "cvar95Pct": -14.212,
+            "compoundedReturnPct": -18.79,
+            "pnlUsd": -1954.83,
+            "avgWinPct": null,
+            "avgLossPct": -9.774,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.286
+          },
+          "amended": {
+            "trades": 2,
+            "winRate": 0,
+            "avgReturnPct": -9.774,
+            "profitFactor": 0,
+            "sharpe": -2.202,
+            "maxDrawdownPct": 18.79,
+            "cvar95Pct": -14.212,
+            "compoundedReturnPct": -18.79,
+            "pnlUsd": -1954.83,
+            "avgWinPct": null,
+            "avgLossPct": -9.774,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.286
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 9,
+            "p90": 13,
+            "max": 13
+          },
+          "maxConcurrent": 1,
+          "cap": 3
+        },
+        {
+          "fold": 2,
+          "range": {
+            "from": "2025-03-31",
+            "to": "2025-09-29"
+          },
+          "baseline": {
+            "trades": 2,
+            "winRate": 50,
+            "avgReturnPct": -0.31,
+            "profitFactor": 0.945,
+            "sharpe": -0.028,
+            "maxDrawdownPct": 11.312,
+            "cvar95Pct": -11.312,
+            "compoundedReturnPct": -1.829,
+            "pnlUsd": -61.91,
+            "avgWinPct": 10.693,
+            "avgLossPct": -11.312,
+            "breakevenWinRate": 51.407,
+            "breakevenMargin": -1.407,
+            "picksPerMonth": 0.286
+          },
+          "amended": {
+            "trades": 2,
+            "winRate": 100,
+            "avgReturnPct": 12.595,
+            "profitFactor": 99,
+            "sharpe": 6.623,
+            "maxDrawdownPct": 0,
+            "cvar95Pct": 10.693,
+            "compoundedReturnPct": 26.74,
+            "pnlUsd": 2518.96,
+            "avgWinPct": 12.595,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.286
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 115,
+            "p90": 249,
+            "max": 249
+          },
+          "maxConcurrent": 2,
+          "cap": 3
+        },
+        {
+          "fold": 3,
+          "range": {
+            "from": "2025-09-30",
+            "to": "2026-03-31"
+          },
+          "baseline": {
+            "trades": 4,
+            "winRate": 75,
+            "avgReturnPct": 13.222,
+            "profitFactor": 36.773,
+            "sharpe": 2.111,
+            "maxDrawdownPct": 1.478,
+            "cvar95Pct": -1.478,
+            "compoundedReturnPct": 61.342,
+            "pnlUsd": 5288.79,
+            "avgWinPct": 18.122,
+            "avgLossPct": -1.478,
+            "breakevenWinRate": 7.543,
+            "breakevenMargin": 67.457,
+            "picksPerMonth": 0.571
+          },
+          "amended": {
+            "trades": 4,
+            "winRate": 75,
+            "avgReturnPct": 10.52,
+            "profitFactor": 4.426,
+            "sharpe": 1.231,
+            "maxDrawdownPct": 12.284,
+            "cvar95Pct": -12.284,
+            "compoundedReturnPct": 43.646,
+            "pnlUsd": 4208.2,
+            "avgWinPct": 18.122,
+            "avgLossPct": -12.284,
+            "breakevenWinRate": 40.4,
+            "breakevenMargin": 34.6,
+            "picksPerMonth": 0.571
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 59,
+            "p90": 167,
+            "max": 167
+          },
+          "maxConcurrent": 4,
+          "cap": 3
+        },
+        {
+          "fold": 4,
+          "range": {
+            "from": "2026-04-01",
+            "to": "2026-09-30"
+          },
+          "baseline": {
+            "trades": 3,
+            "winRate": 33.3,
+            "avgReturnPct": -1.839,
+            "profitFactor": 0.723,
+            "sharpe": -0.225,
+            "maxDrawdownPct": 18.965,
+            "cvar95Pct": -11.451,
+            "compoundedReturnPct": -7.28,
+            "pnlUsd": -551.68,
+            "avgWinPct": 14.42,
+            "avgLossPct": -9.968,
+            "breakevenWinRate": 40.874,
+            "breakevenMargin": -7.574,
+            "picksPerMonth": 0.5
+          },
+          "amended": {
+            "trades": 3,
+            "winRate": 33.3,
+            "avgReturnPct": -5.215,
+            "profitFactor": 0.48,
+            "sharpe": -0.52,
+            "maxDrawdownPct": 27.934,
+            "cvar95Pct": -18.612,
+            "compoundedReturnPct": -17.542,
+            "pnlUsd": -1564.59,
+            "avgWinPct": 14.42,
+            "avgLossPct": -15.033,
+            "breakevenWinRate": 51.041,
+            "breakevenMargin": -17.741,
+            "picksPerMonth": 0.5
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 22,
+            "p90": 85,
+            "max": 85
+          },
+          "maxConcurrent": 3,
+          "cap": 3
+        }
+      ],
+      "trades": 47
+    },
+    {
+      "id": "India|long",
+      "kind": "current_engine",
+      "market": "India",
+      "horizon": "long",
+      "label": "India|long",
+      "approved": false,
+      "windows": [
+        {
+          "fold": 1,
+          "range": {
+            "from": "2024-09-30",
+            "to": "2025-04-01"
+          },
+          "baseline": {
+            "trades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "cvar95Pct": null,
+            "pnlUsd": 0,
+            "avgWinPct": null,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0
+          },
+          "amended": {
+            "trades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "cvar95Pct": null,
+            "pnlUsd": 0,
+            "avgWinPct": null,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": null,
+            "p90": null,
+            "max": null
+          },
+          "maxConcurrent": 0,
+          "cap": 3
+        },
+        {
+          "fold": 2,
+          "range": {
+            "from": "2025-04-02",
+            "to": "2025-10-01"
+          },
+          "baseline": {
+            "trades": 13,
+            "winRate": 69.2,
+            "avgReturnPct": 6.203,
+            "profitFactor": 3.754,
+            "sharpe": 1.93,
+            "maxDrawdownPct": 12.679,
+            "cvar95Pct": -12.679,
+            "compoundedReturnPct": 103.403,
+            "pnlUsd": 8064.15,
+            "avgWinPct": 12.213,
+            "avgLossPct": -7.319,
+            "breakevenWinRate": 37.473,
+            "breakevenMargin": 31.727,
+            "picksPerMonth": 1.857
+          },
+          "amended": {
+            "trades": 12,
+            "winRate": 58.3,
+            "avgReturnPct": 3.07,
+            "profitFactor": 1.481,
+            "sharpe": 0.621,
+            "maxDrawdownPct": 27.045,
+            "cvar95Pct": -18.979,
+            "compoundedReturnPct": 22.913,
+            "pnlUsd": 3683.51,
+            "avgWinPct": 16.2,
+            "avgLossPct": -15.312,
+            "breakevenWinRate": 48.592,
+            "breakevenMargin": 9.708,
+            "picksPerMonth": 1.714
+          },
+          "unresolved": 1,
+          "hold": {
+            "median": 116,
+            "p90": 234,
+            "max": 237
+          },
+          "maxConcurrent": 12,
+          "cap": 3
+        },
+        {
+          "fold": 3,
+          "range": {
+            "from": "2025-10-02",
+            "to": "2026-04-02"
+          },
+          "baseline": {
+            "trades": 8,
+            "winRate": 12.5,
+            "avgReturnPct": -6.651,
+            "profitFactor": 0.247,
+            "sharpe": -1.854,
+            "maxDrawdownPct": 44.429,
+            "cvar95Pct": -15.081,
+            "compoundedReturnPct": -44.429,
+            "pnlUsd": -5320.66,
+            "avgWinPct": 17.455,
+            "avgLossPct": -10.095,
+            "breakevenWinRate": 36.641,
+            "breakevenMargin": -24.141,
+            "picksPerMonth": 1.143
+          },
+          "amended": {
+            "trades": 8,
+            "winRate": 25,
+            "avgReturnPct": -6.504,
+            "profitFactor": 0.374,
+            "sharpe": -1.327,
+            "maxDrawdownPct": 45.608,
+            "cvar95Pct": -19.162,
+            "compoundedReturnPct": -45.608,
+            "pnlUsd": -5202.85,
+            "avgWinPct": 15.51,
+            "avgLossPct": -13.842,
+            "breakevenWinRate": 47.157,
+            "breakevenMargin": -22.157,
+            "picksPerMonth": 1.143
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 78,
+            "p90": 213,
+            "max": 213
+          },
+          "maxConcurrent": 8,
+          "cap": 3
+        },
+        {
+          "fold": 4,
+          "range": {
+            "from": "2026-04-06",
+            "to": "2026-10-02"
+          },
+          "baseline": {
+            "trades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "cvar95Pct": null,
+            "pnlUsd": 0,
+            "avgWinPct": null,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0
+          },
+          "amended": {
+            "trades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "cvar95Pct": null,
+            "pnlUsd": 0,
+            "avgWinPct": null,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": null,
+            "p90": null,
+            "max": null
+          },
+          "maxConcurrent": 0,
+          "cap": 3
+        }
+      ],
+      "trades": 147
+    },
+    {
+      "id": "Commodities|long",
+      "kind": "current_engine",
+      "market": "Commodities",
+      "horizon": "long",
+      "label": "Commodities|long",
+      "approved": true,
+      "windows": [
+        {
+          "fold": 1,
+          "range": {
+            "from": "2024-09-30",
+            "to": "2025-04-01"
+          },
+          "baseline": {
+            "trades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "cvar95Pct": null,
+            "pnlUsd": 0,
+            "avgWinPct": null,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0
+          },
+          "amended": {
+            "trades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "cvar95Pct": null,
+            "pnlUsd": 0,
+            "avgWinPct": null,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": null,
+            "p90": null,
+            "max": null
+          },
+          "maxConcurrent": 0,
+          "cap": 3
+        },
+        {
+          "fold": 2,
+          "range": {
+            "from": "2025-04-02",
+            "to": "2025-10-01"
+          },
+          "baseline": {
+            "trades": 1,
+            "winRate": 0,
+            "avgReturnPct": -18.346,
+            "profitFactor": 0,
+            "sharpe": null,
+            "maxDrawdownPct": 18.346,
+            "cvar95Pct": -18.346,
+            "compoundedReturnPct": -18.346,
+            "pnlUsd": -1834.64,
+            "avgWinPct": null,
+            "avgLossPct": -18.346,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.143
+          },
+          "amended": {
+            "trades": 1,
+            "winRate": 0,
+            "avgReturnPct": -18.346,
+            "profitFactor": 0,
+            "sharpe": null,
+            "maxDrawdownPct": 18.346,
+            "cvar95Pct": -18.346,
+            "compoundedReturnPct": -18.346,
+            "pnlUsd": -1834.64,
+            "avgWinPct": null,
+            "avgLossPct": -18.346,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0.143
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 8,
+            "p90": 8,
+            "max": 8
+          },
+          "maxConcurrent": 1,
+          "cap": 3
+        },
+        {
+          "fold": 3,
+          "range": {
+            "from": "2025-10-02",
+            "to": "2026-04-02"
+          },
+          "baseline": {
+            "trades": 3,
+            "winRate": 66.7,
+            "avgReturnPct": 20.623,
+            "profitFactor": 6.37,
+            "sharpe": 1.268,
+            "maxDrawdownPct": 11.522,
+            "cvar95Pct": -11.522,
+            "compoundedReturnPct": 65.164,
+            "pnlUsd": 6186.82,
+            "avgWinPct": 36.695,
+            "avgLossPct": -11.522,
+            "breakevenWinRate": 23.896,
+            "breakevenMargin": 42.804,
+            "picksPerMonth": 0.429
+          },
+          "amended": {
+            "trades": 3,
+            "winRate": 66.7,
+            "avgReturnPct": 13.164,
+            "profitFactor": 2.922,
+            "sharpe": 0.731,
+            "maxDrawdownPct": 20.548,
+            "cvar95Pct": -20.548,
+            "compoundedReturnPct": 33.36,
+            "pnlUsd": 3949.09,
+            "avgWinPct": 30.02,
+            "avgLossPct": -20.548,
+            "breakevenWinRate": 40.635,
+            "breakevenMargin": 26.065,
+            "picksPerMonth": 0.429
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": 18,
+            "p90": 62,
+            "max": 62
+          },
+          "maxConcurrent": 1,
+          "cap": 3
+        },
+        {
+          "fold": 4,
+          "range": {
+            "from": "2026-04-06",
+            "to": "2026-10-02"
+          },
+          "baseline": {
+            "trades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "cvar95Pct": null,
+            "pnlUsd": 0,
+            "avgWinPct": null,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0
+          },
+          "amended": {
+            "trades": 0,
+            "winRate": null,
+            "avgReturnPct": null,
+            "profitFactor": null,
+            "sharpe": null,
+            "maxDrawdownPct": null,
+            "cvar95Pct": null,
+            "pnlUsd": 0,
+            "avgWinPct": null,
+            "avgLossPct": null,
+            "breakevenWinRate": null,
+            "breakevenMargin": null,
+            "picksPerMonth": 0
+          },
+          "unresolved": 0,
+          "hold": {
+            "median": null,
+            "p90": null,
+            "max": null
+          },
+          "maxConcurrent": 0,
+          "cap": 3
+        }
+      ],
+      "trades": 22
+    }
+  ]
+}

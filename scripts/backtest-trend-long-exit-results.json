@@ -1,0 +1,28 @@
+{
+  "generatedAt": "2026-09-25T07:52:38.105Z",
+  "study": "live-trend-long-exit-reoptimization-v1",
+  "status": "BLOCKED_POINT_IN_TIME_ENTRY_REPLAY",
+  "scope": [
+    "US medium buy",
+    "US long buy",
+    "Japan medium buy",
+    "Japan long buy",
+    "France medium buy",
+    "France long buy"
+  ],
+  "reason": "The exact production entry decision includes FMP quality inputs. This research runtime has no FMP credential and no verified as-of historical FMP score/estimate feed. Replaying entries with today's score or an omitted score would alter the entry sample and make the exit-only comparison invalid.",
+  "notRun": [
+    "current bracket baseline",
+    "50% TP1 partial plus runner",
+    "training-only MAE/MFE stop/target calibration"
+  ],
+  "promotionRule": {
+    "holdoutWinRatePct": 60,
+    "profitFactor": 1.3,
+    "netPnlPositive": true,
+    "minimumDevelopmentTrades": 30,
+    "minimumHoldoutTrades": 30,
+    "maximumHoldoutPnlDeteriorationPct": 10
+  },
+  "liveRulesChanged": false
+}

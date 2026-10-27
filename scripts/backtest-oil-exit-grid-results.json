@@ -1,0 +1,510 @@
+{
+  "generatedAt": "2026-09-23T10:28:48.181Z",
+  "assets": [
+    "CL=F",
+    "BZ=F"
+  ],
+  "years": 5,
+  "maxHoldBars": 180,
+  "profiles": [
+    {
+      "id": "current_model_geometry",
+      "label": "Current model proportions",
+      "pct": {
+        "tp1": 0.37865,
+        "tp2": 0.46932,
+        "sl": 0.28122
+      }
+    },
+    {
+      "id": "atr_1_2_1_5",
+      "label": "TP1 1× / TP2 2× / SL 1.5× ATR",
+      "atr": {
+        "tp1": 1,
+        "tp2": 2,
+        "sl": 1.5
+      }
+    },
+    {
+      "id": "atr_1_5_3_2",
+      "label": "TP1 1.5× / TP2 3× / SL 2× ATR",
+      "atr": {
+        "tp1": 1.5,
+        "tp2": 3,
+        "sl": 2
+      }
+    },
+    {
+      "id": "atr_2_4_2_5",
+      "label": "TP1 2× / TP2 4× / SL 2.5× ATR",
+      "atr": {
+        "tp1": 2,
+        "tp2": 4,
+        "sl": 2.5
+      }
+    },
+    {
+      "id": "atr_3_5_3",
+      "label": "TP1 3× / TP2 5× / SL 3× ATR",
+      "atr": {
+        "tp1": 3,
+        "tp2": 5,
+        "sl": 3
+      }
+    },
+    {
+      "id": "generic_long_atr",
+      "label": "Generic long TP1 7× / TP2 11× / SL 5.5× ATR",
+      "atr": {
+        "tp1": 7,
+        "tp2": 11,
+        "sl": 5.5
+      }
+    }
+  ],
+  "currentTrade": {
+    "originalEntry": 102.02,
+    "currentModel": {
+      "tp1": 140.65,
+      "tp2": 149.9,
+      "modelTp2": 162.72,
+      "sl": 73.33
+    },
+    "distancesPct": {
+      "tp1": 37.87,
+      "tp2": 46.93,
+      "sl": -28.12
+    },
+    "note": "One open contract means TP2 is not executable unless quantity is increased; current bridge routes the full lot to TP1."
+  },
+  "results": [
+    {
+      "symbol": "CL=F",
+      "profile": "current_model_geometry",
+      "label": "Current model proportions",
+      "mode": "single_tp1",
+      "metrics": {
+        "trades": 5,
+        "winRate": 40,
+        "avgReturnPct": -0.976,
+        "profitFactor": 0.896,
+        "pnlUsdAtFixedNotional": -488.13,
+        "exits": {
+          "tp1": 1,
+          "time": 4
+        }
+      }
+    },
+    {
+      "symbol": "CL=F",
+      "profile": "current_model_geometry",
+      "label": "Current model proportions",
+      "mode": "split_runner",
+      "metrics": {
+        "trades": 5,
+        "winRate": 40,
+        "avgReturnPct": -3.774,
+        "profitFactor": 0.711,
+        "pnlUsdAtFixedNotional": -1886.88,
+        "exits": {
+          "tp2": 1,
+          "stop": 1,
+          "time": 3
+        }
+      }
+    },
+    {
+      "symbol": "CL=F",
+      "profile": "atr_1_2_1_5",
+      "label": "TP1 1× / TP2 2× / SL 1.5× ATR",
+      "mode": "single_tp1",
+      "metrics": {
+        "trades": 84,
+        "winRate": 57.1,
+        "avgReturnPct": -0.473,
+        "profitFactor": 0.851,
+        "pnlUsdAtFixedNotional": -3970.25,
+        "exits": {
+          "tp1": 48,
+          "stop": 36
+        }
+      }
+    },
+    {
+      "symbol": "CL=F",
+      "profile": "atr_1_2_1_5",
+      "label": "TP1 1× / TP2 2× / SL 1.5× ATR",
+      "mode": "split_runner",
+      "metrics": {
+        "trades": 64,
+        "winRate": 57.8,
+        "avgReturnPct": -0.229,
+        "profitFactor": 0.923,
+        "pnlUsdAtFixedNotional": -1465.94,
+        "exits": {
+          "tp2": 20,
+          "stop": 27,
+          "tp1_then_stop": 17
+        }
+      }
+    },
+    {
+      "symbol": "CL=F",
+      "profile": "atr_1_5_3_2",
+      "label": "TP1 1.5× / TP2 3× / SL 2× ATR",
+      "mode": "single_tp1",
+      "metrics": {
+        "trades": 40,
+        "winRate": 52.5,
+        "avgReturnPct": -0.763,
+        "profitFactor": 0.815,
+        "pnlUsdAtFixedNotional": -3051.74,
+        "exits": {
+          "tp1": 21,
+          "stop": 19
+        }
+      }
+    },
+    {
+      "symbol": "CL=F",
+      "profile": "atr_1_5_3_2",
+      "label": "TP1 1.5× / TP2 3× / SL 2× ATR",
+      "mode": "split_runner",
+      "metrics": {
+        "trades": 33,
+        "winRate": 57.6,
+        "avgReturnPct": 0.023,
+        "profitFactor": 1.006,
+        "pnlUsdAtFixedNotional": 77.28,
+        "exits": {
+          "tp2": 8,
+          "tp1_then_stop": 11,
+          "stop": 14
+        }
+      }
+    },
+    {
+      "symbol": "CL=F",
+      "profile": "atr_2_4_2_5",
+      "label": "TP1 2× / TP2 4× / SL 2.5× ATR",
+      "mode": "single_tp1",
+      "metrics": {
+        "trades": 30,
+        "winRate": 53.3,
+        "avgReturnPct": -1.084,
+        "profitFactor": 0.806,
+        "pnlUsdAtFixedNotional": -3253.15,
+        "exits": {
+          "tp1": 16,
+          "stop": 14
+        }
+      }
+    },
+    {
+      "symbol": "CL=F",
+      "profile": "atr_2_4_2_5",
+      "label": "TP1 2× / TP2 4× / SL 2.5× ATR",
+      "mode": "split_runner",
+      "metrics": {
+        "trades": 21,
+        "winRate": 57.1,
+        "avgReturnPct": 0.275,
+        "profitFactor": 1.057,
+        "pnlUsdAtFixedNotional": 577.32,
+        "exits": {
+          "tp2": 5,
+          "tp1_then_stop": 7,
+          "stop": 9
+        }
+      }
+    },
+    {
+      "symbol": "CL=F",
+      "profile": "atr_3_5_3",
+      "label": "TP1 3× / TP2 5× / SL 3× ATR",
+      "mode": "single_tp1",
+      "metrics": {
+        "trades": 19,
+        "winRate": 52.6,
+        "avgReturnPct": 0.556,
+        "profitFactor": 1.096,
+        "pnlUsdAtFixedNotional": 1056.8,
+        "exits": {
+          "tp1": 10,
+          "stop": 8,
+          "time": 1
+        }
+      }
+    },
+    {
+      "symbol": "CL=F",
+      "profile": "atr_3_5_3",
+      "label": "TP1 3× / TP2 5× / SL 3× ATR",
+      "mode": "split_runner",
+      "metrics": {
+        "trades": 13,
+        "winRate": 46.2,
+        "avgReturnPct": 0.066,
+        "profitFactor": 1.012,
+        "pnlUsdAtFixedNotional": 85.4,
+        "exits": {
+          "tp2": 4,
+          "stop": 6,
+          "time": 2,
+          "tp1_then_stop": 1
+        }
+      }
+    },
+    {
+      "symbol": "CL=F",
+      "profile": "generic_long_atr",
+      "label": "Generic long TP1 7× / TP2 11× / SL 5.5× ATR",
+      "mode": "single_tp1",
+      "metrics": {
+        "trades": 11,
+        "winRate": 36.4,
+        "avgReturnPct": -1.454,
+        "profitFactor": 0.865,
+        "pnlUsdAtFixedNotional": -1599.22,
+        "exits": {
+          "tp1": 4,
+          "stop": 6,
+          "time": 1
+        }
+      }
+    },
+    {
+      "symbol": "CL=F",
+      "profile": "generic_long_atr",
+      "label": "Generic long TP1 7× / TP2 11× / SL 5.5× ATR",
+      "mode": "split_runner",
+      "metrics": {
+        "trades": 8,
+        "winRate": 37.5,
+        "avgReturnPct": -1.568,
+        "profitFactor": 0.856,
+        "pnlUsdAtFixedNotional": -1254.71,
+        "exits": {
+          "tp1_then_stop": 1,
+          "tp2": 1,
+          "time": 2,
+          "stop": 4
+        }
+      }
+    },
+    {
+      "symbol": "BZ=F",
+      "profile": "current_model_geometry",
+      "label": "Current model proportions",
+      "mode": "single_tp1",
+      "metrics": {
+        "trades": 8,
+        "winRate": 50,
+        "avgReturnPct": 7.445,
+        "profitFactor": 1.883,
+        "pnlUsdAtFixedNotional": 5955.87,
+        "exits": {
+          "tp1": 3,
+          "time": 4,
+          "stop": 1
+        }
+      }
+    },
+    {
+      "symbol": "BZ=F",
+      "profile": "current_model_geometry",
+      "label": "Current model proportions",
+      "mode": "split_runner",
+      "metrics": {
+        "trades": 6,
+        "winRate": 50,
+        "avgReturnPct": 1.61,
+        "profitFactor": 1.184,
+        "pnlUsdAtFixedNotional": 965.91,
+        "exits": {
+          "tp2": 1,
+          "time": 4,
+          "tp1_then_stop": 1
+        }
+      }
+    },
+    {
+      "symbol": "BZ=F",
+      "profile": "atr_1_2_1_5",
+      "label": "TP1 1× / TP2 2× / SL 1.5× ATR",
+      "mode": "single_tp1",
+      "metrics": {
+        "trades": 77,
+        "winRate": 57.1,
+        "avgReturnPct": -0.654,
+        "profitFactor": 0.787,
+        "pnlUsdAtFixedNotional": -5032.64,
+        "exits": {
+          "tp1": 44,
+          "stop": 33
+        }
+      }
+    },
+    {
+      "symbol": "BZ=F",
+      "profile": "atr_1_2_1_5",
+      "label": "TP1 1× / TP2 2× / SL 1.5× ATR",
+      "mode": "split_runner",
+      "metrics": {
+        "trades": 60,
+        "winRate": 60,
+        "avgReturnPct": -0.062,
+        "profitFactor": 0.978,
+        "pnlUsdAtFixedNotional": -371.08,
+        "exits": {
+          "tp2": 22,
+          "tp1_then_stop": 15,
+          "stop": 23
+        }
+      }
+    },
+    {
+      "symbol": "BZ=F",
+      "profile": "atr_1_5_3_2",
+      "label": "TP1 1.5× / TP2 3× / SL 2× ATR",
+      "mode": "single_tp1",
+      "metrics": {
+        "trades": 46,
+        "winRate": 54.3,
+        "avgReturnPct": -0.656,
+        "profitFactor": 0.844,
+        "pnlUsdAtFixedNotional": -3019.71,
+        "exits": {
+          "tp1": 25,
+          "stop": 21
+        }
+      }
+    },
+    {
+      "symbol": "BZ=F",
+      "profile": "atr_1_5_3_2",
+      "label": "TP1 1.5× / TP2 3× / SL 2× ATR",
+      "mode": "split_runner",
+      "metrics": {
+        "trades": 32,
+        "winRate": 53.1,
+        "avgReturnPct": -0.326,
+        "profitFactor": 0.923,
+        "pnlUsdAtFixedNotional": -1042.2,
+        "exits": {
+          "tp2": 11,
+          "tp1_then_stop": 6,
+          "stop": 15
+        }
+      }
+    },
+    {
+      "symbol": "BZ=F",
+      "profile": "atr_2_4_2_5",
+      "label": "TP1 2× / TP2 4× / SL 2.5× ATR",
+      "mode": "single_tp1",
+      "metrics": {
+        "trades": 29,
+        "winRate": 58.6,
+        "avgReturnPct": 0.277,
+        "profitFactor": 1.061,
+        "pnlUsdAtFixedNotional": 802.23,
+        "exits": {
+          "tp1": 17,
+          "stop": 12
+        }
+      }
+    },
+    {
+      "symbol": "BZ=F",
+      "profile": "atr_2_4_2_5",
+      "label": "TP1 2× / TP2 4× / SL 2.5× ATR",
+      "mode": "split_runner",
+      "metrics": {
+        "trades": 23,
+        "winRate": 52.2,
+        "avgReturnPct": 0.252,
+        "profitFactor": 1.047,
+        "pnlUsdAtFixedNotional": 579.87,
+        "exits": {
+          "tp2": 8,
+          "tp1_then_stop": 4,
+          "stop": 11
+        }
+      }
+    },
+    {
+      "symbol": "BZ=F",
+      "profile": "atr_3_5_3",
+      "label": "TP1 3× / TP2 5× / SL 3× ATR",
+      "mode": "single_tp1",
+      "metrics": {
+        "trades": 20,
+        "winRate": 55,
+        "avgReturnPct": 0.868,
+        "profitFactor": 1.152,
+        "pnlUsdAtFixedNotional": 1736.8,
+        "exits": {
+          "tp1": 11,
+          "stop": 8,
+          "time": 1
+        }
+      }
+    },
+    {
+      "symbol": "BZ=F",
+      "profile": "atr_3_5_3",
+      "label": "TP1 3× / TP2 5× / SL 3× ATR",
+      "mode": "split_runner",
+      "metrics": {
+        "trades": 17,
+        "winRate": 52.9,
+        "avgReturnPct": 1.98,
+        "profitFactor": 1.357,
+        "pnlUsdAtFixedNotional": 3366.85,
+        "exits": {
+          "tp2": 6,
+          "stop": 7,
+          "time": 2,
+          "tp1_then_stop": 2
+        }
+      }
+    },
+    {
+      "symbol": "BZ=F",
+      "profile": "generic_long_atr",
+      "label": "Generic long TP1 7× / TP2 11× / SL 5.5× ATR",
+      "mode": "single_tp1",
+      "metrics": {
+        "trades": 9,
+        "winRate": 55.6,
+        "avgReturnPct": 2.971,
+        "profitFactor": 1.403,
+        "pnlUsdAtFixedNotional": 2673.76,
+        "exits": {
+          "tp1": 4,
+          "stop": 4,
+          "time": 1
+        }
+      }
+    },
+    {
+      "symbol": "BZ=F",
+      "profile": "generic_long_atr",
+      "label": "Generic long TP1 7× / TP2 11× / SL 5.5× ATR",
+      "mode": "split_runner",
+      "metrics": {
+        "trades": 8,
+        "winRate": 50,
+        "avgReturnPct": 2.377,
+        "profitFactor": 1.287,
+        "pnlUsdAtFixedNotional": 1901.63,
+        "exits": {
+          "tp2": 3,
+          "stop": 4,
+          "time": 1
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,1935 @@
+{
+  "generatedAt": "2026-09-29T06:49:49.713Z",
+  "study": "performance-research-program-v1",
+  "mode": "BACKTEST_ONLY",
+  "liveBehaviorChanged": false,
+  "preregistration": "docs/performance-program-preregistration.md",
+  "methodology": {
+    "folds": {
+      "developmentBars": 504,
+      "validationBars": 126,
+      "holdoutBars": 126
+    },
+    "horizons": [
+      "short",
+      "medium",
+      "long"
+    ],
+    "fundamentalHorizons": [
+      "medium",
+      "long"
+    ],
+    "embargoBars": {
+      "short": 20,
+      "medium": 63,
+      "long": 180
+    },
+    "multiplicity": "Benjamini-Hochberg across all tested cells and variants",
+    "promotion": "holdout win rate >=60%, PF >=1.3, positive PnL, plus frozen FULL/THIN safeguards",
+    "executedCells": 0,
+    "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS"
+  },
+  "pointInTimeStatements": {
+    "available": false,
+    "capabilityDecision": "PART_C_BLOCKED_NO_TIMESTAMPED_ESTIMATE_REVISION_HISTORY",
+    "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run."
+  },
+  "cells": [
+    {
+      "part": "A",
+      "market": "US",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "coverage": "NOT_VALIDATED"
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E_CONTROL",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E_CONTROL",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "A",
+      "market": "Japan",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "coverage": "NOT_VALIDATED"
+    },
+    {
+      "part": "B",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E_CONTROL",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E_CONTROL",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "A",
+      "market": "Hong Kong",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "coverage": "NOT_VALIDATED"
+    },
+    {
+      "part": "B",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E_CONTROL",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E_CONTROL",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "A",
+      "market": "UK",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "coverage": "NOT_VALIDATED"
+    },
+    {
+      "part": "B",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E_CONTROL",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E",
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E_CONTROL",
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "A",
+      "market": "Germany",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "coverage": "NOT_VALIDATED"
+    },
+    {
+      "part": "B",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E_CONTROL",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E_CONTROL",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "A",
+      "market": "France",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "coverage": "NOT_VALIDATED"
+    },
+    {
+      "part": "B",
+      "market": "France",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "France",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "France",
+      "horizon": "medium",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "France",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "France",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "France",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E",
+      "market": "France",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E_CONTROL",
+      "market": "France",
+      "horizon": "medium",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "France",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "France",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "France",
+      "horizon": "long",
+      "side": "buy",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "B",
+      "market": "France",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "C",
+      "market": "France",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "D",
+      "market": "France",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E",
+      "market": "France",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    },
+    {
+      "part": "E_CONTROL",
+      "market": "France",
+      "horizon": "long",
+      "side": "sell",
+      "status": "BLOCKED_NO_RENDER_FMP_DATA",
+      "reason": "No Render/FMP quarterly statement arrays with acceptedDate or filingDate are available; PIT quality backtests were not run.",
+      "holdoutStatus": "NOT_EVALUABLE",
+      "confidence": "NOT_EVALUABLE",
+      "bhStatus": "NOT_EVALUABLE_NO_TESTED_CELLS",
+      "metrics": {
+        "trades": null,
+        "winRate": null,
+        "profitFactor": null,
+        "pnlUsd": null,
+        "averageWinLoss": null,
+        "folds": []
+      }
+    }
+  ],
+  "attachments": [
+    {
+      "source": "scripts/backtest-production-factor-overlays-results.json",
+      "study": "production-factor-overlays-v1",
+      "generatedAt": "2026-09-24T11:29:32.662Z",
+      "status": "ATTACHED_NOT_RERUN",
+      "note": "Recorded price-only confirming-factor results; attached without rerun.",
+      "cells": 42,
+      "variants": null,
+      "holdoutValidity": null,
+      "statusSummary": {
+        "UNSUPPORTED": 42
+      }
+    },
+    {
+      "source": "scripts/backtest-usjp-regime-stabilize-results.json",
+      "study": "usjp-regime-stabilize-v1",
+      "generatedAt": "2026-09-27T17:01:48.032Z",
+      "status": "ATTACHED_NOT_RERUN",
+      "note": "Recorded US/JP mean-reversion regime study; its OVERLAP_RISK label is retained.",
+      "cells": 24,
+      "variants": 6,
+      "holdoutValidity": "OVERLAP_RISK",
+      "statusSummary": {
+        "REJECTED_OR_UNSTABLE": 23,
+        "CANDIDATE_ONLY_OVERLAP_RISK": 1
+      }
+    }
+  ],
+  "conclusion": "NOT_EVALUABLE: no claims, performance results, or promotion decisions are produced without Render/FMP PIT statement data."
+}

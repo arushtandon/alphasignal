@@ -1,0 +1,127 @@
+{
+  "generatedAt": "2026-09-30T08:06:24.822Z",
+  "mode": "BACKTEST_ONLY",
+  "fmpKeyLogged": false,
+  "comparisons": [
+    {
+      "symbol": "AAPL",
+      "decisionDate": "2026-09-29",
+      "pitAltmanZ": 13.170611553795691,
+      "pitTtm": {
+        "ebit": 155334000000,
+        "sales": 466823000000
+      },
+      "fmpAltmanZ": 13.413569163188324,
+      "difference": -0.2429576093926329,
+      "pitReason": null
+    },
+    {
+      "symbol": "MSFT",
+      "decisionDate": "2026-09-29",
+      "pitAltmanZ": 9.043088496896557,
+      "pitTtm": {
+        "ebit": 168985000000,
+        "sales": 331839000000
+      },
+      "fmpAltmanZ": 9.020226475785638,
+      "difference": 0.022862021110919173,
+      "pitReason": null
+    },
+    {
+      "symbol": "NVDA",
+      "decisionDate": "2026-09-29",
+      "pitAltmanZ": 41.11839740077315,
+      "pitTtm": {
+        "ebit": 229980000000,
+        "sales": 302969000000
+      },
+      "fmpAltmanZ": 41.28549305597691,
+      "difference": -0.16709565520375946,
+      "pitReason": null
+    },
+    {
+      "symbol": "AMZN",
+      "decisionDate": "2026-09-29",
+      "pitAltmanZ": 4.659934122912707,
+      "pitTtm": {
+        "ebit": 178797000000,
+        "sales": 775680000000
+      },
+      "fmpAltmanZ": 4.614076529442749,
+      "difference": 0.045857593469958324,
+      "pitReason": null
+    },
+    {
+      "symbol": "GOOGL",
+      "decisionDate": "2026-09-29",
+      "pitAltmanZ": 11.537405490990885,
+      "pitTtm": {
+        "ebit": 301022000000,
+        "sales": 445866000000
+      },
+      "fmpAltmanZ": 11.325403365759696,
+      "difference": 0.212002125231189,
+      "pitReason": null
+    },
+    {
+      "symbol": "META",
+      "decisionDate": "2026-09-29",
+      "pitAltmanZ": 7.874504256171899,
+      "pitTtm": {
+        "ebit": 90699000000,
+        "sales": 228248000000
+      },
+      "fmpAltmanZ": 7.832436734790605,
+      "difference": 0.04206752138129399,
+      "pitReason": null
+    },
+    {
+      "symbol": "TSLA",
+      "decisionDate": "2026-09-29",
+      "pitAltmanZ": 13.746852008314763,
+      "pitTtm": {
+        "ebit": 5551000000,
+        "sales": 103619000000
+      },
+      "fmpAltmanZ": 15.345752700584868,
+      "difference": -1.5989006922701048,
+      "pitReason": null
+    },
+    {
+      "symbol": "JPM",
+      "decisionDate": "2026-09-29",
+      "pitAltmanZ": 0.2159290750687884,
+      "pitTtm": {
+        "ebit": 83898000000,
+        "sales": 297633000000
+      },
+      "fmpAltmanZ": 0.21154106543021875,
+      "difference": 0.00438800963856964,
+      "pitReason": null
+    },
+    {
+      "symbol": "XOM",
+      "decisionDate": "2026-09-29",
+      "pitAltmanZ": 4.629559580286599,
+      "pitTtm": {
+        "ebit": 42175000000,
+        "sales": 361060000000
+      },
+      "fmpAltmanZ": 4.629935113980311,
+      "difference": -0.0003755336937123488,
+      "pitReason": null
+    },
+    {
+      "symbol": "ABBV",
+      "decisionDate": "2026-09-29",
+      "pitAltmanZ": 2.5353748938656615,
+      "pitTtm": {
+        "ebit": 13314000000,
+        "sales": 64386000000
+      },
+      "fmpAltmanZ": 2.5540425919186536,
+      "difference": -0.018667698052992066,
+      "pitReason": null
+    }
+  ]
+}

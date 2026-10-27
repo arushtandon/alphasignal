@@ -1,0 +1,5385 @@
+{
+  "generatedAt": "2026-10-06T05:50:26.343Z",
+  "preregistration": "docs/new-strategy-types-amendment-2026-10-06.md",
+  "paperNlv": 700000,
+  "liveBehaviorChanged": false,
+  "starts": [
+    "US 2010-01-04",
+    "UK 2010-01-04",
+    "France 2010-01-04"
+  ],
+  "rows": [
+    {
+      "id": "B__US__long__momentum__regimeoff",
+      "part": "B",
+      "market": "US",
+      "horizon": "long",
+      "quality": false,
+      "regime": false,
+      "benchmark": "SPY",
+      "top": 0.1,
+      "strategy": "12-1 momentum",
+      "survivorship": "POINT_IN_TIME",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -5.48,
+          "pf": 2.551,
+          "win": 63.5,
+          "trades": 288,
+          "maxDrawdownPct": 11.53,
+          "benchmarkReturnPct": -0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 24.71,
+          "pf": 2.233,
+          "win": 57.9,
+          "trades": 292,
+          "maxDrawdownPct": 0,
+          "benchmarkReturnPct": 24.69,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -3.6,
+          "pf": 1.653,
+          "win": 51.7,
+          "trades": 294,
+          "maxDrawdownPct": 6.91,
+          "benchmarkReturnPct": -1.54,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 26.6,
+          "pf": 4.695,
+          "win": 65.1,
+          "trades": 295,
+          "maxDrawdownPct": 9.21,
+          "benchmarkReturnPct": 17.54,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 318.99,
+        "maxDrawdownPct": 21.27,
+        "sharpe": 0.649,
+        "n": 6480,
+        "win": 57.8,
+        "pf": 2.142
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 10.96
+        },
+        {
+          "year": "2011",
+          "returnPct": 0,
+          "benchmarkReturnPct": -1.22
+        },
+        {
+          "year": "2012",
+          "returnPct": 0,
+          "benchmarkReturnPct": 11.69
+        },
+        {
+          "year": "2013",
+          "returnPct": 0,
+          "benchmarkReturnPct": 26.45
+        },
+        {
+          "year": "2014",
+          "returnPct": 5.11,
+          "benchmarkReturnPct": 12.37
+        },
+        {
+          "year": "2015",
+          "returnPct": 3.42,
+          "benchmarkReturnPct": -0.76
+        },
+        {
+          "year": "2016",
+          "returnPct": 1.81,
+          "benchmarkReturnPct": 11.2
+        },
+        {
+          "year": "2017",
+          "returnPct": 22.64,
+          "benchmarkReturnPct": 18.48
+        },
+        {
+          "year": "2018",
+          "returnPct": -11.56,
+          "benchmarkReturnPct": -7.01
+        },
+        {
+          "year": "2019",
+          "returnPct": 24.27,
+          "benchmarkReturnPct": 28.65
+        },
+        {
+          "year": "2020",
+          "returnPct": 31.2,
+          "benchmarkReturnPct": 15.09
+        },
+        {
+          "year": "2021",
+          "returnPct": 18.79,
+          "benchmarkReturnPct": 28.79
+        },
+        {
+          "year": "2022",
+          "returnPct": -8.36,
+          "benchmarkReturnPct": -19.95
+        },
+        {
+          "year": "2023",
+          "returnPct": 11.8,
+          "benchmarkReturnPct": 24.81
+        },
+        {
+          "year": "2024",
+          "returnPct": 22.67,
+          "benchmarkReturnPct": 24
+        },
+        {
+          "year": "2025",
+          "returnPct": 15.96,
+          "benchmarkReturnPct": 16.64
+        },
+        {
+          "year": "2026",
+          "returnPct": 23.65,
+          "benchmarkReturnPct": 13.42
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -14.89
+      },
+      "maxDrawdownPct": 21.27,
+      "medianNames": 46,
+      "verdict": "FAIL",
+      "design": "Median cohort is 46 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Long holds six overlapping sleeves. Once a month, replace the oldest sleeve and leave the other five in place. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__US__long__momentum__regimeon",
+      "part": "B",
+      "market": "US",
+      "horizon": "long",
+      "quality": false,
+      "regime": true,
+      "benchmark": "SPY",
+      "top": 0.1,
+      "strategy": "12-1 momentum, cash below 200-day MA",
+      "survivorship": "POINT_IN_TIME",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -5.48,
+          "pf": 2.551,
+          "win": 63.5,
+          "trades": 288,
+          "maxDrawdownPct": 11.53,
+          "benchmarkReturnPct": -0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 10.31,
+          "pf": 3.682,
+          "win": 70.1,
+          "trades": 147,
+          "maxDrawdownPct": 0,
+          "benchmarkReturnPct": 24.69,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -2.89,
+          "pf": 1.44,
+          "win": 51,
+          "trades": 245,
+          "maxDrawdownPct": 6.91,
+          "benchmarkReturnPct": -1.54,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 8.14,
+          "pf": 5.024,
+          "win": 64,
+          "trades": 197,
+          "maxDrawdownPct": 7.47,
+          "benchmarkReturnPct": 17.54,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 101.71,
+        "maxDrawdownPct": 20.75,
+        "sharpe": 0.471,
+        "n": 4471,
+        "win": 60.3,
+        "pf": 2.496
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 10.96
+        },
+        {
+          "year": "2011",
+          "returnPct": 0,
+          "benchmarkReturnPct": -1.22
+        },
+        {
+          "year": "2012",
+          "returnPct": 0,
+          "benchmarkReturnPct": 11.69
+        },
+        {
+          "year": "2013",
+          "returnPct": 0,
+          "benchmarkReturnPct": 26.45
+        },
+        {
+          "year": "2014",
+          "returnPct": 5.11,
+          "benchmarkReturnPct": 12.37
+        },
+        {
+          "year": "2015",
+          "returnPct": 0.81,
+          "benchmarkReturnPct": -0.76
+        },
+        {
+          "year": "2016",
+          "returnPct": 0.94,
+          "benchmarkReturnPct": 11.2
+        },
+        {
+          "year": "2017",
+          "returnPct": 22.64,
+          "benchmarkReturnPct": 18.48
+        },
+        {
+          "year": "2018",
+          "returnPct": -2.48,
+          "benchmarkReturnPct": -7.01
+        },
+        {
+          "year": "2019",
+          "returnPct": 2.47,
+          "benchmarkReturnPct": 28.65
+        },
+        {
+          "year": "2020",
+          "returnPct": 14.54,
+          "benchmarkReturnPct": 15.09
+        },
+        {
+          "year": "2021",
+          "returnPct": 18.79,
+          "benchmarkReturnPct": 28.79
+        },
+        {
+          "year": "2022",
+          "returnPct": -12.98,
+          "benchmarkReturnPct": -19.95
+        },
+        {
+          "year": "2023",
+          "returnPct": -1.5,
+          "benchmarkReturnPct": 24.81
+        },
+        {
+          "year": "2024",
+          "returnPct": 20.93,
+          "benchmarkReturnPct": 24
+        },
+        {
+          "year": "2025",
+          "returnPct": 3.33,
+          "benchmarkReturnPct": 16.64
+        },
+        {
+          "year": "2026",
+          "returnPct": 5.62,
+          "benchmarkReturnPct": 13.42
+        }
+      ],
+      "worstMonth": {
+        "date": "2018-10-31",
+        "returnPct": -12.32
+      },
+      "maxDrawdownPct": 20.75,
+      "medianNames": 46,
+      "verdict": "FAIL",
+      "design": "Median cohort is 46 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Long holds six overlapping sleeves. Once a month, replace the oldest sleeve and leave the other five in place. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__US__long__piotroski6__regimeoff",
+      "part": "B",
+      "market": "US",
+      "horizon": "long",
+      "quality": true,
+      "regime": false,
+      "benchmark": "SPY",
+      "top": 0.1,
+      "strategy": "12-1 momentum among Piotroski ≥ 6",
+      "survivorship": "POINT_IN_TIME",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -3.65,
+          "pf": 4.174,
+          "win": 72.2,
+          "trades": 126,
+          "maxDrawdownPct": 11.11,
+          "benchmarkReturnPct": -0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 27.26,
+          "pf": 2.9,
+          "win": 65.5,
+          "trades": 148,
+          "maxDrawdownPct": 0,
+          "benchmarkReturnPct": 24.69,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 0.09,
+          "pf": 1.738,
+          "win": 52.4,
+          "trades": 126,
+          "maxDrawdownPct": 6.36,
+          "benchmarkReturnPct": -1.54,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 22.57,
+          "pf": 7.722,
+          "win": 72.8,
+          "trades": 169,
+          "maxDrawdownPct": 12.19,
+          "benchmarkReturnPct": 17.54,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 358.74,
+        "maxDrawdownPct": 22.46,
+        "sharpe": 0.653,
+        "n": 3023,
+        "win": 59.6,
+        "pf": 2.41
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 10.96
+        },
+        {
+          "year": "2011",
+          "returnPct": 0,
+          "benchmarkReturnPct": -1.22
+        },
+        {
+          "year": "2012",
+          "returnPct": 0,
+          "benchmarkReturnPct": 11.69
+        },
+        {
+          "year": "2013",
+          "returnPct": 0,
+          "benchmarkReturnPct": 26.45
+        },
+        {
+          "year": "2014",
+          "returnPct": -0.34,
+          "benchmarkReturnPct": 12.37
+        },
+        {
+          "year": "2015",
+          "returnPct": 3.53,
+          "benchmarkReturnPct": -0.76
+        },
+        {
+          "year": "2016",
+          "returnPct": 5.47,
+          "benchmarkReturnPct": 11.2
+        },
+        {
+          "year": "2017",
+          "returnPct": 19.77,
+          "benchmarkReturnPct": 18.48
+        },
+        {
+          "year": "2018",
+          "returnPct": -12.5,
+          "benchmarkReturnPct": -7.01
+        },
+        {
+          "year": "2019",
+          "returnPct": 19.22,
+          "benchmarkReturnPct": 28.65
+        },
+        {
+          "year": "2020",
+          "returnPct": 34.55,
+          "benchmarkReturnPct": 15.09
+        },
+        {
+          "year": "2021",
+          "returnPct": 22.19,
+          "benchmarkReturnPct": 28.79
+        },
+        {
+          "year": "2022",
+          "returnPct": -1.3,
+          "benchmarkReturnPct": -19.95
+        },
+        {
+          "year": "2023",
+          "returnPct": 11.21,
+          "benchmarkReturnPct": 24.81
+        },
+        {
+          "year": "2024",
+          "returnPct": 26.64,
+          "benchmarkReturnPct": 24
+        },
+        {
+          "year": "2025",
+          "returnPct": 19.6,
+          "benchmarkReturnPct": 16.64
+        },
+        {
+          "year": "2026",
+          "returnPct": 23.43,
+          "benchmarkReturnPct": 13.42
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -16.06
+      },
+      "maxDrawdownPct": 22.46,
+      "medianNames": 21,
+      "verdict": "CANDIDATE",
+      "design": "Median cohort is 21 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Long holds six overlapping sleeves. Once a month, replace the oldest sleeve and leave the other five in place. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__US__long__piotroski6__regimeon",
+      "part": "B",
+      "market": "US",
+      "horizon": "long",
+      "quality": true,
+      "regime": true,
+      "benchmark": "SPY",
+      "top": 0.1,
+      "strategy": "12-1 momentum among Piotroski ≥ 6, cash below 200-day MA",
+      "survivorship": "POINT_IN_TIME",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -3.65,
+          "pf": 4.174,
+          "win": 72.2,
+          "trades": 126,
+          "maxDrawdownPct": 11.11,
+          "benchmarkReturnPct": -0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 9.79,
+          "pf": 6.874,
+          "win": 82.2,
+          "trades": 73,
+          "maxDrawdownPct": 0,
+          "benchmarkReturnPct": 24.69,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 0.9,
+          "pf": 1.498,
+          "win": 51,
+          "trades": 104,
+          "maxDrawdownPct": 6.36,
+          "benchmarkReturnPct": -1.54,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 3.31,
+          "pf": 8.131,
+          "win": 71.7,
+          "trades": 113,
+          "maxDrawdownPct": 9.81,
+          "benchmarkReturnPct": 17.54,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 108.3,
+        "maxDrawdownPct": 16.04,
+        "sharpe": 0.48,
+        "n": 2075,
+        "win": 62,
+        "pf": 2.798
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 10.96
+        },
+        {
+          "year": "2011",
+          "returnPct": 0,
+          "benchmarkReturnPct": -1.22
+        },
+        {
+          "year": "2012",
+          "returnPct": 0,
+          "benchmarkReturnPct": 11.69
+        },
+        {
+          "year": "2013",
+          "returnPct": 0,
+          "benchmarkReturnPct": 26.45
+        },
+        {
+          "year": "2014",
+          "returnPct": -0.34,
+          "benchmarkReturnPct": 12.37
+        },
+        {
+          "year": "2015",
+          "returnPct": 0.38,
+          "benchmarkReturnPct": -0.76
+        },
+        {
+          "year": "2016",
+          "returnPct": 3.35,
+          "benchmarkReturnPct": 11.2
+        },
+        {
+          "year": "2017",
+          "returnPct": 19.77,
+          "benchmarkReturnPct": 18.48
+        },
+        {
+          "year": "2018",
+          "returnPct": -4.47,
+          "benchmarkReturnPct": -7.01
+        },
+        {
+          "year": "2019",
+          "returnPct": 1.28,
+          "benchmarkReturnPct": 28.65
+        },
+        {
+          "year": "2020",
+          "returnPct": 17.59,
+          "benchmarkReturnPct": 15.09
+        },
+        {
+          "year": "2021",
+          "returnPct": 22.19,
+          "benchmarkReturnPct": 28.79
+        },
+        {
+          "year": "2022",
+          "returnPct": -8.83,
+          "benchmarkReturnPct": -19.95
+        },
+        {
+          "year": "2023",
+          "returnPct": -1.65,
+          "benchmarkReturnPct": 24.81
+        },
+        {
+          "year": "2024",
+          "returnPct": 24.72,
+          "benchmarkReturnPct": 24
+        },
+        {
+          "year": "2025",
+          "returnPct": 4.01,
+          "benchmarkReturnPct": 16.64
+        },
+        {
+          "year": "2026",
+          "returnPct": 4.03,
+          "benchmarkReturnPct": 13.42
+        }
+      ],
+      "worstMonth": {
+        "date": "2018-10-31",
+        "returnPct": -10.54
+      },
+      "maxDrawdownPct": 16.04,
+      "medianNames": 21,
+      "verdict": "FAIL",
+      "design": "Median cohort is 21 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Long holds six overlapping sleeves. Once a month, replace the oldest sleeve and leave the other five in place. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__UK__medium__momentum__regimeoff",
+      "part": "B",
+      "market": "UK",
+      "horizon": "medium",
+      "quality": false,
+      "regime": false,
+      "benchmark": "EWU",
+      "top": 10,
+      "strategy": "12-1 momentum",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": 2.5,
+          "pf": 1.156,
+          "win": 58.3,
+          "trades": 60,
+          "maxDrawdownPct": 7.86,
+          "benchmarkReturnPct": 0.72,
+          "beat": true
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 22.92,
+          "pf": 3.051,
+          "win": 63.3,
+          "trades": 60,
+          "maxDrawdownPct": 0.63,
+          "benchmarkReturnPct": 13.36,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 10.13,
+          "pf": 1.548,
+          "win": 61.7,
+          "trades": 60,
+          "maxDrawdownPct": 12.09,
+          "benchmarkReturnPct": 8.86,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -1.91,
+          "pf": 0.949,
+          "win": 41.7,
+          "trades": 60,
+          "maxDrawdownPct": 9.63,
+          "benchmarkReturnPct": -0.28,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 177.93,
+        "maxDrawdownPct": 32.65,
+        "sharpe": 0.465,
+        "n": 1890,
+        "win": 52.2,
+        "pf": 1.24
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -13.59,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 23.82,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 46.87,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": 1.7,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": 4.17,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": 23.41,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 16.68,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": -15.19,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 23.85,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -11.49,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": -4.49,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -12.02,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": 5.8,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": -5.05,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 55.65,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": -5.08,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -24.97
+      },
+      "maxDrawdownPct": 32.65,
+      "medianNames": 10,
+      "verdict": "CANDIDATE",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Rebalance once a month: sell names that leave the cohort and buy the new ones. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__UK__medium__momentum__regimeon",
+      "part": "B",
+      "market": "UK",
+      "horizon": "medium",
+      "quality": false,
+      "regime": true,
+      "benchmark": "EWU",
+      "top": 10,
+      "strategy": "12-1 momentum, cash below 200-day MA",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -9.54,
+          "pf": 0.484,
+          "win": 42.5,
+          "trades": 40,
+          "maxDrawdownPct": 9.54,
+          "benchmarkReturnPct": 0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 22.92,
+          "pf": 3.051,
+          "win": 63.3,
+          "trades": 60,
+          "maxDrawdownPct": 0.63,
+          "benchmarkReturnPct": 13.36,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 10.13,
+          "pf": 1.548,
+          "win": 61.7,
+          "trades": 60,
+          "maxDrawdownPct": 12.09,
+          "benchmarkReturnPct": 8.86,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -1.91,
+          "pf": 0.949,
+          "win": 41.7,
+          "trades": 60,
+          "maxDrawdownPct": 9.63,
+          "benchmarkReturnPct": -0.28,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 86.47,
+        "maxDrawdownPct": 28.29,
+        "sharpe": 0.397,
+        "n": 1170,
+        "win": 51.2,
+        "pf": 1.233
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -0.9,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 6.19,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 36.59,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": -5.47,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": -0.96,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": 8.11,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 6.78,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": 7.23,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 13.84,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -6.02,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": -7.24,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -15.26,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": 7.54,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": -5.05,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 37.35,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": -5.08,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2026-03-31",
+        "returnPct": -12.09
+      },
+      "maxDrawdownPct": 28.29,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Rebalance once a month: sell names that leave the cohort and buy the new ones. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__UK__medium__piotroski6__regimeoff",
+      "part": "B",
+      "market": "UK",
+      "horizon": "medium",
+      "quality": true,
+      "regime": false,
+      "benchmark": "EWU",
+      "top": 10,
+      "strategy": "12-1 momentum among Piotroski ≥ 6",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -1.6,
+          "pf": 0.938,
+          "win": 46.7,
+          "trades": 60,
+          "maxDrawdownPct": 5.07,
+          "benchmarkReturnPct": 0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 9.94,
+          "pf": 1.785,
+          "win": 51.8,
+          "trades": 56,
+          "maxDrawdownPct": 0.59,
+          "benchmarkReturnPct": 13.36,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 7.11,
+          "pf": 1.434,
+          "win": 55,
+          "trades": 60,
+          "maxDrawdownPct": 7.55,
+          "benchmarkReturnPct": 8.86,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 1.63,
+          "pf": 1.131,
+          "win": 43.3,
+          "trades": 60,
+          "maxDrawdownPct": 4.09,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": -28.92,
+        "maxDrawdownPct": 53.75,
+        "sharpe": -0.085,
+        "n": 1849,
+        "win": 47,
+        "pf": 0.939
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -11.55,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 8.31,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 15.59,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": -7.28,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": -2.69,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": 2.29,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 12.17,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": -20.43,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": -1.6,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -24.37,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": 6.82,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -12.55,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": -6.2,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": -2.52,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 16.68,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 5.06,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -12.9
+      },
+      "maxDrawdownPct": 53.75,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Rebalance once a month: sell names that leave the cohort and buy the new ones. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__UK__medium__piotroski6__regimeon",
+      "part": "B",
+      "market": "UK",
+      "horizon": "medium",
+      "quality": true,
+      "regime": true,
+      "benchmark": "EWU",
+      "top": 10,
+      "strategy": "12-1 momentum among Piotroski ≥ 6, cash below 200-day MA",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -8.16,
+          "pf": 0.484,
+          "win": 45,
+          "trades": 40,
+          "maxDrawdownPct": 8.16,
+          "benchmarkReturnPct": 0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 9.94,
+          "pf": 1.785,
+          "win": 51.8,
+          "trades": 56,
+          "maxDrawdownPct": 0.59,
+          "benchmarkReturnPct": 13.36,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 7.11,
+          "pf": 1.434,
+          "win": 55,
+          "trades": 60,
+          "maxDrawdownPct": 7.55,
+          "benchmarkReturnPct": 8.86,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 1.63,
+          "pf": 1.131,
+          "win": 43.3,
+          "trades": 60,
+          "maxDrawdownPct": 4.09,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": -24.17,
+        "maxDrawdownPct": 40.9,
+        "sharpe": -0.131,
+        "n": 1136,
+        "win": 46,
+        "pf": 0.919
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -2.36,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": -5.18,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 8.86,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": -3.27,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": -3.09,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": -2.58,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 11.17,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": 0.44,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": -2.35,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -18.24,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": 1.15,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -15.36,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": -3.21,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": -2.52,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 8.9,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 5.06,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-02-28",
+        "returnPct": -10.79
+      },
+      "maxDrawdownPct": 40.9,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Rebalance once a month: sell names that leave the cohort and buy the new ones. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__UK__long__momentum__regimeoff",
+      "part": "B",
+      "market": "UK",
+      "horizon": "long",
+      "quality": false,
+      "regime": false,
+      "benchmark": "EWU",
+      "top": 10,
+      "strategy": "12-1 momentum",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": 0.52,
+          "pf": 1.026,
+          "win": 51.7,
+          "trades": 60,
+          "maxDrawdownPct": 6.23,
+          "benchmarkReturnPct": 0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 27.58,
+          "pf": 8.761,
+          "win": 80,
+          "trades": 60,
+          "maxDrawdownPct": 0,
+          "benchmarkReturnPct": 13.36,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 8.07,
+          "pf": 8.457,
+          "win": 80,
+          "trades": 60,
+          "maxDrawdownPct": 12.96,
+          "benchmarkReturnPct": 8.86,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 10.09,
+          "pf": 2.468,
+          "win": 66.7,
+          "trades": 60,
+          "maxDrawdownPct": 5.01,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 800.63,
+        "maxDrawdownPct": 24.74,
+        "sharpe": 0.937,
+        "n": 1840,
+        "win": 62.8,
+        "pf": 2.745
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -2.37,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 32.62,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 58.44,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": 8.93,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": 14.32,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": 13.21,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 33.76,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": -8.28,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 36.13,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": 8.27,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": -1.42,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -5.78,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": 12.45,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": 1.32,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 55.83,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 4.43,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -18.37
+      },
+      "maxDrawdownPct": 24.74,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Long holds six overlapping sleeves. Once a month, replace the oldest sleeve and leave the other five in place. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__UK__long__momentum__regimeon",
+      "part": "B",
+      "market": "UK",
+      "horizon": "long",
+      "quality": false,
+      "regime": true,
+      "benchmark": "EWU",
+      "top": 10,
+      "strategy": "12-1 momentum, cash below 200-day MA",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -9.35,
+          "pf": 0.661,
+          "win": 40,
+          "trades": 40,
+          "maxDrawdownPct": 9.35,
+          "benchmarkReturnPct": 0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 22.95,
+          "pf": 9.826,
+          "win": 77.5,
+          "trades": 40,
+          "maxDrawdownPct": 0,
+          "benchmarkReturnPct": 13.36,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 8.07,
+          "pf": 8.457,
+          "win": 80,
+          "trades": 60,
+          "maxDrawdownPct": 12.96,
+          "benchmarkReturnPct": 8.86,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 10.09,
+          "pf": 2.468,
+          "win": 66.7,
+          "trades": 60,
+          "maxDrawdownPct": 5.01,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 175.62,
+        "maxDrawdownPct": 22.56,
+        "sharpe": 0.68,
+        "n": 770,
+        "win": 66,
+        "pf": 3.286
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": 7.92,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 5.24,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 40.97,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": -1.91,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": -0.61,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": 1.54,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 23.93,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": 8.37,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 6.16,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -4.2,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": -4.89,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -10.53,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": 6.19,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": -0.37,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 35.42,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 4.43,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2026-03-31",
+        "returnPct": -12.96
+      },
+      "maxDrawdownPct": 22.56,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Long holds six overlapping sleeves. Once a month, replace the oldest sleeve and leave the other five in place. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__UK__long__piotroski6__regimeoff",
+      "part": "B",
+      "market": "UK",
+      "horizon": "long",
+      "quality": true,
+      "regime": false,
+      "benchmark": "EWU",
+      "top": 10,
+      "strategy": "12-1 momentum among Piotroski ≥ 6",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": 7.55,
+          "pf": 1.894,
+          "win": 50,
+          "trades": 60,
+          "maxDrawdownPct": 3.7,
+          "benchmarkReturnPct": 0.72,
+          "beat": true
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 13.54,
+          "pf": 7.605,
+          "win": 66.7,
+          "trades": 60,
+          "maxDrawdownPct": 0.62,
+          "benchmarkReturnPct": 13.36,
+          "beat": true
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 10.87,
+          "pf": 6.71,
+          "win": 73.2,
+          "trades": 56,
+          "maxDrawdownPct": 6.07,
+          "benchmarkReturnPct": 8.86,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 0.37,
+          "pf": 1.408,
+          "win": 53.3,
+          "trades": 60,
+          "maxDrawdownPct": 2.08,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 172.83,
+        "maxDrawdownPct": 32.44,
+        "sharpe": 0.51,
+        "n": 1799,
+        "win": 56.6,
+        "pf": 1.714
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -6.92,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 13.8,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 28.6,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": -2.09,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": 4.52,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": 9,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 18.24,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": -13.4,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 11.64,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -8.83,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": 16.55,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -6.04,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": 2.98,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": 13.28,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 26.02,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 7.03,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -13.54
+      },
+      "maxDrawdownPct": 32.44,
+      "medianNames": 10,
+      "verdict": "PASS",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Long holds six overlapping sleeves. Once a month, replace the oldest sleeve and leave the other five in place. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__UK__long__piotroski6__regimeon",
+      "part": "B",
+      "market": "UK",
+      "horizon": "long",
+      "quality": true,
+      "regime": true,
+      "benchmark": "EWU",
+      "top": 10,
+      "strategy": "12-1 momentum among Piotroski ≥ 6, cash below 200-day MA",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -1.74,
+          "pf": 1.272,
+          "win": 45,
+          "trades": 40,
+          "maxDrawdownPct": 3.93,
+          "benchmarkReturnPct": 0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 10.28,
+          "pf": 8.404,
+          "win": 70,
+          "trades": 40,
+          "maxDrawdownPct": 0.62,
+          "benchmarkReturnPct": 13.36,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 10.87,
+          "pf": 6.71,
+          "win": 73.2,
+          "trades": 56,
+          "maxDrawdownPct": 6.07,
+          "benchmarkReturnPct": 8.86,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 0.37,
+          "pf": 1.408,
+          "win": 53.3,
+          "trades": 60,
+          "maxDrawdownPct": 2.08,
+          "benchmarkReturnPct": -0.28,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 53.43,
+        "maxDrawdownPct": 23.15,
+        "sharpe": 0.372,
+        "n": 741,
+        "win": 62.1,
+        "pf": 2.677
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 5.21
+        },
+        {
+          "year": "2011",
+          "returnPct": -0.08,
+          "benchmarkReturnPct": -6.7
+        },
+        {
+          "year": "2012",
+          "returnPct": 0.12,
+          "benchmarkReturnPct": 7.81
+        },
+        {
+          "year": "2013",
+          "returnPct": 17.8,
+          "benchmarkReturnPct": 14.66
+        },
+        {
+          "year": "2014",
+          "returnPct": -0.76,
+          "benchmarkReturnPct": -12.56
+        },
+        {
+          "year": "2015",
+          "returnPct": -0.9,
+          "benchmarkReturnPct": -9.63
+        },
+        {
+          "year": "2016",
+          "returnPct": -0.95,
+          "benchmarkReturnPct": -3.37
+        },
+        {
+          "year": "2017",
+          "returnPct": 15.72,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2018",
+          "returnPct": 3.74,
+          "benchmarkReturnPct": -18.81
+        },
+        {
+          "year": "2019",
+          "returnPct": 0.98,
+          "benchmarkReturnPct": 16.26
+        },
+        {
+          "year": "2020",
+          "returnPct": -10.03,
+          "benchmarkReturnPct": -14.23
+        },
+        {
+          "year": "2021",
+          "returnPct": 7.48,
+          "benchmarkReturnPct": 11.66
+        },
+        {
+          "year": "2022",
+          "returnPct": -9.92,
+          "benchmarkReturnPct": -8.56
+        },
+        {
+          "year": "2023",
+          "returnPct": -2.57,
+          "benchmarkReturnPct": 7.41
+        },
+        {
+          "year": "2024",
+          "returnPct": 8.55,
+          "benchmarkReturnPct": 3.54
+        },
+        {
+          "year": "2025",
+          "returnPct": 11.82,
+          "benchmarkReturnPct": 30.04
+        },
+        {
+          "year": "2026",
+          "returnPct": 7.03,
+          "benchmarkReturnPct": 3.89
+        }
+      ],
+      "worstMonth": {
+        "date": "2022-06-30",
+        "returnPct": -8.51
+      },
+      "maxDrawdownPct": 23.15,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Long holds six overlapping sleeves. Once a month, replace the oldest sleeve and leave the other five in place. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__France__medium__momentum__regimeoff",
+      "part": "B",
+      "market": "France",
+      "horizon": "medium",
+      "quality": false,
+      "regime": false,
+      "benchmark": "EWQ",
+      "top": 10,
+      "strategy": "12-1 momentum",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": 3.85,
+          "pf": 1.276,
+          "win": 55,
+          "trades": 60,
+          "maxDrawdownPct": 3.51,
+          "benchmarkReturnPct": 0.95,
+          "beat": true
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 2.46,
+          "pf": 1.217,
+          "win": 50,
+          "trades": 60,
+          "maxDrawdownPct": 3.9,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -2.41,
+          "pf": 0.937,
+          "win": 46.7,
+          "trades": 60,
+          "maxDrawdownPct": 11.35,
+          "benchmarkReturnPct": -1.67,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -2.37,
+          "pf": 0.92,
+          "win": 40,
+          "trades": 60,
+          "maxDrawdownPct": 10.28,
+          "benchmarkReturnPct": -5.07,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 69.98,
+        "maxDrawdownPct": 34.19,
+        "sharpe": 0.29,
+        "n": 1890,
+        "win": 50.6,
+        "pf": 1.145
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -13.2,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 21.04,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 30.14,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": -8.89,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": 14.85,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": 0.55,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 25.74,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -13.53,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 25.52,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": 5.71,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 17.67,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -24.31,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": -2.19,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -6.42,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": 5,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -4.32,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -14.45
+      },
+      "maxDrawdownPct": 34.19,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Rebalance once a month: sell names that leave the cohort and buy the new ones. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__France__medium__momentum__regimeon",
+      "part": "B",
+      "market": "France",
+      "horizon": "medium",
+      "quality": false,
+      "regime": true,
+      "benchmark": "EWQ",
+      "top": 10,
+      "strategy": "12-1 momentum, cash below 200-day MA",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -4.61,
+          "pf": 0.358,
+          "win": 45,
+          "trades": 20,
+          "maxDrawdownPct": 4.61,
+          "benchmarkReturnPct": 0.95,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 2.46,
+          "pf": 1.217,
+          "win": 50,
+          "trades": 60,
+          "maxDrawdownPct": 3.9,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -2.41,
+          "pf": 0.937,
+          "win": 46.7,
+          "trades": 60,
+          "maxDrawdownPct": 11.35,
+          "benchmarkReturnPct": -1.67,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -7.82,
+          "pf": 0.599,
+          "win": 34,
+          "trades": 50,
+          "maxDrawdownPct": 10.28,
+          "benchmarkReturnPct": -5.07,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 7.12,
+        "maxDrawdownPct": 30.76,
+        "sharpe": 0.091,
+        "n": 1180,
+        "win": 48.9,
+        "pf": 1.05
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -4.3,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 7.92,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 22.01,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": -5.75,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": -12.02,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": -1,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 25.74,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": 4.15,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 1.96,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -5.94,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 17.67,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -11.4,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": -3.75,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -7.6,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": -1.56,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -9.66,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2026-03-31",
+        "returnPct": -11.35
+      },
+      "maxDrawdownPct": 30.76,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Rebalance once a month: sell names that leave the cohort and buy the new ones. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__France__medium__piotroski6__regimeoff",
+      "part": "B",
+      "market": "France",
+      "horizon": "medium",
+      "quality": true,
+      "regime": false,
+      "benchmark": "EWQ",
+      "top": 10,
+      "strategy": "12-1 momentum among Piotroski ≥ 6",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -4.04,
+          "pf": 0.906,
+          "win": 51.7,
+          "trades": 58,
+          "maxDrawdownPct": 9.18,
+          "benchmarkReturnPct": 0.95,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 0.12,
+          "pf": 1.017,
+          "win": 45,
+          "trades": 60,
+          "maxDrawdownPct": 4.1,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -11.18,
+          "pf": 0.611,
+          "win": 37.5,
+          "trades": 56,
+          "maxDrawdownPct": 12.07,
+          "benchmarkReturnPct": -1.67,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -8.15,
+          "pf": 0.58,
+          "win": 43.3,
+          "trades": 60,
+          "maxDrawdownPct": 8.76,
+          "benchmarkReturnPct": -5.07,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 34.03,
+        "maxDrawdownPct": 29.54,
+        "sharpe": 0.192,
+        "n": 1656,
+        "win": 50.8,
+        "pf": 1.092
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -2.74,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 14.97,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 9.85,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": -4.01,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": 24.02,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": 4.71,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 6.99,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -17.15,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 19.24,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -4.59,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 18.82,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -6.37,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 0.57,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -6.82,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": -3.15,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -14.02,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -19.36
+      },
+      "maxDrawdownPct": 29.54,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Rebalance once a month: sell names that leave the cohort and buy the new ones. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__France__medium__piotroski6__regimeon",
+      "part": "B",
+      "market": "France",
+      "horizon": "medium",
+      "quality": true,
+      "regime": true,
+      "benchmark": "EWQ",
+      "top": 10,
+      "strategy": "12-1 momentum among Piotroski ≥ 6, cash below 200-day MA",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -13.91,
+          "pf": 0.03,
+          "win": 16.7,
+          "trades": 18,
+          "maxDrawdownPct": 13.91,
+          "benchmarkReturnPct": 0.95,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 0.12,
+          "pf": 1.017,
+          "win": 45,
+          "trades": 60,
+          "maxDrawdownPct": 4.1,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -11.18,
+          "pf": 0.611,
+          "win": 37.5,
+          "trades": 56,
+          "maxDrawdownPct": 12.07,
+          "benchmarkReturnPct": -1.67,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -7.29,
+          "pf": 0.555,
+          "win": 44,
+          "trades": 50,
+          "maxDrawdownPct": 8.76,
+          "benchmarkReturnPct": -5.07,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": -27.63,
+        "maxDrawdownPct": 35.07,
+        "sharpe": -0.174,
+        "n": 1044,
+        "win": 47.8,
+        "pf": 0.906
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": 2.65,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": -1.36,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 2.13,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": -0.96,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": -10.08,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": -1.34,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 6.99,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -1.87,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": -0.06,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -7.61,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 18.82,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -5.58,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 5.75,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -10.22,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": -11.11,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -13.21,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2024-10-31",
+        "returnPct": -7.99
+      },
+      "maxDrawdownPct": 35.07,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Rebalance once a month: sell names that leave the cohort and buy the new ones. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__France__long__momentum__regimeoff",
+      "part": "B",
+      "market": "France",
+      "horizon": "long",
+      "quality": false,
+      "regime": false,
+      "benchmark": "EWQ",
+      "top": 10,
+      "strategy": "12-1 momentum",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": 1.03,
+          "pf": 0.686,
+          "win": 48.3,
+          "trades": 60,
+          "maxDrawdownPct": 4.55,
+          "benchmarkReturnPct": 0.95,
+          "beat": true
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 2.39,
+          "pf": 1.104,
+          "win": 45,
+          "trades": 60,
+          "maxDrawdownPct": 3.9,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 2.28,
+          "pf": 3.504,
+          "win": 71.7,
+          "trades": 60,
+          "maxDrawdownPct": 9.71,
+          "benchmarkReturnPct": -1.67,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -3.41,
+          "pf": 0.994,
+          "win": 51.7,
+          "trades": 60,
+          "maxDrawdownPct": 7.47,
+          "benchmarkReturnPct": -5.07,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 371.25,
+        "maxDrawdownPct": 24.64,
+        "sharpe": 0.707,
+        "n": 1840,
+        "win": 64.2,
+        "pf": 2.346
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -11.53,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 29.64,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 39.95,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": 2.71,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": 22.33,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": 3.95,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 27.16,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -4.45,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 34.12,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": 6.41,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 31.23,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -17.05,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 16.45,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -1.98,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": 8.89,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -4.18,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -16.33
+      },
+      "maxDrawdownPct": 24.64,
+      "medianNames": 10,
+      "verdict": "CANDIDATE",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Long holds six overlapping sleeves. Once a month, replace the oldest sleeve and leave the other five in place. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__France__long__momentum__regimeon",
+      "part": "B",
+      "market": "France",
+      "horizon": "long",
+      "quality": false,
+      "regime": true,
+      "benchmark": "EWQ",
+      "top": 10,
+      "strategy": "12-1 momentum, cash below 200-day MA",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -1.5,
+          "pf": 0.961,
+          "win": 50,
+          "trades": 20,
+          "maxDrawdownPct": 1.5,
+          "benchmarkReturnPct": 0.95,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 2.47,
+          "pf": 0.76,
+          "win": 40,
+          "trades": 20,
+          "maxDrawdownPct": 3.31,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 2.28,
+          "pf": 3.504,
+          "win": 71.7,
+          "trades": 60,
+          "maxDrawdownPct": 9.71,
+          "benchmarkReturnPct": -1.67,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -4.33,
+          "pf": 0.855,
+          "win": 52.5,
+          "trades": 40,
+          "maxDrawdownPct": 6.27,
+          "benchmarkReturnPct": -5.07,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 107.97,
+        "maxDrawdownPct": 14.99,
+        "sharpe": 0.58,
+        "n": 770,
+        "win": 72.1,
+        "pf": 4.37
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": 0.79,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 3.63,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 28.25,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": 0.4,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": -5.59,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": -1.69,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 23.93,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": 10.82,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 3.42,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -4.23,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 27.93,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -3.96,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 5.02,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -4.14,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": 4.33,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -5.1,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2026-03-31",
+        "returnPct": -9.71
+      },
+      "maxDrawdownPct": 14.99,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Long holds six overlapping sleeves. Once a month, replace the oldest sleeve and leave the other five in place. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__France__long__piotroski6__regimeoff",
+      "part": "B",
+      "market": "France",
+      "horizon": "long",
+      "quality": true,
+      "regime": false,
+      "benchmark": "EWQ",
+      "top": 10,
+      "strategy": "12-1 momentum among Piotroski ≥ 6",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": 1.64,
+          "pf": 0.294,
+          "win": 33.3,
+          "trades": 54,
+          "maxDrawdownPct": 6.19,
+          "benchmarkReturnPct": 0.95,
+          "beat": true
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": -1.44,
+          "pf": 1.304,
+          "win": 51.7,
+          "trades": 60,
+          "maxDrawdownPct": 5.48,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -4.46,
+          "pf": 2.195,
+          "win": 61.7,
+          "trades": 60,
+          "maxDrawdownPct": 8.14,
+          "benchmarkReturnPct": -1.67,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -5.21,
+          "pf": 0.436,
+          "win": 42.9,
+          "trades": 56,
+          "maxDrawdownPct": 8.59,
+          "benchmarkReturnPct": -5.07,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 94.78,
+        "maxDrawdownPct": 26.24,
+        "sharpe": 0.343,
+        "n": 1606,
+        "win": 58.1,
+        "pf": 1.513
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -7.58,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 12,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 19.02,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": 1.04,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": 21.1,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": 4.94,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 9.53,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -17.36,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 24.07,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -4.55,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 19.22,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -7.4,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 10.01,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": 2.08,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": 2,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -9.17,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2020-03-31",
+        "returnPct": -19.28
+      },
+      "maxDrawdownPct": 26.24,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Long holds six overlapping sleeves. Once a month, replace the oldest sleeve and leave the other five in place. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "B__France__long__piotroski6__regimeon",
+      "part": "B",
+      "market": "France",
+      "horizon": "long",
+      "quality": true,
+      "regime": true,
+      "benchmark": "EWQ",
+      "top": 10,
+      "strategy": "12-1 momentum among Piotroski ≥ 6, cash below 200-day MA",
+      "survivorship": "SURVIVORSHIP_BIAS",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -4.86,
+          "pf": 0.09,
+          "win": 22.2,
+          "trades": 18,
+          "maxDrawdownPct": 4.86,
+          "benchmarkReturnPct": 0.95,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 0.09,
+          "pf": 0.236,
+          "win": 30,
+          "trades": 20,
+          "maxDrawdownPct": 3.54,
+          "benchmarkReturnPct": 13.4,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -4.46,
+          "pf": 2.195,
+          "win": 61.7,
+          "trades": 60,
+          "maxDrawdownPct": 8.14,
+          "benchmarkReturnPct": -1.67,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": -2.8,
+          "pf": 0.493,
+          "win": 48.6,
+          "trades": 37,
+          "maxDrawdownPct": 7.29,
+          "benchmarkReturnPct": -5.07,
+          "beat": true
+        }
+      ],
+      "overall": {
+        "returnPct": 8.45,
+        "maxDrawdownPct": 18.37,
+        "sharpe": 0.104,
+        "n": 672,
+        "win": 65,
+        "pf": 2.072
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": -8.67
+        },
+        {
+          "year": "2011",
+          "returnPct": -0.91,
+          "benchmarkReturnPct": -20.79
+        },
+        {
+          "year": "2012",
+          "returnPct": 0.65,
+          "benchmarkReturnPct": 17.01
+        },
+        {
+          "year": "2013",
+          "returnPct": 8.55,
+          "benchmarkReturnPct": 19.94
+        },
+        {
+          "year": "2014",
+          "returnPct": 2.19,
+          "benchmarkReturnPct": -11.24
+        },
+        {
+          "year": "2015",
+          "returnPct": -4.9,
+          "benchmarkReturnPct": -1.26
+        },
+        {
+          "year": "2016",
+          "returnPct": -0.75,
+          "benchmarkReturnPct": 3.57
+        },
+        {
+          "year": "2017",
+          "returnPct": 8.95,
+          "benchmarkReturnPct": 26.6
+        },
+        {
+          "year": "2018",
+          "returnPct": -4.49,
+          "benchmarkReturnPct": -15.24
+        },
+        {
+          "year": "2019",
+          "returnPct": 6.03,
+          "benchmarkReturnPct": 24.42
+        },
+        {
+          "year": "2020",
+          "returnPct": -8.26,
+          "benchmarkReturnPct": 0.97
+        },
+        {
+          "year": "2021",
+          "returnPct": 15.5,
+          "benchmarkReturnPct": 15.61
+        },
+        {
+          "year": "2022",
+          "returnPct": -2.56,
+          "benchmarkReturnPct": -15.55
+        },
+        {
+          "year": "2023",
+          "returnPct": 4.91,
+          "benchmarkReturnPct": 17.17
+        },
+        {
+          "year": "2024",
+          "returnPct": -4.72,
+          "benchmarkReturnPct": -7.07
+        },
+        {
+          "year": "2025",
+          "returnPct": -2.05,
+          "benchmarkReturnPct": 26.59
+        },
+        {
+          "year": "2026",
+          "returnPct": -6.86,
+          "benchmarkReturnPct": -7.77
+        }
+      ],
+      "worstMonth": {
+        "date": "2026-03-31",
+        "returnPct": -8.14
+      },
+      "maxDrawdownPct": 18.37,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "design": "Median cohort is 10 names. Target $30,000 each, capped at 23 names so the book stays inside the $700,000 paper pool. Long holds six overlapping sleeves. Once a month, replace the oldest sleeve and leave the other five in place. If several of these cells are on together, they share that same gross cap."
+    },
+    {
+      "id": "A2__US__medium__react0.03_d1_h40",
+      "part": "A2",
+      "market": "US",
+      "horizon": "medium",
+      "threshold": 0.03,
+      "delay": 1,
+      "hold": 40,
+      "benchmark": "SPY",
+      "strategy": "Earnings reaction, excess ≥ 3%, enter +1 session, hold 40 or 2.5 ATR",
+      "survivorship": "POINT_IN_TIME",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -7.92,
+          "pf": 0.645,
+          "win": 29.4,
+          "trades": 197,
+          "maxDrawdownPct": 11.44,
+          "benchmarkReturnPct": -0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 5.62,
+          "pf": 2.049,
+          "win": 55.2,
+          "trades": 154,
+          "maxDrawdownPct": 3.46,
+          "benchmarkReturnPct": 24.69,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 4.6,
+          "pf": 0.789,
+          "win": 32,
+          "trades": 206,
+          "maxDrawdownPct": 7.1,
+          "benchmarkReturnPct": -1.54,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 3.51,
+          "pf": 1.135,
+          "win": 41.3,
+          "trades": 223,
+          "maxDrawdownPct": 2.6,
+          "benchmarkReturnPct": 17.54,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 193.63,
+        "maxDrawdownPct": 21.43,
+        "sharpe": 0.538,
+        "n": 3591,
+        "win": 43.9,
+        "pf": 1.179
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 10.96
+        },
+        {
+          "year": "2011",
+          "returnPct": 0,
+          "benchmarkReturnPct": -1.22
+        },
+        {
+          "year": "2012",
+          "returnPct": 0,
+          "benchmarkReturnPct": 11.69
+        },
+        {
+          "year": "2013",
+          "returnPct": 0,
+          "benchmarkReturnPct": 26.45
+        },
+        {
+          "year": "2014",
+          "returnPct": 8.01,
+          "benchmarkReturnPct": 12.37
+        },
+        {
+          "year": "2015",
+          "returnPct": -1.6,
+          "benchmarkReturnPct": -0.76
+        },
+        {
+          "year": "2016",
+          "returnPct": 17.64,
+          "benchmarkReturnPct": 11.2
+        },
+        {
+          "year": "2017",
+          "returnPct": 11.91,
+          "benchmarkReturnPct": 18.48
+        },
+        {
+          "year": "2018",
+          "returnPct": -12.95,
+          "benchmarkReturnPct": -7.01
+        },
+        {
+          "year": "2019",
+          "returnPct": 26.29,
+          "benchmarkReturnPct": 28.65
+        },
+        {
+          "year": "2020",
+          "returnPct": 63.33,
+          "benchmarkReturnPct": 15.09
+        },
+        {
+          "year": "2021",
+          "returnPct": 11.87,
+          "benchmarkReturnPct": 28.79
+        },
+        {
+          "year": "2022",
+          "returnPct": -16.47,
+          "benchmarkReturnPct": -19.95
+        },
+        {
+          "year": "2023",
+          "returnPct": 11.68,
+          "benchmarkReturnPct": 24.81
+        },
+        {
+          "year": "2024",
+          "returnPct": 1.63,
+          "benchmarkReturnPct": 24
+        },
+        {
+          "year": "2025",
+          "returnPct": 4.89,
+          "benchmarkReturnPct": 16.64
+        },
+        {
+          "year": "2026",
+          "returnPct": 5.07,
+          "benchmarkReturnPct": 13.42
+        }
+      ],
+      "worstMonth": {
+        "date": "2018-12-31",
+        "returnPct": -11.37
+      },
+      "maxDrawdownPct": 26.28,
+      "medianNames": 21,
+      "verdict": "FAIL",
+      "tradeYears": [
+        {
+          "year": "2014",
+          "n": 152,
+          "win": 59.9,
+          "pf": 1.81,
+          "avg": 1.66
+        },
+        {
+          "year": "2015",
+          "n": 203,
+          "win": 40.9,
+          "pf": 0.634,
+          "avg": -1.15
+        },
+        {
+          "year": "2016",
+          "n": 239,
+          "win": 50.6,
+          "pf": 2.133,
+          "avg": 3.29
+        },
+        {
+          "year": "2017",
+          "n": 203,
+          "win": 51.7,
+          "pf": 1.248,
+          "avg": 0.59
+        },
+        {
+          "year": "2018",
+          "n": 306,
+          "win": 36.9,
+          "pf": 0.717,
+          "avg": -1.1
+        },
+        {
+          "year": "2019",
+          "n": 293,
+          "win": 53.2,
+          "pf": 1.611,
+          "avg": 1.53
+        },
+        {
+          "year": "2020",
+          "n": 298,
+          "win": 46.6,
+          "pf": 1.817,
+          "avg": 3.2
+        },
+        {
+          "year": "2021",
+          "n": 227,
+          "win": 51.1,
+          "pf": 1.676,
+          "avg": 1.99
+        },
+        {
+          "year": "2022",
+          "n": 298,
+          "win": 33.6,
+          "pf": 0.582,
+          "avg": -2.21
+        },
+        {
+          "year": "2023",
+          "n": 316,
+          "win": 32.3,
+          "pf": 0.903,
+          "avg": -0.4
+        },
+        {
+          "year": "2024",
+          "n": 381,
+          "win": 50.9,
+          "pf": 1.576,
+          "avg": 1.58
+        },
+        {
+          "year": "2025",
+          "n": 327,
+          "win": 40.1,
+          "pf": 1.03,
+          "avg": 0.11
+        },
+        {
+          "year": "2026",
+          "n": 348,
+          "win": 36.2,
+          "pf": 0.975,
+          "avg": -0.11
+        }
+      ],
+      "peakNames": 92,
+      "design": "The scored curve is the uncapped equal-weight book (peak 92 names, median 21). An executable book sizes each new report at $30,000 and stops at 23 open names on the $700,000 paper pool, keeping the largest excess-return names and skipping the rest. That cap was not re-scored. Orders are the entry open and the stop or the hold-date close, not a monthly rebalance."
+    },
+    {
+      "id": "A2__US__medium__react0.03_d1_h60",
+      "part": "A2",
+      "market": "US",
+      "horizon": "medium",
+      "threshold": 0.03,
+      "delay": 1,
+      "hold": 60,
+      "benchmark": "SPY",
+      "strategy": "Earnings reaction, excess ≥ 3%, enter +1 session, hold 60 or 2.5 ATR",
+      "survivorship": "POINT_IN_TIME",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -4.93,
+          "pf": 0.911,
+          "win": 37,
+          "trades": 230,
+          "maxDrawdownPct": 8.8,
+          "benchmarkReturnPct": -0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 10.99,
+          "pf": 2.325,
+          "win": 45.2,
+          "trades": 124,
+          "maxDrawdownPct": 3.66,
+          "benchmarkReturnPct": 24.69,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 2.89,
+          "pf": 1.088,
+          "win": 37.5,
+          "trades": 224,
+          "maxDrawdownPct": 7.88,
+          "benchmarkReturnPct": -1.54,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 2.51,
+          "pf": 1.219,
+          "win": 39.8,
+          "trades": 244,
+          "maxDrawdownPct": 3.48,
+          "benchmarkReturnPct": 17.54,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 257.15,
+        "maxDrawdownPct": 24.63,
+        "sharpe": 0.621,
+        "n": 3591,
+        "win": 40.1,
+        "pf": 1.266
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 10.96
+        },
+        {
+          "year": "2011",
+          "returnPct": 0,
+          "benchmarkReturnPct": -1.22
+        },
+        {
+          "year": "2012",
+          "returnPct": 0,
+          "benchmarkReturnPct": 11.69
+        },
+        {
+          "year": "2013",
+          "returnPct": 0,
+          "benchmarkReturnPct": 26.45
+        },
+        {
+          "year": "2014",
+          "returnPct": 11.01,
+          "benchmarkReturnPct": 12.37
+        },
+        {
+          "year": "2015",
+          "returnPct": -0.87,
+          "benchmarkReturnPct": -0.76
+        },
+        {
+          "year": "2016",
+          "returnPct": 9.7,
+          "benchmarkReturnPct": 11.2
+        },
+        {
+          "year": "2017",
+          "returnPct": 17.24,
+          "benchmarkReturnPct": 18.48
+        },
+        {
+          "year": "2018",
+          "returnPct": -14.96,
+          "benchmarkReturnPct": -7.01
+        },
+        {
+          "year": "2019",
+          "returnPct": 23.75,
+          "benchmarkReturnPct": 28.65
+        },
+        {
+          "year": "2020",
+          "returnPct": 62.02,
+          "benchmarkReturnPct": 15.09
+        },
+        {
+          "year": "2021",
+          "returnPct": 23.01,
+          "benchmarkReturnPct": 28.79
+        },
+        {
+          "year": "2022",
+          "returnPct": -14.76,
+          "benchmarkReturnPct": -19.95
+        },
+        {
+          "year": "2023",
+          "returnPct": 13.11,
+          "benchmarkReturnPct": 24.81
+        },
+        {
+          "year": "2024",
+          "returnPct": 8.02,
+          "benchmarkReturnPct": 24
+        },
+        {
+          "year": "2025",
+          "returnPct": 13.01,
+          "benchmarkReturnPct": 16.64
+        },
+        {
+          "year": "2026",
+          "returnPct": 2.23,
+          "benchmarkReturnPct": 13.42
+        }
+      ],
+      "worstMonth": {
+        "date": "2018-12-31",
+        "returnPct": -11.12
+      },
+      "maxDrawdownPct": 24.72,
+      "medianNames": 34,
+      "verdict": "FAIL",
+      "tradeYears": [
+        {
+          "year": "2014",
+          "n": 125,
+          "win": 42.4,
+          "pf": 0.942,
+          "avg": -0.18
+        },
+        {
+          "year": "2015",
+          "n": 210,
+          "win": 39,
+          "pf": 0.923,
+          "avg": -0.27
+        },
+        {
+          "year": "2016",
+          "n": 236,
+          "win": 39,
+          "pf": 1.425,
+          "avg": 1.63
+        },
+        {
+          "year": "2017",
+          "n": 206,
+          "win": 51,
+          "pf": 2.033,
+          "avg": 2.67
+        },
+        {
+          "year": "2018",
+          "n": 319,
+          "win": 30.4,
+          "pf": 0.645,
+          "avg": -1.58
+        },
+        {
+          "year": "2019",
+          "n": 259,
+          "win": 47.9,
+          "pf": 1.502,
+          "avg": 1.5
+        },
+        {
+          "year": "2020",
+          "n": 304,
+          "win": 45.7,
+          "pf": 1.734,
+          "avg": 3.04
+        },
+        {
+          "year": "2021",
+          "n": 239,
+          "win": 52.7,
+          "pf": 2.931,
+          "avg": 6.1
+        },
+        {
+          "year": "2022",
+          "n": 280,
+          "win": 20.7,
+          "pf": 0.358,
+          "avg": -4.24
+        },
+        {
+          "year": "2023",
+          "n": 320,
+          "win": 31.3,
+          "pf": 0.977,
+          "avg": -0.1
+        },
+        {
+          "year": "2024",
+          "n": 387,
+          "win": 51.4,
+          "pf": 2.065,
+          "avg": 3.28
+        },
+        {
+          "year": "2025",
+          "n": 328,
+          "win": 37.2,
+          "pf": 1.214,
+          "avg": 0.9
+        },
+        {
+          "year": "2026",
+          "n": 378,
+          "win": 38.1,
+          "pf": 1.2,
+          "avg": 0.92
+        }
+      ],
+      "peakNames": 94,
+      "design": "The scored curve is the uncapped equal-weight book (peak 94 names, median 34). An executable book sizes each new report at $30,000 and stops at 23 open names on the $700,000 paper pool, keeping the largest excess-return names and skipping the rest. That cap was not re-scored. Orders are the entry open and the stop or the hold-date close, not a monthly rebalance."
+    },
+    {
+      "id": "A2__US__medium__react0.03_d2_h40",
+      "part": "A2",
+      "market": "US",
+      "horizon": "medium",
+      "threshold": 0.03,
+      "delay": 2,
+      "hold": 40,
+      "benchmark": "SPY",
+      "strategy": "Earnings reaction, excess ≥ 3%, enter +2 session, hold 40 or 2.5 ATR",
+      "survivorship": "POINT_IN_TIME",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -5.63,
+          "pf": 0.689,
+          "win": 34.5,
+          "trades": 203,
+          "maxDrawdownPct": 11.02,
+          "benchmarkReturnPct": -0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 5.47,
+          "pf": 2.019,
+          "win": 56.6,
+          "trades": 152,
+          "maxDrawdownPct": 3.48,
+          "benchmarkReturnPct": 24.69,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -0.61,
+          "pf": 0.711,
+          "win": 31.4,
+          "trades": 204,
+          "maxDrawdownPct": 7.38,
+          "benchmarkReturnPct": -1.54,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 6.96,
+          "pf": 1.132,
+          "win": 44.7,
+          "trades": 226,
+          "maxDrawdownPct": 3.79,
+          "benchmarkReturnPct": 17.54,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 136.16,
+        "maxDrawdownPct": 23.73,
+        "sharpe": 0.454,
+        "n": 3591,
+        "win": 46.3,
+        "pf": 1.188
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 10.96
+        },
+        {
+          "year": "2011",
+          "returnPct": 0,
+          "benchmarkReturnPct": -1.22
+        },
+        {
+          "year": "2012",
+          "returnPct": 0,
+          "benchmarkReturnPct": 11.69
+        },
+        {
+          "year": "2013",
+          "returnPct": 0,
+          "benchmarkReturnPct": 26.45
+        },
+        {
+          "year": "2014",
+          "returnPct": 9.95,
+          "benchmarkReturnPct": 12.37
+        },
+        {
+          "year": "2015",
+          "returnPct": -0.65,
+          "benchmarkReturnPct": -0.76
+        },
+        {
+          "year": "2016",
+          "returnPct": 8.13,
+          "benchmarkReturnPct": 11.2
+        },
+        {
+          "year": "2017",
+          "returnPct": 7.02,
+          "benchmarkReturnPct": 18.48
+        },
+        {
+          "year": "2018",
+          "returnPct": -14.45,
+          "benchmarkReturnPct": -7.01
+        },
+        {
+          "year": "2019",
+          "returnPct": 29.4,
+          "benchmarkReturnPct": 28.65
+        },
+        {
+          "year": "2020",
+          "returnPct": 45.71,
+          "benchmarkReturnPct": 15.09
+        },
+        {
+          "year": "2021",
+          "returnPct": 11.09,
+          "benchmarkReturnPct": 28.79
+        },
+        {
+          "year": "2022",
+          "returnPct": -19.69,
+          "benchmarkReturnPct": -19.95
+        },
+        {
+          "year": "2023",
+          "returnPct": 13.89,
+          "benchmarkReturnPct": 24.81
+        },
+        {
+          "year": "2024",
+          "returnPct": 5.55,
+          "benchmarkReturnPct": 24
+        },
+        {
+          "year": "2025",
+          "returnPct": 2.52,
+          "benchmarkReturnPct": 16.64
+        },
+        {
+          "year": "2026",
+          "returnPct": 5.33,
+          "benchmarkReturnPct": 13.42
+        }
+      ],
+      "worstMonth": {
+        "date": "2018-12-31",
+        "returnPct": -10.94
+      },
+      "maxDrawdownPct": 26.66,
+      "medianNames": 22,
+      "verdict": "FAIL",
+      "tradeYears": [
+        {
+          "year": "2014",
+          "n": 152,
+          "win": 62.5,
+          "pf": 1.854,
+          "avg": 1.71
+        },
+        {
+          "year": "2015",
+          "n": 202,
+          "win": 41.1,
+          "pf": 0.643,
+          "avg": -1.1
+        },
+        {
+          "year": "2016",
+          "n": 235,
+          "win": 53.6,
+          "pf": 2.116,
+          "avg": 3.14
+        },
+        {
+          "year": "2017",
+          "n": 201,
+          "win": 57.2,
+          "pf": 1.363,
+          "avg": 0.85
+        },
+        {
+          "year": "2018",
+          "n": 312,
+          "win": 41.3,
+          "pf": 0.793,
+          "avg": -0.79
+        },
+        {
+          "year": "2019",
+          "n": 293,
+          "win": 55.6,
+          "pf": 1.646,
+          "avg": 1.62
+        },
+        {
+          "year": "2020",
+          "n": 296,
+          "win": 50.3,
+          "pf": 1.917,
+          "avg": 3.43
+        },
+        {
+          "year": "2021",
+          "n": 230,
+          "win": 47.8,
+          "pf": 1.438,
+          "avg": 1.45
+        },
+        {
+          "year": "2022",
+          "n": 295,
+          "win": 32.9,
+          "pf": 0.501,
+          "avg": -2.71
+        },
+        {
+          "year": "2023",
+          "n": 312,
+          "win": 33.3,
+          "pf": 0.904,
+          "avg": -0.4
+        },
+        {
+          "year": "2024",
+          "n": 385,
+          "win": 57.7,
+          "pf": 1.918,
+          "avg": 2.22
+        },
+        {
+          "year": "2025",
+          "n": 329,
+          "win": 41.9,
+          "pf": 1.031,
+          "avg": 0.12
+        },
+        {
+          "year": "2026",
+          "n": 349,
+          "win": 37.8,
+          "pf": 0.915,
+          "avg": -0.38
+        }
+      ],
+      "peakNames": 89,
+      "design": "The scored curve is the uncapped equal-weight book (peak 89 names, median 22). An executable book sizes each new report at $30,000 and stops at 23 open names on the $700,000 paper pool, keeping the largest excess-return names and skipping the rest. That cap was not re-scored. Orders are the entry open and the stop or the hold-date close, not a monthly rebalance."
+    },
+    {
+      "id": "A2__US__medium__react0.03_d2_h60",
+      "part": "A2",
+      "market": "US",
+      "horizon": "medium",
+      "threshold": 0.03,
+      "delay": 2,
+      "hold": 60,
+      "benchmark": "SPY",
+      "strategy": "Earnings reaction, excess ≥ 3%, enter +2 session, hold 60 or 2.5 ATR",
+      "survivorship": "POINT_IN_TIME",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -2.74,
+          "pf": 1.053,
+          "win": 42.1,
+          "trades": 240,
+          "maxDrawdownPct": 7.75,
+          "benchmarkReturnPct": -0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 10.47,
+          "pf": 1.994,
+          "win": 44.6,
+          "trades": 121,
+          "maxDrawdownPct": 3.61,
+          "benchmarkReturnPct": 24.69,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 0.57,
+          "pf": 1.081,
+          "win": 38.9,
+          "trades": 229,
+          "maxDrawdownPct": 7.51,
+          "benchmarkReturnPct": -1.54,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 2.14,
+          "pf": 1.147,
+          "win": 38,
+          "trades": 245,
+          "maxDrawdownPct": 4.48,
+          "benchmarkReturnPct": 17.54,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 241.13,
+        "maxDrawdownPct": 24.95,
+        "sharpe": 0.619,
+        "n": 3591,
+        "win": 41.8,
+        "pf": 1.313
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 10.96
+        },
+        {
+          "year": "2011",
+          "returnPct": 0,
+          "benchmarkReturnPct": -1.22
+        },
+        {
+          "year": "2012",
+          "returnPct": 0,
+          "benchmarkReturnPct": 11.69
+        },
+        {
+          "year": "2013",
+          "returnPct": 0,
+          "benchmarkReturnPct": 26.45
+        },
+        {
+          "year": "2014",
+          "returnPct": 12.94,
+          "benchmarkReturnPct": 12.37
+        },
+        {
+          "year": "2015",
+          "returnPct": 0.48,
+          "benchmarkReturnPct": -0.76
+        },
+        {
+          "year": "2016",
+          "returnPct": 11.11,
+          "benchmarkReturnPct": 11.2
+        },
+        {
+          "year": "2017",
+          "returnPct": 18.34,
+          "benchmarkReturnPct": 18.48
+        },
+        {
+          "year": "2018",
+          "returnPct": -14.24,
+          "benchmarkReturnPct": -7.01
+        },
+        {
+          "year": "2019",
+          "returnPct": 23.02,
+          "benchmarkReturnPct": 28.65
+        },
+        {
+          "year": "2020",
+          "returnPct": 47.05,
+          "benchmarkReturnPct": 15.09
+        },
+        {
+          "year": "2021",
+          "returnPct": 23.52,
+          "benchmarkReturnPct": 28.79
+        },
+        {
+          "year": "2022",
+          "returnPct": -15.11,
+          "benchmarkReturnPct": -19.95
+        },
+        {
+          "year": "2023",
+          "returnPct": 11.87,
+          "benchmarkReturnPct": 24.81
+        },
+        {
+          "year": "2024",
+          "returnPct": 11.53,
+          "benchmarkReturnPct": 24
+        },
+        {
+          "year": "2025",
+          "returnPct": 12.57,
+          "benchmarkReturnPct": 16.64
+        },
+        {
+          "year": "2026",
+          "returnPct": 0.06,
+          "benchmarkReturnPct": 13.42
+        }
+      ],
+      "worstMonth": {
+        "date": "2018-12-31",
+        "returnPct": -10.97
+      },
+      "maxDrawdownPct": 24.95,
+      "medianNames": 36,
+      "verdict": "FAIL",
+      "tradeYears": [
+        {
+          "year": "2014",
+          "n": 125,
+          "win": 44.8,
+          "pf": 1.049,
+          "avg": 0.15
+        },
+        {
+          "year": "2015",
+          "n": 209,
+          "win": 40.2,
+          "pf": 0.971,
+          "avg": -0.1
+        },
+        {
+          "year": "2016",
+          "n": 231,
+          "win": 40.7,
+          "pf": 1.601,
+          "avg": 2.19
+        },
+        {
+          "year": "2017",
+          "n": 206,
+          "win": 55.8,
+          "pf": 2.288,
+          "avg": 3.24
+        },
+        {
+          "year": "2018",
+          "n": 324,
+          "win": 33.6,
+          "pf": 0.687,
+          "avg": -1.38
+        },
+        {
+          "year": "2019",
+          "n": 262,
+          "win": 46.9,
+          "pf": 1.44,
+          "avg": 1.38
+        },
+        {
+          "year": "2020",
+          "n": 300,
+          "win": 48,
+          "pf": 1.943,
+          "avg": 3.71
+        },
+        {
+          "year": "2021",
+          "n": 243,
+          "win": 49.8,
+          "pf": 2.799,
+          "avg": 6.09
+        },
+        {
+          "year": "2022",
+          "n": 276,
+          "win": 22.5,
+          "pf": 0.37,
+          "avg": -4.28
+        },
+        {
+          "year": "2023",
+          "n": 315,
+          "win": 32.4,
+          "pf": 0.927,
+          "avg": -0.33
+        },
+        {
+          "year": "2024",
+          "n": 386,
+          "win": 56.5,
+          "pf": 2.442,
+          "avg": 4.09
+        },
+        {
+          "year": "2025",
+          "n": 331,
+          "win": 39.9,
+          "pf": 1.219,
+          "avg": 0.91
+        },
+        {
+          "year": "2026",
+          "n": 383,
+          "win": 36.8,
+          "pf": 1.106,
+          "avg": 0.5
+        }
+      ],
+      "peakNames": 96,
+      "design": "The scored curve is the uncapped equal-weight book (peak 96 names, median 36). An executable book sizes each new report at $30,000 and stops at 23 open names on the $700,000 paper pool, keeping the largest excess-return names and skipping the rest. That cap was not re-scored. Orders are the entry open and the stop or the hold-date close, not a monthly rebalance."
+    },
+    {
+      "id": "A2__US__medium__react0.05_d1_h40",
+      "part": "A2",
+      "market": "US",
+      "horizon": "medium",
+      "threshold": 0.05,
+      "delay": 1,
+      "hold": 40,
+      "benchmark": "SPY",
+      "strategy": "Earnings reaction, excess ≥ 5%, enter +1 session, hold 40 or 2.5 ATR",
+      "survivorship": "POINT_IN_TIME",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -5.29,
+          "pf": 0.661,
+          "win": 28.4,
+          "trades": 116,
+          "maxDrawdownPct": 8.42,
+          "benchmarkReturnPct": -0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 3.98,
+          "pf": 1.613,
+          "win": 53.9,
+          "trades": 89,
+          "maxDrawdownPct": 4.54,
+          "benchmarkReturnPct": 24.69,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -7.54,
+          "pf": 0.676,
+          "win": 32.7,
+          "trades": 113,
+          "maxDrawdownPct": 8.51,
+          "benchmarkReturnPct": -1.54,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 3.42,
+          "pf": 1.111,
+          "win": 42.9,
+          "trades": 126,
+          "maxDrawdownPct": 3.21,
+          "benchmarkReturnPct": 17.54,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 142.7,
+        "maxDrawdownPct": 39.99,
+        "sharpe": 0.418,
+        "n": 1838,
+        "win": 45.5,
+        "pf": 1.205
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 10.96
+        },
+        {
+          "year": "2011",
+          "returnPct": 0,
+          "benchmarkReturnPct": -1.22
+        },
+        {
+          "year": "2012",
+          "returnPct": 0,
+          "benchmarkReturnPct": 11.69
+        },
+        {
+          "year": "2013",
+          "returnPct": 0,
+          "benchmarkReturnPct": 26.45
+        },
+        {
+          "year": "2014",
+          "returnPct": 17.98,
+          "benchmarkReturnPct": 12.37
+        },
+        {
+          "year": "2015",
+          "returnPct": 4.02,
+          "benchmarkReturnPct": -0.76
+        },
+        {
+          "year": "2016",
+          "returnPct": 32.52,
+          "benchmarkReturnPct": 11.2
+        },
+        {
+          "year": "2017",
+          "returnPct": 11.34,
+          "benchmarkReturnPct": 18.48
+        },
+        {
+          "year": "2018",
+          "returnPct": -15.94,
+          "benchmarkReturnPct": -7.01
+        },
+        {
+          "year": "2019",
+          "returnPct": 28.66,
+          "benchmarkReturnPct": 28.65
+        },
+        {
+          "year": "2020",
+          "returnPct": 52,
+          "benchmarkReturnPct": 15.09
+        },
+        {
+          "year": "2021",
+          "returnPct": 12.93,
+          "benchmarkReturnPct": 28.79
+        },
+        {
+          "year": "2022",
+          "returnPct": -35.39,
+          "benchmarkReturnPct": -19.95
+        },
+        {
+          "year": "2023",
+          "returnPct": 12.54,
+          "benchmarkReturnPct": 24.81
+        },
+        {
+          "year": "2024",
+          "returnPct": 0.45,
+          "benchmarkReturnPct": 24
+        },
+        {
+          "year": "2025",
+          "returnPct": 2.82,
+          "benchmarkReturnPct": 16.64
+        },
+        {
+          "year": "2026",
+          "returnPct": -3.88,
+          "benchmarkReturnPct": 13.42
+        }
+      ],
+      "worstMonth": {
+        "date": "2021-01-29",
+        "returnPct": -12.27
+      },
+      "maxDrawdownPct": 41.26,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "tradeYears": [
+        {
+          "year": "2014",
+          "n": 57,
+          "win": 61.4,
+          "pf": 1.992,
+          "avg": 1.75
+        },
+        {
+          "year": "2015",
+          "n": 94,
+          "win": 45.7,
+          "pf": 0.797,
+          "avg": -0.59
+        },
+        {
+          "year": "2016",
+          "n": 103,
+          "win": 59.2,
+          "pf": 3.381,
+          "avg": 5.67
+        },
+        {
+          "year": "2017",
+          "n": 94,
+          "win": 53.2,
+          "pf": 1.13,
+          "avg": 0.34
+        },
+        {
+          "year": "2018",
+          "n": 144,
+          "win": 41,
+          "pf": 0.923,
+          "avg": -0.29
+        },
+        {
+          "year": "2019",
+          "n": 163,
+          "win": 55.2,
+          "pf": 1.794,
+          "avg": 1.98
+        },
+        {
+          "year": "2020",
+          "n": 145,
+          "win": 48.3,
+          "pf": 2.076,
+          "avg": 4.19
+        },
+        {
+          "year": "2021",
+          "n": 111,
+          "win": 50.5,
+          "pf": 1.566,
+          "avg": 1.82
+        },
+        {
+          "year": "2022",
+          "n": 147,
+          "win": 32,
+          "pf": 0.41,
+          "avg": -3.48
+        },
+        {
+          "year": "2023",
+          "n": 170,
+          "win": 37.6,
+          "pf": 0.957,
+          "avg": -0.17
+        },
+        {
+          "year": "2024",
+          "n": 230,
+          "win": 49.1,
+          "pf": 1.301,
+          "avg": 0.84
+        },
+        {
+          "year": "2025",
+          "n": 186,
+          "win": 43.5,
+          "pf": 1.156,
+          "avg": 0.57
+        },
+        {
+          "year": "2026",
+          "n": 194,
+          "win": 35.1,
+          "pf": 0.809,
+          "avg": -0.9
+        }
+      ],
+      "peakNames": 54,
+      "design": "The scored curve is the uncapped equal-weight book (peak 54 names, median 10). An executable book sizes each new report at $30,000 and stops at 23 open names on the $700,000 paper pool, keeping the largest excess-return names and skipping the rest. That cap was not re-scored. Orders are the entry open and the stop or the hold-date close, not a monthly rebalance."
+    },
+    {
+      "id": "A2__US__medium__react0.05_d1_h60",
+      "part": "A2",
+      "market": "US",
+      "horizon": "medium",
+      "threshold": 0.05,
+      "delay": 1,
+      "hold": 60,
+      "benchmark": "SPY",
+      "strategy": "Earnings reaction, excess ≥ 5%, enter +1 session, hold 60 or 2.5 ATR",
+      "survivorship": "POINT_IN_TIME",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -3.13,
+          "pf": 0.871,
+          "win": 37.1,
+          "trades": 140,
+          "maxDrawdownPct": 7.45,
+          "benchmarkReturnPct": -0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 9.78,
+          "pf": 1.84,
+          "win": 44.3,
+          "trades": 70,
+          "maxDrawdownPct": 4.34,
+          "benchmarkReturnPct": 24.69,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": 0.25,
+          "pf": 1.089,
+          "win": 40.8,
+          "trades": 130,
+          "maxDrawdownPct": 9.43,
+          "benchmarkReturnPct": -1.54,
+          "beat": true
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 4.93,
+          "pf": 1.298,
+          "win": 39.1,
+          "trades": 133,
+          "maxDrawdownPct": 4.2,
+          "benchmarkReturnPct": 17.54,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 286.62,
+        "maxDrawdownPct": 29.74,
+        "sharpe": 0.618,
+        "n": 1838,
+        "win": 42,
+        "pf": 1.351
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 10.96
+        },
+        {
+          "year": "2011",
+          "returnPct": 0,
+          "benchmarkReturnPct": -1.22
+        },
+        {
+          "year": "2012",
+          "returnPct": 0,
+          "benchmarkReturnPct": 11.69
+        },
+        {
+          "year": "2013",
+          "returnPct": 0,
+          "benchmarkReturnPct": 26.45
+        },
+        {
+          "year": "2014",
+          "returnPct": 10.56,
+          "benchmarkReturnPct": 12.37
+        },
+        {
+          "year": "2015",
+          "returnPct": 1.94,
+          "benchmarkReturnPct": -0.76
+        },
+        {
+          "year": "2016",
+          "returnPct": 20.58,
+          "benchmarkReturnPct": 11.2
+        },
+        {
+          "year": "2017",
+          "returnPct": 19.18,
+          "benchmarkReturnPct": 18.48
+        },
+        {
+          "year": "2018",
+          "returnPct": -13.65,
+          "benchmarkReturnPct": -7.01
+        },
+        {
+          "year": "2019",
+          "returnPct": 25.97,
+          "benchmarkReturnPct": 28.65
+        },
+        {
+          "year": "2020",
+          "returnPct": 58.15,
+          "benchmarkReturnPct": 15.09
+        },
+        {
+          "year": "2021",
+          "returnPct": 21.4,
+          "benchmarkReturnPct": 28.79
+        },
+        {
+          "year": "2022",
+          "returnPct": -18.37,
+          "benchmarkReturnPct": -19.95
+        },
+        {
+          "year": "2023",
+          "returnPct": 13.32,
+          "benchmarkReturnPct": 24.81
+        },
+        {
+          "year": "2024",
+          "returnPct": 6.95,
+          "benchmarkReturnPct": 24
+        },
+        {
+          "year": "2025",
+          "returnPct": 15.53,
+          "benchmarkReturnPct": 16.64
+        },
+        {
+          "year": "2026",
+          "returnPct": 0.01,
+          "benchmarkReturnPct": 13.42
+        }
+      ],
+      "worstMonth": {
+        "date": "2018-12-31",
+        "returnPct": -10.41
+      },
+      "maxDrawdownPct": 30,
+      "medianNames": 17,
+      "verdict": "FAIL",
+      "tradeYears": [
+        {
+          "year": "2014",
+          "n": 47,
+          "win": 40.4,
+          "pf": 0.799,
+          "avg": -0.62
+        },
+        {
+          "year": "2015",
+          "n": 94,
+          "win": 40.4,
+          "pf": 0.911,
+          "avg": -0.31
+        },
+        {
+          "year": "2016",
+          "n": 103,
+          "win": 46.6,
+          "pf": 2.33,
+          "avg": 4.5
+        },
+        {
+          "year": "2017",
+          "n": 96,
+          "win": 52.1,
+          "pf": 1.957,
+          "avg": 2.67
+        },
+        {
+          "year": "2018",
+          "n": 147,
+          "win": 34,
+          "pf": 0.802,
+          "avg": -0.86
+        },
+        {
+          "year": "2019",
+          "n": 145,
+          "win": 52.4,
+          "pf": 1.777,
+          "avg": 2.19
+        },
+        {
+          "year": "2020",
+          "n": 150,
+          "win": 46.7,
+          "pf": 2.005,
+          "avg": 4.19
+        },
+        {
+          "year": "2021",
+          "n": 121,
+          "win": 52.9,
+          "pf": 3.093,
+          "avg": 6.93
+        },
+        {
+          "year": "2022",
+          "n": 136,
+          "win": 21.3,
+          "pf": 0.29,
+          "avg": -5.03
+        },
+        {
+          "year": "2023",
+          "n": 169,
+          "win": 34.3,
+          "pf": 1.05,
+          "avg": 0.21
+        },
+        {
+          "year": "2024",
+          "n": 232,
+          "win": 50,
+          "pf": 1.734,
+          "avg": 2.37
+        },
+        {
+          "year": "2025",
+          "n": 183,
+          "win": 39.3,
+          "pf": 1.26,
+          "avg": 1.06
+        },
+        {
+          "year": "2026",
+          "n": 215,
+          "win": 38.1,
+          "pf": 1.157,
+          "avg": 0.73
+        }
+      ],
+      "peakNames": 55,
+      "design": "The scored curve is the uncapped equal-weight book (peak 55 names, median 17). An executable book sizes each new report at $30,000 and stops at 23 open names on the $700,000 paper pool, keeping the largest excess-return names and skipping the rest. That cap was not re-scored. Orders are the entry open and the stop or the hold-date close, not a monthly rebalance."
+    },
+    {
+      "id": "A2__US__medium__react0.05_d2_h40",
+      "part": "A2",
+      "market": "US",
+      "horizon": "medium",
+      "threshold": 0.05,
+      "delay": 2,
+      "hold": 40,
+      "benchmark": "SPY",
+      "strategy": "Earnings reaction, excess ≥ 5%, enter +2 session, hold 40 or 2.5 ATR",
+      "survivorship": "POINT_IN_TIME",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -1.17,
+          "pf": 0.705,
+          "win": 35.8,
+          "trades": 120,
+          "maxDrawdownPct": 7.42,
+          "benchmarkReturnPct": -0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 3.77,
+          "pf": 1.845,
+          "win": 55.2,
+          "trades": 87,
+          "maxDrawdownPct": 4.39,
+          "benchmarkReturnPct": 24.69,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -12.27,
+          "pf": 0.546,
+          "win": 28.6,
+          "trades": 112,
+          "maxDrawdownPct": 12.27,
+          "benchmarkReturnPct": -1.54,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 12.67,
+          "pf": 1.286,
+          "win": 49.2,
+          "trades": 128,
+          "maxDrawdownPct": 4.05,
+          "benchmarkReturnPct": 17.54,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 128.9,
+        "maxDrawdownPct": 31.76,
+        "sharpe": 0.424,
+        "n": 1838,
+        "win": 47.4,
+        "pf": 1.201
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 10.96
+        },
+        {
+          "year": "2011",
+          "returnPct": 0,
+          "benchmarkReturnPct": -1.22
+        },
+        {
+          "year": "2012",
+          "returnPct": 0,
+          "benchmarkReturnPct": 11.69
+        },
+        {
+          "year": "2013",
+          "returnPct": 0,
+          "benchmarkReturnPct": 26.45
+        },
+        {
+          "year": "2014",
+          "returnPct": 17.05,
+          "benchmarkReturnPct": 12.37
+        },
+        {
+          "year": "2015",
+          "returnPct": -3.37,
+          "benchmarkReturnPct": -0.76
+        },
+        {
+          "year": "2016",
+          "returnPct": 14.48,
+          "benchmarkReturnPct": 11.2
+        },
+        {
+          "year": "2017",
+          "returnPct": 6.54,
+          "benchmarkReturnPct": 18.48
+        },
+        {
+          "year": "2018",
+          "returnPct": -16.26,
+          "benchmarkReturnPct": -7.01
+        },
+        {
+          "year": "2019",
+          "returnPct": 27.72,
+          "benchmarkReturnPct": 28.65
+        },
+        {
+          "year": "2020",
+          "returnPct": 48.25,
+          "benchmarkReturnPct": 15.09
+        },
+        {
+          "year": "2021",
+          "returnPct": 18.14,
+          "benchmarkReturnPct": 28.79
+        },
+        {
+          "year": "2022",
+          "returnPct": -27.78,
+          "benchmarkReturnPct": -19.95
+        },
+        {
+          "year": "2023",
+          "returnPct": 13.25,
+          "benchmarkReturnPct": 24.81
+        },
+        {
+          "year": "2024",
+          "returnPct": 5.37,
+          "benchmarkReturnPct": 24
+        },
+        {
+          "year": "2025",
+          "returnPct": -0.96,
+          "benchmarkReturnPct": 16.64
+        },
+        {
+          "year": "2026",
+          "returnPct": 3.76,
+          "benchmarkReturnPct": 13.42
+        }
+      ],
+      "worstMonth": {
+        "date": "2018-12-31",
+        "returnPct": -10.48
+      },
+      "maxDrawdownPct": 33.25,
+      "medianNames": 10,
+      "verdict": "FAIL",
+      "tradeYears": [
+        {
+          "year": "2014",
+          "n": 58,
+          "win": 63.8,
+          "pf": 1.982,
+          "avg": 1.7
+        },
+        {
+          "year": "2015",
+          "n": 92,
+          "win": 40.2,
+          "pf": 0.626,
+          "avg": -1.18
+        },
+        {
+          "year": "2016",
+          "n": 101,
+          "win": 59.4,
+          "pf": 2.782,
+          "avg": 4.61
+        },
+        {
+          "year": "2017",
+          "n": 92,
+          "win": 58.7,
+          "pf": 1.292,
+          "avg": 0.74
+        },
+        {
+          "year": "2018",
+          "n": 149,
+          "win": 46.3,
+          "pf": 0.931,
+          "avg": -0.25
+        },
+        {
+          "year": "2019",
+          "n": 163,
+          "win": 57.7,
+          "pf": 1.828,
+          "avg": 2.06
+        },
+        {
+          "year": "2020",
+          "n": 143,
+          "win": 51.7,
+          "pf": 2.163,
+          "avg": 4.33
+        },
+        {
+          "year": "2021",
+          "n": 112,
+          "win": 46.4,
+          "pf": 1.401,
+          "avg": 1.39
+        },
+        {
+          "year": "2022",
+          "n": 146,
+          "win": 32.2,
+          "pf": 0.39,
+          "avg": -3.47
+        },
+        {
+          "year": "2023",
+          "n": 167,
+          "win": 34.7,
+          "pf": 0.812,
+          "avg": -0.79
+        },
+        {
+          "year": "2024",
+          "n": 233,
+          "win": 56.7,
+          "pf": 1.668,
+          "avg": 1.66
+        },
+        {
+          "year": "2025",
+          "n": 187,
+          "win": 43.3,
+          "pf": 1.129,
+          "avg": 0.48
+        },
+        {
+          "year": "2026",
+          "n": 195,
+          "win": 39,
+          "pf": 0.842,
+          "avg": -0.71
+        }
+      ],
+      "peakNames": 55,
+      "design": "The scored curve is the uncapped equal-weight book (peak 55 names, median 10). An executable book sizes each new report at $30,000 and stops at 23 open names on the $700,000 paper pool, keeping the largest excess-return names and skipping the rest. That cap was not re-scored. Orders are the entry open and the stop or the hold-date close, not a monthly rebalance."
+    },
+    {
+      "id": "A2__US__medium__react0.05_d2_h60",
+      "part": "A2",
+      "market": "US",
+      "horizon": "medium",
+      "threshold": 0.05,
+      "delay": 2,
+      "hold": 60,
+      "benchmark": "SPY",
+      "strategy": "Earnings reaction, excess ≥ 5%, enter +2 session, hold 60 or 2.5 ATR",
+      "survivorship": "POINT_IN_TIME",
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "returnPct": -1.51,
+          "pf": 1.062,
+          "win": 43.8,
+          "trades": 144,
+          "maxDrawdownPct": 7.05,
+          "benchmarkReturnPct": -0.72,
+          "beat": false
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "returnPct": 10.46,
+          "pf": 1.615,
+          "win": 41.2,
+          "trades": 68,
+          "maxDrawdownPct": 4.23,
+          "benchmarkReturnPct": 24.69,
+          "beat": false
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "returnPct": -2.8,
+          "pf": 0.949,
+          "win": 40.6,
+          "trades": 133,
+          "maxDrawdownPct": 8.72,
+          "benchmarkReturnPct": -1.54,
+          "beat": false
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "returnPct": 5.29,
+          "pf": 1.295,
+          "win": 41.5,
+          "trades": 135,
+          "maxDrawdownPct": 5.2,
+          "benchmarkReturnPct": 17.54,
+          "beat": false
+        }
+      ],
+      "overall": {
+        "returnPct": 247.82,
+        "maxDrawdownPct": 28.03,
+        "sharpe": 0.614,
+        "n": 1838,
+        "win": 43.1,
+        "pf": 1.341
+      },
+      "years": [
+        {
+          "year": "2010",
+          "returnPct": 0,
+          "benchmarkReturnPct": 10.96
+        },
+        {
+          "year": "2011",
+          "returnPct": 0,
+          "benchmarkReturnPct": -1.22
+        },
+        {
+          "year": "2012",
+          "returnPct": 0,
+          "benchmarkReturnPct": 11.69
+        },
+        {
+          "year": "2013",
+          "returnPct": 0,
+          "benchmarkReturnPct": 26.45
+        },
+        {
+          "year": "2014",
+          "returnPct": 10,
+          "benchmarkReturnPct": 12.37
+        },
+        {
+          "year": "2015",
+          "returnPct": -0.45,
+          "benchmarkReturnPct": -0.76
+        },
+        {
+          "year": "2016",
+          "returnPct": 14.63,
+          "benchmarkReturnPct": 11.2
+        },
+        {
+          "year": "2017",
+          "returnPct": 21.74,
+          "benchmarkReturnPct": 18.48
+        },
+        {
+          "year": "2018",
+          "returnPct": -11.73,
+          "benchmarkReturnPct": -7.01
+        },
+        {
+          "year": "2019",
+          "returnPct": 22.43,
+          "benchmarkReturnPct": 28.65
+        },
+        {
+          "year": "2020",
+          "returnPct": 53.67,
+          "benchmarkReturnPct": 15.09
+        },
+        {
+          "year": "2021",
+          "returnPct": 20.44,
+          "benchmarkReturnPct": 28.79
+        },
+        {
+          "year": "2022",
+          "returnPct": -18.04,
+          "benchmarkReturnPct": -19.95
+        },
+        {
+          "year": "2023",
+          "returnPct": 10.57,
+          "benchmarkReturnPct": 24.81
+        },
+        {
+          "year": "2024",
+          "returnPct": 10.94,
+          "benchmarkReturnPct": 24
+        },
+        {
+          "year": "2025",
+          "returnPct": 14.08,
+          "benchmarkReturnPct": 16.64
+        },
+        {
+          "year": "2026",
+          "returnPct": -0.79,
+          "benchmarkReturnPct": 13.42
+        }
+      ],
+      "worstMonth": {
+        "date": "2018-12-31",
+        "returnPct": -10.38
+      },
+      "maxDrawdownPct": 28.61,
+      "medianNames": 17,
+      "verdict": "FAIL",
+      "tradeYears": [
+        {
+          "year": "2014",
+          "n": 48,
+          "win": 39.6,
+          "pf": 0.848,
+          "avg": -0.48
+        },
+        {
+          "year": "2015",
+          "n": 93,
+          "win": 38.7,
+          "pf": 0.78,
+          "avg": -0.79
+        },
+        {
+          "year": "2016",
+          "n": 102,
+          "win": 43.1,
+          "pf": 2.182,
+          "avg": 4.09
+        },
+        {
+          "year": "2017",
+          "n": 92,
+          "win": 56.5,
+          "pf": 2.121,
+          "avg": 3.15
+        },
+        {
+          "year": "2018",
+          "n": 153,
+          "win": 39.2,
+          "pf": 0.867,
+          "avg": -0.56
+        },
+        {
+          "year": "2019",
+          "n": 146,
+          "win": 50.7,
+          "pf": 1.591,
+          "avg": 1.84
+        },
+        {
+          "year": "2020",
+          "n": 147,
+          "win": 49.7,
+          "pf": 2.184,
+          "avg": 4.68
+        },
+        {
+          "year": "2021",
+          "n": 122,
+          "win": 51.6,
+          "pf": 2.853,
+          "avg": 6.5
+        },
+        {
+          "year": "2022",
+          "n": 135,
+          "win": 23,
+          "pf": 0.307,
+          "avg": -4.99
+        },
+        {
+          "year": "2023",
+          "n": 168,
+          "win": 33.9,
+          "pf": 0.965,
+          "avg": -0.16
+        },
+        {
+          "year": "2024",
+          "n": 229,
+          "win": 53.3,
+          "pf": 2.002,
+          "avg": 3.1
+        },
+        {
+          "year": "2025",
+          "n": 189,
+          "win": 42.3,
+          "pf": 1.254,
+          "avg": 1.05
+        },
+        {
+          "year": "2026",
+          "n": 214,
+          "win": 38.3,
+          "pf": 1.048,
+          "avg": 0.22
+        }
+      ],
+      "peakNames": 57,
+      "design": "The scored curve is the uncapped equal-weight book (peak 57 names, median 17). An executable book sizes each new report at $30,000 and stops at 23 open names on the $700,000 paper pool, keeping the largest excess-return names and skipping the rest. That cap was not re-scored. Orders are the entry open and the stop or the hold-date close, not a monthly rebalance."
+    }
+  ]
+}

@@ -1,0 +1,5155 @@
+{
+  "generatedAt": "2026-10-07T08:32:16.834Z",
+  "preregistration": "da3c5f8d117f3c6553f9640b7c745fc32d829510",
+  "nTrials": 64,
+  "dsr": {
+    "nTrials": 64,
+    "probability": 0.5795979596454639,
+    "sharpe": 0.11166542193757818,
+    "annualized": 0.3868203684890034,
+    "sr0": 0.09783732931969563
+  },
+  "cells": [
+    {
+      "id": "US|a",
+      "market": "US",
+      "variant": "a",
+      "side": "short",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -87.98,
+        "grossReturnPct": -87.98,
+        "costDragPp": 0,
+        "maxDrawdownPct": 91.54,
+        "benchmarkReturnPct": -91.04,
+        "tStat": 0.82,
+        "tN": 202,
+        "pf": 0.64,
+        "pfInfinite": false,
+        "win": 36.8,
+        "trades": 863,
+        "sharpe": 0.05774861291130327
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 12,
+          "win": 50,
+          "pf": 1.272,
+          "pfInfinite": false,
+          "returnPct": 4.83,
+          "maxDrawdownPct": 7.09,
+          "benchmarkReturnPct": 1.53
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 40,
+          "win": 42.5,
+          "pf": 0.963,
+          "pfInfinite": false,
+          "returnPct": -21.03,
+          "maxDrawdownPct": 33.83,
+          "benchmarkReturnPct": -18.3
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 42,
+          "win": 42.9,
+          "pf": 0.632,
+          "pfInfinite": false,
+          "returnPct": -1.23,
+          "maxDrawdownPct": 11.53,
+          "benchmarkReturnPct": 1.53
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 55,
+          "win": 41.8,
+          "pf": 1.005,
+          "pfInfinite": false,
+          "returnPct": 2.14,
+          "maxDrawdownPct": 17.32,
+          "benchmarkReturnPct": -16.74
+        }
+      ],
+      "trades": 863,
+      "truncated": 22,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -84.33
+      },
+      "maxDrawdownPct": 91.54,
+      "k1": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -84.85,
+          "grossReturnPct": -84.85,
+          "costDragPp": 0,
+          "maxDrawdownPct": 92.23,
+          "benchmarkReturnPct": -91.04,
+          "tStat": 1.09,
+          "tN": 202,
+          "pf": 0.928,
+          "pfInfinite": false,
+          "win": 46,
+          "trades": 161,
+          "sharpe": 0.07701840269263627
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 5,
+            "win": 80,
+            "pf": 7.061,
+            "pfInfinite": false,
+            "returnPct": 10.4,
+            "maxDrawdownPct": 15.8,
+            "benchmarkReturnPct": 1.53
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 5,
+            "win": 40,
+            "pf": 0.674,
+            "pfInfinite": false,
+            "returnPct": -21.72,
+            "maxDrawdownPct": 36.98,
+            "benchmarkReturnPct": -18.3
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 6,
+            "win": 33.3,
+            "pf": 0.812,
+            "pfInfinite": false,
+            "returnPct": 9.54,
+            "maxDrawdownPct": 20.41,
+            "benchmarkReturnPct": 1.53
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 9,
+            "win": 66.7,
+            "pf": 4.698,
+            "pfInfinite": false,
+            "returnPct": 25.25,
+            "maxDrawdownPct": 12.2,
+            "benchmarkReturnPct": -16.74
+          }
+        ],
+        "trades": 161,
+        "rebound": {
+          "months": 20,
+          "returnPct": -88.75
+        }
+      },
+      "k2": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -87.91,
+          "grossReturnPct": -87.91,
+          "costDragPp": 0,
+          "maxDrawdownPct": 93.53,
+          "benchmarkReturnPct": -91.04,
+          "tStat": 0.87,
+          "tN": 202,
+          "pf": 0.834,
+          "pfInfinite": false,
+          "win": 43.9,
+          "trades": 301,
+          "sharpe": 0.061522593788469686
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 10,
+            "win": 50,
+            "pf": 1.834,
+            "pfInfinite": false,
+            "returnPct": 3.81,
+            "maxDrawdownPct": 12.92,
+            "benchmarkReturnPct": 1.53
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 10,
+            "win": 40,
+            "pf": 0.59,
+            "pfInfinite": false,
+            "returnPct": -20.71,
+            "maxDrawdownPct": 32.73,
+            "benchmarkReturnPct": -18.3
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 12,
+            "win": 41.7,
+            "pf": 1.175,
+            "pfInfinite": false,
+            "returnPct": 9.45,
+            "maxDrawdownPct": 16.18,
+            "benchmarkReturnPct": 1.53
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 17,
+            "win": 64.7,
+            "pf": 2.202,
+            "pfInfinite": false,
+            "returnPct": 16.01,
+            "maxDrawdownPct": 18.2,
+            "benchmarkReturnPct": -16.74
+          }
+        ],
+        "trades": 301,
+        "rebound": {
+          "months": 20,
+          "returnPct": -86.22
+        }
+      },
+      "k5": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -83.96,
+          "grossReturnPct": -83.96,
+          "costDragPp": 0,
+          "maxDrawdownPct": 89.53,
+          "benchmarkReturnPct": -91.04,
+          "tStat": 1.18,
+          "tN": 202,
+          "pf": 0.767,
+          "pfInfinite": false,
+          "win": 41,
+          "trades": 575,
+          "sharpe": 0.0827031242031092
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 14,
+            "win": 50,
+            "pf": 2.152,
+            "pfInfinite": false,
+            "returnPct": 7.3,
+            "maxDrawdownPct": 7.22,
+            "benchmarkReturnPct": 1.53
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 25,
+            "win": 36,
+            "pf": 0.683,
+            "pfInfinite": false,
+            "returnPct": -21.59,
+            "maxDrawdownPct": 34.73,
+            "benchmarkReturnPct": -18.3
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 28,
+            "win": 46.4,
+            "pf": 0.645,
+            "pfInfinite": false,
+            "returnPct": -3.68,
+            "maxDrawdownPct": 13.83,
+            "benchmarkReturnPct": 1.53
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 36,
+            "win": 58.3,
+            "pf": 1.169,
+            "pfInfinite": false,
+            "returnPct": 5.62,
+            "maxDrawdownPct": 18.61,
+            "benchmarkReturnPct": -16.74
+          }
+        ],
+        "trades": 575,
+        "rebound": {
+          "months": 20,
+          "returnPct": -84.06
+        }
+      }
+    },
+    {
+      "id": "US|b",
+      "market": "US",
+      "variant": "b",
+      "side": "short",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -88.97,
+        "grossReturnPct": -88.97,
+        "costDragPp": 0,
+        "maxDrawdownPct": 93.96,
+        "benchmarkReturnPct": -91.04,
+        "tStat": 0.74,
+        "tN": 202,
+        "pf": 0.575,
+        "pfInfinite": false,
+        "win": 23,
+        "trades": 992,
+        "sharpe": 0.051977264958176776
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 38,
+          "win": 23.7,
+          "pf": 0.308,
+          "pfInfinite": false,
+          "returnPct": -7.64,
+          "maxDrawdownPct": 17.78,
+          "benchmarkReturnPct": 1.53
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 38,
+          "win": 21.1,
+          "pf": 0.267,
+          "pfInfinite": false,
+          "returnPct": -27.31,
+          "maxDrawdownPct": 40.09,
+          "benchmarkReturnPct": -18.3
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 40,
+          "win": 20,
+          "pf": 0.652,
+          "pfInfinite": false,
+          "returnPct": 1.18,
+          "maxDrawdownPct": 11.88,
+          "benchmarkReturnPct": 1.53
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 60,
+          "win": 35,
+          "pf": 1.193,
+          "pfInfinite": false,
+          "returnPct": 8.58,
+          "maxDrawdownPct": 16.76,
+          "benchmarkReturnPct": -16.74
+        }
+      ],
+      "trades": 992,
+      "truncated": 22,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -88.5
+      },
+      "maxDrawdownPct": 93.96,
+      "k1": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -92.48,
+          "grossReturnPct": -92.48,
+          "costDragPp": 0,
+          "maxDrawdownPct": 97.21,
+          "benchmarkReturnPct": -91.04,
+          "tStat": 0.62,
+          "tN": 202,
+          "pf": 0.657,
+          "pfInfinite": false,
+          "win": 24.7,
+          "trades": 162,
+          "sharpe": 0.04394007804858358
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 5,
+            "win": 40,
+            "pf": 1.57,
+            "pfInfinite": false,
+            "returnPct": -15.08,
+            "maxDrawdownPct": 33.86,
+            "benchmarkReturnPct": 1.53
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 6,
+            "win": 0,
+            "pf": 0,
+            "pfInfinite": false,
+            "returnPct": -41.83,
+            "maxDrawdownPct": 54.4,
+            "benchmarkReturnPct": -18.3
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 4,
+            "win": 25,
+            "pf": 1.821,
+            "pfInfinite": false,
+            "returnPct": 9.11,
+            "maxDrawdownPct": 15.83,
+            "benchmarkReturnPct": 1.53
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 9,
+            "win": 44.4,
+            "pf": 2.883,
+            "pfInfinite": false,
+            "returnPct": 33.45,
+            "maxDrawdownPct": 10.94,
+            "benchmarkReturnPct": -16.74
+          }
+        ],
+        "trades": 162,
+        "rebound": {
+          "months": 20,
+          "returnPct": -89.84
+        }
+      },
+      "k2": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -89.62,
+          "grossReturnPct": -89.62,
+          "costDragPp": 0,
+          "maxDrawdownPct": 95.47,
+          "benchmarkReturnPct": -91.04,
+          "tStat": 0.83,
+          "tN": 202,
+          "pf": 0.679,
+          "pfInfinite": false,
+          "win": 25.1,
+          "trades": 303,
+          "sharpe": 0.05807850466585122
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 13,
+            "win": 46.2,
+            "pf": 1.517,
+            "pfInfinite": false,
+            "returnPct": -9.72,
+            "maxDrawdownPct": 26.35,
+            "benchmarkReturnPct": 1.53
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 9,
+            "win": 0,
+            "pf": 0,
+            "pfInfinite": false,
+            "returnPct": -28.27,
+            "maxDrawdownPct": 42.55,
+            "benchmarkReturnPct": -18.3
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 10,
+            "win": 40,
+            "pf": 2.178,
+            "pfInfinite": false,
+            "returnPct": 8.33,
+            "maxDrawdownPct": 19.52,
+            "benchmarkReturnPct": 1.53
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 16,
+            "win": 50,
+            "pf": 2.741,
+            "pfInfinite": false,
+            "returnPct": 29.31,
+            "maxDrawdownPct": 19.35,
+            "benchmarkReturnPct": -16.74
+          }
+        ],
+        "trades": 303,
+        "rebound": {
+          "months": 20,
+          "returnPct": -91.72
+        }
+      },
+      "k5": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -90.41,
+          "grossReturnPct": -90.41,
+          "costDragPp": 0,
+          "maxDrawdownPct": 95.64,
+          "benchmarkReturnPct": -91.04,
+          "tStat": 0.67,
+          "tN": 202,
+          "pf": 0.66,
+          "pfInfinite": false,
+          "win": 25,
+          "trades": 609,
+          "sharpe": 0.046963866552493246
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 25,
+            "win": 32,
+            "pf": 0.884,
+            "pfInfinite": false,
+            "returnPct": -3.42,
+            "maxDrawdownPct": 15.96,
+            "benchmarkReturnPct": 1.53
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 23,
+            "win": 8.7,
+            "pf": 0.141,
+            "pfInfinite": false,
+            "returnPct": -31.84,
+            "maxDrawdownPct": 45.8,
+            "benchmarkReturnPct": -18.3
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 25,
+            "win": 20,
+            "pf": 0.828,
+            "pfInfinite": false,
+            "returnPct": 7.45,
+            "maxDrawdownPct": 13.63,
+            "benchmarkReturnPct": 1.53
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 34,
+            "win": 47.1,
+            "pf": 1.622,
+            "pfInfinite": false,
+            "returnPct": 14.51,
+            "maxDrawdownPct": 19.59,
+            "benchmarkReturnPct": -16.74
+          }
+        ],
+        "trades": 609,
+        "rebound": {
+          "months": 20,
+          "returnPct": -89.76
+        }
+      }
+    },
+    {
+      "id": "US|c",
+      "market": "US",
+      "variant": "c",
+      "side": "short",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -13.98,
+        "grossReturnPct": -13.98,
+        "costDragPp": 0,
+        "maxDrawdownPct": 47.61,
+        "benchmarkReturnPct": 0,
+        "tStat": 0.16,
+        "tN": 202,
+        "pf": 1.062,
+        "pfInfinite": false,
+        "win": 47.3,
+        "trades": 863,
+        "sharpe": 0.011002458731938782
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 12,
+          "win": 58.3,
+          "pf": 2.686,
+          "pfInfinite": false,
+          "returnPct": 3.14,
+          "maxDrawdownPct": 11.12,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 40,
+          "win": 52.5,
+          "pf": 0.895,
+          "pfInfinite": false,
+          "returnPct": -2.55,
+          "maxDrawdownPct": 11.85,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 42,
+          "win": 47.6,
+          "pf": 0.791,
+          "pfInfinite": false,
+          "returnPct": -3.02,
+          "maxDrawdownPct": 12.01,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 55,
+          "win": 54.5,
+          "pf": 2.764,
+          "pfInfinite": false,
+          "returnPct": 19.46,
+          "maxDrawdownPct": 16.74,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 863,
+      "truncated": 22,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -40.95
+      },
+      "maxDrawdownPct": 47.61,
+      "k1": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": 17.08,
+          "grossReturnPct": 17.08,
+          "costDragPp": 0,
+          "maxDrawdownPct": 71.91,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.77,
+          "tN": 202,
+          "pf": 1.281,
+          "pfInfinite": false,
+          "win": 49.1,
+          "trades": 161,
+          "sharpe": 0.05386701497354435
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 5,
+            "win": 80,
+            "pf": 95.451,
+            "pfInfinite": false,
+            "returnPct": 8.88,
+            "maxDrawdownPct": 18.53,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 5,
+            "win": 40,
+            "pf": 0.744,
+            "pfInfinite": false,
+            "returnPct": -3.25,
+            "maxDrawdownPct": 23.42,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 6,
+            "win": 50,
+            "pf": 1.105,
+            "pfInfinite": false,
+            "returnPct": 8.9,
+            "maxDrawdownPct": 19.26,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 9,
+            "win": 66.7,
+            "pf": 17.132,
+            "pfInfinite": false,
+            "returnPct": 46.08,
+            "maxDrawdownPct": 14.47,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 161,
+        "rebound": {
+          "months": 20,
+          "returnPct": -56.64
+        }
+      },
+      "k2": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -9.45,
+          "grossReturnPct": -9.45,
+          "costDragPp": 0,
+          "maxDrawdownPct": 61.4,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.43,
+          "tN": 202,
+          "pf": 1.177,
+          "pfInfinite": false,
+          "win": 48.2,
+          "trades": 301,
+          "sharpe": 0.030189469767074595
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 10,
+            "win": 50,
+            "pf": 3.35,
+            "pfInfinite": false,
+            "returnPct": 2.26,
+            "maxDrawdownPct": 16.45,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 10,
+            "win": 40,
+            "pf": 0.587,
+            "pfInfinite": false,
+            "returnPct": -2.44,
+            "maxDrawdownPct": 17.44,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 12,
+            "win": 50,
+            "pf": 1.635,
+            "pfInfinite": false,
+            "returnPct": 8.35,
+            "maxDrawdownPct": 13.11,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 17,
+            "win": 70.6,
+            "pf": 4.493,
+            "pfInfinite": false,
+            "returnPct": 35.53,
+            "maxDrawdownPct": 16.95,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 301,
+        "rebound": {
+          "months": 20,
+          "returnPct": -47.49
+        }
+      },
+      "k5": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": 18.87,
+          "grossReturnPct": 18.87,
+          "costDragPp": 0,
+          "maxDrawdownPct": 49.88,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.62,
+          "tN": 202,
+          "pf": 1.187,
+          "pfInfinite": false,
+          "win": 49.7,
+          "trades": 575,
+          "sharpe": 0.043385133408066136
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 14,
+            "win": 64.3,
+            "pf": 4.655,
+            "pfInfinite": false,
+            "returnPct": 5.83,
+            "maxDrawdownPct": 9.2,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 25,
+            "win": 44,
+            "pf": 0.862,
+            "pfInfinite": false,
+            "returnPct": -3.14,
+            "maxDrawdownPct": 14.51,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 28,
+            "win": 50,
+            "pf": 0.842,
+            "pfInfinite": false,
+            "returnPct": -5.16,
+            "maxDrawdownPct": 13.73,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 36,
+            "win": 63.9,
+            "pf": 2.238,
+            "pfInfinite": false,
+            "returnPct": 23.49,
+            "maxDrawdownPct": 16.95,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 575,
+        "rebound": {
+          "months": 20,
+          "returnPct": -39.62
+        }
+      }
+    },
+    {
+      "id": "US|d",
+      "market": "US",
+      "variant": "d",
+      "side": "short",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -53.46,
+        "grossReturnPct": -53.46,
+        "costDragPp": 0,
+        "maxDrawdownPct": 81.69,
+        "benchmarkReturnPct": 0,
+        "tStat": -0.31,
+        "tN": 202,
+        "pf": 0.87,
+        "pfInfinite": false,
+        "win": 30.3,
+        "trades": 992,
+        "sharpe": -0.022009311304098177
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 38,
+          "win": 28.9,
+          "pf": 0.419,
+          "pfInfinite": false,
+          "returnPct": -9.56,
+          "maxDrawdownPct": 20.58,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 38,
+          "win": 31.6,
+          "pf": 0.577,
+          "pfInfinite": false,
+          "returnPct": -10.48,
+          "maxDrawdownPct": 20.78,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 40,
+          "win": 25,
+          "pf": 0.676,
+          "pfInfinite": false,
+          "returnPct": -1.13,
+          "maxDrawdownPct": 13.05,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 60,
+          "win": 55,
+          "pf": 2.905,
+          "pfInfinite": false,
+          "returnPct": 26.41,
+          "maxDrawdownPct": 16.85,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 992,
+      "truncated": 22,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -61.17
+      },
+      "maxDrawdownPct": 81.69,
+      "k1": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -70.86,
+          "grossReturnPct": -70.86,
+          "costDragPp": 0,
+          "maxDrawdownPct": 88.88,
+          "benchmarkReturnPct": 0,
+          "tStat": -0.07,
+          "tN": 202,
+          "pf": 0.858,
+          "pfInfinite": false,
+          "win": 27.8,
+          "trades": 162,
+          "sharpe": -0.00500670967303252
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 5,
+            "win": 40,
+            "pf": 2.27,
+            "pfInfinite": false,
+            "returnPct": -14.69,
+            "maxDrawdownPct": 35.01,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 6,
+            "win": 0,
+            "pf": 0,
+            "pfInfinite": false,
+            "returnPct": -27.68,
+            "maxDrawdownPct": 37.81,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 4,
+            "win": 25,
+            "pf": 1.745,
+            "pfInfinite": false,
+            "returnPct": 5.06,
+            "maxDrawdownPct": 14.49,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 9,
+            "win": 44.4,
+            "pf": 4.019,
+            "pfInfinite": false,
+            "returnPct": 53.43,
+            "maxDrawdownPct": 11.84,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 162,
+        "rebound": {
+          "months": 20,
+          "returnPct": -68.86
+        }
+      },
+      "k2": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -50.16,
+          "grossReturnPct": -50.16,
+          "costDragPp": 0,
+          "maxDrawdownPct": 78.91,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.14,
+          "tN": 202,
+          "pf": 0.905,
+          "pfInfinite": false,
+          "win": 30.7,
+          "trades": 303,
+          "sharpe": 0.010108778357411143
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 13,
+            "win": 30.8,
+            "pf": 1.749,
+            "pfInfinite": false,
+            "returnPct": -11.19,
+            "maxDrawdownPct": 28.37,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 9,
+            "win": 11.1,
+            "pf": 0.005,
+            "pfInfinite": false,
+            "returnPct": -11.18,
+            "maxDrawdownPct": 26.96,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 10,
+            "win": 50,
+            "pf": 2.102,
+            "pfInfinite": false,
+            "returnPct": 6.79,
+            "maxDrawdownPct": 17.97,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 16,
+            "win": 56.3,
+            "pf": 4.108,
+            "pfInfinite": false,
+            "returnPct": 50.51,
+            "maxDrawdownPct": 17.3,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 303,
+        "rebound": {
+          "months": 20,
+          "returnPct": -70.68
+        }
+      },
+      "k5": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -56.74,
+          "grossReturnPct": -56.74,
+          "costDragPp": 0,
+          "maxDrawdownPct": 83.54,
+          "benchmarkReturnPct": 0,
+          "tStat": -0.2,
+          "tN": 202,
+          "pf": 0.934,
+          "pfInfinite": false,
+          "win": 31.5,
+          "trades": 609,
+          "sharpe": -0.013720305517957242
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 25,
+            "win": 36,
+            "pf": 1.171,
+            "pfInfinite": false,
+            "returnPct": -5.14,
+            "maxDrawdownPct": 18.98,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 23,
+            "win": 17.4,
+            "pf": 0.199,
+            "pfInfinite": false,
+            "returnPct": -15.45,
+            "maxDrawdownPct": 27.62,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 25,
+            "win": 24,
+            "pf": 0.947,
+            "pfInfinite": false,
+            "returnPct": 5.43,
+            "maxDrawdownPct": 13.34,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 34,
+            "win": 58.8,
+            "pf": 2.457,
+            "pfInfinite": false,
+            "returnPct": 33.24,
+            "maxDrawdownPct": 17.61,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 609,
+        "rebound": {
+          "months": 20,
+          "returnPct": -64.89
+        }
+      }
+    },
+    {
+      "id": "US|e",
+      "market": "US",
+      "variant": "e",
+      "side": "short",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -5.3,
+        "grossReturnPct": -5.3,
+        "costDragPp": 0,
+        "maxDrawdownPct": 52.19,
+        "benchmarkReturnPct": 0,
+        "tStat": 0.25,
+        "tN": 202,
+        "pf": 1.086,
+        "pfInfinite": false,
+        "win": 46.9,
+        "trades": 830,
+        "sharpe": 0.017369222435666326
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 12,
+          "win": 75,
+          "pf": 3.207,
+          "pfInfinite": false,
+          "returnPct": 7.71,
+          "maxDrawdownPct": 6.48,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 40,
+          "win": 55,
+          "pf": 1.334,
+          "pfInfinite": false,
+          "returnPct": -12.31,
+          "maxDrawdownPct": 17.18,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 42,
+          "win": 42.9,
+          "pf": 0.933,
+          "pfInfinite": false,
+          "returnPct": 1.77,
+          "maxDrawdownPct": 8.14,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 55,
+          "win": 63.6,
+          "pf": 3.064,
+          "pfInfinite": false,
+          "returnPct": 22.02,
+          "maxDrawdownPct": 16.5,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 830,
+      "truncated": 22,
+      "skippedHedge": 33,
+      "rebound": {
+        "months": 20,
+        "returnPct": -35.44
+      },
+      "maxDrawdownPct": 52.19,
+      "k1": {
+        "verdict": "CANDIDATE",
+        "full": {
+          "returnPct": 30.79,
+          "grossReturnPct": 30.79,
+          "costDragPp": 0,
+          "maxDrawdownPct": 63.44,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.82,
+          "tN": 202,
+          "pf": 1.401,
+          "pfInfinite": false,
+          "win": 50.9,
+          "trades": 159,
+          "sharpe": 0.05757485690496063
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 5,
+            "win": 80,
+            "pf": 19.716,
+            "pfInfinite": false,
+            "returnPct": 3.3,
+            "maxDrawdownPct": 15.54,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 5,
+            "win": 40,
+            "pf": 0.581,
+            "pfInfinite": false,
+            "returnPct": -15.98,
+            "maxDrawdownPct": 27.9,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 6,
+            "win": 16.7,
+            "pf": 2.179,
+            "pfInfinite": false,
+            "returnPct": 21.12,
+            "maxDrawdownPct": 14.34,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 9,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 55.95,
+            "maxDrawdownPct": 14.15,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 159,
+        "rebound": {
+          "months": 20,
+          "returnPct": -50.08
+        }
+      },
+      "k2": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -18.38,
+          "grossReturnPct": -18.38,
+          "costDragPp": 0,
+          "maxDrawdownPct": 56.67,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.26,
+          "tN": 202,
+          "pf": 1.16,
+          "pfInfinite": false,
+          "win": 49.3,
+          "trades": 298,
+          "sharpe": 0.018197527079247152
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 10,
+            "win": 70,
+            "pf": 2.877,
+            "pfInfinite": false,
+            "returnPct": 3.43,
+            "maxDrawdownPct": 11.61,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 10,
+            "win": 40,
+            "pf": 0.547,
+            "pfInfinite": false,
+            "returnPct": -17.26,
+            "maxDrawdownPct": 24.63,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 12,
+            "win": 33.3,
+            "pf": 1.796,
+            "pfInfinite": false,
+            "returnPct": 11.97,
+            "maxDrawdownPct": 12.07,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 17,
+            "win": 88.2,
+            "pf": 5.223,
+            "pfInfinite": false,
+            "returnPct": 36.96,
+            "maxDrawdownPct": 15.2,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 298,
+        "rebound": {
+          "months": 20,
+          "returnPct": -40.73
+        }
+      },
+      "k5": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": 19.94,
+          "grossReturnPct": 19.94,
+          "costDragPp": 0,
+          "maxDrawdownPct": 47.67,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.61,
+          "tN": 202,
+          "pf": 1.193,
+          "pfInfinite": false,
+          "win": 48.1,
+          "trades": 561,
+          "sharpe": 0.04299169895207047
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 14,
+            "win": 78.6,
+            "pf": 6.347,
+            "pfInfinite": false,
+            "returnPct": 9.26,
+            "maxDrawdownPct": 7.47,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 25,
+            "win": 44,
+            "pf": 0.844,
+            "pfInfinite": false,
+            "returnPct": -15.23,
+            "maxDrawdownPct": 20.48,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 28,
+            "win": 39.3,
+            "pf": 0.842,
+            "pfInfinite": false,
+            "returnPct": -0.63,
+            "maxDrawdownPct": 9.03,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 36,
+            "win": 72.2,
+            "pf": 2.908,
+            "pfInfinite": false,
+            "returnPct": 28.65,
+            "maxDrawdownPct": 15.12,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 561,
+        "rebound": {
+          "months": 20,
+          "returnPct": -31.24
+        }
+      }
+    },
+    {
+      "id": "US|f",
+      "market": "US",
+      "variant": "f",
+      "side": "short",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": 10.19,
+        "grossReturnPct": 10.19,
+        "costDragPp": 0,
+        "maxDrawdownPct": 67.75,
+        "benchmarkReturnPct": 0,
+        "tStat": 0.65,
+        "tN": 202,
+        "pf": 1.246,
+        "pfInfinite": false,
+        "win": 50.4,
+        "trades": 452,
+        "sharpe": 0.04561597916716564
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 6,
+          "win": 50,
+          "pf": 6.907,
+          "pfInfinite": false,
+          "returnPct": 15.9,
+          "maxDrawdownPct": 9.78,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 19,
+          "win": 47.4,
+          "pf": 1.121,
+          "pfInfinite": false,
+          "returnPct": -3.04,
+          "maxDrawdownPct": 14.93,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 27,
+          "win": 40.7,
+          "pf": 0.68,
+          "pfInfinite": false,
+          "returnPct": -15.3,
+          "maxDrawdownPct": 21.41,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 26,
+          "win": 65.4,
+          "pf": 4.471,
+          "pfInfinite": false,
+          "returnPct": 44.22,
+          "maxDrawdownPct": 17.96,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 452,
+      "truncated": 13,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -36.87
+      },
+      "maxDrawdownPct": 67.75,
+      "k1": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": 79.47,
+          "grossReturnPct": 79.47,
+          "costDragPp": 0,
+          "maxDrawdownPct": 71.04,
+          "benchmarkReturnPct": 0,
+          "tStat": 1.09,
+          "tN": 202,
+          "pf": 1.351,
+          "pfInfinite": false,
+          "win": 51,
+          "trades": 145,
+          "sharpe": 0.07667425349972118
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 3,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 16.33,
+            "maxDrawdownPct": 20,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 5,
+            "win": 40,
+            "pf": 0.744,
+            "pfInfinite": false,
+            "returnPct": -3.25,
+            "maxDrawdownPct": 23.42,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 6,
+            "win": 50,
+            "pf": 1.105,
+            "pfInfinite": false,
+            "returnPct": 9.58,
+            "maxDrawdownPct": 19.26,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 8,
+            "win": 75,
+            "pf": 18.93,
+            "pfInfinite": false,
+            "returnPct": 54.27,
+            "maxDrawdownPct": 13.82,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 145,
+        "rebound": {
+          "months": 20,
+          "returnPct": -53.73
+        }
+      },
+      "k2": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -19.7,
+          "grossReturnPct": -19.7,
+          "costDragPp": 0,
+          "maxDrawdownPct": 74.47,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.4,
+          "tN": 202,
+          "pf": 1.125,
+          "pfInfinite": false,
+          "win": 48.8,
+          "trades": 244,
+          "sharpe": 0.027832549767935734
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 4,
+            "win": 75,
+            "pf": 1594.981,
+            "pfInfinite": false,
+            "returnPct": 17.26,
+            "maxDrawdownPct": 15.42,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 10,
+            "win": 40,
+            "pf": 0.587,
+            "pfInfinite": false,
+            "returnPct": -3.68,
+            "maxDrawdownPct": 18.69,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 11,
+            "win": 54.5,
+            "pf": 1.751,
+            "pfInfinite": false,
+            "returnPct": 8.73,
+            "maxDrawdownPct": 13.15,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 14,
+            "win": 71.4,
+            "pf": 3.484,
+            "pfInfinite": false,
+            "returnPct": 38.77,
+            "maxDrawdownPct": 16.95,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 244,
+        "rebound": {
+          "months": 20,
+          "returnPct": -49.23
+        }
+      },
+      "k5": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": 22.59,
+          "grossReturnPct": 22.59,
+          "costDragPp": 0,
+          "maxDrawdownPct": 65.72,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.75,
+          "tN": 202,
+          "pf": 1.21,
+          "pfInfinite": false,
+          "win": 49.9,
+          "trades": 399,
+          "sharpe": 0.05249977353914882
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 6,
+            "win": 50,
+            "pf": 6.907,
+            "pfInfinite": false,
+            "returnPct": 15.86,
+            "maxDrawdownPct": 9.77,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 19,
+            "win": 47.4,
+            "pf": 1.121,
+            "pfInfinite": false,
+            "returnPct": -3.74,
+            "maxDrawdownPct": 14.89,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 24,
+            "win": 41.7,
+            "pf": 0.66,
+            "pfInfinite": false,
+            "returnPct": -13.05,
+            "maxDrawdownPct": 18.19,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 21,
+            "win": 66.7,
+            "pf": 4.282,
+            "pfInfinite": false,
+            "returnPct": 43.51,
+            "maxDrawdownPct": 17.93,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 399,
+        "rebound": {
+          "months": 20,
+          "returnPct": -33.93
+        }
+      }
+    },
+    {
+      "id": "UK|a",
+      "market": "UK",
+      "variant": "a",
+      "side": "short",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -54.99,
+        "grossReturnPct": -54.99,
+        "costDragPp": 0,
+        "maxDrawdownPct": 70.8,
+        "benchmarkReturnPct": -62.26,
+        "tStat": 0.49,
+        "tN": 202,
+        "pf": 0.888,
+        "pfInfinite": false,
+        "win": 42.5,
+        "trades": 181,
+        "sharpe": 0.034530889912697926
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 11,
+          "win": 36.4,
+          "pf": 0.711,
+          "pfInfinite": false,
+          "returnPct": -3.37,
+          "maxDrawdownPct": 16.61,
+          "benchmarkReturnPct": -0.95
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 8,
+          "win": 25,
+          "pf": 0.166,
+          "pfInfinite": false,
+          "returnPct": -10.22,
+          "maxDrawdownPct": 15.77,
+          "benchmarkReturnPct": -12.23
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 11,
+          "win": 54.5,
+          "pf": 1.23,
+          "pfInfinite": false,
+          "returnPct": 2.96,
+          "maxDrawdownPct": 9.07,
+          "benchmarkReturnPct": -8.97
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 7,
+          "win": 14.3,
+          "pf": 0.107,
+          "pfInfinite": false,
+          "returnPct": -34.03,
+          "maxDrawdownPct": 37.76,
+          "benchmarkReturnPct": -2.52
+        }
+      ],
+      "trades": 181,
+      "truncated": 1,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -68.86
+      },
+      "maxDrawdownPct": 70.8,
+      "k1": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -54.51,
+          "grossReturnPct": -54.51,
+          "costDragPp": 0,
+          "maxDrawdownPct": 85.54,
+          "benchmarkReturnPct": -62.26,
+          "tStat": 0.78,
+          "tN": 202,
+          "pf": 1.082,
+          "pfInfinite": false,
+          "win": 47.2,
+          "trades": 106,
+          "sharpe": 0.05468481358185437
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 6,
+            "win": 33.3,
+            "pf": 0.554,
+            "pfInfinite": false,
+            "returnPct": -8.77,
+            "maxDrawdownPct": 24.8,
+            "benchmarkReturnPct": -0.95
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 3,
+            "win": 0,
+            "pf": 0,
+            "pfInfinite": false,
+            "returnPct": -16.38,
+            "maxDrawdownPct": 20.08,
+            "benchmarkReturnPct": -12.23
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 6,
+            "win": 50,
+            "pf": 1.381,
+            "pfInfinite": false,
+            "returnPct": 13.89,
+            "maxDrawdownPct": 9.92,
+            "benchmarkReturnPct": -8.97
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 4,
+            "win": 25,
+            "pf": 0.173,
+            "pfInfinite": false,
+            "returnPct": -22.38,
+            "maxDrawdownPct": 27.34,
+            "benchmarkReturnPct": -2.52
+          }
+        ],
+        "trades": 106,
+        "rebound": {
+          "months": 20,
+          "returnPct": -78.37
+        }
+      },
+      "k2": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -45.51,
+          "grossReturnPct": -45.51,
+          "costDragPp": 0,
+          "maxDrawdownPct": 74.66,
+          "benchmarkReturnPct": -62.26,
+          "tStat": 0.72,
+          "tN": 202,
+          "pf": 0.97,
+          "pfInfinite": false,
+          "win": 46.1,
+          "trades": 154,
+          "sharpe": 0.05086321911948996
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 10,
+            "win": 40,
+            "pf": 0.876,
+            "pfInfinite": false,
+            "returnPct": -0.17,
+            "maxDrawdownPct": 16.38,
+            "benchmarkReturnPct": -0.95
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 5,
+            "win": 20,
+            "pf": 0.32,
+            "pfInfinite": false,
+            "returnPct": -9.75,
+            "maxDrawdownPct": 15.12,
+            "benchmarkReturnPct": -12.23
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 10,
+            "win": 60,
+            "pf": 1.663,
+            "pfInfinite": false,
+            "returnPct": 0.33,
+            "maxDrawdownPct": 8.61,
+            "benchmarkReturnPct": -8.97
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 6,
+            "win": 0,
+            "pf": 0,
+            "pfInfinite": false,
+            "returnPct": -35.36,
+            "maxDrawdownPct": 39.3,
+            "benchmarkReturnPct": -2.52
+          }
+        ],
+        "trades": 154,
+        "rebound": {
+          "months": 20,
+          "returnPct": -73.36
+        }
+      },
+      "k5": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -54.96,
+          "grossReturnPct": -54.96,
+          "costDragPp": 0,
+          "maxDrawdownPct": 70.79,
+          "benchmarkReturnPct": -62.26,
+          "tStat": 0.49,
+          "tN": 202,
+          "pf": 0.888,
+          "pfInfinite": false,
+          "win": 42.5,
+          "trades": 181,
+          "sharpe": 0.03456204041177116
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 11,
+            "win": 36.4,
+            "pf": 0.711,
+            "pfInfinite": false,
+            "returnPct": -3.36,
+            "maxDrawdownPct": 16.61,
+            "benchmarkReturnPct": -0.95
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 8,
+            "win": 25,
+            "pf": 0.166,
+            "pfInfinite": false,
+            "returnPct": -10.21,
+            "maxDrawdownPct": 15.76,
+            "benchmarkReturnPct": -12.23
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 11,
+            "win": 54.5,
+            "pf": 1.23,
+            "pfInfinite": false,
+            "returnPct": 2.96,
+            "maxDrawdownPct": 9.06,
+            "benchmarkReturnPct": -8.97
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 7,
+            "win": 14.3,
+            "pf": 0.107,
+            "pfInfinite": false,
+            "returnPct": -34.02,
+            "maxDrawdownPct": 37.75,
+            "benchmarkReturnPct": -2.52
+          }
+        ],
+        "trades": 181,
+        "rebound": {
+          "months": 20,
+          "returnPct": -68.85
+        }
+      }
+    },
+    {
+      "id": "UK|b",
+      "market": "UK",
+      "variant": "b",
+      "side": "short",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -74.77,
+        "grossReturnPct": -74.77,
+        "costDragPp": 0,
+        "maxDrawdownPct": 83.64,
+        "benchmarkReturnPct": -62.26,
+        "tStat": -0.01,
+        "tN": 202,
+        "pf": 0.751,
+        "pfInfinite": false,
+        "win": 23,
+        "trades": 213,
+        "sharpe": -0.000949522029125032
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 12,
+          "win": 16.7,
+          "pf": 1.078,
+          "pfInfinite": false,
+          "returnPct": 9.43,
+          "maxDrawdownPct": 10.29,
+          "benchmarkReturnPct": -0.95
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 12,
+          "win": 8.3,
+          "pf": 0.054,
+          "pfInfinite": false,
+          "returnPct": -10.95,
+          "maxDrawdownPct": 20.99,
+          "benchmarkReturnPct": -12.23
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 11,
+          "win": 36.4,
+          "pf": 0.862,
+          "pfInfinite": false,
+          "returnPct": -4.39,
+          "maxDrawdownPct": 14.52,
+          "benchmarkReturnPct": -8.97
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 6,
+          "win": 33.3,
+          "pf": 0.524,
+          "pfInfinite": false,
+          "returnPct": -11.92,
+          "maxDrawdownPct": 14.64,
+          "benchmarkReturnPct": -2.52
+        }
+      ],
+      "trades": 213,
+      "truncated": 1,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -77.28
+      },
+      "maxDrawdownPct": 83.64,
+      "k1": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -78.31,
+          "grossReturnPct": -78.31,
+          "costDragPp": 0,
+          "maxDrawdownPct": 90.78,
+          "benchmarkReturnPct": -62.26,
+          "tStat": 0.27,
+          "tN": 202,
+          "pf": 0.799,
+          "pfInfinite": false,
+          "win": 23.7,
+          "trades": 114,
+          "sharpe": 0.018849556680778715
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 4,
+            "win": 50,
+            "pf": 4.429,
+            "pfInfinite": false,
+            "returnPct": 23.78,
+            "maxDrawdownPct": 13.64,
+            "benchmarkReturnPct": -0.95
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 5,
+            "win": 0,
+            "pf": 0,
+            "pfInfinite": false,
+            "returnPct": -15.38,
+            "maxDrawdownPct": 21.33,
+            "benchmarkReturnPct": -12.23
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 5,
+            "win": 60,
+            "pf": 3.951,
+            "pfInfinite": false,
+            "returnPct": 12.79,
+            "maxDrawdownPct": 10.8,
+            "benchmarkReturnPct": -8.97
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 4,
+            "win": 25,
+            "pf": 0.038,
+            "pfInfinite": false,
+            "returnPct": -10.44,
+            "maxDrawdownPct": 13.71,
+            "benchmarkReturnPct": -2.52
+          }
+        ],
+        "trades": 114,
+        "rebound": {
+          "months": 20,
+          "returnPct": -83.11
+        }
+      },
+      "k2": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -79.49,
+          "grossReturnPct": -79.49,
+          "costDragPp": 0,
+          "maxDrawdownPct": 86.56,
+          "benchmarkReturnPct": -62.26,
+          "tStat": 0.11,
+          "tN": 202,
+          "pf": 0.726,
+          "pfInfinite": false,
+          "win": 22.9,
+          "trades": 175,
+          "sharpe": 0.008070215931782448
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 9,
+            "win": 22.2,
+            "pf": 1.478,
+            "pfInfinite": false,
+            "returnPct": 11.03,
+            "maxDrawdownPct": 11.08,
+            "benchmarkReturnPct": -0.95
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 8,
+            "win": 12.5,
+            "pf": 0.089,
+            "pfInfinite": false,
+            "returnPct": -8.05,
+            "maxDrawdownPct": 18.34,
+            "benchmarkReturnPct": -12.23
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 9,
+            "win": 44.4,
+            "pf": 1.214,
+            "pfInfinite": false,
+            "returnPct": -5,
+            "maxDrawdownPct": 12.48,
+            "benchmarkReturnPct": -8.97
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 5,
+            "win": 20,
+            "pf": 0.027,
+            "pfInfinite": false,
+            "returnPct": -12.17,
+            "maxDrawdownPct": 15.38,
+            "benchmarkReturnPct": -2.52
+          }
+        ],
+        "trades": 175,
+        "rebound": {
+          "months": 20,
+          "returnPct": -82.45
+        }
+      },
+      "k5": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -74.76,
+          "grossReturnPct": -74.76,
+          "costDragPp": 0,
+          "maxDrawdownPct": 83.63,
+          "benchmarkReturnPct": -62.26,
+          "tStat": -0.01,
+          "tN": 202,
+          "pf": 0.751,
+          "pfInfinite": false,
+          "win": 23,
+          "trades": 213,
+          "sharpe": -0.0009167834680289921
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 12,
+            "win": 16.7,
+            "pf": 1.078,
+            "pfInfinite": false,
+            "returnPct": 9.43,
+            "maxDrawdownPct": 10.29,
+            "benchmarkReturnPct": -0.95
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 12,
+            "win": 8.3,
+            "pf": 0.054,
+            "pfInfinite": false,
+            "returnPct": -10.94,
+            "maxDrawdownPct": 20.97,
+            "benchmarkReturnPct": -12.23
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 11,
+            "win": 36.4,
+            "pf": 0.862,
+            "pfInfinite": false,
+            "returnPct": -4.38,
+            "maxDrawdownPct": 14.5,
+            "benchmarkReturnPct": -8.97
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 6,
+            "win": 33.3,
+            "pf": 0.524,
+            "pfInfinite": false,
+            "returnPct": -11.92,
+            "maxDrawdownPct": 14.64,
+            "benchmarkReturnPct": -2.52
+          }
+        ],
+        "trades": 213,
+        "rebound": {
+          "months": 20,
+          "returnPct": -77.27
+        }
+      }
+    },
+    {
+      "id": "UK|c",
+      "market": "UK",
+      "variant": "c",
+      "side": "short",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -45.75,
+        "grossReturnPct": -45.75,
+        "costDragPp": 0,
+        "maxDrawdownPct": 68.55,
+        "benchmarkReturnPct": 0,
+        "tStat": -0.31,
+        "tN": 202,
+        "pf": 0.891,
+        "pfInfinite": false,
+        "win": 43.6,
+        "trades": 181,
+        "sharpe": -0.022078478510737787
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 11,
+          "win": 36.4,
+          "pf": 0.79,
+          "pfInfinite": false,
+          "returnPct": -4.06,
+          "maxDrawdownPct": 21.86,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 8,
+          "win": 62.5,
+          "pf": 1.128,
+          "pfInfinite": false,
+          "returnPct": 0.97,
+          "maxDrawdownPct": 8.52,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 11,
+          "win": 54.5,
+          "pf": 4.737,
+          "pfInfinite": false,
+          "returnPct": 12.17,
+          "maxDrawdownPct": 12.79,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 7,
+          "win": 14.3,
+          "pf": 0.132,
+          "pfInfinite": false,
+          "returnPct": -30.11,
+          "maxDrawdownPct": 36.38,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 181,
+      "truncated": 1,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -26.66
+      },
+      "maxDrawdownPct": 68.55,
+      "k1": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -41.11,
+          "grossReturnPct": -41.11,
+          "costDragPp": 0,
+          "maxDrawdownPct": 85.45,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.3,
+          "tN": 202,
+          "pf": 1.066,
+          "pfInfinite": false,
+          "win": 47.2,
+          "trades": 106,
+          "sharpe": 0.02090089562573849
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 6,
+            "win": 33.3,
+            "pf": 0.594,
+            "pfInfinite": false,
+            "returnPct": -9.18,
+            "maxDrawdownPct": 30.9,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 3,
+            "win": 66.7,
+            "pf": 0.455,
+            "pfInfinite": false,
+            "returnPct": -6.29,
+            "maxDrawdownPct": 10.95,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 6,
+            "win": 66.7,
+            "pf": 5.687,
+            "pfInfinite": false,
+            "returnPct": 24.11,
+            "maxDrawdownPct": 8.21,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 4,
+            "win": 25,
+            "pf": 0.274,
+            "pfInfinite": false,
+            "returnPct": -17.56,
+            "maxDrawdownPct": 25.51,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 106,
+        "rebound": {
+          "months": 20,
+          "returnPct": -47.08
+        }
+      },
+      "k2": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -31.92,
+          "grossReturnPct": -31.92,
+          "costDragPp": 0,
+          "maxDrawdownPct": 67.45,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.16,
+          "tN": 202,
+          "pf": 0.972,
+          "pfInfinite": false,
+          "win": 44.2,
+          "trades": 154,
+          "sharpe": 0.011455614798501431
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 10,
+            "win": 40,
+            "pf": 0.948,
+            "pfInfinite": false,
+            "returnPct": -0.66,
+            "maxDrawdownPct": 23.52,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 5,
+            "win": 80,
+            "pf": 2.375,
+            "pfInfinite": false,
+            "returnPct": 1.45,
+            "maxDrawdownPct": 9.14,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 10,
+            "win": 60,
+            "pf": 7.537,
+            "pfInfinite": false,
+            "returnPct": 9.21,
+            "maxDrawdownPct": 10.89,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 6,
+            "win": 0,
+            "pf": 0,
+            "pfInfinite": false,
+            "returnPct": -31.53,
+            "maxDrawdownPct": 38.06,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 154,
+        "rebound": {
+          "months": 20,
+          "returnPct": -37.26
+        }
+      },
+      "k5": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -45.74,
+          "grossReturnPct": -45.74,
+          "costDragPp": 0,
+          "maxDrawdownPct": 68.54,
+          "benchmarkReturnPct": 0,
+          "tStat": -0.31,
+          "tN": 202,
+          "pf": 0.891,
+          "pfInfinite": false,
+          "win": 43.6,
+          "trades": 181,
+          "sharpe": -0.022062112834709456
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 11,
+            "win": 36.4,
+            "pf": 0.79,
+            "pfInfinite": false,
+            "returnPct": -4.05,
+            "maxDrawdownPct": 21.86,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 8,
+            "win": 62.5,
+            "pf": 1.128,
+            "pfInfinite": false,
+            "returnPct": 0.97,
+            "maxDrawdownPct": 8.51,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 11,
+            "win": 54.5,
+            "pf": 4.737,
+            "pfInfinite": false,
+            "returnPct": 12.17,
+            "maxDrawdownPct": 12.78,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 7,
+            "win": 14.3,
+            "pf": 0.132,
+            "pfInfinite": false,
+            "returnPct": -30.1,
+            "maxDrawdownPct": 36.37,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 181,
+        "rebound": {
+          "months": 20,
+          "returnPct": -26.66
+        }
+      }
+    },
+    {
+      "id": "UK|d",
+      "market": "UK",
+      "variant": "d",
+      "side": "short",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -72.5,
+        "grossReturnPct": -72.5,
+        "costDragPp": 0,
+        "maxDrawdownPct": 86.13,
+        "benchmarkReturnPct": 0,
+        "tStat": -0.94,
+        "tN": 202,
+        "pf": 0.686,
+        "pfInfinite": false,
+        "win": 26.8,
+        "trades": 213,
+        "sharpe": -0.0664020748976413
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 12,
+          "win": 16.7,
+          "pf": 0.904,
+          "pfInfinite": false,
+          "returnPct": 7.21,
+          "maxDrawdownPct": 16.39,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 12,
+          "win": 33.3,
+          "pf": 0.346,
+          "pfInfinite": false,
+          "returnPct": 0.72,
+          "maxDrawdownPct": 11.1,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 11,
+          "win": 36.4,
+          "pf": 1.787,
+          "pfInfinite": false,
+          "returnPct": 4.32,
+          "maxDrawdownPct": 17.74,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 6,
+          "win": 33.3,
+          "pf": 0.747,
+          "pfInfinite": false,
+          "returnPct": -7.51,
+          "maxDrawdownPct": 11.86,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 213,
+      "truncated": 1,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -52.12
+      },
+      "maxDrawdownPct": 86.13,
+      "k1": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -75.67,
+          "grossReturnPct": -75.67,
+          "costDragPp": 0,
+          "maxDrawdownPct": 91.13,
+          "benchmarkReturnPct": 0,
+          "tStat": -0.33,
+          "tN": 202,
+          "pf": 0.768,
+          "pfInfinite": false,
+          "win": 27.2,
+          "trades": 114,
+          "sharpe": -0.02346235629692795
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 4,
+            "win": 50,
+            "pf": 2.879,
+            "pfInfinite": false,
+            "returnPct": 22.5,
+            "maxDrawdownPct": 15.2,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 5,
+            "win": 40,
+            "pf": 0.14,
+            "pfInfinite": false,
+            "returnPct": -10.21,
+            "maxDrawdownPct": 12.18,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 5,
+            "win": 60,
+            "pf": 15.505,
+            "pfInfinite": false,
+            "returnPct": 19.46,
+            "maxDrawdownPct": 10.26,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 4,
+            "win": 25,
+            "pf": 0.096,
+            "pfInfinite": false,
+            "returnPct": -5.75,
+            "maxDrawdownPct": 10.93,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 114,
+        "rebound": {
+          "months": 20,
+          "returnPct": -66.11
+        }
+      },
+      "k2": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -75.48,
+          "grossReturnPct": -75.48,
+          "costDragPp": 0,
+          "maxDrawdownPct": 89.36,
+          "benchmarkReturnPct": 0,
+          "tStat": -0.52,
+          "tN": 202,
+          "pf": 0.672,
+          "pfInfinite": false,
+          "win": 25.7,
+          "trades": 175,
+          "sharpe": -0.03639979756000741
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 9,
+            "win": 22.2,
+            "pf": 1.206,
+            "pfInfinite": false,
+            "returnPct": 8.47,
+            "maxDrawdownPct": 16.11,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 8,
+            "win": 50,
+            "pf": 0.525,
+            "pfInfinite": false,
+            "returnPct": 4.14,
+            "maxDrawdownPct": 11.03,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 9,
+            "win": 44.4,
+            "pf": 2.646,
+            "pfInfinite": false,
+            "returnPct": 4.29,
+            "maxDrawdownPct": 14.05,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 5,
+            "win": 20,
+            "pf": 0.067,
+            "pfInfinite": false,
+            "returnPct": -7.68,
+            "maxDrawdownPct": 12.62,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 175,
+        "rebound": {
+          "months": 20,
+          "returnPct": -63.27
+        }
+      },
+      "k5": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -72.48,
+          "grossReturnPct": -72.48,
+          "costDragPp": 0,
+          "maxDrawdownPct": 86.13,
+          "benchmarkReturnPct": 0,
+          "tStat": -0.94,
+          "tN": 202,
+          "pf": 0.686,
+          "pfInfinite": false,
+          "win": 26.8,
+          "trades": 213,
+          "sharpe": -0.06638043186760033
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 12,
+            "win": 16.7,
+            "pf": 0.904,
+            "pfInfinite": false,
+            "returnPct": 7.22,
+            "maxDrawdownPct": 16.39,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 12,
+            "win": 33.3,
+            "pf": 0.346,
+            "pfInfinite": false,
+            "returnPct": 0.73,
+            "maxDrawdownPct": 11.09,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 11,
+            "win": 36.4,
+            "pf": 1.787,
+            "pfInfinite": false,
+            "returnPct": 4.33,
+            "maxDrawdownPct": 17.73,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 6,
+            "win": 33.3,
+            "pf": 0.747,
+            "pfInfinite": false,
+            "returnPct": -7.51,
+            "maxDrawdownPct": 11.86,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 213,
+        "rebound": {
+          "months": 20,
+          "returnPct": -52.11
+        }
+      }
+    },
+    {
+      "id": "UK|f",
+      "market": "UK",
+      "variant": "f",
+      "side": "short",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": -27.46,
+        "grossReturnPct": -27.46,
+        "costDragPp": 0,
+        "maxDrawdownPct": 83.45,
+        "benchmarkReturnPct": 0,
+        "tStat": 0.38,
+        "tN": 202,
+        "pf": 0.967,
+        "pfInfinite": false,
+        "win": 45.2,
+        "trades": 84,
+        "sharpe": 0.02680570889918353
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 7,
+          "win": 42.9,
+          "pf": 0.752,
+          "pfInfinite": false,
+          "returnPct": -7.53,
+          "maxDrawdownPct": 30.03,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 3,
+          "win": 33.3,
+          "pf": 0.568,
+          "pfInfinite": false,
+          "returnPct": -12.6,
+          "maxDrawdownPct": 15.72,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 5,
+          "win": 60,
+          "pf": 2.683,
+          "pfInfinite": false,
+          "returnPct": 25.5,
+          "maxDrawdownPct": 10.27,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 2,
+          "win": 50,
+          "pf": 0.28,
+          "pfInfinite": false,
+          "returnPct": -20.46,
+          "maxDrawdownPct": 25.99,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 84,
+      "truncated": 0,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -62.01
+      },
+      "maxDrawdownPct": 83.45,
+      "k1": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -39.57,
+          "grossReturnPct": -39.57,
+          "costDragPp": 0,
+          "maxDrawdownPct": 88.21,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.46,
+          "tN": 202,
+          "pf": 1.04,
+          "pfInfinite": false,
+          "win": 49.3,
+          "trades": 67,
+          "sharpe": 0.03228988929133426
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 4,
+            "win": 50,
+            "pf": 0.767,
+            "pfInfinite": false,
+            "returnPct": -5.71,
+            "maxDrawdownPct": 35.13,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 2,
+            "win": 50,
+            "pf": 0.156,
+            "pfInfinite": false,
+            "returnPct": -15.75,
+            "maxDrawdownPct": 15.93,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 4,
+            "win": 75,
+            "pf": 4.741,
+            "pfInfinite": false,
+            "returnPct": 17.95,
+            "maxDrawdownPct": 10.26,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 2,
+            "win": 50,
+            "pf": 0.28,
+            "pfInfinite": false,
+            "returnPct": -20.46,
+            "maxDrawdownPct": 25.99,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 67,
+        "rebound": {
+          "months": 20,
+          "returnPct": -70.41
+        }
+      },
+      "k2": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -31.2,
+          "grossReturnPct": -31.2,
+          "costDragPp": 0,
+          "maxDrawdownPct": 83.99,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.34,
+          "tN": 202,
+          "pf": 0.958,
+          "pfInfinite": false,
+          "win": 45.7,
+          "trades": 81,
+          "sharpe": 0.024220494292665123
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 6,
+            "win": 50,
+            "pf": 0.872,
+            "pfInfinite": false,
+            "returnPct": -8.62,
+            "maxDrawdownPct": 30.81,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 3,
+            "win": 33.3,
+            "pf": 0.568,
+            "pfInfinite": false,
+            "returnPct": -12.6,
+            "maxDrawdownPct": 15.72,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 5,
+            "win": 60,
+            "pf": 2.683,
+            "pfInfinite": false,
+            "returnPct": 25.49,
+            "maxDrawdownPct": 10.26,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 2,
+            "win": 50,
+            "pf": 0.28,
+            "pfInfinite": false,
+            "returnPct": -20.46,
+            "maxDrawdownPct": 25.99,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 81,
+        "rebound": {
+          "months": 20,
+          "returnPct": -63.01
+        }
+      },
+      "k5": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -27.46,
+          "grossReturnPct": -27.46,
+          "costDragPp": 0,
+          "maxDrawdownPct": 83.45,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.38,
+          "tN": 202,
+          "pf": 0.967,
+          "pfInfinite": false,
+          "win": 45.2,
+          "trades": 84,
+          "sharpe": 0.02679533470823284
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 7,
+            "win": 42.9,
+            "pf": 0.752,
+            "pfInfinite": false,
+            "returnPct": -7.53,
+            "maxDrawdownPct": 30.03,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 3,
+            "win": 33.3,
+            "pf": 0.568,
+            "pfInfinite": false,
+            "returnPct": -12.6,
+            "maxDrawdownPct": 15.72,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 5,
+            "win": 60,
+            "pf": 2.683,
+            "pfInfinite": false,
+            "returnPct": 25.49,
+            "maxDrawdownPct": 10.26,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 2,
+            "win": 50,
+            "pf": 0.28,
+            "pfInfinite": false,
+            "returnPct": -20.46,
+            "maxDrawdownPct": 25.99,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 84,
+        "rebound": {
+          "months": 20,
+          "returnPct": -62.01
+        }
+      }
+    },
+    {
+      "id": "France|a",
+      "market": "France",
+      "variant": "a",
+      "side": "short",
+      "verdict": "CANDIDATE",
+      "full": {
+        "returnPct": 11.39,
+        "grossReturnPct": 11.39,
+        "costDragPp": 0,
+        "maxDrawdownPct": 86.44,
+        "benchmarkReturnPct": -73.43,
+        "tStat": 1.59,
+        "tN": 202,
+        "pf": 1.249,
+        "pfInfinite": false,
+        "win": 49.3,
+        "trades": 69,
+        "sharpe": 0.11166542193757818
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 4,
+          "win": 75,
+          "pf": 8.314,
+          "pfInfinite": false,
+          "returnPct": 19.54,
+          "maxDrawdownPct": 12.78,
+          "benchmarkReturnPct": 0.09
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 4,
+          "win": 25,
+          "pf": 0.274,
+          "pfInfinite": false,
+          "returnPct": -11.04,
+          "maxDrawdownPct": 31.98,
+          "benchmarkReturnPct": -11.44
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 4,
+          "win": 100,
+          "pf": null,
+          "pfInfinite": true,
+          "returnPct": 17.97,
+          "maxDrawdownPct": 16.94,
+          "benchmarkReturnPct": -0.11
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 7,
+          "win": 71.4,
+          "pf": 6.009,
+          "pfInfinite": false,
+          "returnPct": 7.92,
+          "maxDrawdownPct": 10.14,
+          "benchmarkReturnPct": 2.09
+        }
+      ],
+      "trades": 69,
+      "truncated": 4,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -56.48
+      },
+      "maxDrawdownPct": 86.44,
+      "k1": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -4.84,
+          "grossReturnPct": -4.84,
+          "costDragPp": 0,
+          "maxDrawdownPct": 89.26,
+          "benchmarkReturnPct": -73.43,
+          "tStat": 1.41,
+          "tN": 202,
+          "pf": 1.457,
+          "pfInfinite": false,
+          "win": 50,
+          "trades": 52,
+          "sharpe": 0.09898207096965571
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 3,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 19.97,
+            "maxDrawdownPct": 12.77,
+            "benchmarkReturnPct": 0.09
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 2,
+            "win": 50,
+            "pf": 0.858,
+            "pfInfinite": false,
+            "returnPct": 8.46,
+            "maxDrawdownPct": 23.91,
+            "benchmarkReturnPct": -11.44
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 3,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 18.23,
+            "maxDrawdownPct": 16.92,
+            "benchmarkReturnPct": -0.11
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 4,
+            "win": 75,
+            "pf": 26.763,
+            "pfInfinite": false,
+            "returnPct": 13.35,
+            "maxDrawdownPct": 10.13,
+            "benchmarkReturnPct": 2.09
+          }
+        ],
+        "trades": 52,
+        "rebound": {
+          "months": 20,
+          "returnPct": -60.8
+        }
+      },
+      "k2": {
+        "verdict": "CANDIDATE",
+        "full": {
+          "returnPct": 9.46,
+          "grossReturnPct": 9.46,
+          "costDragPp": 0,
+          "maxDrawdownPct": 86.43,
+          "benchmarkReturnPct": -73.43,
+          "tStat": 1.57,
+          "tN": 202,
+          "pf": 1.264,
+          "pfInfinite": false,
+          "win": 49.3,
+          "trades": 67,
+          "sharpe": 0.11027359556441672
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 4,
+            "win": 75,
+            "pf": 8.314,
+            "pfInfinite": false,
+            "returnPct": 20.34,
+            "maxDrawdownPct": 12.77,
+            "benchmarkReturnPct": 0.09
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 3,
+            "win": 33.3,
+            "pf": 0.32,
+            "pfInfinite": false,
+            "returnPct": -11.66,
+            "maxDrawdownPct": 34.39,
+            "benchmarkReturnPct": -11.44
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 4,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 17.94,
+            "maxDrawdownPct": 16.92,
+            "benchmarkReturnPct": -0.11
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 6,
+            "win": 66.7,
+            "pf": 5.645,
+            "pfInfinite": false,
+            "returnPct": 7.33,
+            "maxDrawdownPct": 10.13,
+            "benchmarkReturnPct": 2.09
+          }
+        ],
+        "trades": 67,
+        "rebound": {
+          "months": 20,
+          "returnPct": -57.13
+        }
+      },
+      "k5": {
+        "verdict": "CANDIDATE",
+        "full": {
+          "returnPct": 10.15,
+          "grossReturnPct": 10.15,
+          "costDragPp": 0,
+          "maxDrawdownPct": 86.43,
+          "benchmarkReturnPct": -73.43,
+          "tStat": 1.58,
+          "tN": 202,
+          "pf": 1.249,
+          "pfInfinite": false,
+          "win": 49.3,
+          "trades": 69,
+          "sharpe": 0.11115637823684828
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 4,
+            "win": 75,
+            "pf": 8.314,
+            "pfInfinite": false,
+            "returnPct": 19.52,
+            "maxDrawdownPct": 12.77,
+            "benchmarkReturnPct": 0.09
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 4,
+            "win": 25,
+            "pf": 0.274,
+            "pfInfinite": false,
+            "returnPct": -10.84,
+            "maxDrawdownPct": 31.8,
+            "benchmarkReturnPct": -11.44
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 4,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 17.94,
+            "maxDrawdownPct": 16.92,
+            "benchmarkReturnPct": -0.11
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 7,
+            "win": 71.4,
+            "pf": 6.009,
+            "pfInfinite": false,
+            "returnPct": 7.76,
+            "maxDrawdownPct": 10.13,
+            "benchmarkReturnPct": 2.09
+          }
+        ],
+        "trades": 69,
+        "rebound": {
+          "months": 20,
+          "returnPct": -56.46
+        }
+      }
+    },
+    {
+      "id": "France|b",
+      "market": "France",
+      "variant": "b",
+      "side": "short",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": 5.09,
+        "grossReturnPct": 5.09,
+        "costDragPp": 0,
+        "maxDrawdownPct": 69.64,
+        "benchmarkReturnPct": -73.43,
+        "tStat": 1.46,
+        "tN": 202,
+        "pf": 1.185,
+        "pfInfinite": false,
+        "win": 29.6,
+        "trades": 81,
+        "sharpe": 0.10239474186943529
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 3,
+          "win": 33.3,
+          "pf": 0.165,
+          "pfInfinite": false,
+          "returnPct": -10.44,
+          "maxDrawdownPct": 24.95,
+          "benchmarkReturnPct": 0.09
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 4,
+          "win": 25,
+          "pf": 0.178,
+          "pfInfinite": false,
+          "returnPct": -4.25,
+          "maxDrawdownPct": 32.59,
+          "benchmarkReturnPct": -11.44
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 4,
+          "win": 25,
+          "pf": 0.945,
+          "pfInfinite": false,
+          "returnPct": 5.3,
+          "maxDrawdownPct": 15.71,
+          "benchmarkReturnPct": -0.11
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 9,
+          "win": 44.4,
+          "pf": 1.781,
+          "pfInfinite": false,
+          "returnPct": -9.8,
+          "maxDrawdownPct": 19.2,
+          "benchmarkReturnPct": 2.09
+        }
+      ],
+      "trades": 81,
+      "truncated": 4,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -60.2
+      },
+      "maxDrawdownPct": 69.64,
+      "k1": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": -1.79,
+          "grossReturnPct": -1.79,
+          "costDragPp": 0,
+          "maxDrawdownPct": 69.7,
+          "benchmarkReturnPct": -73.43,
+          "tStat": 1.33,
+          "tN": 202,
+          "pf": 1.436,
+          "pfInfinite": false,
+          "win": 32.2,
+          "trades": 59,
+          "sharpe": 0.09384496375983417
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 3,
+            "win": 33.3,
+            "pf": 0.165,
+            "pfInfinite": false,
+            "returnPct": -10.42,
+            "maxDrawdownPct": 24.95,
+            "benchmarkReturnPct": 0.09
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 2,
+            "win": 50,
+            "pf": 0.371,
+            "pfInfinite": false,
+            "returnPct": 9.56,
+            "maxDrawdownPct": 29.23,
+            "benchmarkReturnPct": -11.44
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 3,
+            "win": 33.3,
+            "pf": 1.555,
+            "pfInfinite": false,
+            "returnPct": 16.46,
+            "maxDrawdownPct": 15.69,
+            "benchmarkReturnPct": -0.11
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 5,
+            "win": 40,
+            "pf": 2.865,
+            "pfInfinite": false,
+            "returnPct": -6.03,
+            "maxDrawdownPct": 17.39,
+            "benchmarkReturnPct": 2.09
+          }
+        ],
+        "trades": 59,
+        "rebound": {
+          "months": 20,
+          "returnPct": -60.44
+        }
+      },
+      "k2": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": 9.24,
+          "grossReturnPct": 9.24,
+          "costDragPp": 0,
+          "maxDrawdownPct": 69.21,
+          "benchmarkReturnPct": -73.43,
+          "tStat": 1.49,
+          "tN": 202,
+          "pf": 1.214,
+          "pfInfinite": false,
+          "win": 29.5,
+          "trades": 78,
+          "sharpe": 0.10487800287816385
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 3,
+            "win": 33.3,
+            "pf": 0.165,
+            "pfInfinite": false,
+            "returnPct": -9.84,
+            "maxDrawdownPct": 24.95,
+            "benchmarkReturnPct": 0.09
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 3,
+            "win": 33.3,
+            "pf": 0.221,
+            "pfInfinite": false,
+            "returnPct": -1.13,
+            "maxDrawdownPct": 32.39,
+            "benchmarkReturnPct": -11.44
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 4,
+            "win": 25,
+            "pf": 0.945,
+            "pfInfinite": false,
+            "returnPct": 5.27,
+            "maxDrawdownPct": 15.69,
+            "benchmarkReturnPct": -0.11
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 8,
+            "win": 37.5,
+            "pf": 1.655,
+            "pfInfinite": false,
+            "returnPct": -10.13,
+            "maxDrawdownPct": 19.14,
+            "benchmarkReturnPct": 2.09
+          }
+        ],
+        "trades": 78,
+        "rebound": {
+          "months": 20,
+          "returnPct": -60.33
+        }
+      },
+      "k5": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": 4.23,
+          "grossReturnPct": 4.23,
+          "costDragPp": 0,
+          "maxDrawdownPct": 69.63,
+          "benchmarkReturnPct": -73.43,
+          "tStat": 1.45,
+          "tN": 202,
+          "pf": 1.185,
+          "pfInfinite": false,
+          "win": 29.6,
+          "trades": 81,
+          "sharpe": 0.10205875131908478
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 3,
+            "win": 33.3,
+            "pf": 0.165,
+            "pfInfinite": false,
+            "returnPct": -10.45,
+            "maxDrawdownPct": 24.95,
+            "benchmarkReturnPct": 0.09
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 4,
+            "win": 25,
+            "pf": 0.178,
+            "pfInfinite": false,
+            "returnPct": -4.1,
+            "maxDrawdownPct": 32.46,
+            "benchmarkReturnPct": -11.44
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 4,
+            "win": 25,
+            "pf": 0.945,
+            "pfInfinite": false,
+            "returnPct": 5.27,
+            "maxDrawdownPct": 15.69,
+            "benchmarkReturnPct": -0.11
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 9,
+            "win": 44.4,
+            "pf": 1.781,
+            "pfInfinite": false,
+            "returnPct": -9.78,
+            "maxDrawdownPct": 19.14,
+            "benchmarkReturnPct": 2.09
+          }
+        ],
+        "trades": 81,
+        "rebound": {
+          "months": 20,
+          "returnPct": -60.18
+        }
+      }
+    },
+    {
+      "id": "France|c",
+      "market": "France",
+      "variant": "c",
+      "side": "short",
+      "verdict": "CANDIDATE",
+      "full": {
+        "returnPct": 106.52,
+        "grossReturnPct": 106.52,
+        "costDragPp": 0,
+        "maxDrawdownPct": 72.38,
+        "benchmarkReturnPct": 0,
+        "tStat": 1.27,
+        "tN": 202,
+        "pf": 1.414,
+        "pfInfinite": false,
+        "win": 53.6,
+        "trades": 69,
+        "sharpe": 0.08916140322244377
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 4,
+          "win": 25,
+          "pf": 1.324,
+          "pfInfinite": false,
+          "returnPct": 14.89,
+          "maxDrawdownPct": 14.04,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 4,
+          "win": 50,
+          "pf": 0.662,
+          "pfInfinite": false,
+          "returnPct": -0.31,
+          "maxDrawdownPct": 23.92,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 4,
+          "win": 100,
+          "pf": null,
+          "pfInfinite": true,
+          "returnPct": 14.53,
+          "maxDrawdownPct": 16.02,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 7,
+          "win": 71.4,
+          "pf": 1.968,
+          "pfInfinite": false,
+          "returnPct": 2.89,
+          "maxDrawdownPct": 6.69,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 69,
+      "truncated": 4,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -4.96
+      },
+      "maxDrawdownPct": 72.38,
+      "k1": {
+        "verdict": "CANDIDATE",
+        "full": {
+          "returnPct": 76.32,
+          "grossReturnPct": 76.32,
+          "costDragPp": 0,
+          "maxDrawdownPct": 81.18,
+          "benchmarkReturnPct": 0,
+          "tStat": 1.06,
+          "tN": 202,
+          "pf": 1.577,
+          "pfInfinite": false,
+          "win": 53.8,
+          "trades": 52,
+          "sharpe": 0.07472303950730819
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 3,
+            "win": 33.3,
+            "pf": 1.338,
+            "pfInfinite": false,
+            "returnPct": 15.49,
+            "maxDrawdownPct": 14.03,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 2,
+            "win": 50,
+            "pf": 1.554,
+            "pfInfinite": false,
+            "returnPct": 21.52,
+            "maxDrawdownPct": 17.31,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 3,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 14.78,
+            "maxDrawdownPct": 16.01,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 4,
+            "win": 75,
+            "pf": 8.583,
+            "pfInfinite": false,
+            "returnPct": 7.85,
+            "maxDrawdownPct": 8.95,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 52,
+        "rebound": {
+          "months": 20,
+          "returnPct": -14.24
+        }
+      },
+      "k2": {
+        "verdict": "CANDIDATE",
+        "full": {
+          "returnPct": 102.97,
+          "grossReturnPct": 102.97,
+          "costDragPp": 0,
+          "maxDrawdownPct": 72.36,
+          "benchmarkReturnPct": 0,
+          "tStat": 1.25,
+          "tN": 202,
+          "pf": 1.408,
+          "pfInfinite": false,
+          "win": 52.2,
+          "trades": 67,
+          "sharpe": 0.08765159577648679
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 4,
+            "win": 25,
+            "pf": 1.324,
+            "pfInfinite": false,
+            "returnPct": 15.67,
+            "maxDrawdownPct": 14.03,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 3,
+            "win": 33.3,
+            "pf": 0.651,
+            "pfInfinite": false,
+            "returnPct": -0.91,
+            "maxDrawdownPct": 26.55,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 4,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 14.51,
+            "maxDrawdownPct": 16.01,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 6,
+            "win": 66.7,
+            "pf": 1.786,
+            "pfInfinite": false,
+            "returnPct": 2.28,
+            "maxDrawdownPct": 6.59,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 67,
+        "rebound": {
+          "months": 20,
+          "returnPct": -6.39
+        }
+      },
+      "k5": {
+        "verdict": "CANDIDATE",
+        "full": {
+          "returnPct": 104.12,
+          "grossReturnPct": 104.12,
+          "costDragPp": 0,
+          "maxDrawdownPct": 72.36,
+          "benchmarkReturnPct": 0,
+          "tStat": 1.26,
+          "tN": 202,
+          "pf": 1.414,
+          "pfInfinite": false,
+          "win": 53.6,
+          "trades": 69,
+          "sharpe": 0.08850639074219173
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 4,
+            "win": 25,
+            "pf": 1.324,
+            "pfInfinite": false,
+            "returnPct": 14.88,
+            "maxDrawdownPct": 14.03,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 4,
+            "win": 50,
+            "pf": 0.662,
+            "pfInfinite": false,
+            "returnPct": -0.11,
+            "maxDrawdownPct": 23.75,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 4,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 14.51,
+            "maxDrawdownPct": 16.01,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 7,
+            "win": 71.4,
+            "pf": 1.968,
+            "pfInfinite": false,
+            "returnPct": 2.74,
+            "maxDrawdownPct": 6.59,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 69,
+        "rebound": {
+          "months": 20,
+          "returnPct": -4.97
+        }
+      }
+    },
+    {
+      "id": "France|d",
+      "market": "France",
+      "variant": "d",
+      "side": "short",
+      "verdict": "FAIL",
+      "full": {
+        "returnPct": 15.17,
+        "grossReturnPct": 15.17,
+        "costDragPp": 0,
+        "maxDrawdownPct": 54.58,
+        "benchmarkReturnPct": 0,
+        "tStat": 0.55,
+        "tN": 202,
+        "pf": 1.237,
+        "pfInfinite": false,
+        "win": 34.6,
+        "trades": 81,
+        "sharpe": 0.038903976054990394
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 3,
+          "win": 0,
+          "pf": 0,
+          "pfInfinite": false,
+          "returnPct": -12.91,
+          "maxDrawdownPct": 22.7,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 4,
+          "win": 50,
+          "pf": 1.209,
+          "pfInfinite": false,
+          "returnPct": 9.15,
+          "maxDrawdownPct": 23.9,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 4,
+          "win": 25,
+          "pf": 1.779,
+          "pfInfinite": false,
+          "returnPct": 1.37,
+          "maxDrawdownPct": 14.88,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 9,
+          "win": 44.4,
+          "pf": 1.767,
+          "pfInfinite": false,
+          "returnPct": -10.18,
+          "maxDrawdownPct": 16.95,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 81,
+      "truncated": 4,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -20.87
+      },
+      "maxDrawdownPct": 54.58,
+      "k1": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": 24.19,
+          "grossReturnPct": 24.19,
+          "costDragPp": 0,
+          "maxDrawdownPct": 53.72,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.66,
+          "tN": 202,
+          "pf": 1.398,
+          "pfInfinite": false,
+          "win": 35.6,
+          "trades": 59,
+          "sharpe": 0.046259963964391776
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 3,
+            "win": 0,
+            "pf": 0,
+            "pfInfinite": false,
+            "returnPct": -12.89,
+            "maxDrawdownPct": 22.7,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 2,
+            "win": 50,
+            "pf": 1.421,
+            "pfInfinite": false,
+            "returnPct": 24.87,
+            "maxDrawdownPct": 21.15,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 3,
+            "win": 33.3,
+            "pf": 5.367,
+            "pfInfinite": false,
+            "returnPct": 12.65,
+            "maxDrawdownPct": 22.44,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 5,
+            "win": 40,
+            "pf": 2.727,
+            "pfInfinite": false,
+            "returnPct": -6.09,
+            "maxDrawdownPct": 14.96,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 59,
+        "rebound": {
+          "months": 20,
+          "returnPct": -29.6
+        }
+      },
+      "k2": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": 19.71,
+          "grossReturnPct": 19.71,
+          "costDragPp": 0,
+          "maxDrawdownPct": 53.9,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.6,
+          "tN": 202,
+          "pf": 1.236,
+          "pfInfinite": false,
+          "win": 33.3,
+          "trades": 78,
+          "sharpe": 0.04251149299152261
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 3,
+            "win": 0,
+            "pf": 0,
+            "pfInfinite": false,
+            "returnPct": -12.32,
+            "maxDrawdownPct": 22.7,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 3,
+            "win": 33.3,
+            "pf": 1.136,
+            "pfInfinite": false,
+            "returnPct": 12.79,
+            "maxDrawdownPct": 23.61,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 4,
+            "win": 25,
+            "pf": 1.779,
+            "pfInfinite": false,
+            "returnPct": 1.35,
+            "maxDrawdownPct": 14.87,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 8,
+            "win": 37.5,
+            "pf": 1.634,
+            "pfInfinite": false,
+            "returnPct": -10.54,
+            "maxDrawdownPct": 16.92,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 78,
+        "rebound": {
+          "months": 20,
+          "returnPct": -21.09
+        }
+      },
+      "k5": {
+        "verdict": "FAIL",
+        "full": {
+          "returnPct": 14.07,
+          "grossReturnPct": 14.07,
+          "costDragPp": 0,
+          "maxDrawdownPct": 54.56,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.54,
+          "tN": 202,
+          "pf": 1.237,
+          "pfInfinite": false,
+          "win": 34.6,
+          "trades": 81,
+          "sharpe": 0.037945880664585215
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 3,
+            "win": 0,
+            "pf": 0,
+            "pfInfinite": false,
+            "returnPct": -12.91,
+            "maxDrawdownPct": 22.7,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 4,
+            "win": 50,
+            "pf": 1.209,
+            "pfInfinite": false,
+            "returnPct": 9.28,
+            "maxDrawdownPct": 23.78,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 4,
+            "win": 25,
+            "pf": 1.779,
+            "pfInfinite": false,
+            "returnPct": 1.35,
+            "maxDrawdownPct": 14.87,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 9,
+            "win": 44.4,
+            "pf": 1.767,
+            "pfInfinite": false,
+            "returnPct": -10.15,
+            "maxDrawdownPct": 16.92,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 81,
+        "rebound": {
+          "months": 20,
+          "returnPct": -20.87
+        }
+      }
+    },
+    {
+      "id": "France|f",
+      "market": "France",
+      "variant": "f",
+      "side": "short",
+      "verdict": "CANDIDATE",
+      "full": {
+        "returnPct": 0.69,
+        "grossReturnPct": 0.69,
+        "costDragPp": 0,
+        "maxDrawdownPct": 72.29,
+        "benchmarkReturnPct": 0,
+        "tStat": 0.48,
+        "tN": 202,
+        "pf": 1.226,
+        "pfInfinite": false,
+        "win": 46.7,
+        "trades": 30,
+        "sharpe": 0.03393563771327912
+      },
+      "windows": [
+        {
+          "fold": 1,
+          "from": "2024-10-01",
+          "to": "2025-04-02",
+          "trades": 3,
+          "win": 0,
+          "pf": 0,
+          "pfInfinite": false,
+          "returnPct": 0.28,
+          "maxDrawdownPct": 10.35,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 2,
+          "from": "2025-04-03",
+          "to": "2025-10-02",
+          "trades": 1,
+          "win": 100,
+          "pf": null,
+          "pfInfinite": true,
+          "returnPct": 49.65,
+          "maxDrawdownPct": 17.31,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 3,
+          "from": "2025-10-03",
+          "to": "2026-04-06",
+          "trades": 3,
+          "win": 100,
+          "pf": null,
+          "pfInfinite": true,
+          "returnPct": 9.55,
+          "maxDrawdownPct": 26.12,
+          "benchmarkReturnPct": 0
+        },
+        {
+          "fold": 4,
+          "from": "2026-04-07",
+          "to": "2026-10-05",
+          "trades": 3,
+          "win": 66.7,
+          "pf": 8.248,
+          "pfInfinite": false,
+          "returnPct": 4.08,
+          "maxDrawdownPct": 7.77,
+          "benchmarkReturnPct": 0
+        }
+      ],
+      "trades": 30,
+      "truncated": 2,
+      "skippedHedge": 0,
+      "rebound": {
+        "months": 20,
+        "returnPct": -18.93
+      },
+      "maxDrawdownPct": 72.29,
+      "k1": {
+        "verdict": "CANDIDATE",
+        "full": {
+          "returnPct": 1.01,
+          "grossReturnPct": 1.01,
+          "costDragPp": 0,
+          "maxDrawdownPct": 72.27,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.48,
+          "tN": 202,
+          "pf": 1.2,
+          "pfInfinite": false,
+          "win": 44.8,
+          "trades": 29,
+          "sharpe": 0.034109423443628176
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 3,
+            "win": 0,
+            "pf": 0,
+            "pfInfinite": false,
+            "returnPct": 0.28,
+            "maxDrawdownPct": 10.34,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 1,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 49.63,
+            "maxDrawdownPct": 17.31,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 2,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 10.16,
+            "maxDrawdownPct": 26.1,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 3,
+            "win": 66.7,
+            "pf": 8.248,
+            "pfInfinite": false,
+            "returnPct": 3.93,
+            "maxDrawdownPct": 7.71,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 29,
+        "rebound": {
+          "months": 20,
+          "returnPct": -18.93
+        }
+      },
+      "k2": {
+        "verdict": "CANDIDATE",
+        "full": {
+          "returnPct": 0.45,
+          "grossReturnPct": 0.45,
+          "costDragPp": 0,
+          "maxDrawdownPct": 72.27,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.48,
+          "tN": 202,
+          "pf": 1.226,
+          "pfInfinite": false,
+          "win": 46.7,
+          "trades": 30,
+          "sharpe": 0.033535105369927036
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 3,
+            "win": 0,
+            "pf": 0,
+            "pfInfinite": false,
+            "returnPct": 0.28,
+            "maxDrawdownPct": 10.34,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 1,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 49.63,
+            "maxDrawdownPct": 17.31,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 3,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 9.55,
+            "maxDrawdownPct": 26.1,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 3,
+            "win": 66.7,
+            "pf": 8.248,
+            "pfInfinite": false,
+            "returnPct": 3.93,
+            "maxDrawdownPct": 7.71,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 30,
+        "rebound": {
+          "months": 20,
+          "returnPct": -18.93
+        }
+      },
+      "k5": {
+        "verdict": "CANDIDATE",
+        "full": {
+          "returnPct": 0.45,
+          "grossReturnPct": 0.45,
+          "costDragPp": 0,
+          "maxDrawdownPct": 72.27,
+          "benchmarkReturnPct": 0,
+          "tStat": 0.48,
+          "tN": 202,
+          "pf": 1.226,
+          "pfInfinite": false,
+          "win": 46.7,
+          "trades": 30,
+          "sharpe": 0.033535105369927036
+        },
+        "windows": [
+          {
+            "fold": 1,
+            "from": "2024-10-01",
+            "to": "2025-04-02",
+            "trades": 3,
+            "win": 0,
+            "pf": 0,
+            "pfInfinite": false,
+            "returnPct": 0.28,
+            "maxDrawdownPct": 10.34,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 2,
+            "from": "2025-04-03",
+            "to": "2025-10-02",
+            "trades": 1,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 49.63,
+            "maxDrawdownPct": 17.31,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 3,
+            "from": "2025-10-03",
+            "to": "2026-04-06",
+            "trades": 3,
+            "win": 100,
+            "pf": null,
+            "pfInfinite": true,
+            "returnPct": 9.55,
+            "maxDrawdownPct": 26.1,
+            "benchmarkReturnPct": 0
+          },
+          {
+            "fold": 4,
+            "from": "2026-04-07",
+            "to": "2026-10-05",
+            "trades": 3,
+            "win": 66.7,
+            "pf": 8.248,
+            "pfInfinite": false,
+            "returnPct": 3.93,
+            "maxDrawdownPct": 7.71,
+            "benchmarkReturnPct": 0
+          }
+        ],
+        "trades": 30,
+        "rebound": {
+          "months": 20,
+          "returnPct": -18.93
+        }
+      }
+    }
+  ],
+  "sanity": [
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "MCD",
+      "signalDate": "2014-09-30",
+      "entryDate": "2014-10-01",
+      "exitDate": "2014-12-30",
+      "date": "2014-12-30",
+      "ret": -0.009749747866173775,
+      "stockUp": -0.0012716196152318116,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "MCD",
+      "signalDate": "2014-09-30",
+      "entryDate": "2014-10-01",
+      "exitDate": "2014-10-01",
+      "date": "2014-10-01",
+      "ret": -0.00033229353960861907,
+      "stockUp": -0.0019073890000739224,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "MCD",
+      "signalDate": "2014-09-30",
+      "entryDate": "2014-10-01",
+      "exitDate": "2014-12-30",
+      "date": "2014-12-30",
+      "ret": 0.04649766763545271,
+      "stockUp": -0.0012716196152318116,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "MCD",
+      "signalDate": "2014-09-30",
+      "entryDate": "2014-10-01",
+      "exitDate": "2014-10-01",
+      "date": "2014-10-01",
+      "ret": -0.014479374786106614,
+      "stockUp": -0.0019073890000739224,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "MCD",
+      "signalDate": "2014-09-30",
+      "entryDate": "2014-10-01",
+      "exitDate": "2014-12-30",
+      "date": "2014-12-30",
+      "ret": 0.07960799316553335,
+      "stockUp": -0.0012716196152318116,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "signalDate": "2016-10-31",
+      "entryDate": "2016-11-01",
+      "exitDate": "2017-02-01",
+      "date": "2017-02-01",
+      "ret": -0.05932737780264874,
+      "stockUp": 0.049900999163636994,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "signalDate": "2016-10-31",
+      "entryDate": "2016-11-01",
+      "exitDate": "2016-12-05",
+      "date": "2016-12-05",
+      "ret": -0.03205365520664294,
+      "stockUp": 0.026732643051902816,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "signalDate": "2016-10-31",
+      "entryDate": "2016-11-01",
+      "exitDate": "2017-02-01",
+      "date": "2017-02-01",
+      "ret": 0.005285280513225521,
+      "stockUp": 0.049900999163636994,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "signalDate": "2016-10-31",
+      "entryDate": "2016-11-01",
+      "exitDate": "2016-12-05",
+      "date": "2016-12-05",
+      "ret": 0.0032211924301914774,
+      "stockUp": 0.026732643051902816,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "NKE",
+      "signalDate": "2016-10-31",
+      "entryDate": "2016-11-01",
+      "exitDate": "2017-02-01",
+      "date": "2017-02-01",
+      "ret": 0.018253454902137367,
+      "stockUp": 0.049900999163636994,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "signalDate": "2016-12-30",
+      "entryDate": "2017-01-03",
+      "exitDate": "2017-01-03",
+      "date": "2017-01-03",
+      "ret": -0.0020472967749670667,
+      "stockUp": -0.00019238576471547475,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "signalDate": "2016-12-30",
+      "entryDate": "2017-01-03",
+      "exitDate": "2017-01-03",
+      "date": "2017-01-03",
+      "ret": -0.0033585116123361347,
+      "stockUp": -0.00019238576471547475,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "signalDate": "2024-04-30",
+      "entryDate": "2024-05-01",
+      "exitDate": "2024-07-31",
+      "date": "2024-07-31",
+      "ret": 0.15828654025163225,
+      "stockUp": -0.1846203833893426,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "signalDate": "2024-04-30",
+      "entryDate": "2024-05-01",
+      "exitDate": "2024-05-30",
+      "date": "2024-05-30",
+      "ret": -0.023469673053644557,
+      "stockUp": 0.01786297171614426,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "signalDate": "2024-04-30",
+      "entryDate": "2024-05-01",
+      "exitDate": "2024-07-31",
+      "date": "2024-07-31",
+      "ret": 0.2721140579939234,
+      "stockUp": -0.1846203833893426,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "signalDate": "2024-04-30",
+      "entryDate": "2024-05-01",
+      "exitDate": "2024-05-30",
+      "date": "2024-05-30",
+      "ret": 0.015770357127727452,
+      "stockUp": 0.01786297171614426,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "NKE",
+      "signalDate": "2024-04-30",
+      "entryDate": "2024-05-01",
+      "exitDate": "2024-07-31",
+      "date": "2024-07-31",
+      "ret": 0.24029042928053923,
+      "stockUp": -0.1846203833893426,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "signalDate": "2024-04-30",
+      "entryDate": "2024-05-01",
+      "exitDate": "2024-07-31",
+      "date": "2024-07-31",
+      "ret": 0.2721140579939234,
+      "stockUp": -0.1846203833893426,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NKE",
+      "signalDate": "2026-06-30",
+      "entryDate": "2026-07-01",
+      "exitDate": "2026-09-29",
+      "date": "2026-09-29",
+      "ret": 0.12387857252794188,
+      "stockUp": -0.13429954512961773,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "signalDate": "2026-06-30",
+      "entryDate": "2026-07-01",
+      "exitDate": "2026-07-02",
+      "date": "2026-07-02",
+      "ret": -0.06524555152402411,
+      "stockUp": 0.06497580984453544,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "NKE",
+      "signalDate": "2026-06-30",
+      "entryDate": "2026-07-01",
+      "exitDate": "2026-09-29",
+      "date": "2026-09-29",
+      "ret": 0.15154169357940406,
+      "stockUp": -0.13429954512961773,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "signalDate": "2026-06-30",
+      "entryDate": "2026-07-01",
+      "exitDate": "2026-07-02",
+      "date": "2026-07-02",
+      "ret": -0.06762888354874019,
+      "stockUp": 0.06497580984453544,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "NKE",
+      "signalDate": "2026-06-30",
+      "entryDate": "2026-07-01",
+      "exitDate": "2026-09-29",
+      "date": "2026-09-29",
+      "ret": 0.04627286080470672,
+      "stockUp": -0.13429954512961773,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "NKE",
+      "signalDate": "2026-07-31",
+      "entryDate": "2026-08-03",
+      "exitDate": "2026-10-05",
+      "date": "2026-10-05",
+      "ret": 0.23077267712133342,
+      "stockUp": -0.20225512501937815,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "NKE",
+      "signalDate": "2026-07-31",
+      "entryDate": "2026-08-03",
+      "exitDate": "2026-10-05",
+      "date": "2026-10-05",
+      "ret": 0.2705545781851342,
+      "stockUp": -0.20225512501937815,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "f",
+      "symbol": "NKE",
+      "signalDate": "2026-07-31",
+      "entryDate": "2026-08-03",
+      "exitDate": "2026-10-05",
+      "date": "2026-10-05",
+      "ret": 0.2705545781851342,
+      "stockUp": -0.20225512501937815,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "SBUX",
+      "signalDate": "2024-04-30",
+      "entryDate": "2024-05-01",
+      "exitDate": "2024-07-31",
+      "date": "2024-07-31",
+      "ret": -0.052806925698631435,
+      "stockUp": 0.028092815378412128,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "b",
+      "symbol": "SBUX",
+      "signalDate": "2024-04-30",
+      "entryDate": "2024-05-01",
+      "exitDate": "2024-06-04",
+      "date": "2024-06-04",
+      "ret": -0.09413685849817699,
+      "stockUp": 0.09192826759110262,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "c",
+      "symbol": "SBUX",
+      "signalDate": "2024-04-30",
+      "entryDate": "2024-05-01",
+      "exitDate": "2024-07-31",
+      "date": "2024-07-31",
+      "ret": 0.03890294928339366,
+      "stockUp": 0.028092815378412128,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "d",
+      "symbol": "SBUX",
+      "signalDate": "2024-04-30",
+      "entryDate": "2024-05-01",
+      "exitDate": "2024-06-04",
+      "date": "2024-06-04",
+      "ret": -0.04724940730700167,
+      "stockUp": 0.09192826759110262,
+      "scale": 1
+    },
+    {
+      "market": "US",
+      "variant": "e",
+      "symbol": "SBUX",
+      "signalDate": "2024-04-30",
+      "entryDate": "2024-05-01",
+      "exitDate": "2024-07-31",
+      "date": "2024-07-31",
+      "ret": 0.011488738294383571,
+      "stockUp": 0.028092815378412128,
+      "scale": 1
+    }
+  ],
+  "worst": [
+    {
+      "market": "UK",
+      "variant": "a",
+      "symbol": "OCDO.L",
+      "signalDate": "2023-05-31",
+      "exitDate": "2023-08-29",
+      "stockUp": 1.072602079642794,
+      "ret": -0.6487468837483148
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "LYB",
+      "signalDate": "2025-12-31",
+      "exitDate": "2026-04-02",
+      "stockUp": 0.8265258175688948,
+      "ret": -0.49385859766122064
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "TPL",
+      "signalDate": "2025-11-28",
+      "exitDate": "2026-03-03",
+      "stockUp": 0.8191841646301705,
+      "ret": -0.4891804151266578
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "ZS",
+      "signalDate": "2023-04-28",
+      "exitDate": "2023-07-31",
+      "stockUp": 0.7923558210325552,
+      "ret": -0.499081433280287
+    },
+    {
+      "market": "US",
+      "variant": "a",
+      "symbol": "NFLX",
+      "signalDate": "2011-11-30",
+      "exitDate": "2012-03-02",
+      "stockUp": 0.7867119970243208,
+      "ret": -0.5225821429622197
+    }
+  ]
+}

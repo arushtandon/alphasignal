@@ -1,0 +1,4167 @@
+{
+  "generatedAt": "2026-09-27T17:01:48.032Z",
+  "study": "usjp-regime-stabilize-v1",
+  "methodology": {
+    "preregistration": "docs/usjp-regime-stabilize-preregistration.md",
+    "holdoutValidity": "OVERLAP_RISK",
+    "pointInTimeFundamentals": false,
+    "liveRulesChanged": false
+  },
+  "variants": [
+    {
+      "id": "baseline"
+    },
+    {
+      "id": "vol_skip_top20",
+      "volQuantile": 0.8
+    },
+    {
+      "id": "vol_skip_top30",
+      "volQuantile": 0.7
+    },
+    {
+      "id": "ma50_flat_or_up",
+      "slope": true
+    },
+    {
+      "id": "vol_skip_top20_and_ma50_flat_or_up",
+      "volQuantile": 0.8,
+      "slope": true
+    },
+    {
+      "id": "vol_skip_top30_and_ma50_flat_or_up",
+      "volQuantile": 0.7,
+      "slope": true
+    }
+  ],
+  "cells": [
+    {
+      "market": "US",
+      "horizon": "short",
+      "side": "buy",
+      "model": "US_short_frozen",
+      "variant": "baseline",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-18",
+            "to": "2024-02-22"
+          },
+          "validation": {
+            "from": "2024-02-23",
+            "to": "2024-08-22"
+          },
+          "embargo": {
+            "from": "2024-08-23",
+            "to": "2024-09-20",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-22",
+            "to": "2024-08-22"
+          },
+          "validation": {
+            "from": "2024-08-23",
+            "to": "2025-02-25"
+          },
+          "embargo": {
+            "from": "2025-02-26",
+            "to": "2025-03-25",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-22",
+            "to": "2025-02-25"
+          },
+          "validation": {
+            "from": "2025-02-26",
+            "to": "2025-08-26"
+          },
+          "embargo": {
+            "from": "2025-08-27",
+            "to": "2025-09-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-23",
+            "to": "2025-08-26"
+          },
+          "validation": {
+            "from": "2025-08-27",
+            "to": "2026-02-26"
+          },
+          "embargo": {
+            "from": "2026-02-27",
+            "to": "2026-03-26",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 1384,
+        "winRate": 54.2,
+        "avgReturnPct": -0.183,
+        "profitFactor": 0.637,
+        "sharpe": -1.858,
+        "maxDrawdownPct": 93.367,
+        "cvar95Pct": -5.217,
+        "compoundedReturnPct": -93.331,
+        "pnlUsd": -25316.57,
+        "avgWinPct": 0.592,
+        "avgLossPct": -1.099
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 503,
+          "winRate": 55.5,
+          "avgReturnPct": -0.244,
+          "profitFactor": 0.549,
+          "sharpe": -2.501,
+          "maxDrawdownPct": 72.47,
+          "cvar95Pct": -5.142,
+          "compoundedReturnPct": -72.47,
+          "pnlUsd": -12264.71,
+          "avgWinPct": 0.535,
+          "avgLossPct": -1.213
+        },
+        {
+          "trades": 344,
+          "winRate": 50.3,
+          "avgReturnPct": -0.102,
+          "profitFactor": 0.722,
+          "sharpe": -1.216,
+          "maxDrawdownPct": 50.042,
+          "cvar95Pct": -4.482,
+          "compoundedReturnPct": -31.795,
+          "pnlUsd": -3513.16,
+          "avgWinPct": 0.529,
+          "avgLossPct": -0.74
+        },
+        {
+          "trades": 537,
+          "winRate": 55.5,
+          "avgReturnPct": -0.178,
+          "profitFactor": 0.681,
+          "sharpe": -1.652,
+          "maxDrawdownPct": 64.956,
+          "cvar95Pct": -5.53,
+          "compoundedReturnPct": -64.483,
+          "pnlUsd": -9538.69,
+          "avgWinPct": 0.682,
+          "avgLossPct": -1.25
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 428,
+        "winRate": 65.7,
+        "avgReturnPct": 0.231,
+        "profitFactor": 1.483,
+        "sharpe": 1.861,
+        "maxDrawdownPct": 22.654,
+        "cvar95Pct": -5.104,
+        "compoundedReturnPct": 147.366,
+        "pnlUsd": 9900.53,
+        "avgWinPct": 1.082,
+        "avgLossPct": -1.394
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 4.551940586125936e-11,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "US",
+      "horizon": "short",
+      "side": "buy",
+      "model": "US_short_frozen",
+      "variant": "vol_skip_top20",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-18",
+            "to": "2024-02-22"
+          },
+          "validation": {
+            "from": "2024-02-23",
+            "to": "2024-08-22"
+          },
+          "embargo": {
+            "from": "2024-08-23",
+            "to": "2024-09-20",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-22",
+            "to": "2024-08-22"
+          },
+          "validation": {
+            "from": "2024-08-23",
+            "to": "2025-02-25"
+          },
+          "embargo": {
+            "from": "2025-02-26",
+            "to": "2025-03-25",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-22",
+            "to": "2025-02-25"
+          },
+          "validation": {
+            "from": "2025-02-26",
+            "to": "2025-08-26"
+          },
+          "embargo": {
+            "from": "2025-08-27",
+            "to": "2025-09-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-23",
+            "to": "2025-08-26"
+          },
+          "validation": {
+            "from": "2025-08-27",
+            "to": "2026-02-26"
+          },
+          "embargo": {
+            "from": "2026-02-27",
+            "to": "2026-03-26",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 1233,
+        "winRate": 54.6,
+        "avgReturnPct": -0.179,
+        "profitFactor": 0.636,
+        "sharpe": -1.851,
+        "maxDrawdownPct": 90.612,
+        "cvar95Pct": -5.159,
+        "compoundedReturnPct": -90.561,
+        "pnlUsd": -22087.21,
+        "avgWinPct": 0.573,
+        "avgLossPct": -1.084
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 356,
+          "winRate": 57.3,
+          "avgReturnPct": -0.253,
+          "profitFactor": 0.504,
+          "sharpe": -2.792,
+          "maxDrawdownPct": 62.126,
+          "cvar95Pct": -4.909,
+          "compoundedReturnPct": -60.915,
+          "pnlUsd": -9004.05,
+          "avgWinPct": 0.449,
+          "avgLossPct": -1.195
+        },
+        {
+          "trades": 340,
+          "winRate": 50.3,
+          "avgReturnPct": -0.104,
+          "profitFactor": 0.72,
+          "sharpe": -1.234,
+          "maxDrawdownPct": 50.042,
+          "cvar95Pct": -4.595,
+          "compoundedReturnPct": -32.008,
+          "pnlUsd": -3544.46,
+          "avgWinPct": 0.532,
+          "avgLossPct": -0.748
+        },
+        {
+          "trades": 537,
+          "winRate": 55.5,
+          "avgReturnPct": -0.178,
+          "profitFactor": 0.681,
+          "sharpe": -1.652,
+          "maxDrawdownPct": 64.956,
+          "cvar95Pct": -5.53,
+          "compoundedReturnPct": -64.483,
+          "pnlUsd": -9538.69,
+          "avgWinPct": 0.682,
+          "avgLossPct": -1.25
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 337,
+        "winRate": 67.7,
+        "avgReturnPct": 0.209,
+        "profitFactor": 1.391,
+        "sharpe": 1.63,
+        "maxDrawdownPct": 22.654,
+        "cvar95Pct": -5.488,
+        "compoundedReturnPct": 88.38,
+        "pnlUsd": 7040.94,
+        "avgWinPct": 1.099,
+        "avgLossPct": -1.653
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 4.152229694070183e-11,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "US",
+      "horizon": "short",
+      "side": "buy",
+      "model": "US_short_frozen",
+      "variant": "vol_skip_top30",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-18",
+            "to": "2024-02-22"
+          },
+          "validation": {
+            "from": "2024-02-23",
+            "to": "2024-08-22"
+          },
+          "embargo": {
+            "from": "2024-08-23",
+            "to": "2024-09-20",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-22",
+            "to": "2024-08-22"
+          },
+          "validation": {
+            "from": "2024-08-23",
+            "to": "2025-02-25"
+          },
+          "embargo": {
+            "from": "2025-02-26",
+            "to": "2025-03-25",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-22",
+            "to": "2025-02-25"
+          },
+          "validation": {
+            "from": "2025-02-26",
+            "to": "2025-08-26"
+          },
+          "embargo": {
+            "from": "2025-08-27",
+            "to": "2025-09-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-23",
+            "to": "2025-08-26"
+          },
+          "validation": {
+            "from": "2025-08-27",
+            "to": "2026-02-26"
+          },
+          "embargo": {
+            "from": "2026-02-27",
+            "to": "2026-03-26",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 1123,
+        "winRate": 54.4,
+        "avgReturnPct": -0.196,
+        "profitFactor": 0.617,
+        "sharpe": -1.974,
+        "maxDrawdownPct": 90.514,
+        "cvar95Pct": -5.263,
+        "compoundedReturnPct": -90.388,
+        "pnlUsd": -21970.2,
+        "avgWinPct": 0.578,
+        "avgLossPct": -1.119
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 300,
+          "winRate": 57.3,
+          "avgReturnPct": -0.275,
+          "profitFactor": 0.468,
+          "sharpe": -2.994,
+          "maxDrawdownPct": 58.901,
+          "cvar95Pct": -5.055,
+          "compoundedReturnPct": -57.662,
+          "pnlUsd": -8254.31,
+          "avgWinPct": 0.422,
+          "avgLossPct": -1.212
+        },
+        {
+          "trades": 302,
+          "winRate": 50,
+          "avgReturnPct": -0.125,
+          "profitFactor": 0.691,
+          "sharpe": -1.413,
+          "maxDrawdownPct": 50.042,
+          "cvar95Pct": -4.695,
+          "compoundedReturnPct": -33.443,
+          "pnlUsd": -3766.44,
+          "avgWinPct": 0.558,
+          "avgLossPct": -0.808
+        },
+        {
+          "trades": 521,
+          "winRate": 55.3,
+          "avgReturnPct": -0.191,
+          "profitFactor": 0.664,
+          "sharpe": -1.758,
+          "maxDrawdownPct": 66.344,
+          "cvar95Pct": -5.53,
+          "compoundedReturnPct": -65.89,
+          "pnlUsd": -9949.44,
+          "avgWinPct": 0.682,
+          "avgLossPct": -1.27
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 306,
+        "winRate": 67.3,
+        "avgReturnPct": 0.166,
+        "profitFactor": 1.287,
+        "sharpe": 1.259,
+        "maxDrawdownPct": 20.946,
+        "cvar95Pct": -5.592,
+        "compoundedReturnPct": 55.228,
+        "pnlUsd": 5073.9,
+        "avgWinPct": 1.104,
+        "avgLossPct": -1.766
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 6.709330613797826e-10,
+        "pass": false,
+        "highWinLowPf": true,
+        "promotable": false,
+        "rejectionReason": "rejected bleeder: win target with PF below 1.3"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "US",
+      "horizon": "short",
+      "side": "buy",
+      "model": "US_short_frozen",
+      "variant": "ma50_flat_or_up",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-18",
+            "to": "2024-02-22"
+          },
+          "validation": {
+            "from": "2024-02-23",
+            "to": "2024-08-22"
+          },
+          "embargo": {
+            "from": "2024-08-23",
+            "to": "2024-09-20",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-22",
+            "to": "2024-08-22"
+          },
+          "validation": {
+            "from": "2024-08-23",
+            "to": "2025-02-25"
+          },
+          "embargo": {
+            "from": "2025-02-26",
+            "to": "2025-03-25",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-22",
+            "to": "2025-02-25"
+          },
+          "validation": {
+            "from": "2025-02-26",
+            "to": "2025-08-26"
+          },
+          "embargo": {
+            "from": "2025-08-27",
+            "to": "2025-09-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-23",
+            "to": "2025-08-26"
+          },
+          "validation": {
+            "from": "2025-08-27",
+            "to": "2026-02-26"
+          },
+          "embargo": {
+            "from": "2026-02-27",
+            "to": "2026-03-26",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 1302,
+        "winRate": 53.8,
+        "avgReturnPct": -0.171,
+        "profitFactor": 0.647,
+        "sharpe": -1.758,
+        "maxDrawdownPct": 91.858,
+        "cvar95Pct": -5.202,
+        "compoundedReturnPct": -90.77,
+        "pnlUsd": -22217.98,
+        "avgWinPct": 0.582,
+        "avgLossPct": -1.048
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 457,
+          "winRate": 54.5,
+          "avgReturnPct": -0.24,
+          "profitFactor": 0.531,
+          "sharpe": -2.557,
+          "maxDrawdownPct": 68.375,
+          "cvar95Pct": -5.079,
+          "compoundedReturnPct": -68.366,
+          "pnlUsd": -10973.65,
+          "avgWinPct": 0.499,
+          "avgLossPct": -1.124
+        },
+        {
+          "trades": 330,
+          "winRate": 50,
+          "avgReturnPct": -0.11,
+          "profitFactor": 0.703,
+          "sharpe": -1.299,
+          "maxDrawdownPct": 50.042,
+          "cvar95Pct": -4.569,
+          "compoundedReturnPct": -32.503,
+          "pnlUsd": -3625.73,
+          "avgWinPct": 0.52,
+          "avgLossPct": -0.739
+        },
+        {
+          "trades": 515,
+          "winRate": 55.7,
+          "avgReturnPct": -0.148,
+          "profitFactor": 0.722,
+          "sharpe": -1.384,
+          "maxDrawdownPct": 62.173,
+          "cvar95Pct": -5.561,
+          "compoundedReturnPct": -56.773,
+          "pnlUsd": -7618.59,
+          "avgWinPct": 0.69,
+          "avgLossPct": -1.203
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 396,
+        "winRate": 66.2,
+        "avgReturnPct": 0.242,
+        "profitFactor": 1.482,
+        "sharpe": 1.887,
+        "maxDrawdownPct": 22.654,
+        "cvar95Pct": -5.252,
+        "compoundedReturnPct": 140.227,
+        "pnlUsd": 9597.61,
+        "avgWinPct": 1.127,
+        "avgLossPct": -1.487
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 6.075333074275164e-11,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "US",
+      "horizon": "short",
+      "side": "buy",
+      "model": "US_short_frozen",
+      "variant": "vol_skip_top20_and_ma50_flat_or_up",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-18",
+            "to": "2024-02-22"
+          },
+          "validation": {
+            "from": "2024-02-23",
+            "to": "2024-08-22"
+          },
+          "embargo": {
+            "from": "2024-08-23",
+            "to": "2024-09-20",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-22",
+            "to": "2024-08-22"
+          },
+          "validation": {
+            "from": "2024-08-23",
+            "to": "2025-02-25"
+          },
+          "embargo": {
+            "from": "2025-02-26",
+            "to": "2025-03-25",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-22",
+            "to": "2025-02-25"
+          },
+          "validation": {
+            "from": "2025-02-26",
+            "to": "2025-08-26"
+          },
+          "embargo": {
+            "from": "2025-08-27",
+            "to": "2025-09-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-23",
+            "to": "2025-08-26"
+          },
+          "validation": {
+            "from": "2025-08-27",
+            "to": "2026-02-26"
+          },
+          "embargo": {
+            "from": "2026-02-27",
+            "to": "2026-03-26",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 1192,
+        "winRate": 54.4,
+        "avgReturnPct": -0.172,
+        "profitFactor": 0.644,
+        "sharpe": -1.783,
+        "maxDrawdownPct": 90.25,
+        "cvar95Pct": -5.185,
+        "compoundedReturnPct": -88.946,
+        "pnlUsd": -20561.44,
+        "avgWinPct": 0.574,
+        "avgLossPct": -1.062
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 347,
+          "winRate": 56.5,
+          "avgReturnPct": -0.269,
+          "profitFactor": 0.487,
+          "sharpe": -2.934,
+          "maxDrawdownPct": 62.126,
+          "cvar95Pct": -4.909,
+          "compoundedReturnPct": -62.116,
+          "pnlUsd": -9317.12,
+          "avgWinPct": 0.451,
+          "avgLossPct": -1.202
+        },
+        {
+          "trades": 330,
+          "winRate": 50,
+          "avgReturnPct": -0.11,
+          "profitFactor": 0.703,
+          "sharpe": -1.299,
+          "maxDrawdownPct": 50.042,
+          "cvar95Pct": -4.569,
+          "compoundedReturnPct": -32.503,
+          "pnlUsd": -3625.73,
+          "avgWinPct": 0.52,
+          "avgLossPct": -0.739
+        },
+        {
+          "trades": 515,
+          "winRate": 55.7,
+          "avgReturnPct": -0.148,
+          "profitFactor": 0.722,
+          "sharpe": -1.384,
+          "maxDrawdownPct": 62.173,
+          "cvar95Pct": -5.561,
+          "compoundedReturnPct": -56.773,
+          "pnlUsd": -7618.59,
+          "avgWinPct": 0.69,
+          "avgLossPct": -1.203
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 337,
+        "winRate": 67.7,
+        "avgReturnPct": 0.209,
+        "profitFactor": 1.391,
+        "sharpe": 1.63,
+        "maxDrawdownPct": 22.654,
+        "cvar95Pct": -5.488,
+        "compoundedReturnPct": 88.38,
+        "pnlUsd": 7040.94,
+        "avgWinPct": 1.099,
+        "avgLossPct": -1.653
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 4.152229694070183e-11,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "US",
+      "horizon": "short",
+      "side": "buy",
+      "model": "US_short_frozen",
+      "variant": "vol_skip_top30_and_ma50_flat_or_up",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-18",
+            "to": "2024-02-22"
+          },
+          "validation": {
+            "from": "2024-02-23",
+            "to": "2024-08-22"
+          },
+          "embargo": {
+            "from": "2024-08-23",
+            "to": "2024-09-20",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-22",
+            "to": "2024-08-22"
+          },
+          "validation": {
+            "from": "2024-08-23",
+            "to": "2025-02-25"
+          },
+          "embargo": {
+            "from": "2025-02-26",
+            "to": "2025-03-25",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-22",
+            "to": "2025-02-25"
+          },
+          "validation": {
+            "from": "2025-02-26",
+            "to": "2025-08-26"
+          },
+          "embargo": {
+            "from": "2025-08-27",
+            "to": "2025-09-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-23",
+            "to": "2025-08-26"
+          },
+          "validation": {
+            "from": "2025-08-27",
+            "to": "2026-02-26"
+          },
+          "embargo": {
+            "from": "2026-02-27",
+            "to": "2026-03-26",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 1087,
+        "winRate": 54.3,
+        "avgReturnPct": -0.186,
+        "profitFactor": 0.63,
+        "sharpe": -1.875,
+        "maxDrawdownPct": 89.91,
+        "cvar95Pct": -5.296,
+        "compoundedReturnPct": -88.471,
+        "pnlUsd": -20199.94,
+        "avgWinPct": 0.582,
+        "avgLossPct": -1.097
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 293,
+          "winRate": 56.7,
+          "avgReturnPct": -0.289,
+          "profitFactor": 0.453,
+          "sharpe": -3.117,
+          "maxDrawdownPct": 58.901,
+          "cvar95Pct": -5.055,
+          "compoundedReturnPct": -58.569,
+          "pnlUsd": -8471.37,
+          "avgWinPct": 0.423,
+          "avgLossPct": -1.22
+        },
+        {
+          "trades": 295,
+          "winRate": 49.8,
+          "avgReturnPct": -0.125,
+          "profitFactor": 0.689,
+          "sharpe": -1.411,
+          "maxDrawdownPct": 50.042,
+          "cvar95Pct": -4.829,
+          "compoundedReturnPct": -32.974,
+          "pnlUsd": -3699.24,
+          "avgWinPct": 0.558,
+          "avgLossPct": -0.804
+        },
+        {
+          "trades": 499,
+          "winRate": 55.5,
+          "avgReturnPct": -0.161,
+          "profitFactor": 0.704,
+          "sharpe": -1.489,
+          "maxDrawdownPct": 63.672,
+          "cvar95Pct": -5.617,
+          "compoundedReturnPct": -58.485,
+          "pnlUsd": -8029.34,
+          "avgWinPct": 0.69,
+          "avgLossPct": -1.223
+        }
+      ],
+      "stableDevelopmentFolds": 0,
+      "holdout": {
+        "trades": 306,
+        "winRate": 67.3,
+        "avgReturnPct": 0.166,
+        "profitFactor": 1.287,
+        "sharpe": 1.259,
+        "maxDrawdownPct": 20.946,
+        "cvar95Pct": -5.592,
+        "compoundedReturnPct": 55.228,
+        "pnlUsd": 5073.9,
+        "avgWinPct": 1.104,
+        "avgLossPct": -1.766
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 6.709330613797826e-10,
+        "pass": false,
+        "highWinLowPf": true,
+        "promotable": false,
+        "rejectionReason": "rejected bleeder: win target with PF below 1.3"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "model": "US_medium_frozen",
+      "variant": "baseline",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-17",
+            "to": "2023-12-19"
+          },
+          "validation": {
+            "from": "2023-12-20",
+            "to": "2024-06-21"
+          },
+          "embargo": {
+            "from": "2024-06-24",
+            "to": "2024-09-20",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-21",
+            "to": "2024-06-21"
+          },
+          "validation": {
+            "from": "2024-06-24",
+            "to": "2024-12-19"
+          },
+          "embargo": {
+            "from": "2024-12-20",
+            "to": "2025-03-25",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-19",
+            "to": "2024-12-19"
+          },
+          "validation": {
+            "from": "2024-12-20",
+            "to": "2025-06-25"
+          },
+          "embargo": {
+            "from": "2025-06-26",
+            "to": "2025-09-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-22",
+            "to": "2025-06-25"
+          },
+          "validation": {
+            "from": "2025-06-26",
+            "to": "2025-12-23"
+          },
+          "embargo": {
+            "from": "2025-12-24",
+            "to": "2026-03-26",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 251,
+        "winRate": 69.7,
+        "avgReturnPct": -0.215,
+        "profitFactor": 0.893,
+        "sharpe": -0.71,
+        "maxDrawdownPct": 84.024,
+        "cvar95Pct": -11.009,
+        "compoundedReturnPct": -56.696,
+        "pnlUsd": -5398.42,
+        "avgWinPct": 2.573,
+        "avgLossPct": -6.636
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 118,
+          "winRate": 61,
+          "avgReturnPct": -1.203,
+          "profitFactor": 0.541,
+          "sharpe": -2.661,
+          "maxDrawdownPct": 84.024,
+          "cvar95Pct": -11.806,
+          "compoundedReturnPct": -79.318,
+          "pnlUsd": -14195.94,
+          "avgWinPct": 2.322,
+          "avgLossPct": -6.72
+        },
+        {
+          "trades": 40,
+          "winRate": 85,
+          "avgReturnPct": 0.977,
+          "profitFactor": 2.282,
+          "sharpe": 2.09,
+          "maxDrawdownPct": 10.849,
+          "cvar95Pct": -6.652,
+          "compoundedReturnPct": 45.05,
+          "pnlUsd": 3909.46,
+          "avgWinPct": 2.046,
+          "avgLossPct": -5.081
+        },
+        {
+          "trades": 93,
+          "winRate": 74.2,
+          "avgReturnPct": 0.526,
+          "profitFactor": 1.297,
+          "sharpe": 1,
+          "maxDrawdownPct": 27.924,
+          "cvar95Pct": -10.877,
+          "compoundedReturnPct": 44.352,
+          "pnlUsd": 4888.06,
+          "avgWinPct": 3.095,
+          "avgLossPct": -6.861
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 67,
+        "winRate": 70.1,
+        "avgReturnPct": 0.402,
+        "profitFactor": 1.203,
+        "sharpe": 0.563,
+        "maxDrawdownPct": 28.429,
+        "cvar95Pct": -12.724,
+        "compoundedReturnPct": 16.373,
+        "pnlUsd": 2696.6,
+        "avgWinPct": 3.395,
+        "avgLossPct": -6.629
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.000654,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.0006535843428817997,
+        "pass": false,
+        "highWinLowPf": true,
+        "promotable": false,
+        "rejectionReason": "rejected bleeder: win target with PF below 1.3"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "model": "US_medium_frozen",
+      "variant": "vol_skip_top20",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-17",
+            "to": "2023-12-19"
+          },
+          "validation": {
+            "from": "2023-12-20",
+            "to": "2024-06-21"
+          },
+          "embargo": {
+            "from": "2024-06-24",
+            "to": "2024-09-20",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-21",
+            "to": "2024-06-21"
+          },
+          "validation": {
+            "from": "2024-06-24",
+            "to": "2024-12-19"
+          },
+          "embargo": {
+            "from": "2024-12-20",
+            "to": "2025-03-25",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-19",
+            "to": "2024-12-19"
+          },
+          "validation": {
+            "from": "2024-12-20",
+            "to": "2025-06-25"
+          },
+          "embargo": {
+            "from": "2025-06-26",
+            "to": "2025-09-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-22",
+            "to": "2025-06-25"
+          },
+          "validation": {
+            "from": "2025-06-26",
+            "to": "2025-12-23"
+          },
+          "embargo": {
+            "from": "2025-12-24",
+            "to": "2026-03-26",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 215,
+        "winRate": 70.2,
+        "avgReturnPct": -0.191,
+        "profitFactor": 0.902,
+        "sharpe": -0.592,
+        "maxDrawdownPct": 76.912,
+        "cvar95Pct": -11.382,
+        "compoundedReturnPct": -48.259,
+        "pnlUsd": -4109.58,
+        "avgWinPct": 2.503,
+        "avgLossPct": -6.548
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 83,
+          "winRate": 59,
+          "avgReturnPct": -1.524,
+          "profitFactor": 0.435,
+          "sharpe": -2.928,
+          "maxDrawdownPct": 76.912,
+          "cvar95Pct": -12.361,
+          "compoundedReturnPct": -74.654,
+          "pnlUsd": -12650.12,
+          "avgWinPct": 1.987,
+          "avgLossPct": -6.585
+        },
+        {
+          "trades": 39,
+          "winRate": 84.6,
+          "avgReturnPct": 0.937,
+          "profitFactor": 2.198,
+          "sharpe": 1.959,
+          "maxDrawdownPct": 10.849,
+          "cvar95Pct": -6.652,
+          "compoundedReturnPct": 41.416,
+          "pnlUsd": 3652.48,
+          "avgWinPct": 2.031,
+          "avgLossPct": -5.081
+        },
+        {
+          "trades": 93,
+          "winRate": 74.2,
+          "avgReturnPct": 0.526,
+          "profitFactor": 1.297,
+          "sharpe": 1,
+          "maxDrawdownPct": 27.924,
+          "cvar95Pct": -10.877,
+          "compoundedReturnPct": 44.352,
+          "pnlUsd": 4888.06,
+          "avgWinPct": 3.095,
+          "avgLossPct": -6.861
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 57,
+        "winRate": 70.2,
+        "avgReturnPct": 0.468,
+        "profitFactor": 1.229,
+        "sharpe": 0.576,
+        "maxDrawdownPct": 25.356,
+        "cvar95Pct": -14.549,
+        "compoundedReturnPct": 16.915,
+        "pnlUsd": 2666.8,
+        "avgWinPct": 3.581,
+        "avgLossPct": -6.858
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.001601,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.0016007718837251913,
+        "pass": false,
+        "highWinLowPf": true,
+        "promotable": false,
+        "rejectionReason": "rejected bleeder: win target with PF below 1.3"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "model": "US_medium_frozen",
+      "variant": "vol_skip_top30",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-17",
+            "to": "2023-12-19"
+          },
+          "validation": {
+            "from": "2023-12-20",
+            "to": "2024-06-21"
+          },
+          "embargo": {
+            "from": "2024-06-24",
+            "to": "2024-09-20",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-21",
+            "to": "2024-06-21"
+          },
+          "validation": {
+            "from": "2024-06-24",
+            "to": "2024-12-19"
+          },
+          "embargo": {
+            "from": "2024-12-20",
+            "to": "2025-03-25",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-19",
+            "to": "2024-12-19"
+          },
+          "validation": {
+            "from": "2024-12-20",
+            "to": "2025-06-25"
+          },
+          "embargo": {
+            "from": "2025-06-26",
+            "to": "2025-09-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-22",
+            "to": "2025-06-25"
+          },
+          "validation": {
+            "from": "2025-06-26",
+            "to": "2025-12-23"
+          },
+          "embargo": {
+            "from": "2025-12-24",
+            "to": "2026-03-26",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 210,
+        "winRate": 70,
+        "avgReturnPct": -0.217,
+        "profitFactor": 0.889,
+        "sharpe": -0.664,
+        "maxDrawdownPct": 78.565,
+        "cvar95Pct": -11.382,
+        "compoundedReturnPct": -50.286,
+        "pnlUsd": -4559.24,
+        "avgWinPct": 2.49,
+        "avgLossPct": -6.533
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 80,
+          "winRate": 58.8,
+          "avgReturnPct": -1.575,
+          "profitFactor": 0.418,
+          "sharpe": -2.985,
+          "maxDrawdownPct": 77.756,
+          "cvar95Pct": -13.199,
+          "compoundedReturnPct": -74.412,
+          "pnlUsd": -12596.25,
+          "avgWinPct": 1.925,
+          "avgLossPct": -6.559
+        },
+        {
+          "trades": 38,
+          "winRate": 84.2,
+          "avgReturnPct": 0.85,
+          "profitFactor": 2.06,
+          "sharpe": 1.761,
+          "maxDrawdownPct": 10.849,
+          "cvar95Pct": -6.652,
+          "compoundedReturnPct": 35.691,
+          "pnlUsd": 3230.53,
+          "avgWinPct": 1.962,
+          "avgLossPct": -5.081
+        },
+        {
+          "trades": 92,
+          "winRate": 73.9,
+          "avgReturnPct": 0.522,
+          "profitFactor": 1.292,
+          "sharpe": 0.983,
+          "maxDrawdownPct": 27.924,
+          "cvar95Pct": -10.877,
+          "compoundedReturnPct": 43.184,
+          "pnlUsd": 4806.47,
+          "avgWinPct": 3.129,
+          "avgLossPct": -6.861
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 51,
+        "winRate": 70.6,
+        "avgReturnPct": 0.635,
+        "profitFactor": 1.36,
+        "sharpe": 0.873,
+        "maxDrawdownPct": 22.291,
+        "cvar95Pct": -9.147,
+        "compoundedReturnPct": 29.114,
+        "pnlUsd": 3239.95,
+        "avgWinPct": 3.401,
+        "avgLossPct": -6.002
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.002301,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.002300654855883266,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "model": "US_medium_frozen",
+      "variant": "ma50_flat_or_up",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-17",
+            "to": "2023-12-19"
+          },
+          "validation": {
+            "from": "2023-12-20",
+            "to": "2024-06-21"
+          },
+          "embargo": {
+            "from": "2024-06-24",
+            "to": "2024-09-20",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-21",
+            "to": "2024-06-21"
+          },
+          "validation": {
+            "from": "2024-06-24",
+            "to": "2024-12-19"
+          },
+          "embargo": {
+            "from": "2024-12-20",
+            "to": "2025-03-25",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-19",
+            "to": "2024-12-19"
+          },
+          "validation": {
+            "from": "2024-12-20",
+            "to": "2025-06-25"
+          },
+          "embargo": {
+            "from": "2025-06-26",
+            "to": "2025-09-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-22",
+            "to": "2025-06-25"
+          },
+          "validation": {
+            "from": "2025-06-26",
+            "to": "2025-12-23"
+          },
+          "embargo": {
+            "from": "2025-12-24",
+            "to": "2026-03-26",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 229,
+        "winRate": 73.8,
+        "avgReturnPct": 0.139,
+        "profitFactor": 1.081,
+        "sharpe": 0.46,
+        "maxDrawdownPct": 64.602,
+        "cvar95Pct": -11.093,
+        "compoundedReturnPct": 7.406,
+        "pnlUsd": 3193.98,
+        "avgWinPct": 2.517,
+        "avgLossPct": -6.559
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 101,
+          "winRate": 67.3,
+          "avgReturnPct": -0.705,
+          "profitFactor": 0.672,
+          "sharpe": -1.541,
+          "maxDrawdownPct": 64.602,
+          "cvar95Pct": -11.693,
+          "compoundedReturnPct": -56.23,
+          "pnlUsd": -7125.06,
+          "avgWinPct": 2.145,
+          "avgLossPct": -6.578
+        },
+        {
+          "trades": 39,
+          "winRate": 84.6,
+          "avgReturnPct": 0.937,
+          "profitFactor": 2.198,
+          "sharpe": 1.959,
+          "maxDrawdownPct": 10.849,
+          "cvar95Pct": -6.652,
+          "compoundedReturnPct": 41.416,
+          "pnlUsd": 3652.48,
+          "avgWinPct": 2.031,
+          "avgLossPct": -5.081
+        },
+        {
+          "trades": 89,
+          "winRate": 76.4,
+          "avgReturnPct": 0.749,
+          "profitFactor": 1.457,
+          "sharpe": 1.406,
+          "maxDrawdownPct": 27.924,
+          "cvar95Pct": -10.877,
+          "compoundedReturnPct": 73.52,
+          "pnlUsd": 6666.56,
+          "avgWinPct": 3.127,
+          "avgLossPct": -6.95
+        }
+      ],
+      "stableDevelopmentFolds": 2,
+      "holdout": {
+        "trades": 66,
+        "winRate": 69.7,
+        "avgReturnPct": 0.408,
+        "profitFactor": 1.203,
+        "sharpe": 0.562,
+        "maxDrawdownPct": 28.429,
+        "cvar95Pct": -12.724,
+        "compoundedReturnPct": 16.299,
+        "pnlUsd": 2690.26,
+        "avgWinPct": 3.467,
+        "avgLossPct": -6.629
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.000929,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.0009291151537829043,
+        "pass": false,
+        "highWinLowPf": true,
+        "promotable": false,
+        "rejectionReason": "rejected bleeder: win target with PF below 1.3"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "model": "US_medium_frozen",
+      "variant": "vol_skip_top20_and_ma50_flat_or_up",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-17",
+            "to": "2023-12-19"
+          },
+          "validation": {
+            "from": "2023-12-20",
+            "to": "2024-06-21"
+          },
+          "embargo": {
+            "from": "2024-06-24",
+            "to": "2024-09-20",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-21",
+            "to": "2024-06-21"
+          },
+          "validation": {
+            "from": "2024-06-24",
+            "to": "2024-12-19"
+          },
+          "embargo": {
+            "from": "2024-12-20",
+            "to": "2025-03-25",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-19",
+            "to": "2024-12-19"
+          },
+          "validation": {
+            "from": "2024-12-20",
+            "to": "2025-06-25"
+          },
+          "embargo": {
+            "from": "2025-06-26",
+            "to": "2025-09-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-22",
+            "to": "2025-06-25"
+          },
+          "validation": {
+            "from": "2025-06-26",
+            "to": "2025-12-23"
+          },
+          "embargo": {
+            "from": "2025-12-24",
+            "to": "2026-03-26",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 208,
+        "winRate": 71.6,
+        "avgReturnPct": -0.054,
+        "profitFactor": 0.971,
+        "sharpe": -0.165,
+        "maxDrawdownPct": 73.812,
+        "cvar95Pct": -11.382,
+        "compoundedReturnPct": -29.451,
+        "pnlUsd": -1117.6,
+        "avgWinPct": 2.523,
+        "avgLossPct": -6.561
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 80,
+          "winRate": 60,
+          "avgReturnPct": -1.43,
+          "profitFactor": 0.457,
+          "sharpe": -2.691,
+          "maxDrawdownPct": 73.812,
+          "cvar95Pct": -13.199,
+          "compoundedReturnPct": -71.25,
+          "pnlUsd": -11436.63,
+          "avgWinPct": 2.007,
+          "avgLossPct": -6.584
+        },
+        {
+          "trades": 39,
+          "winRate": 84.6,
+          "avgReturnPct": 0.937,
+          "profitFactor": 2.198,
+          "sharpe": 1.959,
+          "maxDrawdownPct": 10.849,
+          "cvar95Pct": -6.652,
+          "compoundedReturnPct": 41.416,
+          "pnlUsd": 3652.48,
+          "avgWinPct": 2.031,
+          "avgLossPct": -5.081
+        },
+        {
+          "trades": 89,
+          "winRate": 76.4,
+          "avgReturnPct": 0.749,
+          "profitFactor": 1.457,
+          "sharpe": 1.406,
+          "maxDrawdownPct": 27.924,
+          "cvar95Pct": -10.877,
+          "compoundedReturnPct": 73.52,
+          "pnlUsd": 6666.56,
+          "avgWinPct": 3.127,
+          "avgLossPct": -6.95
+        }
+      ],
+      "stableDevelopmentFolds": 2,
+      "holdout": {
+        "trades": 57,
+        "winRate": 70.2,
+        "avgReturnPct": 0.468,
+        "profitFactor": 1.229,
+        "sharpe": 0.576,
+        "maxDrawdownPct": 25.356,
+        "cvar95Pct": -14.549,
+        "compoundedReturnPct": 16.915,
+        "pnlUsd": 2666.8,
+        "avgWinPct": 3.581,
+        "avgLossPct": -6.858
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.001601,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.0016007718837251913,
+        "pass": false,
+        "highWinLowPf": true,
+        "promotable": false,
+        "rejectionReason": "rejected bleeder: win target with PF below 1.3"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "model": "US_medium_frozen",
+      "variant": "vol_skip_top30_and_ma50_flat_or_up",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-17",
+            "to": "2023-12-19"
+          },
+          "validation": {
+            "from": "2023-12-20",
+            "to": "2024-06-21"
+          },
+          "embargo": {
+            "from": "2024-06-24",
+            "to": "2024-09-20",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-21",
+            "to": "2024-06-21"
+          },
+          "validation": {
+            "from": "2024-06-24",
+            "to": "2024-12-19"
+          },
+          "embargo": {
+            "from": "2024-12-20",
+            "to": "2025-03-25",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-19",
+            "to": "2024-12-19"
+          },
+          "validation": {
+            "from": "2024-12-20",
+            "to": "2025-06-25"
+          },
+          "embargo": {
+            "from": "2025-06-26",
+            "to": "2025-09-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-22",
+            "to": "2025-06-25"
+          },
+          "validation": {
+            "from": "2025-06-26",
+            "to": "2025-12-23"
+          },
+          "embargo": {
+            "from": "2025-12-24",
+            "to": "2026-03-26",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 203,
+        "winRate": 71.4,
+        "avgReturnPct": -0.077,
+        "profitFactor": 0.959,
+        "sharpe": -0.233,
+        "maxDrawdownPct": 75.687,
+        "cvar95Pct": -11.382,
+        "compoundedReturnPct": -32.216,
+        "pnlUsd": -1567.26,
+        "avgWinPct": 2.51,
+        "avgLossPct": -6.546
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 77,
+          "winRate": 59.7,
+          "avgReturnPct": -1.478,
+          "profitFactor": 0.44,
+          "sharpe": -2.743,
+          "maxDrawdownPct": 74.769,
+          "cvar95Pct": -13.199,
+          "compoundedReturnPct": -70.976,
+          "pnlUsd": -11382.76,
+          "avgWinPct": 1.944,
+          "avgLossPct": -6.556
+        },
+        {
+          "trades": 38,
+          "winRate": 84.2,
+          "avgReturnPct": 0.85,
+          "profitFactor": 2.06,
+          "sharpe": 1.761,
+          "maxDrawdownPct": 10.849,
+          "cvar95Pct": -6.652,
+          "compoundedReturnPct": 35.691,
+          "pnlUsd": 3230.53,
+          "avgWinPct": 1.962,
+          "avgLossPct": -5.081
+        },
+        {
+          "trades": 88,
+          "winRate": 76.1,
+          "avgReturnPct": 0.748,
+          "profitFactor": 1.451,
+          "sharpe": 1.389,
+          "maxDrawdownPct": 27.924,
+          "cvar95Pct": -10.877,
+          "compoundedReturnPct": 72.116,
+          "pnlUsd": 6584.97,
+          "avgWinPct": 3.161,
+          "avgLossPct": -6.95
+        }
+      ],
+      "stableDevelopmentFolds": 2,
+      "holdout": {
+        "trades": 51,
+        "winRate": 70.6,
+        "avgReturnPct": 0.635,
+        "profitFactor": 1.36,
+        "sharpe": 0.873,
+        "maxDrawdownPct": 22.291,
+        "cvar95Pct": -9.147,
+        "compoundedReturnPct": 29.114,
+        "pnlUsd": 3239.95,
+        "avgWinPct": 3.401,
+        "avgLossPct": -6.002
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.002301,
+      "sampleConfidence": {
+        "flag": "FULL",
+        "pValue": 0.002300654855883266,
+        "pass": true,
+        "highWinLowPf": false,
+        "promotable": true,
+        "rejectionReason": null
+      },
+      "status": "CANDIDATE_ONLY_OVERLAP_RISK"
+    },
+    {
+      "market": "Japan",
+      "horizon": "short",
+      "side": "buy",
+      "model": "Japan_short_frozen",
+      "variant": "baseline",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-18",
+            "to": "2024-02-22"
+          },
+          "validation": {
+            "from": "2024-02-23",
+            "to": "2024-08-22"
+          },
+          "embargo": {
+            "from": "2024-08-23",
+            "to": "2024-09-20",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-22",
+            "to": "2024-08-22"
+          },
+          "validation": {
+            "from": "2024-08-23",
+            "to": "2025-02-25"
+          },
+          "embargo": {
+            "from": "2025-02-26",
+            "to": "2025-03-25",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-22",
+            "to": "2025-02-25"
+          },
+          "validation": {
+            "from": "2025-02-26",
+            "to": "2025-08-26"
+          },
+          "embargo": {
+            "from": "2025-08-27",
+            "to": "2025-09-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-23",
+            "to": "2025-08-26"
+          },
+          "validation": {
+            "from": "2025-08-27",
+            "to": "2026-02-26"
+          },
+          "embargo": {
+            "from": "2026-02-27",
+            "to": "2026-03-26",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 158,
+        "winRate": 67.1,
+        "avgReturnPct": -0.704,
+        "profitFactor": 0.69,
+        "sharpe": -1.705,
+        "maxDrawdownPct": 86.948,
+        "cvar95Pct": -12.95,
+        "compoundedReturnPct": -73.764,
+        "pnlUsd": -11117.31,
+        "avgWinPct": 2.331,
+        "avgLossPct": -6.89
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 24,
+          "winRate": 62.5,
+          "avgReturnPct": 0.213,
+          "profitFactor": 1.124,
+          "sharpe": 0.235,
+          "maxDrawdownPct": 27.094,
+          "cvar95Pct": -8.611,
+          "compoundedReturnPct": 2.838,
+          "pnlUsd": 511.02,
+          "avgWinPct": 3.095,
+          "avgLossPct": -4.591
+        },
+        {
+          "trades": 26,
+          "winRate": 80.8,
+          "avgReturnPct": 0.364,
+          "profitFactor": 1.381,
+          "sharpe": 0.599,
+          "maxDrawdownPct": 8.419,
+          "cvar95Pct": -7.218,
+          "compoundedReturnPct": 8.578,
+          "pnlUsd": 947.58,
+          "avgWinPct": 1.636,
+          "avgLossPct": -4.978
+        },
+        {
+          "trades": 108,
+          "winRate": 64.8,
+          "avgReturnPct": -1.164,
+          "profitFactor": 0.569,
+          "sharpe": -2.129,
+          "maxDrawdownPct": 86.948,
+          "cvar95Pct": -13.669,
+          "compoundedReturnPct": -76.503,
+          "pnlUsd": -12575.91,
+          "avgWinPct": 2.376,
+          "avgLossPct": -7.686
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 96,
+        "winRate": 77.1,
+        "avgReturnPct": 2.46,
+        "profitFactor": 3.252,
+        "sharpe": 4.371,
+        "maxDrawdownPct": 32.271,
+        "cvar95Pct": -9.824,
+        "compoundedReturnPct": 797.436,
+        "pnlUsd": 23618.8,
+        "avgWinPct": 4.609,
+        "avgLossPct": -4.768
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 4.7199288940589825e-8,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "Japan",
+      "horizon": "short",
+      "side": "buy",
+      "model": "Japan_short_frozen",
+      "variant": "vol_skip_top20",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-18",
+            "to": "2024-02-22"
+          },
+          "validation": {
+            "from": "2024-02-23",
+            "to": "2024-08-22"
+          },
+          "embargo": {
+            "from": "2024-08-23",
+            "to": "2024-09-20",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-22",
+            "to": "2024-08-22"
+          },
+          "validation": {
+            "from": "2024-08-23",
+            "to": "2025-02-25"
+          },
+          "embargo": {
+            "from": "2025-02-26",
+            "to": "2025-03-25",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-22",
+            "to": "2025-02-25"
+          },
+          "validation": {
+            "from": "2025-02-26",
+            "to": "2025-08-26"
+          },
+          "embargo": {
+            "from": "2025-08-27",
+            "to": "2025-09-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-23",
+            "to": "2025-08-26"
+          },
+          "validation": {
+            "from": "2025-08-27",
+            "to": "2026-02-26"
+          },
+          "embargo": {
+            "from": "2026-02-27",
+            "to": "2026-03-26",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 104,
+        "winRate": 74,
+        "avgReturnPct": 0.145,
+        "profitFactor": 1.09,
+        "sharpe": 0.308,
+        "maxDrawdownPct": 28.267,
+        "cvar95Pct": -11.853,
+        "compoundedReturnPct": 2.683,
+        "pnlUsd": 1510.34,
+        "avgWinPct": 2.367,
+        "avgLossPct": -6.191
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 19,
+          "winRate": 52.6,
+          "avgReturnPct": -0.189,
+          "profitFactor": 0.913,
+          "sharpe": -0.168,
+          "maxDrawdownPct": 27.094,
+          "cvar95Pct": -9.022,
+          "compoundedReturnPct": -5.627,
+          "pnlUsd": -358.75,
+          "avgWinPct": 3.773,
+          "avgLossPct": -4.591
+        },
+        {
+          "trades": 26,
+          "winRate": 80.8,
+          "avgReturnPct": 0.308,
+          "profitFactor": 1.304,
+          "sharpe": 0.479,
+          "maxDrawdownPct": 9.89,
+          "cvar95Pct": -7.953,
+          "compoundedReturnPct": 6.835,
+          "pnlUsd": 800.53,
+          "avgWinPct": 1.636,
+          "avgLossPct": -5.272
+        },
+        {
+          "trades": 59,
+          "winRate": 78,
+          "avgReturnPct": 0.181,
+          "profitFactor": 1.107,
+          "sharpe": 0.259,
+          "maxDrawdownPct": 28.267,
+          "cvar95Pct": -14.413,
+          "compoundedReturnPct": 1.845,
+          "pnlUsd": 1068.56,
+          "avgWinPct": 2.395,
+          "avgLossPct": -7.652
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 56,
+        "winRate": 78.6,
+        "avgReturnPct": 3.045,
+        "profitFactor": 3.442,
+        "sharpe": 3.558,
+        "maxDrawdownPct": 21.458,
+        "cvar95Pct": -12.419,
+        "compoundedReturnPct": 381.437,
+        "pnlUsd": 17052.55,
+        "avgWinPct": 5.462,
+        "avgLossPct": -5.818
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.00001,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.000010438284109209883,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "Japan",
+      "horizon": "short",
+      "side": "buy",
+      "model": "Japan_short_frozen",
+      "variant": "vol_skip_top30",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-18",
+            "to": "2024-02-22"
+          },
+          "validation": {
+            "from": "2024-02-23",
+            "to": "2024-08-22"
+          },
+          "embargo": {
+            "from": "2024-08-23",
+            "to": "2024-09-20",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-22",
+            "to": "2024-08-22"
+          },
+          "validation": {
+            "from": "2024-08-23",
+            "to": "2025-02-25"
+          },
+          "embargo": {
+            "from": "2025-02-26",
+            "to": "2025-03-25",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-22",
+            "to": "2025-02-25"
+          },
+          "validation": {
+            "from": "2025-02-26",
+            "to": "2025-08-26"
+          },
+          "embargo": {
+            "from": "2025-08-27",
+            "to": "2025-09-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-23",
+            "to": "2025-08-26"
+          },
+          "validation": {
+            "from": "2025-08-27",
+            "to": "2026-02-26"
+          },
+          "embargo": {
+            "from": "2026-02-27",
+            "to": "2026-03-26",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 82,
+        "winRate": 73.2,
+        "avgReturnPct": 0.09,
+        "profitFactor": 1.053,
+        "sharpe": 0.161,
+        "maxDrawdownPct": 29.621,
+        "cvar95Pct": -11.765,
+        "compoundedReturnPct": -3.338,
+        "pnlUsd": 734.06,
+        "avgWinPct": 2.441,
+        "avgLossPct": -6.323
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 14,
+          "winRate": 50,
+          "avgReturnPct": -0.615,
+          "profitFactor": 0.767,
+          "sharpe": -0.424,
+          "maxDrawdownPct": 27.11,
+          "cvar95Pct": -9.022,
+          "compoundedReturnPct": -10.052,
+          "pnlUsd": -860.97,
+          "avgWinPct": 4.038,
+          "avgLossPct": -5.268
+        },
+        {
+          "trades": 26,
+          "winRate": 80.8,
+          "avgReturnPct": 0.308,
+          "profitFactor": 1.304,
+          "sharpe": 0.479,
+          "maxDrawdownPct": 9.89,
+          "cvar95Pct": -7.953,
+          "compoundedReturnPct": 6.835,
+          "pnlUsd": 800.53,
+          "avgWinPct": 1.636,
+          "avgLossPct": -5.272
+        },
+        {
+          "trades": 42,
+          "winRate": 76.2,
+          "avgReturnPct": 0.189,
+          "profitFactor": 1.105,
+          "sharpe": 0.21,
+          "maxDrawdownPct": 29.621,
+          "cvar95Pct": -13.305,
+          "compoundedReturnPct": 0.589,
+          "pnlUsd": 794.5,
+          "avgWinPct": 2.619,
+          "avgLossPct": -7.587
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 53,
+        "winRate": 79.2,
+        "avgReturnPct": 3.142,
+        "profitFactor": 3.498,
+        "sharpe": 3.511,
+        "maxDrawdownPct": 21.458,
+        "cvar95Pct": -12.419,
+        "compoundedReturnPct": 363.621,
+        "pnlUsd": 16654.03,
+        "avgWinPct": 5.553,
+        "avgLossPct": -6.061
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.000011,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.000011237797011620636,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "Japan",
+      "horizon": "short",
+      "side": "buy",
+      "model": "Japan_short_frozen",
+      "variant": "ma50_flat_or_up",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-18",
+            "to": "2024-02-22"
+          },
+          "validation": {
+            "from": "2024-02-23",
+            "to": "2024-08-22"
+          },
+          "embargo": {
+            "from": "2024-08-23",
+            "to": "2024-09-20",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-22",
+            "to": "2024-08-22"
+          },
+          "validation": {
+            "from": "2024-08-23",
+            "to": "2025-02-25"
+          },
+          "embargo": {
+            "from": "2025-02-26",
+            "to": "2025-03-25",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-22",
+            "to": "2025-02-25"
+          },
+          "validation": {
+            "from": "2025-02-26",
+            "to": "2025-08-26"
+          },
+          "embargo": {
+            "from": "2025-08-27",
+            "to": "2025-09-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-23",
+            "to": "2025-08-26"
+          },
+          "validation": {
+            "from": "2025-08-27",
+            "to": "2026-02-26"
+          },
+          "embargo": {
+            "from": "2026-02-27",
+            "to": "2026-03-26",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 146,
+        "winRate": 66.4,
+        "avgReturnPct": -0.801,
+        "profitFactor": 0.655,
+        "sharpe": -1.849,
+        "maxDrawdownPct": 87.576,
+        "cvar95Pct": -12.95,
+        "compoundedReturnPct": -74.933,
+        "pnlUsd": -11692.33,
+        "avgWinPct": 2.288,
+        "avgLossPct": -6.916
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 16,
+          "winRate": 62.5,
+          "avgReturnPct": 0.272,
+          "profitFactor": 1.198,
+          "sharpe": 0.278,
+          "maxDrawdownPct": 15.393,
+          "cvar95Pct": -9.022,
+          "compoundedReturnPct": 3.227,
+          "pnlUsd": 434.45,
+          "avgWinPct": 2.626,
+          "avgLossPct": -3.653
+        },
+        {
+          "trades": 26,
+          "winRate": 80.8,
+          "avgReturnPct": 0.364,
+          "profitFactor": 1.381,
+          "sharpe": 0.599,
+          "maxDrawdownPct": 8.419,
+          "cvar95Pct": -7.218,
+          "compoundedReturnPct": 8.578,
+          "pnlUsd": 947.58,
+          "avgWinPct": 1.636,
+          "avgLossPct": -4.978
+        },
+        {
+          "trades": 104,
+          "winRate": 63.5,
+          "avgReturnPct": -1.257,
+          "profitFactor": 0.552,
+          "sharpe": -2.222,
+          "maxDrawdownPct": 87.576,
+          "cvar95Pct": -13.669,
+          "compoundedReturnPct": -77.635,
+          "pnlUsd": -13074.35,
+          "avgWinPct": 2.445,
+          "avgLossPct": -7.686
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 79,
+        "winRate": 74.7,
+        "avgReturnPct": 2.005,
+        "profitFactor": 2.7,
+        "sharpe": 3.42,
+        "maxDrawdownPct": 33.17,
+        "cvar95Pct": -9.524,
+        "compoundedReturnPct": 332.663,
+        "pnlUsd": 15836.24,
+        "avgWinPct": 4.263,
+        "avgLossPct": -4.657
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.000006,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.000006483538662587564,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "Japan",
+      "horizon": "short",
+      "side": "buy",
+      "model": "Japan_short_frozen",
+      "variant": "vol_skip_top20_and_ma50_flat_or_up",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-18",
+            "to": "2024-02-22"
+          },
+          "validation": {
+            "from": "2024-02-23",
+            "to": "2024-08-22"
+          },
+          "embargo": {
+            "from": "2024-08-23",
+            "to": "2024-09-20",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-22",
+            "to": "2024-08-22"
+          },
+          "validation": {
+            "from": "2024-08-23",
+            "to": "2025-02-25"
+          },
+          "embargo": {
+            "from": "2025-02-26",
+            "to": "2025-03-25",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-22",
+            "to": "2025-02-25"
+          },
+          "validation": {
+            "from": "2025-02-26",
+            "to": "2025-08-26"
+          },
+          "embargo": {
+            "from": "2025-08-27",
+            "to": "2025-09-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-23",
+            "to": "2025-08-26"
+          },
+          "validation": {
+            "from": "2025-08-27",
+            "to": "2026-02-26"
+          },
+          "embargo": {
+            "from": "2026-02-27",
+            "to": "2026-03-26",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 92,
+        "winRate": 73.9,
+        "avgReturnPct": 0.102,
+        "profitFactor": 1.063,
+        "sharpe": 0.201,
+        "maxDrawdownPct": 28.267,
+        "cvar95Pct": -12.43,
+        "compoundedReturnPct": -1.892,
+        "pnlUsd": 935.33,
+        "avgWinPct": 2.31,
+        "avgLossPct": -6.156
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 11,
+          "winRate": 45.5,
+          "avgReturnPct": -0.396,
+          "profitFactor": 0.801,
+          "sharpe": -0.289,
+          "maxDrawdownPct": 15.393,
+          "cvar95Pct": -9.022,
+          "compoundedReturnPct": -5.27,
+          "pnlUsd": -435.32,
+          "avgWinPct": 3.513,
+          "avgLossPct": -3.653
+        },
+        {
+          "trades": 26,
+          "winRate": 80.8,
+          "avgReturnPct": 0.308,
+          "profitFactor": 1.304,
+          "sharpe": 0.479,
+          "maxDrawdownPct": 9.89,
+          "cvar95Pct": -7.953,
+          "compoundedReturnPct": 6.835,
+          "pnlUsd": 800.53,
+          "avgWinPct": 1.636,
+          "avgLossPct": -5.272
+        },
+        {
+          "trades": 55,
+          "winRate": 76.4,
+          "avgReturnPct": 0.104,
+          "profitFactor": 1.057,
+          "sharpe": 0.138,
+          "maxDrawdownPct": 28.267,
+          "cvar95Pct": -14.413,
+          "compoundedReturnPct": -3.059,
+          "pnlUsd": 570.11,
+          "avgWinPct": 2.504,
+          "avgLossPct": -7.652
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 49,
+        "winRate": 77.6,
+        "avgReturnPct": 2.769,
+        "profitFactor": 3.308,
+        "sharpe": 3.27,
+        "maxDrawdownPct": 16.875,
+        "cvar95Pct": -10.726,
+        "compoundedReturnPct": 251.337,
+        "pnlUsd": 13567.95,
+        "avgWinPct": 5.118,
+        "avgLossPct": -5.345
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.000071,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.00007098534259952771,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "Japan",
+      "horizon": "short",
+      "side": "buy",
+      "model": "Japan_short_frozen",
+      "variant": "vol_skip_top30_and_ma50_flat_or_up",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-02-18",
+            "to": "2024-02-22"
+          },
+          "validation": {
+            "from": "2024-02-23",
+            "to": "2024-08-22"
+          },
+          "embargo": {
+            "from": "2024-08-23",
+            "to": "2024-09-20",
+            "bars": 20
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-08-22",
+            "to": "2024-08-22"
+          },
+          "validation": {
+            "from": "2024-08-23",
+            "to": "2025-02-25"
+          },
+          "embargo": {
+            "from": "2025-02-26",
+            "to": "2025-03-25",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2023-02-22",
+            "to": "2025-02-25"
+          },
+          "validation": {
+            "from": "2025-02-26",
+            "to": "2025-08-26"
+          },
+          "embargo": {
+            "from": "2025-08-27",
+            "to": "2025-09-24",
+            "bars": 20
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-08-23",
+            "to": "2025-08-26"
+          },
+          "validation": {
+            "from": "2025-08-27",
+            "to": "2026-02-26"
+          },
+          "embargo": {
+            "from": "2026-02-27",
+            "to": "2026-03-26",
+            "bars": 20
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 74,
+        "winRate": 74.3,
+        "avgReturnPct": 0.089,
+        "profitFactor": 1.055,
+        "sharpe": 0.153,
+        "maxDrawdownPct": 29.621,
+        "cvar95Pct": -12.598,
+        "compoundedReturnPct": -2.973,
+        "pnlUsd": 657.49,
+        "avgWinPct": 2.296,
+        "avgLossPct": -6.301
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 6,
+          "winRate": 33.3,
+          "avgReturnPct": -1.563,
+          "profitFactor": 0.464,
+          "sharpe": -0.701,
+          "maxDrawdownPct": 15.412,
+          "cvar95Pct": -9.022,
+          "compoundedReturnPct": -9.712,
+          "pnlUsd": -937.54,
+          "avgWinPct": 4.051,
+          "avgLossPct": -4.369
+        },
+        {
+          "trades": 26,
+          "winRate": 80.8,
+          "avgReturnPct": 0.308,
+          "profitFactor": 1.304,
+          "sharpe": 0.479,
+          "maxDrawdownPct": 9.89,
+          "cvar95Pct": -7.953,
+          "compoundedReturnPct": 6.835,
+          "pnlUsd": 800.53,
+          "avgWinPct": 1.636,
+          "avgLossPct": -5.272
+        },
+        {
+          "trades": 42,
+          "winRate": 76.2,
+          "avgReturnPct": 0.189,
+          "profitFactor": 1.105,
+          "sharpe": 0.21,
+          "maxDrawdownPct": 29.621,
+          "cvar95Pct": -13.305,
+          "compoundedReturnPct": 0.589,
+          "pnlUsd": 794.5,
+          "avgWinPct": 2.619,
+          "avgLossPct": -7.587
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 46,
+        "winRate": 78.3,
+        "avgReturnPct": 2.863,
+        "profitFactor": 3.367,
+        "sharpe": 3.215,
+        "maxDrawdownPct": 16.875,
+        "cvar95Pct": -10.726,
+        "compoundedReturnPct": 238.336,
+        "pnlUsd": 13169.42,
+        "avgWinPct": 5.204,
+        "avgLossPct": -5.564
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.000078,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.0000782086042647734,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "model": "Japan_medium_frozen",
+      "variant": "baseline",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-17",
+            "to": "2023-12-19"
+          },
+          "validation": {
+            "from": "2023-12-20",
+            "to": "2024-06-21"
+          },
+          "embargo": {
+            "from": "2024-06-24",
+            "to": "2024-09-20",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-21",
+            "to": "2024-06-21"
+          },
+          "validation": {
+            "from": "2024-06-24",
+            "to": "2024-12-19"
+          },
+          "embargo": {
+            "from": "2024-12-20",
+            "to": "2025-03-25",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-19",
+            "to": "2024-12-19"
+          },
+          "validation": {
+            "from": "2024-12-20",
+            "to": "2025-06-25"
+          },
+          "embargo": {
+            "from": "2025-06-26",
+            "to": "2025-09-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-22",
+            "to": "2025-06-25"
+          },
+          "validation": {
+            "from": "2025-06-26",
+            "to": "2025-12-23"
+          },
+          "embargo": {
+            "from": "2025-12-24",
+            "to": "2026-03-26",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 155,
+        "winRate": 74.8,
+        "avgReturnPct": -0.416,
+        "profitFactor": 0.809,
+        "sharpe": -1,
+        "maxDrawdownPct": 83.525,
+        "cvar95Pct": -12.95,
+        "compoundedReturnPct": -57.946,
+        "pnlUsd": -6451.44,
+        "avgWinPct": 2.356,
+        "avgLossPct": -8.66
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 23,
+          "winRate": 73.9,
+          "avgReturnPct": 0.016,
+          "profitFactor": 1.008,
+          "sharpe": 0.016,
+          "maxDrawdownPct": 18.311,
+          "cvar95Pct": -8.611,
+          "compoundedReturnPct": -1.993,
+          "pnlUsd": 35.94,
+          "avgWinPct": 2.619,
+          "avgLossPct": -7.36
+        },
+        {
+          "trades": 26,
+          "winRate": 88.5,
+          "avgReturnPct": 0.766,
+          "profitFactor": 2.075,
+          "sharpe": 1.47,
+          "maxDrawdownPct": 7.549,
+          "cvar95Pct": -6.963,
+          "compoundedReturnPct": 20.86,
+          "pnlUsd": 1992.86,
+          "avgWinPct": 1.672,
+          "avgLossPct": -6.178
+        },
+        {
+          "trades": 106,
+          "winRate": 71.7,
+          "avgReturnPct": -0.8,
+          "profitFactor": 0.692,
+          "sharpe": -1.438,
+          "maxDrawdownPct": 83.525,
+          "cvar95Pct": -13.669,
+          "compoundedReturnPct": -64.496,
+          "pnlUsd": -8480.25,
+          "avgWinPct": 2.503,
+          "avgLossPct": -9.169
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 96,
+        "winRate": 83.3,
+        "avgReturnPct": 2.187,
+        "profitFactor": 2.774,
+        "sharpe": 4.218,
+        "maxDrawdownPct": 32.025,
+        "cvar95Pct": -12.404,
+        "compoundedReturnPct": 604.941,
+        "pnlUsd": 20992.8,
+        "avgWinPct": 4.104,
+        "avgLossPct": -7.398
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 1.0372054571978046e-11,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "model": "Japan_medium_frozen",
+      "variant": "vol_skip_top20",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-17",
+            "to": "2023-12-19"
+          },
+          "validation": {
+            "from": "2023-12-20",
+            "to": "2024-06-21"
+          },
+          "embargo": {
+            "from": "2024-06-24",
+            "to": "2024-09-20",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-21",
+            "to": "2024-06-21"
+          },
+          "validation": {
+            "from": "2024-06-24",
+            "to": "2024-12-19"
+          },
+          "embargo": {
+            "from": "2024-12-20",
+            "to": "2025-03-25",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-19",
+            "to": "2024-12-19"
+          },
+          "validation": {
+            "from": "2024-12-20",
+            "to": "2025-06-25"
+          },
+          "embargo": {
+            "from": "2025-06-26",
+            "to": "2025-09-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-22",
+            "to": "2025-06-25"
+          },
+          "validation": {
+            "from": "2025-06-26",
+            "to": "2025-12-23"
+          },
+          "embargo": {
+            "from": "2025-12-24",
+            "to": "2026-03-26",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 103,
+        "winRate": 79.6,
+        "avgReturnPct": 0.09,
+        "profitFactor": 1.058,
+        "sharpe": 0.204,
+        "maxDrawdownPct": 32.264,
+        "cvar95Pct": -11.61,
+        "compoundedReturnPct": -1.658,
+        "pnlUsd": 930.21,
+        "avgWinPct": 2.085,
+        "avgLossPct": -7.697
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 18,
+          "winRate": 66.7,
+          "avgReturnPct": -0.552,
+          "profitFactor": 0.775,
+          "sharpe": -0.465,
+          "maxDrawdownPct": 19.534,
+          "cvar95Pct": -9.022,
+          "compoundedReturnPct": -11.492,
+          "pnlUsd": -994.48,
+          "avgWinPct": 2.851,
+          "avgLossPct": -7.36
+        },
+        {
+          "trades": 26,
+          "winRate": 88.5,
+          "avgReturnPct": 0.926,
+          "profitFactor": 2.672,
+          "sharpe": 2.039,
+          "maxDrawdownPct": 7.549,
+          "cvar95Pct": -6.078,
+          "compoundedReturnPct": 26.205,
+          "pnlUsd": 2406.97,
+          "avgWinPct": 1.672,
+          "avgLossPct": -4.797
+        },
+        {
+          "trades": 59,
+          "winRate": 79.7,
+          "avgReturnPct": -0.082,
+          "profitFactor": 0.953,
+          "sharpe": -0.125,
+          "maxDrawdownPct": 32.264,
+          "cvar95Pct": -14.413,
+          "compoundedReturnPct": -11.96,
+          "pnlUsd": -482.28,
+          "avgWinPct": 2.091,
+          "avgLossPct": -8.591
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 56,
+        "winRate": 82.1,
+        "avgReturnPct": 2.253,
+        "profitFactor": 2.667,
+        "sharpe": 3.05,
+        "maxDrawdownPct": 17.468,
+        "cvar95Pct": -13.796,
+        "compoundedReturnPct": 219.764,
+        "pnlUsd": 12616.44,
+        "avgWinPct": 4.388,
+        "avgLossPct": -7.569
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.000001,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 6.227257073054826e-7,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "model": "Japan_medium_frozen",
+      "variant": "vol_skip_top30",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-17",
+            "to": "2023-12-19"
+          },
+          "validation": {
+            "from": "2023-12-20",
+            "to": "2024-06-21"
+          },
+          "embargo": {
+            "from": "2024-06-24",
+            "to": "2024-09-20",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-21",
+            "to": "2024-06-21"
+          },
+          "validation": {
+            "from": "2024-06-24",
+            "to": "2024-12-19"
+          },
+          "embargo": {
+            "from": "2024-12-20",
+            "to": "2025-03-25",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-19",
+            "to": "2024-12-19"
+          },
+          "validation": {
+            "from": "2024-12-20",
+            "to": "2025-06-25"
+          },
+          "embargo": {
+            "from": "2025-06-26",
+            "to": "2025-09-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-22",
+            "to": "2025-06-25"
+          },
+          "validation": {
+            "from": "2025-06-26",
+            "to": "2025-12-23"
+          },
+          "embargo": {
+            "from": "2025-12-24",
+            "to": "2026-03-26",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 82,
+        "winRate": 79.3,
+        "avgReturnPct": 0.142,
+        "profitFactor": 1.092,
+        "sharpe": 0.284,
+        "maxDrawdownPct": 31.593,
+        "cvar95Pct": -11.427,
+        "compoundedReturnPct": 2.761,
+        "pnlUsd": 1166.07,
+        "avgWinPct": 2.127,
+        "avgLossPct": -7.447
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 14,
+          "winRate": 64.3,
+          "avgReturnPct": -0.613,
+          "profitFactor": 0.767,
+          "sharpe": -0.433,
+          "maxDrawdownPct": 23.184,
+          "cvar95Pct": -9.022,
+          "compoundedReturnPct": -9.969,
+          "pnlUsd": -858.25,
+          "avgWinPct": 3.146,
+          "avgLossPct": -7.379
+        },
+        {
+          "trades": 26,
+          "winRate": 88.5,
+          "avgReturnPct": 0.926,
+          "profitFactor": 2.672,
+          "sharpe": 2.039,
+          "maxDrawdownPct": 7.549,
+          "cvar95Pct": -6.078,
+          "compoundedReturnPct": 26.205,
+          "pnlUsd": 2406.97,
+          "avgWinPct": 1.672,
+          "avgLossPct": -4.797
+        },
+        {
+          "trades": 42,
+          "winRate": 78.6,
+          "avgReturnPct": -0.091,
+          "profitFactor": 0.949,
+          "sharpe": -0.112,
+          "maxDrawdownPct": 31.593,
+          "cvar95Pct": -13.305,
+          "compoundedReturnPct": -9.56,
+          "pnlUsd": -382.64,
+          "avgWinPct": 2.166,
+          "avgLossPct": -8.368
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 53,
+        "winRate": 83,
+        "avgReturnPct": 2.341,
+        "profitFactor": 2.726,
+        "sharpe": 3.034,
+        "maxDrawdownPct": 17.468,
+        "cvar95Pct": -13.796,
+        "compoundedReturnPct": 213.727,
+        "pnlUsd": 12409.71,
+        "avgWinPct": 4.455,
+        "avgLossPct": -7.991
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.000001,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 6.104255088068551e-7,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "model": "Japan_medium_frozen",
+      "variant": "ma50_flat_or_up",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-17",
+            "to": "2023-12-19"
+          },
+          "validation": {
+            "from": "2023-12-20",
+            "to": "2024-06-21"
+          },
+          "embargo": {
+            "from": "2024-06-24",
+            "to": "2024-09-20",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-21",
+            "to": "2024-06-21"
+          },
+          "validation": {
+            "from": "2024-06-24",
+            "to": "2024-12-19"
+          },
+          "embargo": {
+            "from": "2024-12-20",
+            "to": "2025-03-25",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-19",
+            "to": "2024-12-19"
+          },
+          "validation": {
+            "from": "2024-12-20",
+            "to": "2025-06-25"
+          },
+          "embargo": {
+            "from": "2025-06-26",
+            "to": "2025-09-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-22",
+            "to": "2025-06-25"
+          },
+          "validation": {
+            "from": "2025-06-26",
+            "to": "2025-12-23"
+          },
+          "embargo": {
+            "from": "2025-12-24",
+            "to": "2026-03-26",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 144,
+        "winRate": 74.3,
+        "avgReturnPct": -0.487,
+        "profitFactor": 0.783,
+        "sharpe": -1.11,
+        "maxDrawdownPct": 84.347,
+        "cvar95Pct": -12.95,
+        "compoundedReturnPct": -59.887,
+        "pnlUsd": -7011.62,
+        "avgWinPct": 2.361,
+        "avgLossPct": -8.724
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 16,
+          "winRate": 75,
+          "avgReturnPct": -0.006,
+          "profitFactor": 0.997,
+          "sharpe": -0.005,
+          "maxDrawdownPct": 12.182,
+          "cvar95Pct": -9.022,
+          "compoundedReturnPct": -1.612,
+          "pnlUsd": -9.15,
+          "avgWinPct": 2.423,
+          "avgLossPct": -7.293
+        },
+        {
+          "trades": 26,
+          "winRate": 88.5,
+          "avgReturnPct": 0.766,
+          "profitFactor": 2.075,
+          "sharpe": 1.47,
+          "maxDrawdownPct": 7.549,
+          "cvar95Pct": -6.963,
+          "compoundedReturnPct": 20.86,
+          "pnlUsd": 1992.86,
+          "avgWinPct": 1.672,
+          "avgLossPct": -6.178
+        },
+        {
+          "trades": 102,
+          "winRate": 70.6,
+          "avgReturnPct": -0.882,
+          "profitFactor": 0.673,
+          "sharpe": -1.529,
+          "maxDrawdownPct": 84.347,
+          "cvar95Pct": -13.669,
+          "compoundedReturnPct": -66.266,
+          "pnlUsd": -8995.33,
+          "avgWinPct": 2.571,
+          "avgLossPct": -9.169
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 79,
+        "winRate": 82.3,
+        "avgReturnPct": 1.967,
+        "profitFactor": 2.517,
+        "sharpe": 3.441,
+        "maxDrawdownPct": 30.001,
+        "cvar95Pct": -12.748,
+        "compoundedReturnPct": 320.746,
+        "pnlUsd": 15542.88,
+        "avgWinPct": 3.967,
+        "avgLossPct": -7.317
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 2.5974706312921763e-9,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "model": "Japan_medium_frozen",
+      "variant": "vol_skip_top20_and_ma50_flat_or_up",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-17",
+            "to": "2023-12-19"
+          },
+          "validation": {
+            "from": "2023-12-20",
+            "to": "2024-06-21"
+          },
+          "embargo": {
+            "from": "2024-06-24",
+            "to": "2024-09-20",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-21",
+            "to": "2024-06-21"
+          },
+          "validation": {
+            "from": "2024-06-24",
+            "to": "2024-12-19"
+          },
+          "embargo": {
+            "from": "2024-12-20",
+            "to": "2025-03-25",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-19",
+            "to": "2024-12-19"
+          },
+          "validation": {
+            "from": "2024-12-20",
+            "to": "2025-06-25"
+          },
+          "embargo": {
+            "from": "2025-06-26",
+            "to": "2025-09-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-22",
+            "to": "2025-06-25"
+          },
+          "validation": {
+            "from": "2025-06-26",
+            "to": "2025-12-23"
+          },
+          "embargo": {
+            "from": "2025-12-24",
+            "to": "2026-03-26",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 92,
+        "winRate": 79.3,
+        "avgReturnPct": 0.04,
+        "profitFactor": 1.025,
+        "sharpe": 0.085,
+        "maxDrawdownPct": 33.745,
+        "cvar95Pct": -12.245,
+        "compoundedReturnPct": -6.197,
+        "pnlUsd": 370.03,
+        "avgWinPct": 2.06,
+        "avgLossPct": -7.719
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 11,
+          "winRate": 63.6,
+          "avgReturnPct": -0.945,
+          "profitFactor": 0.644,
+          "sharpe": -0.61,
+          "maxDrawdownPct": 13.498,
+          "cvar95Pct": -9.022,
+          "compoundedReturnPct": -11.148,
+          "pnlUsd": -1039.57,
+          "avgWinPct": 2.682,
+          "avgLossPct": -7.293
+        },
+        {
+          "trades": 26,
+          "winRate": 88.5,
+          "avgReturnPct": 0.926,
+          "profitFactor": 2.672,
+          "sharpe": 2.039,
+          "maxDrawdownPct": 7.549,
+          "cvar95Pct": -6.078,
+          "compoundedReturnPct": 26.205,
+          "pnlUsd": 2406.97,
+          "avgWinPct": 1.672,
+          "avgLossPct": -4.797
+        },
+        {
+          "trades": 55,
+          "winRate": 78.2,
+          "avgReturnPct": -0.181,
+          "profitFactor": 0.903,
+          "sharpe": -0.259,
+          "maxDrawdownPct": 33.745,
+          "cvar95Pct": -14.413,
+          "compoundedReturnPct": -16.35,
+          "pnlUsd": -997.36,
+          "avgWinPct": 2.166,
+          "avgLossPct": -8.591
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 49,
+        "winRate": 81.6,
+        "avgReturnPct": 2.104,
+        "profitFactor": 2.594,
+        "sharpe": 2.77,
+        "maxDrawdownPct": 16.875,
+        "cvar95Pct": -13.256,
+        "compoundedReturnPct": 158.811,
+        "pnlUsd": 10309.33,
+        "avgWinPct": 4.194,
+        "avgLossPct": -7.185
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.000005,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.0000046317732049772076,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    },
+    {
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "model": "Japan_medium_frozen",
+      "variant": "vol_skip_top30_and_ma50_flat_or_up",
+      "folds": [
+        {
+          "fold": 1,
+          "finalHoldout": false,
+          "train": {
+            "from": "2021-12-17",
+            "to": "2023-12-19"
+          },
+          "validation": {
+            "from": "2023-12-20",
+            "to": "2024-06-21"
+          },
+          "embargo": {
+            "from": "2024-06-24",
+            "to": "2024-09-20",
+            "bars": 63
+          },
+          "test": {
+            "from": "2024-09-23",
+            "to": "2025-03-25"
+          }
+        },
+        {
+          "fold": 2,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-06-21",
+            "to": "2024-06-21"
+          },
+          "validation": {
+            "from": "2024-06-24",
+            "to": "2024-12-19"
+          },
+          "embargo": {
+            "from": "2024-12-20",
+            "to": "2025-03-25",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-03-26",
+            "to": "2025-09-24"
+          }
+        },
+        {
+          "fold": 3,
+          "finalHoldout": false,
+          "train": {
+            "from": "2022-12-19",
+            "to": "2024-12-19"
+          },
+          "validation": {
+            "from": "2024-12-20",
+            "to": "2025-06-25"
+          },
+          "embargo": {
+            "from": "2025-06-26",
+            "to": "2025-09-24",
+            "bars": 63
+          },
+          "test": {
+            "from": "2025-09-25",
+            "to": "2026-03-26"
+          }
+        },
+        {
+          "fold": 4,
+          "finalHoldout": true,
+          "train": {
+            "from": "2023-06-22",
+            "to": "2025-06-25"
+          },
+          "validation": {
+            "from": "2025-06-26",
+            "to": "2025-12-23"
+          },
+          "embargo": {
+            "from": "2025-12-24",
+            "to": "2026-03-26",
+            "bars": 63
+          },
+          "test": {
+            "from": "2026-03-27",
+            "to": "2026-09-25"
+          }
+        }
+      ],
+      "development": {
+        "trades": 74,
+        "winRate": 81.1,
+        "avgReturnPct": 0.244,
+        "profitFactor": 1.172,
+        "sharpe": 0.469,
+        "maxDrawdownPct": 31.593,
+        "cvar95Pct": -12.234,
+        "compoundedReturnPct": 10.714,
+        "pnlUsd": 1803.24,
+        "avgWinPct": 2.047,
+        "avgLossPct": -7.485
+      },
+      "developmentFoldTests": [
+        {
+          "trades": 6,
+          "winRate": 66.7,
+          "avgReturnPct": -0.368,
+          "profitFactor": 0.853,
+          "sharpe": -0.159,
+          "maxDrawdownPct": 9.5,
+          "cvar95Pct": -9.022,
+          "compoundedReturnPct": -3.001,
+          "pnlUsd": -221.09,
+          "avgWinPct": 3.219,
+          "avgLossPct": -7.544
+        },
+        {
+          "trades": 26,
+          "winRate": 88.5,
+          "avgReturnPct": 0.926,
+          "profitFactor": 2.672,
+          "sharpe": 2.039,
+          "maxDrawdownPct": 7.549,
+          "cvar95Pct": -6.078,
+          "compoundedReturnPct": 26.205,
+          "pnlUsd": 2406.97,
+          "avgWinPct": 1.672,
+          "avgLossPct": -4.797
+        },
+        {
+          "trades": 42,
+          "winRate": 78.6,
+          "avgReturnPct": -0.091,
+          "profitFactor": 0.949,
+          "sharpe": -0.112,
+          "maxDrawdownPct": 31.593,
+          "cvar95Pct": -13.305,
+          "compoundedReturnPct": -9.56,
+          "pnlUsd": -382.64,
+          "avgWinPct": 2.166,
+          "avgLossPct": -8.368
+        }
+      ],
+      "stableDevelopmentFolds": 1,
+      "holdout": {
+        "trades": 46,
+        "winRate": 82.6,
+        "avgReturnPct": 2.196,
+        "profitFactor": 2.659,
+        "sharpe": 2.751,
+        "maxDrawdownPct": 16.875,
+        "cvar95Pct": -13.256,
+        "compoundedReturnPct": 153.925,
+        "pnlUsd": 10102.61,
+        "avgWinPct": 4.261,
+        "avgLossPct": -7.611
+      },
+      "mtcPass": true,
+      "holdoutWinRatePValue": 0.000005,
+      "sampleConfidence": {
+        "flag": "FAIL",
+        "pValue": 0.000004623849960694316,
+        "pass": false,
+        "highWinLowPf": false,
+        "promotable": false,
+        "rejectionReason": "promotion thresholds or sample-confidence safeguard not met"
+      },
+      "status": "REJECTED_OR_UNSTABLE"
+    }
+  ]
+}

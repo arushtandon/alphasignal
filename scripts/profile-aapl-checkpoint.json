@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "symbols": {
+    "US|medium|AAPL": {
+      "market": "US",
+      "horizon": "medium",
+      "symbol": "AAPL",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:09:47.525Z"
+    },
+    "US|long|AAPL": {
+      "market": "US",
+      "horizon": "long",
+      "symbol": "AAPL",
+      "stage1": "complete",
+      "completedAt": "2026-09-30T06:10:32.220Z"
+    }
+  },
+  "timings": {
+    "fx": 13.1,
+    "loadPricesAndStatements": 285.4,
+    "dataLoading": 285.5,
+    "stage2ExitGrid": 0,
+    "stage1BDE": 82165.8,
+    "stage1SignalEntryDecision": 82026.2,
+    "stage1ExitSimulation": 5.4,
+    "stage1Other": 134.2,
+    "aggregation": 0.2,
+    "reporting": 0.8,
+    "total": 82452.3
+  },
+  "completedAt": "2026-09-30T06:10:32.222Z"
+}

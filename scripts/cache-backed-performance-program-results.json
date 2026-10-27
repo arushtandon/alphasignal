@@ -1,0 +1,1912 @@
+{
+  "generatedAt": "2026-09-30T07:11:44.838Z",
+  "study": "cache-backed-performance-program-v2",
+  "mode": "BACKTEST_ONLY",
+  "liveBehaviorChanged": false,
+  "preregistration": "docs/performance-program-preregistration.md",
+  "methodology": {
+    "statementSource": "data/research/fmp cache only",
+    "priceHarness": "server.fetchOHLCV + server.backtestSignal",
+    "provider": "existing fundamentalsAt decision-date injection",
+    "folds": "4 x date-aligned 504/126/126",
+    "embargoBars": {
+      "medium": 63,
+      "long": 180
+    },
+    "primary": "PIT Piotroski + PIT Altman Z with decision-date USD FX normalization and LSE GBp-to-GBP scaling",
+    "secondary": "Piotroski-only NON_PARITY; never promotion eligible",
+    "preliminarySample": false,
+    "sampledPerMarket": "FULL_CACHED_UNIVERSE",
+    "notionalUsd": 10000,
+    "exitGrid": "Existing live hybrid simulator with research-only TP1 R, stop-cap, time-cap, and TP1-only injection; no exit logic is duplicated.",
+    "bh": "Benjamini-Hochberg over every executed cell/variant"
+  },
+  "fx": {
+    "GBP": {
+      "source": "worker-owned cache/retry context"
+    },
+    "EUR": {
+      "source": "worker-owned cache/retry context"
+    },
+    "HKD": {
+      "source": "worker-owned cache/retry context"
+    },
+    "JPY": {
+      "source": "worker-owned cache/retry context"
+    }
+  },
+  "universeCoverage": {
+    "US": {
+      "requested": 2,
+      "loaded": 0
+    },
+    "Japan": {
+      "requested": 1,
+      "loaded": 0
+    },
+    "Hong Kong": {
+      "requested": 0,
+      "loaded": 0
+    },
+    "UK": {
+      "requested": 0,
+      "loaded": 0
+    },
+    "Germany": {
+      "requested": 0,
+      "loaded": 0
+    },
+    "France": {
+      "requested": 0,
+      "loaded": 0
+    }
+  },
+  "execution": {
+    "checkpoint": "scripts\\cache-backed-performance-program-checkpoint.json",
+    "workerSlots": 2,
+    "cpuReserve": 2,
+    "priority": "below-normal",
+    "priceRetry": {
+      "attempts": 5,
+      "baseMs": 500
+    },
+    "phaseTimingsMs": {
+      "parentTaskPreparation": 0.4,
+      "dataLoading": 0.4,
+      "stage2ExitGrid": 0,
+      "stage1BDE": 62219.6,
+      "stage1SignalEntryDecision": 0,
+      "stage1ExitSimulation": 0,
+      "stage1Other": 62219.6,
+      "aggregation": 0.1
+    }
+  },
+  "cells": [
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "US",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "US",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "US",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "US",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "Japan",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "Japan",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "Hong Kong",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "Hong Kong",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "UK",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "UK",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "UK",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "Germany",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "Germany",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "France",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "France",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "France",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "France",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "France",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "France",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "France",
+      "horizon": "medium",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "France",
+      "horizon": "medium",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "France",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "B",
+      "market": "France",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "France",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "C",
+      "market": "France",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "France",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "D",
+      "market": "France",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "France",
+      "horizon": "long",
+      "side": "buy",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    },
+    {
+      "part": "E",
+      "market": "France",
+      "horizon": "long",
+      "side": "sell",
+      "tested": false,
+      "status": "BLOCKED_INSUFFICIENT_PRICE_HISTORY_OR_UNIVERSE",
+      "reason": "No date-aligned 504/126/126 folds or no cached-universe symbol with sufficient daily history.",
+      "coverage": {
+        "decisions": 0,
+        "piotroskiUsable": 0,
+        "fullGateUsable": 0,
+        "piotroskiPct": 0,
+        "fullGatePct": 0,
+        "unavailable": 0,
+        "missingFxOrCurrencyParity": 0
+      },
+      "bhStatus": "NOT_EVALUABLE_NOT_TESTED"
+    }
+  ],
+  "bestConfigSummary": null,
+  "rankedForwardCandidates": []
+}
