@@ -54,11 +54,37 @@ Write-Host "  cd $PSScriptRoot"
 Write-Host "  Get-Content .\logs\bridge-$(Get-Date -Format 'yyyy-MM-dd').log -Tail 50 -Wait"
 Write-Host ""
 
+# Disk-integrity check at every start: record the git commit the bridge runs
+# from, and alert when ibkr-bridge/ on disk differs from HEAD (an editor or
+# sync tool writing back a stale copy would otherwise run unnoticed).
+$repoRoot = Split-Path $PSScriptRoot -Parent
+function Get-BridgeTreeState {
+  $state = @{ commit = "unknown"; dirty = ""; error = $null }
+  try {
+    $state.commit = (& git -C $repoRoot rev-parse --short HEAD 2>$null | Select-Object -First 1)
+    if (-not $state.commit) { $state.commit = "unknown" }
+    $diff = & git -C $repoRoot diff HEAD --stat -- ibkr-bridge/ 2>$null
+    $state.dirty = (($diff | Where-Object { $_ -and $_.Trim() }) -join "; ")
+  } catch { $state.error = $_.Exception.Message }
+  return $state
+}
+function Send-DirtyTreeAlert([string]$text) {
+  if (-not ($env:TELEGRAM_BOT_TOKEN -and $env:TELEGRAM_CHAT_ID)) { return }
+  try {
+    & $node -e "require(process.argv[1]).sendTelegramAlert(process.argv[2]).catch(e => { console.error(e.message); process.exit(1); })" -- "$PSScriptRoot\telegram.js" $text 2>&1 | Out-Null
+  } catch {}
+}
+
 while ($true) {
   $log = "$PSScriptRoot\logs\bridge-$(Get-Date -Format 'yyyy-MM-dd').log"
   $stamp = Get-Date -Format o
-  try { Add-Content -Path $log -Value "$stamp [run-forever] starting bridge" -ErrorAction SilentlyContinue } catch {}
-  Write-Host "$stamp starting bridge -> $log"
+  $tree = Get-BridgeTreeState
+  $dirtyFlag = if ($tree.dirty) { "DIRTY" } else { "clean" }
+  try { Add-Content -Path $log -Value "$stamp [run-forever] starting bridge commit=$($tree.commit) ibkr-bridge/=$dirtyFlag $($tree.dirty)" -ErrorAction SilentlyContinue } catch {}
+  Write-Host "$stamp starting bridge -> $log (commit $($tree.commit), ibkr-bridge/ $dirtyFlag)"
+  if ($tree.dirty) {
+    Send-DirtyTreeAlert "BRIDGE TREE DIRTY at start (commit $($tree.commit)): ibkr-bridge/ differs from HEAD - $($tree.dirty)"
+  }
   # Run in THIS process (not Start-Process). Start-Process was reporting exit
   # code 0 within ~1s while marks still came from a leftover node, or killing
   # the supervisor loop while a zombie held clientId 17.
