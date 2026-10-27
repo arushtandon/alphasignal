@@ -20,7 +20,7 @@ to a row with `setupId`.
 | No IB contract / unresolved future | no — cannot send | kept |
 | Already holding that commodity future | no — stops a second lot on the same contract | kept |
 | **Spread cap 50 bps (`spread-limit`)** | **no** | **removed** (ALAB 2026-10-25, entry 257.16 / stop 207.27, was rejected here before the ticket) |
-| Drawdown throttle and capital-stage block | no | **removed** |
+| Drawdown throttle and capital-stage block | no | **removed on paper** — see the note below |
 | $30k / $10k ticket, one-lot floor | the ticket is the tested size | kept |
 | Setup order shape (partial needs two lots) | yes | kept |
 | Per-setup position cap and the 50-slot / 2× / 15% pool | no — the live capital plan, not a signal filter | kept |
@@ -31,3 +31,9 @@ to a row with `setupId`.
 
 `setupBook: true` on `calculateRiskSize` is what skips spread-limit, the
 drawdown throttle and the capital-stage block. The ticket branch is unchanged.
+
+The drawdown throttle (half size at 5% drawdown, quarter at 7.5%, flat at
+10%) was removed for setup-book rows on the paper account so the live order
+matches the backtest, which has no such throttle. It is not a decision about
+a live-money account. Turn it back on, or replace it, explicitly before any
+live-money use of these rows. The capital-stage block is in the same bucket.

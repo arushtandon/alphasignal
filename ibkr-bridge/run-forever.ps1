@@ -96,6 +96,38 @@ function Stop-StaleBridgeNodes {
 }
 
 $clientIdFails = 0
+$gatewayDownSince = $null
+$gatewayAlertedAt = $null
+function Test-GatewayListening {
+  $port = 0
+  [void][int]::TryParse($env:IBKR_PORT, [ref]$port)
+  if ($port -le 0) { $port = 4002 }
+  $client = $null
+  try {
+    $client = New-Object System.Net.Sockets.TcpClient
+    $wait = $client.BeginConnect('127.0.0.1', $port, $null, $null)
+    $ok = $wait.AsyncWaitHandle.WaitOne(1500, $false) -and $client.Connected
+    return $ok
+  } catch { return $false }
+  finally { if ($client) { $client.Close() } }
+}
+function Update-GatewayDownAlert {
+  if (Test-GatewayListening) {
+    if ($script:gatewayAlertedAt) {
+      Send-BridgeAlert "GATEWAY BACK: 127.0.0.1:$($env:IBKR_PORT) is accepting again."
+    }
+    $script:gatewayDownSince = $null
+    $script:gatewayAlertedAt = $null
+    return
+  }
+  if (-not $script:gatewayDownSince) { $script:gatewayDownSince = Get-Date }
+  $downMin = [int]((Get-Date) - $script:gatewayDownSince).TotalMinutes
+  if ($downMin -lt 10) { return }
+  $sinceAlert = if ($script:gatewayAlertedAt) { ((Get-Date) - $script:gatewayAlertedAt).TotalMinutes } else { 999 }
+  if ($sinceAlert -lt 30) { return }
+  $script:gatewayAlertedAt = Get-Date
+  Send-BridgeAlert "GATEWAY DOWN: bridge supervisor is up but nothing is accepting on 127.0.0.1:$($env:IBKR_PORT) for $downMin min. IB Gateway paper is not logged in."
+}
 while ($true) {
   $log = "$PSScriptRoot\logs\bridge-$(Get-Date -Format 'yyyy-MM-dd').log"
   $stamp = Get-Date -Format o
@@ -129,5 +161,6 @@ while ($true) {
     try { Add-Content -Path $log -Value "$(Get-Date -Format o) [run-forever] bridge exited (code $code) - restarting in ${wait}s" -ErrorAction SilentlyContinue } catch {}
     Write-Host "$(Get-Date -Format o) bridge exited (code $code) - restarting in ${wait}s"
   }
+  Update-GatewayDownAlert
   Start-Sleep -Seconds $wait
 }

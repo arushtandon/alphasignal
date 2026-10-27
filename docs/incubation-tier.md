@@ -124,15 +124,13 @@ Promotion means re-running the full validation standard, not a label change.
   amendment applies (LMT-PRE from 04:00 NY, OPG from 09:25 NY).
 - Evidence (gating): momentum rescore `US__long__12-1__piotroski6` k1 vs SPY,
   152 months: excess +965.7 pp, t 2.17, 3/4 windows, DD 28.8 % → **eligible**.
-- Data: the planner reads `us-universe.json` and
-  `US/<symbol>/{income,balance,cashflow}.json` under `FMP_RESEARCH_DIR`, or
-  `DATA_DIR/research/fmp` (`/var/data/research/fmp` on Render). Scores use the
-  statement filing date + 45 days. The web service refreshes **current**
-  S&P 500 and Nasdaq-100 members monthly (1st UTC, and on boot if the cache
-  is missing or older than 35 days) by running
-  `node scripts/download-fmp-quarterly-statements.js --markets=US --currentOnly`.
-  A separate Render cron cannot see this disk, so the job runs in the web
-  process that owns `/var/data`.
+- Membership is the same current S&P 500 + Nasdaq-100 list the live scan
+  uses (`universe.js` `fetchUSConstituents`). It does not read
+  `us-universe.json`. Scores still use the statement cache under
+  `DATA_DIR/research/fmp` (`/var/data/research/fmp` on Render), at filing
+  date + 45 days. The web service refreshes those statements for current
+  members monthly (1st UTC, and on boot if the cache is missing or older
+  than 35 days).
 - Report: the P&L view's `benchmark` is SPY and `hurdle` is QQQ (the rescore
   alpha is SPY+QQQ). Live excess versus each is the incubation review input;
   the book is not enabled.

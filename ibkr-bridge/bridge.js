@@ -84,7 +84,7 @@
  *   IBKR_EOD_ALERTS      set 0 to disable EOD summary only (default on with Telegram)
  *   IBKR_ALERT_MIN_MS    min gap between identical alerts (default = IBKR_RECON_MS)
  *   IBKR_UNFILLED_ALERT_MIN_MS  unfilled RTH entry age before alert (default 10 min)
- *   IBKR_GATEWAY_DOWN_ALERT_MIN_MS  Telegram after Gateway refused (default 5 min)
+ *   IBKR_GATEWAY_DOWN_ALERT_MIN_MS  Telegram after Gateway refused (default 10 min)
  *   IBKR_GATEWAY_DOWN_REMIND_MS     reminder while still down (default 30 min)
  */
 const fs = require('fs');
@@ -295,7 +295,7 @@ const UNFILLED_ALERT_MIN_MS = Math.max(
 );
 const GATEWAY_DOWN_ALERT_MIN_MS = Math.max(
   60 * 1000,
-  parseInt(process.env.IBKR_GATEWAY_DOWN_ALERT_MIN_MS || String(5 * 60 * 1000), 10) || (5 * 60 * 1000)
+  parseInt(process.env.IBKR_GATEWAY_DOWN_ALERT_MIN_MS || String(10 * 60 * 1000), 10) || (10 * 60 * 1000)
 );
 const GATEWAY_DOWN_REMIND_MS = Math.max(
   60 * 1000,
