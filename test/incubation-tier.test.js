@@ -38,7 +38,7 @@ test('eligibility is enforced from the executable-instrument evidence row', () =
   assert.deepEqual(uk.failReasons, ['excess t 0.91 < 1.5']);
   const hk = inc.incubationEligibility('INCUBATION_HK_TOM');
   assert.equal(hk.eligible, false);
-  assert.deepEqual(hk.failReasons, ['excess t 1.26 < 1.5']);
+  assert.deepEqual(hk.failReasons, ['excess t 0.84 < 1.5']);
   const us = inc.incubationEligibility('INCUBATION_US_LONG_P6');
   assert.equal(us.eligible, true);
   assert.deepEqual(us.failReasons, []);

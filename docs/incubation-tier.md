@@ -84,23 +84,36 @@ Promotion means re-running the full validation standard, not a label change.
 - Cost model: `lib/research/cost-model.js` now exempts `ISF.L` (and listed
   UK/HK ETFs, or `etf:true`) from the 50 bp SDRT; the F12 run already used
   0.10 % round trip for ISF.L.
-- Evidence (gating, instrument): F12-A "FTSE 100 via ISF.L −1..+3": 202 trades,
-  net +21.3 %, **t 0.91**, 3/4 windows, max DD 17.7 % → **FAIL** (t < 1.5).
-  Index row (^FTSE −1..+3): net +68.2 %, t 2.09, 3/4, DD 13.0 % → eligible.
-- Status 2026-10-26: **ineligible on the executable instrument.** Built and
-  dry-runnable; emits nothing until the evidence basis is changed by decision.
+- Evidence (gating, instrument): F12-A on ISF.L, rescored 2026-10-27 with
+  `scripts/score-incubation-tom.js`. None of the three variants clears t ≥ 1.5.
+
+  | Variant | Trades | Net | t | Windows | Max DD | Eligible |
+  | --- | ---: | ---: | ---: | ---: | ---: | --- |
+  | −1..+3 | 202 | +21.30% | 0.91 | 3/4 | 17.7% | no |
+  | −1..+1 | 202 | −8.44% | −0.66 | 3/4 | 23.2% | no |
+  | −2..+3 | 201 | +14.34% | 0.62 | 4/4 | 22.9% | no |
+
+- Index row (^FTSE −1..+3) is t 2.09 and would be eligible. The book is gated
+  on the ETF, not the index.
+- Status 2026-10-27: **disabled. No variant qualifies on ISF.L.**
 
 ### INCUBATION_HK_TOM — 2800.HK, −1..+3
 
 - Same rule and order path (SEHK `OPG` at the open; closing-window exit at
   16:00 HKT). HK ETFs are stamp-exempt (cost model updated as above).
-- Evidence (gating, instrument): post-hoc diagnostic 2026-10-26 running the
-  F12-A procedure on 2800.HK (not a pre-registered instrument; Yahoo history
-  from 2016-11): 120 trades, net +33.9 %, **t 1.26**, 3/4 windows, DD 18.8 %
-  → **FAIL**. Index row (^HSI −1..+3): t 1.16 → FAIL. The only eligible Hang
-  Seng row in F12-A is −1..+1 (t 1.86), and 2800.HK −1..+1 post hoc is t 1.49
-  with 1/4 windows → FAIL.
-- Status 2026-10-26: **ineligible on both bases for −1..+3.**
+- Evidence (gating, instrument): `scripts/score-incubation-tom.js` on 2026-10-27,
+  F12-A procedure from sample start. None of the three pre-registered variants
+  is incubation-eligible on 2800.HK, so the book stays disabled.
+
+  | Variant | Trades | Net | t | Windows | Max DD | Eligible |
+  | --- | ---: | ---: | ---: | ---: | ---: | --- |
+  | −1..+3 | 202 | +24.62% | 0.84 | 3/4 | 37.2% | no |
+  | −1..+1 | 202 | +24.24% | 1.40 | 1/4 | 9.0% | no |
+  | −2..+3 | 201 | +36.25% | 1.04 | 3/4 | 27.5% | no |
+
+- Index row (^HSI −1..+3) was t 1.16. The only eligible Hang Seng index row in
+  F12-A is −1..+1 (t 1.86); the ETF does not clear that variant either.
+- Status 2026-10-27: **disabled. No variant qualifies on 2800.HK.**
 
 ### INCUBATION_US_LONG_P6 — 12-1 momentum, Piotroski ≥ 6, k=1, 6-month hold
 
@@ -111,14 +124,24 @@ Promotion means re-running the full validation standard, not a label change.
   amendment applies (LMT-PRE from 04:00 NY, OPG from 09:25 NY).
 - Evidence (gating): momentum rescore `US__long__12-1__piotroski6` k1 vs SPY,
   152 months: excess +965.7 pp, t 2.17, 3/4 windows, DD 28.8 % → **eligible**.
-- Data: the planner reads `data/research/fmp/us-universe.json` and
-  `data/research/fmp/US/<symbol>/{income,balance,cashflow}.json`. That cache is
-  gitignored and exists only on the research machine. **On Render it is
-  absent**, so the dry-run reports `piotroski-data-missing` / `universe-missing`
-  and the book cannot run there until the cache is published to the persistent
-  disk (`FMP_RESEARCH_DIR`) or a monthly on-Render statement fetch is built.
-- Status 2026-10-26: eligible, not enabled, blocked on Render by the data gap.
+- Data: the planner reads `us-universe.json` and
+  `US/<symbol>/{income,balance,cashflow}.json` under `FMP_RESEARCH_DIR`, or
+  `DATA_DIR/research/fmp` (`/var/data/research/fmp` on Render). Scores use the
+  statement filing date + 45 days. The web service refreshes **current**
+  S&P 500 and Nasdaq-100 members monthly (1st UTC, and on boot if the cache
+  is missing or older than 35 days) by running
+  `node scripts/download-fmp-quarterly-statements.js --markets=US --currentOnly`.
+  A separate Render cron cannot see this disk, so the job runs in the web
+  process that owns `/var/data`.
+- Report: the P&L view's `benchmark` is SPY and `hurdle` is QQQ (the rescore
+  alpha is SPY+QQQ). Live excess versus each is the incubation review input;
+  the book is not enabled.
+- Status 2026-10-27: eligible, **not enabled**. Dry-run for 30 Nov is below.
 
 ## Deviations log
 
-- none
+- 2026-10-27: scored −1..+3, −1..+1 and −2..+3 on ISF.L and 2800.HK with the
+  F12-A procedure (`scripts/score-incubation-tom.js`). No variant is
+  incubation-eligible on the traded instrument. Both books stay disabled.
+  The earlier 2800.HK note (t 1.26 from 2016) was a shorter sample; the
+  full sample from 2010 is t 0.84 on −1..+3.

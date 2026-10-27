@@ -7664,6 +7664,48 @@ function runBridgeWatch() {
 }
 if (IS_MAIN_PROCESS) setInterval(runBridgeWatch, 60 * 1000).unref();
 
+function piotroskiCacheManifest() {
+  const root = process.env.FMP_RESEARCH_DIR || path.join(DATA_DIR, 'research', 'fmp');
+  return path.join(root, 'manifest.json');
+}
+let piotroskiRefreshChild = null;
+function piotroskiRefreshDue(now = new Date()) {
+  let generatedAt = NaN;
+  try { generatedAt = Date.parse(JSON.parse(fs.readFileSync(piotroskiCacheManifest(), 'utf8')).generatedAt); }
+  catch (_) { /* missing */ }
+  const ageDays = Number.isFinite(generatedAt) ? (now.getTime() - generatedAt) / 86400000 : Infinity;
+  if (!Number.isFinite(generatedAt)) return 'missing';
+  if (now.getUTCDate() === 1 && ageDays > 20) return 'monthly';
+  if (ageDays > 35) return 'stale';
+  return null;
+}
+function startPiotroskiRefresh(reason) {
+  if (!IS_MAIN_PROCESS || piotroskiRefreshChild) return;
+  if (!String(process.env.FMP_API_KEY || process.env.FMP_KEY || '').trim()) {
+    console.warn('Piotroski refresh skipped (no FMP key)', reason);
+    return;
+  }
+  const { spawn } = require('child_process');
+  const script = path.join(__dirname, 'scripts', 'download-fmp-quarterly-statements.js');
+  const child = spawn(process.execPath, [script, '--markets=US', '--currentOnly'], {
+    detached: true, stdio: 'ignore', env: process.env,
+  });
+  child.unref();
+  piotroskiRefreshChild = child;
+  child.on('exit', () => { piotroskiRefreshChild = null; });
+  console.log('Piotroski statement refresh started', reason, 'pid', child.pid);
+}
+if (IS_MAIN_PROCESS) {
+  setInterval(() => {
+    const reason = piotroskiRefreshDue();
+    if (reason) startPiotroskiRefresh(reason);
+  }, 6 * 60 * 60 * 1000).unref();
+  setTimeout(() => {
+    const reason = piotroskiRefreshDue();
+    if (reason) startPiotroskiRefresh(reason);
+  }, 60 * 1000).unref();
+}
+
 // This capture is intentionally initiated by the server at boot, not by a
 // browser request. On Render it runs in the process that owns FMP_API_KEY and
 // saves only the probe's redacted schema/sample report on the persistent disk.

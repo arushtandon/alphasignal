@@ -1,6 +1,17 @@
 # US quarterly hedged-short k=5 — build spec (plan only, no code)
 
-Date 2026-10-26. Status: **awaiting approval. Nothing here is built.**
+Date 2026-10-26. Updated 2026-10-27. Status: **approved, not built.**
+Build starts only after 10 consecutive trading days with no bridge outage.
+That condition is not met (see the end of this file).
+
+Decisions, 2026-10-27:
+
+- Hedge: **beta-scaled SPY** (option b). Equal-dollar SPY is not this book.
+- Composite: **A**. Both A and B were incubation-eligible. A is the one with
+  4/4 positive windows. B (t 2.22, 3/4 windows) stays on the shelf.
+- Deviations accepted: no survivor re-weighting; 50% per-name disaster cap;
+  a name that fails the shortable or borrow check is skipped and not replaced;
+  the backtest itself had no stops.
 
 Source trial: F14 "US quarterly comp-A/comp-B k=5 SHORT (hedged)",
 `scripts/f14-results.json`, pre-registered in
@@ -158,9 +169,16 @@ needed when the hedge is SPY shares rather than micro futures).
    no unhedged overnight, ledger lines reconcile to IB statements.
 5. Review per the incubation rule at 6 months or 30 closed legs.
 
-## 5. Decisions needed before building
+## 5. Decisions (2026-10-27)
 
-1. Composite A (4/4 windows, t 2.0) or B (t 2.22, 3/4 windows).
-2. Hedge: equal-$ SPY (a) or beta-scaled SPY (b).
-3. Accept the stated deviations: no survivor re-weighting; 50 % disaster
-   cap; skipped names not replaced.
+1. Composite **A** (4/4 windows, t 2.00). B stays recorded and unbuilt.
+2. Hedge is beta-scaled SPY, sized to filled short notional.
+3. Deviations accepted: no survivor re-weighting; 50% disaster cap; skipped
+   names are not replaced. The backtest had no stops.
+
+## 6. When building may start
+
+Not yet. The bridge was down 14 Oct 06:59 SGT until 19 Oct, and again from
+22 Oct 16:53 SGT until 25 Oct 19:31 SGT. A clean stretch cannot include those
+days. There is no start date until 10 consecutive trading days have actually
+passed with no outage after this reliability deploy is the one running.
