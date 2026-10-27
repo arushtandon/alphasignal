@@ -14,12 +14,17 @@
     "lifecycle": "node scripts/lifecycle-invariants.js",
     "validate:capital": "node scripts/capital-readiness-validation.js",
     "test:capital": "node --test test/capital-readiness.test.js test/postgres-store.test.js test/strategy-research.test.js",
-    "compare:strategy": "node scripts/strategy-pnl-comparison.js"
+    "compare:strategy": "node scripts/strategy-pnl-comparison.js",
+    "lint:bridge": "eslint server.js ibkr-bridge"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
     "date-holidays": "^3.35.0",
     "express": "^4.18.2",
     "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.0",
+    "globals": "^16.4.0"
   }
 }

@@ -94,7 +94,8 @@ const https = require('https');
 const crypto = require('crypto');
 const Holidays = require('date-holidays');
 const { telegramConfigured, sendTelegramAlert } = require('./telegram');
-const { admitSetupEntries } = require('./account-summary-refresh');
+const { admitPolledEntries } = require('./account-summary-refresh');
+const { partitionStaleRetries } = require('../lib/schedule/entry-cutoff');
 const {
   gatewayDownDecision,
   gatewayRecoverDecision,
@@ -198,7 +199,6 @@ const {
   capitalPoolEnabled,
   capitalSlotPlan,
   capitalEntryFit,
-  SETUP_TICKET_USD,
   setupTicketUsd,
 } = require('../lib/strategy/setup-book-execution');
 const { sendTelegram } = require('../lib/strategy/setup-book-runtime');
@@ -1050,7 +1050,7 @@ function parentEntrySpec(contract, action, qty, opts = {}) {
       // Missed pre-market / OPG still working → take the open/RTH print even if
       // it is worse than the model entry. Chase cap only applies to a late first
       // RTH fire (FSLR 248 vs 236.8), not this handoff.
-      if (!opts.skipChase && entryPx > 0 && quotePx > 0) {
+      if (!opts.skipChase && !opts.setupId && entryPx > 0 && quotePx > 0) {
         const sell = side === 'sell';
         const adverseBps = sell
           ? ((entryPx - quotePx) / entryPx) * 10000
@@ -1214,6 +1214,7 @@ async function shareSplit(entry, contract, lotOverride, riskInput = {}) {
     ticketScale: liveTicketScale(),
     allowMinLot: riskInput.allowMinLot === true,
     ticketNotionalUsd: riskInput.ticketNotionalUsd,
+    setupBook: riskInput.setupBook === true,
     netLiquidityAvailable: riskInput.netLiquidityAvailable,
     liquidityFloorPct: riskInput.liquidityFloorPct,
     maxNotionalUsd: (contract.secType === 'FUT' || contract.secType === 'CRYPTO')
@@ -2275,8 +2276,10 @@ async function main() {
     // Only exit on disconnect AFTER a full handshake. Early "disconnected"
     // during connect usually means clientId is already taken by a zombie.
     let ibReady = false;
+    let clientIdConflict = false;
     ib.on(EventName.disconnected, () => {
       if (!ibReady) {
+        clientIdConflict = true;
         log('IB disconnected during connect — is clientId', activeClientId, 'already in use?');
         return;
       }
@@ -2326,6 +2329,12 @@ async function main() {
         }
       } catch (te) {
         log('TELEGRAM: gateway-down failed', te.message);
+      }
+      const clientTaken = clientIdConflict
+        || /nextValidId timeout|already in use/i.test(String(e1 && e1.message || ''));
+      if (clientTaken) {
+        log('clientId', activeClientId, 'in use — exiting 75 so the supervisor backs off');
+        e1.exitCode = 75;
       }
       throw e1;
     }
@@ -2492,6 +2501,7 @@ async function main() {
             'Margin=' + accountSnap.marginsUsed,
             'Cash=' + accountSnap.totalCashValue);
         }
+        if (field === 'netLiquidation') accountSnap.summaryAt = accountSnap.at;
       } catch (_) { /* ignore */ }
     });
     // AccountSummary is a second path — some Gateway sessions only fill this.
@@ -2519,6 +2529,7 @@ async function main() {
           const prev = accountSnap[field];
           if (prev != null && !prefer) return;
           accountSnap[field] = n;
+          if (field === 'netLiquidation') accountSnap.summaryAt = new Date().toISOString();
           if (field === 'accruedDividend') {
             noteChargeMove('dividend', 'Accrued dividend (IB)', n, ccy || 'USD', 'income');
           } else if (field === 'dividendReceivable') {
@@ -3617,7 +3628,7 @@ async function main() {
         'releaseHour=', ENTRY_RELEASE_HOUR_SGT);
       return null;
     }
-    if (!isManualEntryBypass(evt) && !evt.carryUnfilled && !momentumNoStopEntry(evt)) {
+    if (!isManualEntryBypass(evt) && !evt.carryUnfilled && !momentumNoStopEntry(evt) && !evt.setupId) {
       try {
         const picks = await fetchJson('/api/dashboard/picks');
         if (!boardPublishedAtRelease(picks && picks.dashTs)) {
@@ -3707,6 +3718,7 @@ async function main() {
       capitalScale: evt.capitalScale,
       allowMinLot: boardEntry || !!evt.setupId,
       ticketNotionalUsd: evt.setupId ? ticketUsd : undefined,
+      setupBook: !!evt.setupId,
       netLiquidityAvailable: availLiq,
       liquidityFloorPct: 1 - MAX_CAPITAL_UTILIZATION_PCT
     });
@@ -3815,13 +3827,15 @@ async function main() {
     }
     // Admission is governed solely by available-capital utilization. Position
     // sizing still enforces per-trade stop risk, liquidity, spread and lot size.
-    const portfolioGate = evaluateAvailableCapitalAddition({
-      nlv,
-      availableFunds: availLiq,
-      // Charge the full order notional against available capital. This is more
-      // conservative than IB margin impact while honoring the sole 75% cap.
-      candidateCapitalUsd: split.risk.notionalUsd
-    });
+    const portfolioGate = evt.setupId
+      ? { allowed: true, reasons: [], setupBookPool: true }
+      : evaluateAvailableCapitalAddition({
+        nlv,
+        availableFunds: availLiq,
+        // Charge the full order notional against available capital. This is more
+        // conservative than IB margin impact while honoring the sole 75% cap.
+        candidateCapitalUsd: split.risk.notionalUsd
+      });
         if (!portfolioGate.allowed) {
       logOnce('risk-' + String(evt.ticker || ''), 'capital utilization rejected', evt.ticker, portfolioGate.reasons.join(','),
         'projected=' + ((portfolioGate.projected && portfolioGate.projected.projectedUtilizationPct || 0) * 100).toFixed(2) + '%',
@@ -5045,9 +5059,9 @@ async function main() {
         log('skip entry (missing entry/SL):', key);
         return;
       }
-      // Defense in depth: if history still shows Hold for this key day, skip.
-      // Missing history row must NOT block — board backfill can emit entry before
-      // history ingest (SU.PA / AFL 2026-08-12). Trust the Buy/Sell event side.
+      // Board history Hold is a legacy-pick gate. Setup-book entries are not
+      // board picks; the backtest did not consult the published board.
+      if (!setupBookOrder) {
       try {
         const hist = await fetchJson('/api/history');
         const rows = Array.isArray(hist) ? hist : [];
@@ -5077,6 +5091,7 @@ async function main() {
           log('entry history row missing — trusting event side', key, 'side=', side);
         }
       } catch (e) { log('entry history check failed (continuing with event side):', e.message); }
+      }
       // Age gate on the TRADE's entry date (not the event emit time). A stale
       // history re-save can emit a fresh evt.t for a months-old trade — that
       // must NEVER place a live order (AZN.L Jun-09 incident).
@@ -8539,6 +8554,58 @@ async function main() {
     }
   }
 
+  function marginSummaryHooks() {
+    return {
+      summaryEvent: EventName.accountSummary,
+      endEvent: EventName.accountSummaryEnd,
+      accept: () => accountSnap.netLiquidation != null,
+      onAttempt: () => {
+        accountSnap.lookAheadAvailableFunds = null;
+        accountSnap.lookAheadExcessLiquidity = null;
+      },
+      alert: async () => {
+        if (accountSnap._staleSummaryAlerted) return;
+        accountSnap._staleSummaryAlerted = true;
+        const text = 'MARGIN DATA STALE: account summary did not arrive after 2 attempts (20s each). Setup-book entries will retry until the session entry cut-off.';
+        log(text);
+        try { await sendTelegramAlert(text); }
+        catch (error) { log('TELEGRAM margin stale alert failed', error.message); }
+      },
+    };
+  }
+
+  function rememberStaleEntries(skipped) {
+    const queued = Array.isArray(state.staleMarginRetries) ? state.staleMarginRetries.slice() : [];
+    const seen = new Set(queued.map(evt => String(evt.seq || evt.key || '')));
+    for (const evt of skipped) {
+      if (!evt) continue;
+      const id = String(evt.seq || evt.key || `${evt.ticker}|${evt.t || ''}`);
+      if (seen.has(id)) continue;
+      queued.push(evt);
+      seen.add(id);
+    }
+    const parts = partitionStaleRetries(queued, Date.now());
+    for (const evt of parts.expired) {
+      log('stale-margin retry expired', evt.ticker || '', evt.setupId || '');
+    }
+    state.staleMarginRetries = parts.retry;
+  }
+
+  function logFreshSummary() {
+    accountSnap._staleSummaryAlerted = false;
+    const nlv = Number(accountSnap.netLiquidation);
+    const gross = Number(accountSnap.grossPositionValue);
+    log('account summary fresh',
+      'summaryAt=' + accountSnap.summaryAt,
+      'NLV=' + accountSnap.netLiquidation,
+      'Gross=' + accountSnap.grossPositionValue,
+      'Leverage=' + (nlv > 0 && Number.isFinite(gross) ? (gross / nlv).toFixed(3) : 'n/a'),
+      'BP=' + accountSnap.buyingPower,
+      'Excess=' + accountSnap.excessLiquidity,
+      'LAFunds=' + accountSnap.lookAheadAvailableFunds,
+      'LAExcess=' + accountSnap.lookAheadExcessLiquidity);
+  }
+
   async function pollOnce() {
     if (!positionsReady) {
       log('event poll deferred — waiting for IB position/open-state snapshot');
@@ -8548,26 +8615,9 @@ async function main() {
     const events = data.events || [];
     const entries = events.filter(evt => evt.type === 'entry');
     let entryEvents = entries;
+    let summaryFresh = false;
     if (capitalPoolEnabled() && entries.length) {
-      const decision = await admitSetupEntries(ib, accountSnap, entries, {
-        reqId: ACC_SUMMARY_REQ,
-        tags: ACC_SUMMARY_TAGS,
-        summaryEvent: EventName.accountSummary,
-        endEvent: EventName.accountSummaryEnd,
-        accept: () => accountSnap.netLiquidation != null,
-        onAttempt: () => {
-          accountSnap.lookAheadAvailableFunds = null;
-          accountSnap.lookAheadExcessLiquidity = null;
-        },
-        alert: async () => {
-          if (accountSnap._staleSummaryAlerted) return;
-          accountSnap._staleSummaryAlerted = true;
-          const text = 'MARGIN DATA STALE: account summary did not arrive after 2 attempts (20s each). Setup-book entries skipped.';
-          log(text);
-          try { await sendTelegramAlert(text); }
-          catch (error) { log('TELEGRAM margin stale alert failed', error.message); }
-        },
-      });
+      const decision = await admitPolledEntries(ib, accountSnap, entries, marginSummaryHooks());
       if (!decision.proceed.length) {
         log('skipped: margin data stale', entries.length, 'entry event(s); account summary did not arrive',
           'summaryAt=' + (accountSnap.summaryAt || 'none'));
@@ -8582,20 +8632,32 @@ async function main() {
             detail: 'no-fresh-summary',
           }).catch(error => log('skip report failed', error.message));
         }
+        rememberStaleEntries(entries);
         entryEvents = [];
       } else {
-        accountSnap._staleSummaryAlerted = false;
-        const nlv = Number(accountSnap.netLiquidation);
-        const gross = Number(accountSnap.grossPositionValue);
-        log('account summary fresh',
-          'summaryAt=' + accountSnap.summaryAt,
-          'NLV=' + accountSnap.netLiquidation,
-          'Gross=' + accountSnap.grossPositionValue,
-          'Leverage=' + (nlv > 0 && Number.isFinite(gross) ? (gross / nlv).toFixed(3) : 'n/a'),
-          'BP=' + accountSnap.buyingPower,
-          'Excess=' + accountSnap.excessLiquidity,
-          'LAFunds=' + accountSnap.lookAheadAvailableFunds,
-          'LAExcess=' + accountSnap.lookAheadExcessLiquidity);
+        summaryFresh = true;
+        logFreshSummary();
+        entryEvents = decision.proceed;
+      }
+    }
+    // Entries skipped earlier retry once a fresh summary is in, until the
+    // session close, whether or not they are on the published board.
+    if (capitalPoolEnabled() && (state.staleMarginRetries || []).length && (summaryFresh || !entries.length)) {
+      rememberStaleEntries([]);
+      const waiting = state.staleMarginRetries || [];
+      if (waiting.length) {
+        const decision = await admitPolledEntries(ib, accountSnap, waiting, marginSummaryHooks());
+        if (decision.proceed.length) {
+          if (!summaryFresh) logFreshSummary();
+          const proceeded = new Set(decision.proceed.map(evt => String(evt.seq || evt.key || '')));
+          state.staleMarginRetries = waiting.filter(evt => !proceeded.has(String(evt.seq || evt.key || '')));
+          const have = new Set(entryEvents.map(evt => String(evt.seq || evt.key || '')));
+          for (const evt of decision.proceed) {
+            const id = String(evt.seq || evt.key || '');
+            if (!have.has(id)) entryEvents.push(evt);
+          }
+          log('stale-margin retry', decision.proceed.length, 'entry event(s)');
+        }
       }
     }
     const orderedEvents = [
@@ -8613,7 +8675,10 @@ async function main() {
       state.since = Math.max(Number(state.since) || 0,
         ...events.map(evt => Number(evt.seq) || 0));
     }
-    if (orderedEvents.length) { saveState(state); log(`Processed ${orderedEvents.length} event(s); since=${state.since}`); }
+    if (orderedEvents.length || (state.staleMarginRetries || []).length) {
+      saveState(state);
+      if (orderedEvents.length) log(`Processed ${orderedEvents.length} event(s); since=${state.since}`);
+    }
     await flushReports();
   }
 
@@ -8757,7 +8822,7 @@ async function main() {
 if (require.main === module) {
   main().catch(e => {
     console.error(e);
-    process.exit(1);
+    process.exit(e && e.exitCode || 1);
   });
 }
 

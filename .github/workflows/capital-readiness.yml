@@ -33,6 +33,7 @@ jobs:
       - run: npm ci
       - run: node --check server.js
       - run: node --check ibkr-bridge/bridge.js
+      - run: npm run lint:bridge
       - run: npm run test:capital
       - run: npm run lifecycle
       - run: node ibkr-bridge/contract-resolution.test.js

@@ -427,6 +427,7 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
     </div>
   </div>
 </header>
+<div id="bridgeOfflineBanner" style="display:none;background:#5c1a1a;color:#ffd0d0;font-family:'DM Mono',monospace;font-size:13px;font-weight:600;padding:8px 16px;text-align:center"></div>
 <div class="sb-backdrop" id="sbBackdrop" onclick="closeMobileSidebar()" aria-hidden="true"></div>
 <script>
 /* Runs before the large app bundle so the pill updates even if a later script error blocks startApp(). */
@@ -473,6 +474,21 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
             return;
           }
           setHeader(d.hasKey ? 'AI Ready ✓' : 'AI off (quotes OK)', !!d.hasKey);
+          var banner = document.getElementById('bridgeOfflineBanner');
+          var bridge = d.bridge;
+          if (banner) {
+            if (bridge && bridge.offline && bridge.banner) {
+              banner.style.display = 'block';
+              banner.textContent = bridge.banner;
+            } else {
+              banner.style.display = 'none';
+              banner.textContent = '';
+            }
+          }
+          var ibkrSub = document.getElementById('ibkrPaneSub');
+          if (ibkrSub && bridge && bridge.offline && bridge.banner) {
+            ibkrSub.textContent = bridge.banner;
+          }
         });
       })
       .catch(function () {
@@ -488,6 +504,7 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
       });
   }
   tryHealth();
+  setInterval(tryHealth, 60000);
 })();
 </script>
 

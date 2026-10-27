@@ -84,7 +84,9 @@ const {
   copyPublicationFields,
   resumeSetup,
   pauseSetup,
+  sendTelegram,
 } = require('./lib/strategy/setup-book-runtime');
+const { evaluateBridgeWatch } = require('./lib/ibkr/bridge-watch');
 const { dailyToWeeklyBars, weeklyBarsVisibleAt } = require('./lib/research/weekly-bars');
 const { evaluateMtf, blendSignal } = require('./lib/research/mtf-supertrend');
 const { atomicWriteFileSync, atomicWriteJsonSync } = require('./lib/storage/atomic-json');
@@ -7620,6 +7622,48 @@ const DATA_DIR = (() => {
 const DATA_DIR_PERSISTENT = Boolean(process.env.DATA_DIR || process.env.RENDER_DISK_MOUNT_PATH);
 console.log('Data dir:', DATA_DIR, DATA_DIR_PERSISTENT ? '(persistent disk)' : '(EPHEMERAL — set DATA_DIR to a mounted disk)');
 
+const BRIDGE_HEARTBEAT_FILE = path.join(DATA_DIR, 'bridge-heartbeat.json');
+const bridgeWatch = { lastSeenAt: null, lastKind: null, offlineSince: null, lastAlertAt: null };
+function loadBridgeWatch() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(BRIDGE_HEARTBEAT_FILE, 'utf8'));
+    if (saved && typeof saved === 'object') Object.assign(bridgeWatch, saved);
+  } catch (_) { /* first boot */ }
+}
+function saveBridgeWatch() {
+  if (!BOOT_WRITES_ENABLED) return;
+  try {
+    fs.mkdirSync(path.dirname(BRIDGE_HEARTBEAT_FILE), { recursive: true });
+    fs.writeFileSync(BRIDGE_HEARTBEAT_FILE, `${JSON.stringify(bridgeWatch)}\n`);
+  } catch (error) {
+    console.warn('bridge heartbeat save failed', error.message);
+  }
+}
+loadBridgeWatch();
+let bridgeWatchSeenWriteAt = 0;
+function noteBridgeContact(kind) {
+  bridgeWatch.lastSeenAt = new Date().toISOString();
+  bridgeWatch.lastKind = kind;
+  if (Date.now() - bridgeWatchSeenWriteAt > 20000) {
+    bridgeWatchSeenWriteAt = Date.now();
+    saveBridgeWatch();
+  }
+}
+function bridgeWatchView(now = Date.now()) {
+  return evaluateBridgeWatch(bridgeWatch, now, Math.round(process.uptime() * 1000));
+}
+function runBridgeWatch() {
+  const view = evaluateBridgeWatch(bridgeWatch, Date.now(), Math.round(process.uptime() * 1000));
+  bridgeWatch.offlineSince = view.offlineSince;
+  bridgeWatch.lastAlertAt = view.lastAlertAt;
+  if (view.alert) {
+    saveBridgeWatch();
+    sendTelegram(view.alert.text).catch(error => console.warn('bridge watch telegram failed', error.message));
+    console.warn(view.alert.text);
+  }
+}
+if (IS_MAIN_PROCESS) setInterval(runBridgeWatch, 60 * 1000).unref();
+
 // This capture is intentionally initiated by the server at boot, not by a
 // browser request. On Render it runs in the process that owns FMP_API_KEY and
 // saves only the probe's redacted schema/sample report on the persistent disk.
@@ -7958,8 +8002,8 @@ app.get('/api/setup-book/status', (req, res) => {
     paperExecution: setupBookPaperExecutionEnabled(),
     capitalPool: capitalPoolEnabled(),
     cells: require('./lib/strategy/setup-book').CELLS,
-    pnl: setupBookPnlViews(tradeHistory),
-    runtime: evaluateSetupBookPauses(tradeHistory, { notify: false }).state,
+    pnl: setupBookPnlViews(tradeHistory, { fills: readIbkrFillRows() }),
+    runtime: evaluateSetupBookPauses(tradeHistory, { notify: false, fills: readIbkrFillRows() }).state,
     capital: setupBookCapitalView(),
     incubation: {
       label: INCUBATION_LABEL,
@@ -9418,6 +9462,7 @@ app.get('/api/health', async (req, res) => {
     },
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
+    bridge: bridgeWatchView(),
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),
@@ -9865,7 +9910,7 @@ async function addTradesToHistory(trades) {
   if (tradeHistory.length > HISTORY_MAX_SERVER) tradeHistory = tradeHistory.slice(0, HISTORY_MAX_SERVER);
   
   saveHistoryFile(tradeHistory);
-  try { evaluateSetupBookPauses(tradeHistory); } catch (e) {
+  try { evaluateSetupBookPauses(tradeHistory, { fills: readIbkrFillRows() }); } catch (e) {
     console.warn('Setup-book auto-pause evaluation failed:', e && e.message);
   }
   return { accepted: accepted.length, skipped: trades.length - accepted.length, total: tradeHistory.length };
@@ -15282,6 +15327,7 @@ function ibkrEventsAuthorized(req) {
 
 app.get('/api/ibkr/events', (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  if (machineAuthorized(req)) noteBridgeContact('poll');
   const since = parseInt(req.query.since, 10) || 0;
   const limit = parseInt(req.query.limit, 10) || 200;
   const events = readTradeEvents(since, limit, req.query.tail === '1');
@@ -17958,6 +18004,7 @@ async function resolveGhostFlatMark(ticker) {
  */
 app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  if (machineAuthorized(req)) noteBridgeContact('recon');
   try {
     try { quarantineErrorFillsOffModelKeys(); } catch (_) {}
     try { restoreUserReentryGhostLots(); } catch (_) {}

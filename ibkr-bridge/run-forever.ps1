@@ -68,13 +68,34 @@ function Get-BridgeTreeState {
   } catch { $state.error = $_.Exception.Message }
   return $state
 }
-function Send-DirtyTreeAlert([string]$text) {
+function Send-BridgeAlert([string]$text) {
   if (-not ($env:TELEGRAM_BOT_TOKEN -and $env:TELEGRAM_CHAT_ID)) { return }
   try {
     & $node -e "require(process.argv[1]).sendTelegramAlert(process.argv[2]).catch(e => { console.error(e.message); process.exit(1); })" -- "$PSScriptRoot\telegram.js" $text 2>&1 | Out-Null
   } catch {}
 }
+function Test-ClientIdConflict([int]$code, [string]$logPath) {
+  if ($code -eq 75) { return $true }
+  if (-not (Test-Path $logPath)) { return $false }
+  $tail = Get-Content $logPath -Tail 40 -ErrorAction SilentlyContinue
+  return [bool]($tail | Where-Object { $_ -match 'already in use|nextValidId timeout|clientId .* in use' })
+}
+function Stop-StaleBridgeNodes {
+  $killed = @()
+  $procs = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue
+  foreach ($p in $procs) {
+    $cmd = [string]$p.CommandLine
+    if ($cmd -notmatch 'bridge\.js') { continue }
+    if ($p.ProcessId -eq $PID) { continue }
+    try {
+      Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop
+      $killed += $p.ProcessId
+    } catch {}
+  }
+  return $killed
+}
 
+$clientIdFails = 0
 while ($true) {
   $log = "$PSScriptRoot\logs\bridge-$(Get-Date -Format 'yyyy-MM-dd').log"
   $stamp = Get-Date -Format o
@@ -83,14 +104,30 @@ while ($true) {
   try { Add-Content -Path $log -Value "$stamp [run-forever] starting bridge commit=$($tree.commit) ibkr-bridge/=$dirtyFlag $($tree.dirty)" -ErrorAction SilentlyContinue } catch {}
   Write-Host "$stamp starting bridge -> $log (commit $($tree.commit), ibkr-bridge/ $dirtyFlag)"
   if ($tree.dirty) {
-    Send-DirtyTreeAlert "BRIDGE TREE DIRTY at start (commit $($tree.commit)): ibkr-bridge/ differs from HEAD - $($tree.dirty)"
+    Send-BridgeAlert "BRIDGE TREE DIRTY at start (commit $($tree.commit)): ibkr-bridge/ differs from HEAD - $($tree.dirty)"
   }
   # Run in THIS process (not Start-Process). Start-Process was reporting exit
   # code 0 within ~1s while marks still came from a leftover node, or killing
   # the supervisor loop while a zombie held clientId 17.
   & $node "$PSScriptRoot\bridge.js"
   $code = $LASTEXITCODE
-  try { Add-Content -Path $log -Value "$(Get-Date -Format o) [run-forever] bridge exited (code $code) - restarting in 30s" -ErrorAction SilentlyContinue } catch {}
-  Write-Host "$(Get-Date -Format o) bridge exited (code $code) - restarting in 30s"
-  Start-Sleep -Seconds 30
+  $clientIdConflict = Test-ClientIdConflict $code $log
+  if ($clientIdConflict) {
+    $clientIdFails += 1
+    $killed = Stop-StaleBridgeNodes
+    $steps = @(30, 60, 120, 300)
+    $wait = $steps[[Math]::Min($clientIdFails - 1, $steps.Length - 1)]
+    $note = "clientId in use (fail $clientIdFails) killed=$($killed -join ',') restarting in ${wait}s"
+    try { Add-Content -Path $log -Value "$(Get-Date -Format o) [run-forever] bridge exited (code $code) - $note" -ErrorAction SilentlyContinue } catch {}
+    Write-Host "$(Get-Date -Format o) $note"
+    if ($clientIdFails -ge 5 -and ($clientIdFails % 5) -eq 0) {
+      Send-BridgeAlert "BRIDGE CRASH LOOP: clientId in use, $clientIdFails failed starts. Stale node kill attempted ($($killed -join ',')). Backing off ${wait}s."
+    }
+  } else {
+    $clientIdFails = 0
+    $wait = 30
+    try { Add-Content -Path $log -Value "$(Get-Date -Format o) [run-forever] bridge exited (code $code) - restarting in ${wait}s" -ErrorAction SilentlyContinue } catch {}
+    Write-Host "$(Get-Date -Format o) bridge exited (code $code) - restarting in ${wait}s"
+  }
+  Start-Sleep -Seconds $wait
 }
