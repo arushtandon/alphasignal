@@ -154,7 +154,7 @@ function buildManifest(records, options) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   assertFmpKey(); // Logs presence only, never the credential.
-  const key = String(process.env.FMP_API_KEY || process.env.FMP_KEY || '').trim();
+  const key = String(process.env.FMP_API_KEY || process.env.FMP_KEY || process.env.FINANCIAL_MODELING_PREP_API_KEY || '').trim();
   const cacheRoot = options.cacheRoot
     || process.env.FMP_RESEARCH_DIR
     || path.join(process.env.DATA_DIR || path.join(ROOT, 'data'), 'research', 'fmp');
@@ -182,6 +182,20 @@ async function main() {
   let cached = 0;
   let downloaded = 0;
   console.log(`Research cache: ${selected.length} symbols, ${ENDPOINTS.length} endpoints each, pace ${options.paceMs}ms.`);
+  const statusFile = path.join(cacheRoot, 'refresh-status.json');
+  const writeStatus = (extra) => {
+    writeJson(statusFile, {
+      state: 'running',
+      startedAt: writeStatus.startedAt,
+      updatedAt: new Date().toISOString(),
+      symbols: selected.length,
+      cached,
+      downloaded,
+      ...extra,
+    });
+  };
+  writeStatus.startedAt = new Date().toISOString();
+  writeStatus({});
   for (const item of selected) {
     for (const [endpointId, endpoint] of ENDPOINTS) {
       const result = await downloadOne({ cacheRoot, market: item.market, symbol: item.t, endpointId, endpoint, key, paceMs: options.paceMs });
@@ -190,9 +204,20 @@ async function main() {
       else downloaded++;
       console.log(`${item.market} ${item.t} ${endpointId}: ${result.record.status} (${result.state})`);
     }
+    writeStatus({ lastSymbol: item.t });
   }
   const manifest = buildManifest(records, options);
   writeJson(path.join(cacheRoot, 'manifest.json'), manifest);
+  writeJson(statusFile, {
+    state: 'done',
+    startedAt: writeStatus.startedAt,
+    updatedAt: new Date().toISOString(),
+    symbols: selected.length,
+    cached,
+    downloaded,
+    errors: manifest.errors.length,
+    noData: manifest.noData.length,
+  });
   console.log(`Done. cached=${cached}; requested=${downloaded}; no-data=${manifest.noData.length}; errors=${manifest.errors.length}.`);
   console.log(`Manifest: ${path.join(cacheRoot, 'manifest.json')}`);
   process.exitCode = manifest.errors.length ? 1 : 0;

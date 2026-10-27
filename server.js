@@ -7680,20 +7680,29 @@ function piotroskiRefreshDue(now = new Date()) {
   return null;
 }
 function startPiotroskiRefresh(reason) {
-  if (!IS_MAIN_PROCESS || piotroskiRefreshChild) return;
-  if (!String(process.env.FMP_API_KEY || process.env.FMP_KEY || '').trim()) {
+  if (!IS_MAIN_PROCESS) return { started: false, reason: 'not-main' };
+  if (piotroskiRefreshChild) return { started: false, reason: 'already-running', pid: piotroskiRefreshChild.pid };
+  if (!String(process.env.FMP_API_KEY || process.env.FMP_KEY || process.env.FINANCIAL_MODELING_PREP_API_KEY || '').trim()) {
     console.warn('Piotroski refresh skipped (no FMP key)', reason);
-    return;
+    return { started: false, reason: 'no-fmp-key' };
   }
   const { spawn } = require('child_process');
   const script = path.join(__dirname, 'scripts', 'download-fmp-quarterly-statements.js');
+  const logPath = path.join(DATA_DIR, 'piotroski-refresh.log');
+  fs.mkdirSync(path.dirname(logPath), { recursive: true });
+  const logFd = fs.openSync(logPath, 'a');
   const child = spawn(process.execPath, [script, '--markets=US', '--currentOnly'], {
-    detached: true, stdio: 'ignore', env: process.env,
+    detached: true, stdio: ['ignore', logFd, logFd], env: process.env,
   });
+  fs.closeSync(logFd);
   child.unref();
   piotroskiRefreshChild = child;
-  child.on('exit', () => { piotroskiRefreshChild = null; });
-  console.log('Piotroski statement refresh started', reason, 'pid', child.pid);
+  child.on('exit', (code) => {
+    piotroskiRefreshChild = null;
+    console.log('Piotroski statement refresh exited', reason, 'code', code);
+  });
+  console.log('Piotroski statement refresh started', reason, 'pid', child.pid, 'log', logPath);
+  return { started: true, pid: child.pid, log: logPath };
 }
 if (IS_MAIN_PROCESS) {
   setInterval(() => {
@@ -8037,6 +8046,30 @@ function setupBookCapitalView() {
   }
   return { ...capitalDashboard([], null, skips), source: 'none' };
 }
+
+app.get('/api/setup-book/piotroski-refresh', (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const root = process.env.FMP_RESEARCH_DIR || path.join(DATA_DIR, 'research', 'fmp');
+  let status = null;
+  try { status = JSON.parse(fs.readFileSync(path.join(root, 'refresh-status.json'), 'utf8')); } catch (_) {}
+  let symbolDirs = 0;
+  try {
+    symbolDirs = fs.readdirSync(path.join(root, 'US'), { withFileTypes: true }).filter(entry => entry.isDirectory()).length;
+  } catch (_) {}
+  res.json({
+    ok: true,
+    keyConfigured: Boolean(String(process.env.FMP_API_KEY || process.env.FMP_KEY || process.env.FINANCIAL_MODELING_PREP_API_KEY || '').trim()),
+    cacheRoot: root,
+    running: Boolean(piotroskiRefreshChild),
+    symbolDirs,
+    status,
+  });
+});
+
+app.post('/api/setup-book/piotroski-refresh', (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  res.json({ ok: true, ...startPiotroskiRefresh('manual') });
+});
 
 app.get('/api/setup-book/status', (req, res) => {
   res.json({
