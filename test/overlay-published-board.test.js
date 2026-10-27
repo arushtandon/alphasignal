@@ -72,3 +72,27 @@ test('dashHint pick object is wrapped into pane data', () => {
   assert.equal(row.mediumAction, 'Buy');
   assert.equal(row.mediumTarget1, '3759');
 });
+
+test('stale persisted picks cannot restore a paused sell bracket', () => {
+  const dashData = {
+    medSell: [{
+      ticker: 'MC.PA',
+      mediumAction: 'Sell',
+      mediumRating: 'Strong Sell',
+      mediumConf: 78,
+      mediumSellScore: 82,
+      mediumEntry: 610,
+      mediumTarget1: 570,
+      mediumStopLoss: 640
+    }]
+  };
+  assert.equal(publishedHitsForTicker(dashData, 'MC.PA').length, 0);
+  const row = overlayPublishedBoardOnAnalyzeRow({
+    ticker: 'MC.PA',
+    mediumAction: 'Hold',
+    mediumRating: 'Hold',
+    mediumConf: 40
+  }, dashData, 62);
+  assert.equal(row.mediumAction, 'Hold');
+  assert.equal(row.mediumRating, 'Hold');
+});
