@@ -199,6 +199,7 @@ const {
   capitalSlotPlan,
   capitalEntryFit,
   SETUP_TICKET_USD,
+  setupTicketUsd,
 } = require('../lib/strategy/setup-book-execution');
 const { sendTelegram } = require('../lib/strategy/setup-book-runtime');
 const { instrumentFor } = require('../lib/research/exit-amendment');
@@ -963,8 +964,11 @@ function extendedFillLimit(side, entryPx, quotePx, contract) {
  * opts: { side, entryPx, quotePx } — quotePx gates US pre/extended only.
  */
 function momentumNoStopEntry(evt) {
-  return !!(evt && evt.noStop === true && evt.momentumOpen === true
-    && (evt.setupId === 'UK_LONG_MOMENTUM' || evt.setupId === 'FRANCE_LONG_MOMENTUM'));
+  if (!evt || evt.noStop !== true || evt.momentumOpen !== true) return false;
+  if (evt.setupId === 'UK_LONG_MOMENTUM' || evt.setupId === 'FRANCE_LONG_MOMENTUM') return true;
+  // Incubation books (docs/incubation-tier.md) reuse the no-stop open path.
+  const kind = EVIDENCE_SETUPS[evt.setupId]?.kind;
+  return EVIDENCE_SETUPS[evt.setupId]?.incubation === true && (kind === 'momentum' || kind === 'tom');
 }
 
 function entryChildFlags({ asiaStandalone, momentumNoStop, oneLotRunner, tp1Px, tp2Px, sold, runner }) {
@@ -3691,7 +3695,9 @@ async function main() {
     const boardEntry = (scheduledEntryReleaseAllowed(evt) || !!evt.carryUnfilled) && !evt.userReentry;
     const availLiq = Number(accountSnap.netLiquidityAvailable != null
       ? accountSnap.netLiquidityAvailable : accountSnap.availableFunds);
-    const momentumTicket = EVIDENCE_SETUPS[evt.setupId]?.kind === 'momentum';
+    const momentumTicket = EVIDENCE_SETUPS[evt.setupId]?.kind === 'momentum'
+      || EVIDENCE_SETUPS[evt.setupId]?.kind === 'tom';
+    const ticketUsd = setupTicketUsd(evt.setupId);
     const split = await shareSplit(evt.entry, contract, lot, {
       nlv,
       stop: rawStop > 0 ? rawStop : (momentumTicket ? Number(evt.entry) * 0.99 : rawStop),
@@ -3700,7 +3706,7 @@ async function main() {
       drawdownPct: Number(evt.drawdownPct) || 0,
       capitalScale: evt.capitalScale,
       allowMinLot: boardEntry || !!evt.setupId,
-      ticketNotionalUsd: evt.setupId ? SETUP_TICKET_USD : undefined,
+      ticketNotionalUsd: evt.setupId ? ticketUsd : undefined,
       netLiquidityAvailable: availLiq,
       liquidityFloorPct: 1 - MAX_CAPITAL_UTILIZATION_PCT
     });
@@ -3757,14 +3763,14 @@ async function main() {
         : 0;
       if (split.risk?.exceedsTicket) {
         log('setup ticket exceeded by minimum lot', evt.ticker, evt.setupId,
-          `notional=${split.risk.notionalUsd} ticket=${SETUP_TICKET_USD}`);
+          `notional=${split.risk.notionalUsd} ticket=${ticketUsd}`);
       }
       const setupCapacity = evaluateSetupCapacity(
         evt.setupId,
         Object.values(state.byKey || {}),
         split.risk?.notionalUsd,
         nlv,
-        { minimumLot: split.risk?.exceedsTicket === true || (lotUsd > SETUP_TICKET_USD) },
+        { minimumLot: split.risk?.exceedsTicket === true || (lotUsd > ticketUsd) },
       );
       const capitalRows = Object.entries(state.byKey || {}).map(([rowKey, capitalRow]) => (
         capitalRow ? { ...capitalRow, key: rowKey } : capitalRow

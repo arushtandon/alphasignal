@@ -65,6 +65,15 @@ const {
 const { compareSetupEntries, capitalPoolEnabled, capitalDashboard } = require('./lib/strategy/setup-book-execution');
 const { cachedEvidenceBars } = require('./lib/strategy/evidence-bars-cache');
 const { planMomentumBatch, commitMomentumAcceptances, BOOKS: MOMENTUM_BOOKS, padBenchmarkCalendar, previousWeekday } = require('./lib/strategy/momentum-book');
+const { planTomBatch, BOOKS: TOM_BOOKS } = require('./lib/strategy/tom-book');
+const {
+  INCUBATION_BOOKS,
+  INCUBATION_LABEL,
+  INCUBATION_TICKET_USD,
+  INCUBATION_MAX_SLOTS,
+  incubationEligibility,
+  incubationEnabled,
+} = require('./lib/strategy/incubation-tier');
 const { createScanDiagnostic } = require('./lib/strategy/scan-diagnostic');
 const { buildPublicationCellRecord, freezePublishedFields } = require('./lib/strategy/publication-record');
 const {
@@ -7952,6 +7961,16 @@ app.get('/api/setup-book/status', (req, res) => {
     pnl: setupBookPnlViews(tradeHistory),
     runtime: evaluateSetupBookPauses(tradeHistory, { notify: false }).state,
     capital: setupBookCapitalView(),
+    incubation: {
+      label: INCUBATION_LABEL,
+      ticketUsd: INCUBATION_TICKET_USD,
+      maxSlots: INCUBATION_MAX_SLOTS,
+      books: Object.keys(INCUBATION_BOOKS).map(id => ({
+        id,
+        ...incubationEligibility(id),
+        enabled: incubationEnabled(id),
+      })),
+    },
     scanDiagnostic: lastScanDiagnostic,
   });
 });
@@ -7986,18 +8005,41 @@ app.post('/api/setup-book/momentum-run', express.json({ limit: '64kb' }), async 
   if (!dryRun && !capitalPoolEnabled()) return res.json({ ok: false, armed: false, reason: 'capital-pool-off' });
   try {
     const now = dryRun && req.body && req.body.now ? new Date(req.body.now) : new Date();
-    const benchmarks = new Set(Object.values(MOMENTUM_BOOKS).map(book => book.benchmark));
+    const benchmarks = new Set([
+      ...Object.values(MOMENTUM_BOOKS).map(book => book.benchmark),
+      ...Object.values(TOM_BOOKS).map(book => book.ticker),
+    ]);
     const paddedThrough = dryRun ? previousWeekday(now.toISOString().slice(0, 10)) : null;
-    const plan = await planMomentumBatch({
-      now,
-      held: Array.isArray(req.body && req.body.held) ? req.body.held : [],
-      dryRun,
-      loadBars: async symbol => {
-        const bars = await fetchOHLCV(symbol, '2y', '1d');
-        if (!dryRun || !benchmarks.has(symbol)) return bars;
-        return padBenchmarkCalendar(bars, paddedThrough);
+    const held = Array.isArray(req.body && req.body.held) ? req.body.held : [];
+    const loadBars = async symbol => {
+      const bars = await fetchOHLCV(symbol, '2y', '1d');
+      if (!dryRun || !benchmarks.has(symbol)) return bars;
+      return padBenchmarkCalendar(bars, paddedThrough);
+    };
+    const momentumPlan = await planMomentumBatch({ now, held, loadBars, dryRun });
+    // Incubation TOM books (docs/incubation-tier.md) ride the same batch.
+    let tomPlan = { orders: [], books: [] };
+    try {
+      tomPlan = await planTomBatch({ now, held, loadBars, dryRun });
+    } catch (error) {
+      tomPlan = { orders: [], books: [], error: error.message };
+    }
+    const plan = {
+      ...momentumPlan,
+      orders: [...(momentumPlan.orders || []), ...(tomPlan.orders || [])],
+      books: [...(momentumPlan.books || []), ...(tomPlan.books || [])],
+      tomError: tomPlan.error || null,
+      incubation: {
+        label: INCUBATION_LABEL,
+        ticketUsd: INCUBATION_TICKET_USD,
+        maxSlots: INCUBATION_MAX_SLOTS,
+        books: Object.keys(INCUBATION_BOOKS).map(id => ({
+          id,
+          ...incubationEligibility(id),
+          enabled: incubationEnabled(id),
+        })),
       },
-    });
+    };
     if (dryRun) {
       return res.json({
         ...plan,
@@ -15048,8 +15090,17 @@ function emitTradeEvent(type, payload) {
       console.log('IBKR entry skipped (not Buy/Sell):', payload && payload.key);
       return null;
     }
+    const incubationSetup = EVIDENCE_SETUPS[payload.setupId]?.incubation === true;
     const momentumEntry = payload.noStop === true && payload.momentumOpen === true
-      && (payload.setupId === 'UK_LONG_MOMENTUM' || payload.setupId === 'FRANCE_LONG_MOMENTUM');
+      && (payload.setupId === 'UK_LONG_MOMENTUM' || payload.setupId === 'FRANCE_LONG_MOMENTUM' || incubationSetup);
+    if (incubationSetup) {
+      // docs/incubation-tier.md: emit only when eligible and explicitly enabled.
+      const gate = require('./lib/strategy/incubation-tier').incubationCanEmit(payload.setupId);
+      if (!gate.allowed) {
+        console.log('IBKR entry skipped (incubation gate):', payload && payload.key, payload.setupId, gate.reason, gate.detail);
+        return null;
+      }
+    }
     if (momentumEntry && isSetupPaused(payload.setupId)) {
       console.log('IBKR entry skipped (setup paused):', payload && payload.key, payload.setupId);
       return null;

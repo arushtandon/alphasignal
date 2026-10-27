@@ -54,7 +54,8 @@ test('frozen setup cells contain only the operator-approved buy setups', () => {
   assert.equal(setupForCell('US', 'medium', 'buy'), null);
   assert.equal(setupForCell('UK', 'long', 'buy'), null);
   assert.equal(setupForCell('Japan', 'medium', 'sell'), null);
-  assert.equal(Object.keys(SETUPS).length, 14);
+  assert.equal(Object.keys(SETUPS).length, 17);
+  assert.equal(Object.values(SETUPS).filter(setup => setup.incubation === true).length, 3);
 });
 
 test('golden MR range produces identical shared signal, levels, and exits', () => {
