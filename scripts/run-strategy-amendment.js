@@ -411,7 +411,9 @@ function runMomentum(variant, loaded) {
     const invested = holdMonths === 1 ? 1 : Math.min(1, sleeves / holdMonths);
     periods.push({ date: benchmark.dates[next], ret: sleeves ? (sleeveReturn / sleeves) * invested : 0 });
   }
-  return scoreSample(variant, benchmark, periods, trades.filter(row => Number.isFinite(row.ret)), sizes);
+  const scored = scoreSample(variant, benchmark, periods, trades.filter(row => Number.isFinite(row.ret)), sizes);
+  if (variant.keepPeriods) scored.periods = periods;
+  return scored;
 }
 function runEarnings(variant, loaded) {
   const { books, benchmark } = loaded;
@@ -515,6 +517,7 @@ function runEarnings(variant, loaded) {
   concurrent.sort((a, b) => a - b);
   scored.medianNames = concurrent.length ? concurrent[Math.floor(concurrent.length / 2)] : 0;
   scored.peakNames = concurrent.length ? concurrent[concurrent.length - 1] : 0;
+  if (variant.keepPeriods) scored.periods = periods;
   return scored;
 }
 function design(row) {
