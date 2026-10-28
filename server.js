@@ -7620,12 +7620,24 @@ app.post('/api/danelfin/history-pull', (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   if (danelfinHistoryPull.running) return res.json({ ok: true, running: true, startedAt: danelfinHistoryPull.startedAt });
   const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
-  const { runBuyHistory, readCheckpoint } = require('./lib/integrations/danelfin-history-pull');
+  const { runBuyHistory, runCappedSectorSplit, readCheckpoint } = require('./lib/integrations/danelfin-history-pull');
   const root = path.join(DATA_DIR, 'danelfin-research');
   const client = createDanelfinClient({ root, environment: 'research', allowNetwork: true });
-  danelfinHistoryPull = { running: true, startedAt: new Date().toISOString() };
+  danelfinHistoryPull = { running: true, phase: 'dates', startedAt: new Date().toISOString() };
   runBuyHistory(client, { root }).then(state => {
-    danelfinHistoryPull = { running: false, stopped: state.stopped, done: Object.keys(state.done || {}).length };
+    if (state.stopped === 'budget' || state.stopped === 'breaker-open' || state.stopped === 'below-reserve' || state.stopped === 'deadline') {
+      return state;
+    }
+    danelfinHistoryPull.phase = 'sectors';
+    return runCappedSectorSplit(client, { root });
+  }).then(state => {
+    danelfinHistoryPull = {
+      running: false,
+      phase: 'done',
+      stopped: state.stopped,
+      sectorStopped: state.sectorStopped || null,
+      done: Object.keys(state.done || {}).length,
+    };
   }).catch(error => {
     danelfinHistoryPull = { running: false, error: error.message };
   });
@@ -7634,16 +7646,22 @@ app.post('/api/danelfin/history-pull', (req, res) => {
 });
 
 app.get('/api/danelfin/history-pull', (req, res) => {
-  const { readCheckpoint } = require('./lib/integrations/danelfin-history-pull');
-  const state = readCheckpoint(path.join(DATA_DIR, 'danelfin-research'));
-  const done = state.done || {};
+  const { historyView } = require('./lib/integrations/danelfin-history-pull');
+  const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
+  const root = path.join(DATA_DIR, 'danelfin-research');
+  const view = historyView(root, { names: req.query.names === '1' });
+  const research = createDanelfinClient({ root, environment: 'research', allowNetwork: false }).status();
   res.json({
     ok: true,
     running: danelfinHistoryPull.running === true,
-    stopped: state.stopped || null,
-    done: Object.keys(done).length,
-    capped: Object.values(done).filter(row => row && row.capped).map(row => row),
-    dates: Object.keys(done).sort(),
+    phase: danelfinHistoryPull.phase || null,
+    ...view,
+    research: {
+      used: research.used,
+      share: research.share,
+      byPurpose: research.byPurpose,
+      breakerOpen: research.breakerOpen,
+    },
   });
 });
 

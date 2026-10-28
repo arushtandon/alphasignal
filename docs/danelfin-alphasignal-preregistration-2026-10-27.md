@@ -24,8 +24,14 @@ Research share is 340 calls this month. Live keeps 60. Reserve 100 stays untouch
 | Month-ends | Last weekday of each month, January 2018 through September 2024 | 81 |
 | Week-ends | 104 Fridays ending 2026-10-23 | 104 |
 | October total with discovery | | 188 |
+| Capped week-ends, by sector | 7 Fridays × 11 sectors | 77 |
+| October total with the sector split | | 265 |
 
-188 is inside the 340 research share. Each response is written before the next call. A date already stored is not fetched again. Nothing is requested after 31 Oct 2026 24:00 UTC.
+265 is inside the 340 research share. Each response is written before the next call. A date already stored is not fetched again. Nothing is requested after 31 Oct 2026 24:00 UTC.
+
+Seven week-end files came back with exactly 100 names. The ranking route accepts a `sector` slug. The 11 slugs on the sectors list are communication-services, consumer-discretionary, consumer-staples, energy, financials, health-care, industrials, information-technology, materials, real-estate, and utilities. No call is spent to list them again. Each of those seven dates is requested once per sector, `aiscore=10`, same fields, checkpointed the same way. A sector already stored is not fetched again.
+
+A date is treated as uncapped only when every sector response has fewer than 100 names and every name in the original 100 is in the union. A sector that returns 100 stays flagged, and that week is not replaced by a partial union. The candidate table then reports that week both as the stored 100 and as excluded.
 
 ## Universe and trade rules
 
