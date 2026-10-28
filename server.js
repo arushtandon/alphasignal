@@ -7615,6 +7615,47 @@ app.post('/api/danelfin/discover', async (req, res) => {
   res.json({ ok: true, ...record });
 });
 
+let danelfinHistoryPull = { running: false };
+app.post('/api/danelfin/history-pull', (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  if (danelfinHistoryPull.running) return res.json({ ok: true, running: true, startedAt: danelfinHistoryPull.startedAt });
+  const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
+  const { runBuyHistory, readCheckpoint } = require('./lib/integrations/danelfin-history-pull');
+  const root = path.join(DATA_DIR, 'danelfin-research');
+  const client = createDanelfinClient({ root, environment: 'research', allowNetwork: true });
+  danelfinHistoryPull = { running: true, startedAt: new Date().toISOString() };
+  runBuyHistory(client, { root }).then(state => {
+    danelfinHistoryPull = { running: false, stopped: state.stopped, done: Object.keys(state.done || {}).length };
+  }).catch(error => {
+    danelfinHistoryPull = { running: false, error: error.message };
+  });
+  const existing = readCheckpoint(root);
+  res.json({ ok: true, started: true, alreadyDone: Object.keys(existing.done || {}).length });
+});
+
+app.get('/api/danelfin/history-pull', (req, res) => {
+  const { readCheckpoint } = require('./lib/integrations/danelfin-history-pull');
+  const state = readCheckpoint(path.join(DATA_DIR, 'danelfin-research'));
+  const done = state.done || {};
+  res.json({
+    ok: true,
+    running: danelfinHistoryPull.running === true,
+    stopped: state.stopped || null,
+    done: Object.keys(done).length,
+    capped: Object.values(done).filter(row => row && row.capped).map(row => row),
+    dates: Object.keys(done).sort(),
+  });
+});
+
+app.get('/api/danelfin/signal-cards', (req, res) => {
+  const file = path.join(DATA_DIR, 'danelfin-signals', 'cards.json');
+  try {
+    res.json(JSON.parse(fs.readFileSync(file, 'utf8')));
+  } catch (_) {
+    res.json({ ok: true, cards: [], missingPrice: [], orders: false, label: 'Danelfin + AlphaSignal — not validated' });
+  }
+});
+
 // POST /api/danelfin/batch — equities only; returns map ticker -> scores (omit if no AI score)
 app.post('/api/danelfin/batch', async (req, res) => {
   // Danelfin is retired from scoring — do not fetch or return ML scores.
@@ -13386,10 +13427,92 @@ async function scanSchedulerTick(boot = false) {
 // Initial kick once the heavier boot sync has settled, then poll every 5 min
 // so the 05:00 SGT board lands by ~05:05 and failed attempts retry quickly
 // before the Tokyo open (08:00 SGT).
+let liveDanelfinRanking = false;
+async function maybeLiveDanelfinRanking() {
+  if (liveDanelfinRanking) return;
+  const { dueForLiveRanking } = require('./lib/strategy/danelfin-signal-cards');
+  const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
+  const dir = path.join(DATA_DIR, 'danelfin-live');
+  let stored = new Set();
+  try {
+    stored = new Set(fs.readdirSync(dir).filter(name => /^\d{4}-\d{2}-\d{2}\.json$/.test(name)).map(name => name.slice(0, 10)));
+  } catch (_) {}
+  const decision = dueForLiveRanking(new Date(), stored);
+  if (!decision.due) return;
+  liveDanelfinRanking = true;
+  try {
+    const client = createDanelfinClient({
+      root: path.join(DATA_DIR, 'danelfin-live'),
+      environment: 'render-live',
+      allowNetwork: true,
+      maxCalls: 1,
+    });
+    const result = await client.request({
+      purpose: 'live-ai-10',
+      endpoint: '/ranking',
+      params: { date: decision.date, aiscore: 10, fields: 'aiscore,fundamental,technical,sentiment,low_risk' },
+      noRetry: true,
+    });
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${decision.date}.json`), JSON.stringify(result.body == null ? { status: result.status, reason: result.reason } : result.body));
+    const signalDir = path.join(DATA_DIR, 'danelfin-signals');
+    fs.mkdirSync(signalDir, { recursive: true });
+    const names = [];
+    const body = result.body && typeof result.body === 'object' ? result.body : {};
+    for (const [key, rows] of Object.entries(body)) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(key) && rows && typeof rows === 'object') names.push(...Object.keys(rows));
+    }
+    const { buildWatchCards, rowFromBars } = require('./lib/strategy/danelfin-signal-cards');
+    const rows = {};
+    const u2 = {};
+    const awaitingMarketCap = [];
+    for (const name of names) {
+      const ticker = String(name).toUpperCase();
+      const bars = await fetchOHLCV(ticker, '2y', '1d').catch(() => null);
+      const row = rowFromBars(Array.isArray(bars) ? bars : [], {});
+      rows[ticker] = row;
+      if (!row.hasPrice) {
+        u2[ticker] = { pass: false, hasPrice: false };
+        continue;
+      }
+      const tail = bars.slice(-20);
+      const dollar = tail.reduce((sum, bar) => sum + Number(bar.c) * Number(bar.v || 0), 0) / (tail.length || 1);
+      u2[ticker] = { pass: false, hasPrice: true, dollarAdv: dollar, marketCap: null };
+      if (row.close >= 5 && dollar >= 20_000_000) awaitingMarketCap.push(ticker);
+    }
+    let u1 = new Set();
+    try {
+      const { loadUsUniverseSnapshot, membershipAt } = require('./lib/research/us-universe');
+      const snap = loadUsUniverseSnapshot(path.join(DATA_DIR, 'research', 'fmp'));
+      u1 = membershipAt(snap, decision.date);
+    } catch (_) {}
+    const view = buildWatchCards({ names, rows, u1, u2 });
+    const notional = 10000;
+    fs.writeFileSync(path.join(signalDir, 'cards.json'), JSON.stringify({
+      ok: true,
+      date: decision.date,
+      capped: names.length === 100,
+      orders: false,
+      label: 'Danelfin + AlphaSignal — not validated',
+      cards: view.cards.map(card => ({
+        ...card,
+        model: { notional, entry: card.entry, pnl: null, status: 'open' },
+      })),
+      missingPrice: view.missingPrice,
+      awaitingMarketCap,
+    }, null, 2));
+  } catch (error) {
+    console.warn('live Danelfin ranking failed:', error && error.message);
+  } finally {
+    liveDanelfinRanking = false;
+  }
+}
+
 if (require.main === module) {
   setTimeout(bootDashHistorySync, 4000);
   setTimeout(() => scanSchedulerTick(true), 30000);
   setInterval(() => scanSchedulerTick(false), 5 * 60 * 1000);
+  setInterval(() => { maybeLiveDanelfinRanking().catch(() => {}); }, 5 * 60 * 1000);
 }
 
 // Manual / client-triggered picks regeneration (does not wait for the clock).

@@ -516,8 +516,23 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
         + ' · last ' + last;
     }).catch(function () {});
   }
+  function loadDanelfinSignals() {
+    fetch('/api/danelfin/signal-cards').then(function (res) { return res.json(); }).then(function (body) {
+      var el = document.getElementById('danelfinSignals');
+      if (!el) return;
+      var cards = body.cards || [];
+      var warn = body.capped ? ' WARNING: AI 10 list returned 100 names and is capped.' : '';
+      el.textContent = (body.label || 'Danelfin + AlphaSignal — not validated')
+        + (body.date ? ' ' + body.date : '')
+        + ' · ' + cards.length + ' watch cards'
+        + ' · orders off'
+        + warn;
+    }).catch(function () {});
+  }
   loadDanelfinBudget();
+  loadDanelfinSignals();
   setInterval(loadDanelfinBudget, 60000);
+  setInterval(loadDanelfinSignals, 60000);
 })();
 </script>
 
@@ -564,6 +579,7 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
         <p>Top 5 long &amp; short opportunities across the full research universe, ranked by AI composite score</p>
         <div class="dash-ts" id="dashTs">Loading...</div>
         <div id="danelfinBudget" style="margin-top:6px;font-size:11px;font-family:'DM Mono',monospace;color:var(--m1)">Danelfin budget: …</div>
+        <div id="danelfinSignals" style="margin-top:8px;font-size:11px;font-family:'DM Mono',monospace;color:var(--m1)">Danelfin + AlphaSignal — not validated</div>
       </div>
 
       <!-- Two-column layout: picks (left) + earnings sidebar (right) -->
