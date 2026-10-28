@@ -1,8 +1,8 @@
 # Danelfin + AlphaSignal — pre-registration
 
-Written 2026-10-27. Amended 2026-10-28. Not run. Do not start the history pull or the study until this file is approved.
+Written 2026-10-27. Amended 2026-10-28 after the discovery calls. The backtest has not been run. Do not start it until the candidate table below is approved.
 
-Buy books use AI score = 10 only. The sell book uses AI score = 1 only. That is two ranking calls per date. Lists filtered with a minimum (AI >= 9) or a second low score (AI = 2) are likely to come back at the 100-name cap and would be an incomplete universe. If the discovery calls for the latest session return exactly 100 names on either side, the history pull stays stopped.
+The sell book is dropped. On 2026-10-27, `aiscore=1` returned exactly 100 names, so the list is capped, and only 1 of those 100 is in our ever-member universe (STI, not a current member). There is no way to know which other AI = 1 names were cut off. No AI = 1 history is pulled.
 
 ## What the ranking endpoint does
 
@@ -15,26 +15,26 @@ Buy books use AI score = 10 only. The sell book uses AI score = 1 only. That is 
 - Markets: US by default. Europe with `market=europe`, history from 2022-01-03. This study is US only.
 - Docs do not say whether a past date is the score as published that day or a later recompute. The study records that as unknown until Danelfin says otherwise. From the day this system stores a response, that file is our as-published copy and is never refetched.
 
-## Call plan (not started)
+## Call plan (buy side only)
 
-Research share is 340 calls this month. Live keeps 60. Reserve 100 stays untouched.
+Research share is 340 calls this month. Live keeps 60. Reserve 100 stays untouched. The three discovery calls already counted. This pull is AI = 10 only.
 
-A date with no score filter returns at most 100 names, the top of the ranking. There is no ascending sort. Each date in the pull is two calls: exact AI score 10, and exact AI score 1.
-
-The research share is 340 calls per month. Live keeps 60. Reserve 100 stays untouched. The three discovery calls count against October's research share. Nothing below is started.
-
-If `2018-01-02` comes back with a score, month-end dates run from January 2018 through September 2024 (81 dates, the last month before the two-year weekly window). That is 162 calls. The last two years are 104 week-end dates, 208 calls. 162 + 208 = 370, which does not fit in one month next to the discovery calls.
-
-| Month | What | Calls |
+| Stage | Dates | Calls |
 | --- | --- | ---: |
-| October 2026 | 3 discovery calls, then 81 month-ends × 2, then the first 87 of 104 week-ends × 2 | 339 |
-| November 2026 | the remaining 17 week-ends × 2 | 34 |
+| Month-ends | Last weekday of each month, January 2018 through September 2024 | 81 |
+| Week-ends | 104 Fridays ending 2026-10-23 | 104 |
+| October total with discovery | | 188 |
 
-If `2018-01-02` has no scores, the month-end series starts at the first date that does, October's total falls, and the leftover week-ends still finish in November. Each response is written immediately and is never fetched again.
+188 is inside the 340 research share. Each response is written before the next call. A date already stored is not fetched again. Nothing is requested after 31 Oct 2026 24:00 UTC.
 
 ## Universe and trade rules
 
-Universe: our US ever-members (S&P 500 and Nasdaq-100 history) that also appear in the Danelfin response for that signal date.
+Two universes, counted as separate arms. A Danelfin ticker is matched to our symbol on the signal date. A ticker that was removed and later added again in the membership file (STI is the discovered example) is flagged as reused and is not treated as the same company across that gap.
+
+- **U1.** Our S&P 500 and Nasdaq-100 ever-members whose membership includes the signal date, and who appear in the AI = 10 list that day.
+- **U2.** Liquid US names in the AI = 10 list: price at least $5, market cap at least $2 billion, and 20-day average dollar volume at least $20 million, all on the signal date. Prices must include delisted names from FMP. A name with no price history is listed in the readout and is not dropped quietly.
+
+The candidate table (count and sector mix per month, U1 and U2) is filled from the stored AI = 10 responses before any backtest. That table is what gets approved.
 
 Entry: next session open. Costs: `lib/research/cost-model.js` US profile. Notional: $10,000 per trade, plus executable books at k = 1, 2 and 5 with $30,000 per name. Stop is evaluated before the target. A symbol already in an open trade of the same book is not entered again.
 
@@ -42,10 +42,11 @@ Books:
 
 - **S-BUY** (short horizon, long the stock): AI = 10 and Williams %R(10) < -95 and close > MA200 and the vol-skip-top-30 regime. Exits are the US_SHORT_MR rules (ATR target and stop, time stop).
 - **M-BUY** (medium): AI = 10 and close > MA200 and MA200 rising over 21 sessions and 12-1 > 0 and the engine medium score >= 62 from the same signal function the backtest uses. If that score cannot be reproduced on history, the arm uses 6-month relative strength in the top 30% instead, and the readout says so. Stop 2.5 ATR, engine targets, maximum 63 sessions.
-- **L-BUY** (long): AI = 10 and point-in-time Piotroski >= 6 and 12-1 > 0. Monthly. Take the top k by AI score, then by 12-1. Hold 6 months.
-- **SELL** (medium): AI = 1 and close < MA200 and MA200 falling and 6-month relative strength in the bottom 30%. Short the stock and buy a beta-scaled SPY hedge. Cover when close > MA50 or at 63 sessions. Borrow 1% a year, 3% if the price is under $5.
+- **L-BUY** (long): AI = 10 and point-in-time Piotroski >= 6 and 12-1 > 0. Monthly. Take the top k by AI score, then by 12-1. Hold 6 months. The readout counts how many AI = 10 names have no point-in-time Piotroski (banks often will not). If that share is more than one third, one extra counted variant replaces Piotroski with Danelfin's fundamental sub-score >= 7.
 
-Each book has three arms: Danelfin only (same exits, no overlay), AlphaSignal only (the overlay on the full universe, no Danelfin), and both.
+There is no sell book.
+
+Each buy book is run on U1 and on U2. Within a universe the arms are Danelfin only, AlphaSignal only, and both.
 
 ## Report and pass rule
 
@@ -53,10 +54,10 @@ Per arm: trades, win rate, profit factor, total dollar P&L, average win, average
 
 Pass: the combined arm is profitable with PF >= 1.2 in every window that has trades, monthly excess t >= 3, alpha t >= 2, and it beats both other arms on full-sample dollar P&L and on PF, and in at least 3 of the 4 windows. Otherwise apply `docs/incubation-tier.md`.
 
-Trials counted for the deflated Sharpe: 4 books × 3 arms × the k variants (the $10k book plus k = 1, 2, 5). No arm is dropped after seeing results.
+Trials counted for the deflated Sharpe: 3 buy books × 2 universes × 3 arms × the k variants (the $10k book plus k = 1, 2, 5), plus the L-BUY fundamental-score variant if the missing-Piotroski share is above one third. No arm is dropped after seeing results.
 
 Look-ahead: signals only on dates after Danelfin was publishing. The probe's earliest date is the start. Dates before that are out.
 
-## Live design (not built)
+## Live watch cards
 
-After a pass, or after a separate incubation approval: one ranking call per side after the US close, at a fixed time. Candidates go through our overlay on our own prices. Cards show the AI score and our reasons. Responses are stored on the data disk with the date, and that file is the as-published record from that day forward. If the live share (60) is exhausted or the breaker is open, Danelfin books pause, every other book runs, and Telegram is sent. Nothing here turns a book on.
+From the next US close, one `aiscore=10` call per session, on the live share (60 per month). The stored list is overlaid with the buy rules on U1 and U2. Cards are watch-only: no entry events and no orders. A separate model book marks $10,000 notional from the recorded entry. If the call returns 100 names, the card section shows a cap warning.
