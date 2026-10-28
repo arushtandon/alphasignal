@@ -125,6 +125,73 @@ test('the monthly cap refuses the 451st attempt', async () => {
   assert.equal(result.reason, 'budget');
 });
 
+test('server construction sends one counted ranking request through global fetch', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dan-'));
+  const seen = [];
+  const savedFetch = globalThis.fetch;
+  const savedKey = process.env.DANELFIN_API_KEY;
+  globalThis.fetch = async (url, init) => {
+    seen.push({ url: String(url), init });
+    return { status: 200, json: async () => ({ '2026-10-27': { AAPL: { aiscore: 10 } } }) };
+  };
+  process.env.DANELFIN_API_KEY = 'test-key';
+  try {
+    const client = createDanelfinClient({
+      root: dir,
+      environment: 'research',
+      allowNetwork: true,
+      maxCalls: 3,
+    });
+    const fields = 'aiscore,fundamental,technical,sentiment,low_risk';
+    const result = await client.request({
+      purpose: 'discovery-latest-ai-10',
+      endpoint: '/ranking',
+      params: { date: '2026-10-27', aiscore: 10, fields },
+      noRetry: true,
+    });
+    assert.equal(result.ok, true);
+    assert.equal(seen.length, 1);
+    const url = new URL(seen[0].url);
+    assert.equal(url.hostname, DANELFIN_HOST);
+    assert.equal(url.pathname, '/ranking');
+    assert.equal(url.searchParams.get('date'), '2026-10-27');
+    assert.equal(url.searchParams.get('aiscore'), '10');
+    assert.equal(url.searchParams.get('fields'), fields);
+    assert.equal(seen[0].init.headers['x-api-key'], 'test-key');
+    assert.equal(client.status().used, 1);
+  } finally {
+    globalThis.fetch = savedFetch;
+    if (savedKey == null) delete process.env.DANELFIN_API_KEY;
+    else process.env.DANELFIN_API_KEY = savedKey;
+  }
+});
+
+test('a ledger adjustment restores calls that never left the process', async () => {
+  const time = clock();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dan-'));
+  fs.writeFileSync(path.join(dir, 'danelfin-budget.json'), JSON.stringify({
+    months: { '2026-10': { byEnv: { research: 2 }, byPurpose: {} } },
+    breakerUntil: Date.parse('2026-10-02T00:00:00Z'),
+    consecutiveFailures: 2,
+  }));
+  const dan = client(dir, time, async () => ({ status: 200, json: async () => ({}) }));
+  const line = dan.recordAdjustment({
+    who: 'danelfin-discover',
+    why: 'fetchImpl is not a function; the two attempts never left the process',
+    callsRestored: 2,
+    clearBreaker: true,
+  });
+  assert.equal(line.callsRestored, 2);
+  assert.equal(line.who, 'danelfin-discover');
+  assert.equal(dan.status().used, 0);
+  assert.equal(dan.status().breakerOpen, false);
+  const ledger = dan.ledgerTail(5);
+  assert.equal(ledger.length, 1);
+  assert.equal(ledger[0].purpose, 'ledger-adjustment');
+  assert.equal(ledger[0].callsRestored, 2);
+  assert.match(ledger[0].why, /never left the process/);
+});
+
 test('a missing fetch is refused before it is counted', async () => {
   const time = clock();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dan-'));

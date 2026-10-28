@@ -7534,6 +7534,7 @@ app.post('/api/danelfin/discover', async (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   const dir = path.join(DATA_DIR, 'danelfin-discovery');
   const doneFile = path.join(dir, 'done.json');
+  let priorLocalBug = false;
   if (fs.existsSync(doneFile)) {
     const prior = JSON.parse(fs.readFileSync(doneFile, 'utf8'));
     const calls = Array.isArray(prior.calls) ? prior.calls : [];
@@ -7546,20 +7547,7 @@ app.post('/api/danelfin/discover', async (req, res) => {
     for (const name of fs.readdirSync(dir)) {
       if (name.startsWith('discovery-')) fs.unlinkSync(path.join(dir, name));
     }
-    const stateFile = path.join(DATA_DIR, 'danelfin-research', 'danelfin-budget.json');
-    try {
-      const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
-      const month = new Date().toISOString().slice(0, 7);
-      const row = state.months && state.months[month];
-      if (row && row.byEnv && !state.localFetchBugReversed) {
-        const bugCalls = calls.filter(call => call.body && call.body.error === 'fetchImpl is not a function').length;
-        row.byEnv.research = Math.max(0, (row.byEnv.research || 0) - bugCalls);
-        state.localFetchBugReversed = { at: new Date().toISOString(), calls: bugCalls, reason: 'client bug, request never left the process' };
-      }
-      delete state.breakerUntil;
-      state.consecutiveFailures = 0;
-      fs.writeFileSync(stateFile, JSON.stringify(state));
-    } catch (_) {}
+    priorLocalBug = true;
   }
   const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
   const fields = 'aiscore,fundamental,technical,sentiment,low_risk';
@@ -7569,6 +7557,15 @@ app.post('/api/danelfin/discover', async (req, res) => {
     allowNetwork: true,
     maxCalls: 3,
   });
+  let ledgerAdjustment = null;
+  if (priorLocalBug) {
+    ledgerAdjustment = client.recordAdjustment({
+      who: 'danelfin-discover',
+      why: 'fetchImpl is not a function; the two attempts never left the process',
+      callsRestored: 2,
+      clearBreaker: true,
+    });
+  }
   const jobs = [
     { purpose: 'discovery-latest-ai-10', params: { date: '2026-10-27', aiscore: 10, fields } },
     { purpose: 'discovery-latest-ai-1', params: { date: '2026-10-27', aiscore: 1, fields } },
@@ -7608,7 +7605,12 @@ app.post('/api/danelfin/discover', async (req, res) => {
       file,
     });
   }
-  const record = { at: new Date().toISOString(), calls: summary };
+  const record = {
+    at: new Date().toISOString(),
+    calls: summary,
+    ledgerAdjustment,
+    ledger: client.ledgerTail(12),
+  };
   fs.writeFileSync(doneFile, JSON.stringify(record, null, 2));
   res.json({ ok: true, ...record });
 });
@@ -8079,8 +8081,10 @@ async function cachedViewAnalystTarget(symbol) {
   const key = fmpAnyApiKey();
   if (!key) return null;
   try {
-    const response = await fetch(`https://financialmodelingprep.com/api/v3/price-target-consensus/${encodeURIComponent(symbol)}?apikey=${encodeURIComponent(key)}`);
-    const body = await response.json();
+    const { createFmpClient } = require('./lib/integrations/fmp-client');
+    const fmp = createFmpClient();
+    const fetched = await fmp.get(`/api/v3/price-target-consensus/${encodeURIComponent(symbol)}`);
+    const body = fetched.body;
     const row = Array.isArray(body) ? body[0] : body;
     const target = row && (row.targetConsensus ?? row.targetMean) != null ? Number(row.targetConsensus ?? row.targetMean) : null;
     fs.mkdirSync(path.dirname(file), { recursive: true });
