@@ -3451,6 +3451,10 @@ function filterBoardPicksForUi(picks, hz, side) {
   const isSell = side === 'sell';
   return (picks || []).filter(function (s) {
     if (!s || !s.ticker) return false;
+    if (s.setupKind === 'mean_reversion' && s.setupId) {
+      const setupAction = s[hz + 'Action'] || s.action || 'Hold';
+      return setupAction === (isSell ? 'Sell' : 'Buy');
+    }
     const action = s[hz + 'Action'] || s.action || 'Hold';
     const conf = Number(s[hz + 'Conf'] || s.shortConf || s.conf || 0);
     if (!(conf >= PICKS_MIN_CONF)) return false;
@@ -6063,6 +6067,21 @@ function renderPicksPane(elId,picks,hz,side){
   // Same gate as tab labels (filterBoardPicksForUi). Strong preferred in rank,
   // but Conf/RR Buy-Sell cards still render so "5↑" never means only 2 cards.
   picks = filterBoardPicksForUi(picks, hz, side);
+  const setupCards = picks.filter(function (s) { return s.setupKind === 'mean_reversion' && s.setupId; });
+  const otherCards = picks.filter(function (s) { return !(s.setupKind === 'mean_reversion' && s.setupId); });
+  function tierRank(s) {
+    const label = String(s.setupTier || s.tierLabel || '');
+    if (/Tier 1/.test(label)) return 1;
+    if (/Tier 2/.test(label)) return 2;
+    if (/Experimental/.test(label)) return 3;
+    return 9;
+  }
+  setupCards.sort(function (a, b) {
+    return tierRank(a) - tierRank(b)
+      || String(a.setupId).localeCompare(String(b.setupId))
+      || String(a.ticker).localeCompare(String(b.ticker));
+  });
+  picks = setupCards.concat(otherCards);
   if(!picks||!picks.length){
     var emptyMsg = gated
       ? ((isSell?'Sell':'Buy')+' · '+hz+' is paused by DISABLED_BRACKETS on the server. Clear that env var (or switch timeframe) to see picks.')
@@ -6091,9 +6110,17 @@ function renderPicksPane(elId,picks,hz,side){
     const pnl=calcPnl(entryP,tp1,sl,action);
     const ratingLabel=s[ratingKey]||action;
     const rankTag = isSell?'SHORT':'PICK';
-    return `<div class="pick-card ${ac}" onclick="loadPickDetail('${s.ticker}','${hz}')">
+    const showSetup = s.setupKind === 'mean_reversion' && s.setupId;
+    const setupHeader = (showSetup && (i === 0 || picks[i - 1].setupId !== s.setupId))
+      ? `<div style="grid-column:1/-1;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.04em;color:var(--m1);margin:.4rem 0 .15rem">${s.setupId}${s.setupTier ? ' · ' + s.setupTier : ''}</div>`
+      : '';
+    const setupLine = showSetup
+      ? `<div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--m1);margin-top:2px">${s.setupId}${s.setupTier ? ' · ' + s.setupTier : ''}</div>`
+      : '';
+    return `${setupHeader}<div class="pick-card ${ac}" onclick="loadPickDetail('${s.ticker}','${hz}')">
       <div class="pc-rank">#${i+1} ${rankTag} <span class="pc-score">${score}/100</span></div>
       <div class="pc-ticker">${s.ticker}</div>
+      ${setupLine}
       <div class="pc-name">${s.name||s.ticker}</div>
       <div class="pc-action ${ac}">${ratingLabel}</div>
       <div class="pc-conf">${action} setup · Conf: ${conf}%${s.cellWinRate != null ? ' · Cell win ' + s.cellWinRate + '%' : ''}</div>

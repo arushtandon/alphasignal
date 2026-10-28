@@ -4,6 +4,10 @@
     "FRANCE_LONG_MOMENTUM": {
       "at": "2026-10-07T10:19:32.008Z",
       "reason": "alpha t 1.88 < 2 on 2026-10-07 check"
+    },
+    "JAPAN_SHORT_MR": {
+      "at": "2026-10-28T04:00:00.000Z",
+      "reason": "identical entry to JAPAN_MEDIUM_MR; one position per ticker"
     }
   }
 }

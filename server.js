@@ -75,6 +75,9 @@ const {
   incubationEnabled,
 } = require('./lib/strategy/incubation-tier');
 const { createScanDiagnostic } = require('./lib/strategy/scan-diagnostic');
+const { writeScanDiagnostic, readLatestScanDiagnostic } = require('./lib/strategy/scan-diagnostic-store');
+const { layoutBoardPanes } = require('./lib/strategy/setup-book-board');
+const { morningRetryDecision, shouldAlertEmptyMorning } = require('./lib/schedule/morning-retry');
 const { buildPublicationCellRecord, freezePublishedFields } = require('./lib/strategy/publication-record');
 const {
   isSetupPaused,
@@ -8096,7 +8099,7 @@ app.get('/api/setup-book/status', (req, res) => {
         enabled: incubationEnabled(id),
       })),
     },
-    scanDiagnostic: lastScanDiagnostic,
+    scanDiagnostic: lastScanDiagnostic || readLatestScanDiagnostic(DATA_DIR),
   });
 });
 
@@ -8271,8 +8274,18 @@ function beginScanDiagnostic(meta) {
 
 function finishScanDiagnostic(extra) {
   if (!activeScanDiagnostic) return null;
-  lastScanDiagnostic = activeScanDiagnostic.snapshot(extra);
+  lastScanDiagnostic = activeScanDiagnostic.snapshot({
+    ...extra,
+    sgtDay: singaporeDateKey(),
+  });
   activeScanDiagnostic = null;
+  try {
+    if (lastScanDiagnostic.dryRun !== true) {
+      writeScanDiagnostic(DATA_DIR, lastScanDiagnostic.sgtDay, lastScanDiagnostic);
+    }
+  } catch (error) {
+    console.warn('Scan diagnostic save failed:', error && error.message);
+  }
   console.log('Scan diagnostic', JSON.stringify({
     reason: lastScanDiagnostic.reason,
     dryRun: lastScanDiagnostic.dryRun === true,
@@ -8286,6 +8299,7 @@ function finishScanDiagnostic(extra) {
       plans: row.plans,
       shortlist: row.shortlist,
       board: row.board,
+      entries: row.entries,
       drops: row.drops.map(drop => ({ gate: drop.gate, n: drop.symbols.length })),
     }])),
   }));
@@ -8616,14 +8630,28 @@ function buildShortlistFromRows(rows, perSide = UNIVERSE_PER_HZ_SIDE) {
 async function runUniverseScan(opts = {}) {
   if (universeScanState.running) return { alreadyRunning: true };
   const reason = opts.reason || 'manual';
+  universeScanState = {
+    ...universeScanState,
+    running: true,
+    startedAt: Date.now(),
+    lastError: null,
+  };
   let universe;
   try {
     universe = await buildFullUniverse(fetch, fmpAnyApiKey());
   } catch (e) {
+    universeScanState.running = false;
+    universeScanState.lastError = e.message;
+    universeScanState.lastFinishedAt = Date.now();
     console.warn('Universe build failed:', e.message);
     return { error: e.message };
   }
-  if (!universe || !universe.length) return { error: 'empty universe' };
+  if (!universe || !universe.length) {
+    universeScanState.running = false;
+    universeScanState.lastError = 'empty universe';
+    universeScanState.lastFinishedAt = Date.now();
+    return { error: 'empty universe' };
+  }
 
   universeScanState = { running: true, startedAt: Date.now(), total: universe.length, done: 0, ok: 0, lastError: null, lastFinishedAt: 0 };
   console.log(`Universe scan START (${reason}): ${universe.length} names`);
@@ -8709,9 +8737,16 @@ async function runUniverseScan(opts = {}) {
       universeScanState.lastError = e.message;
       console.warn('Universe scan error:', e.message);
     } finally {
-      finishScanDiagnostic({ finishedAt: new Date().toISOString() });
+      finishScanDiagnostic({ finishedAt: new Date().toISOString(), reason });
       universeScanState.running = false;
       universeScanState.lastFinishedAt = Date.now();
+      const plansLeft = countSetupBookPlans(universeShortlist && universeShortlist.shortlist);
+      const cardsLeft = countSetupBookCards(dashboardPicksCache && dashboardPicksCache.dashData);
+      if (shouldAlertEmptyMorning(reason, plansLeft, cardsLeft)) {
+        sendTelegram(
+          `Setup-book morning ${singaporeDateKey()} ended with ${plansLeft} plans and no cards.`
+        ).catch(error => console.warn('morning empty-board telegram failed', error && error.message));
+      }
     }
   })();
 
@@ -8836,6 +8871,7 @@ function applyCurrentEnginePlan(row, setup) {
   row.target2 = row[hz + 'Target2'];
   row.stopLoss = row[hz + 'StopLoss'];
   row.setupId = setup.id;
+  row.setupKind = 'current_engine';
   row.setupTestedId = setup.testedId;
   row.setupTier = setup.tier;
   row.tierLabel = setup.tier;
@@ -8915,6 +8951,7 @@ function applyEvidenceSetupPlanToRow(row, plan, entryOverride = null) {
   row.target2 = row[hz + 'Target2'];
   row.stopLoss = row[hz + 'StopLoss'];
   row.setupId = setup.id;
+  row.setupKind = setup.kind;
   row.setupTestedId = setup.testedId;
   row.setupTier = setup.tier;
   row.tierLabel = setup.tier;
@@ -9150,18 +9187,18 @@ async function generateServerPicksFromShortlist(opts = {}) {
       else if (bSellHz) sellAssign[bSellHz].push(r);
     }
 
-    function pane(primary, key) {
-      return topNRotating(primary, key, cooldown, 5);
-    }
-
-    let dashData = {
-      short: pane(buyAssign.short, 'shortScore'),
-      medium: pane(buyAssign.medium, 'mediumScore'),
-      long: pane(buyAssign.long, 'longScore'),
-      shortSell: pane(sellAssign.short, 'shortSellScore'),
-      medSell: pane(sellAssign.medium, 'mediumSellScore'),
-      longSell: pane(sellAssign.long, 'longSellScore')
-    };
+    let dashData = layoutBoardPanes({
+      short: buyAssign.short,
+      medium: buyAssign.medium,
+      long: buyAssign.long,
+      shortSell: sellAssign.short,
+      medSell: sellAssign.medium,
+      longSell: sellAssign.long,
+    }, {
+      cooldown,
+      normalize: normalizeHistoryTicker,
+      capEngine: (rows, key) => topNRotating(rows, key, cooldown, 5),
+    });
 
     // Re-price the FINAL picks with LIVE quotes so the recorded entry (and the
     // dashboard card) reflect the real tradeable price, not the last daily close
@@ -9981,7 +10018,11 @@ async function addTradesToHistory(trades) {
     { setupId: right.trade.setupId, ticker: right.trade.ticker, signalDate: singaporeDateKey(), key: right.trade.ticker },
   ));
   for (const item of pendingSetupEmits) {
-    try { emitTradeEvent('entry', tradeEventSnapshot(item.trade, item.hz)); } catch (_) {}
+    let evt = null;
+    try { evt = emitTradeEvent('entry', tradeEventSnapshot(item.trade, item.hz)); } catch (_) {}
+    if (evt && activeScanDiagnostic && item.trade && item.trade.setupId) {
+      activeScanDiagnostic.entry(item.trade.setupId, item.trade.ticker);
+    }
   }
 
   tradeHistory.unshift(...accepted);
@@ -13089,6 +13130,27 @@ function singaporeToDateString(ms = Date.now()) {
 // Seed from last REAL generation time (not boot filter stamps).
 let _lastPicksDateKey = (dashboardPicksCache && dashboardPicksCache.dashTs)
   ? singaporeDateKey(dashboardPicksCache.dashTs) : null;
+let morningRetry = { day: null, done: {} };
+
+function countSetupBookPlans(shortlist) {
+  return (shortlist || []).filter(row => {
+    const plan = row && row.setupPlan;
+    return plan && plan.setupId && plan.kind !== 'current_engine';
+  }).length;
+}
+
+function countSetupBookCards(dash) {
+  if (!dash) return 0;
+  let count = 0;
+  for (const pane of ['short', 'medium', 'long']) {
+    for (const row of dash[pane] || []) {
+      if (!row || !row.setupId || row.setupKind === 'current_engine') continue;
+      if (/_ENGINE$/.test(row.setupId)) continue;
+      count += 1;
+    }
+  }
+  return count;
+}
 
 async function scanSchedulerTick(boot = false) {
   try {
@@ -13160,6 +13222,22 @@ async function scanSchedulerTick(boot = false) {
       } else {
         console.warn('Scheduler: picks regen failed — will retry next tick:', r && (r.error || r.reason));
       }
+    }
+
+    if (morningRetry.day !== todayKey) morningRetry = { day: todayKey, done: {} };
+    const retry = morningRetryDecision({
+      minutes: sgtMinutes,
+      plans: countSetupBookPlans(universeShortlist && universeShortlist.shortlist),
+      cards: countSetupBookCards(dashboardPicksCache && dashboardPicksCache.dashData),
+      scanError: Boolean(universeScanState.lastError)
+        && countSetupBookCards(dashboardPicksCache && dashboardPicksCache.dashData) === 0,
+      scanRunning: universeScanState.running,
+      done: morningRetry.done,
+    });
+    morningRetry.done = retry.done;
+    if (retry.retry) {
+      console.log('Scheduler: morning retry', retry.slot);
+      runUniverseScan({ reason: `morning-retry-${retry.slot}`, publishFreshBoard: true });
     }
   } catch (e) { console.warn('scanSchedulerTick:', e.message); }
 }

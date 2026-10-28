@@ -50,7 +50,7 @@ only in the all-window-positive sector-on cells below, labelled
 | Setup | Tier | Why | Conf | n | PF |
 | --- | --- | --- | ---: | ---: | ---: |
 | JAPAN_MEDIUM_MR | Tier 1 | Amended exits approved | 80.8% | 490 | 1.753 |
-| JAPAN_SHORT_MR | Tier 2 | Amended exits approved | 65.4% | 523 | 1.351 |
+| JAPAN_SHORT_MR | Tier 2 | Paused 2026-10-28. Same entry as JAPAN_MEDIUM_MR, so the overlap sort always kept medium. Code remains; one position per ticker lives on the medium book. | 65.4% | 523 | 1.351 |
 | COMMODITIES_MEDIUM_MR | Tier 2 | Tested exits kept | 76.3% | 38 | 2.303 |
 | US_SHORT_MR | Experimental | Tested exits kept | 59.5% | 1881 | 1.01 |
 | JAPAN_LONG_ENGINE | Current engine — Experimental | All-window positive | 39.5% | 43 | 1.29 |
