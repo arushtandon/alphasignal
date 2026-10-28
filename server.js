@@ -7544,9 +7544,9 @@ app.post('/api/danelfin/discover', async (req, res) => {
     maxCalls: 3,
   });
   const jobs = [
-    { purpose: 'discovery-earliest', params: { date: '2017-01-03', fields } },
-    { purpose: 'discovery-ticker-history', params: { ticker: 'AAPL', fields } },
-    { purpose: 'discovery-ai-min-9', params: { date: '2024-06-03', aiscore_min: 9, fields } },
+    { purpose: 'discovery-latest-ai-10', params: { date: '2026-10-27', aiscore: 10, fields } },
+    { purpose: 'discovery-latest-ai-1', params: { date: '2026-10-27', aiscore: 1, fields } },
+    { purpose: 'discovery-2018-ai-10', params: { date: '2018-01-02', aiscore: 10, fields } },
   ];
   fs.mkdirSync(dir, { recursive: true });
   const summary = [];
@@ -7555,16 +7555,30 @@ app.post('/api/danelfin/discover', async (req, res) => {
     const file = path.join(dir, `${job.purpose}.json`);
     fs.writeFileSync(file, JSON.stringify(result.body == null ? { status: result.status, reason: result.reason } : result.body));
     const body = result.body && typeof result.body === 'object' ? result.body : {};
-    const dateKey = Object.keys(body).find(key => /^\d{4}-\d{2}-\d{2}$/.test(key));
-    const tickers = dateKey && body[dateKey] && typeof body[dateKey] === 'object' ? Object.keys(body[dateKey]) : [];
+    const dateKeys = Object.keys(body).filter(key => /^\d{4}-\d{2}-\d{2}$/.test(key)).sort();
+    const names = [];
+    const fieldSet = new Set();
+    for (const dateKey of dateKeys) {
+      const rows = body[dateKey];
+      if (!rows || typeof rows !== 'object') continue;
+      for (const [ticker, row] of Object.entries(rows)) {
+        names.push(ticker);
+        if (row && typeof row === 'object') Object.keys(row).forEach(field => fieldSet.add(field));
+      }
+    }
     summary.push({
       purpose: job.purpose,
       params: job.params,
       ok: result.ok === true,
+      fromCache: result.fromCache === true,
       status: result.status || null,
       reason: result.reason || null,
-      dateKeys: Object.keys(body).filter(key => /^\d{4}-\d{2}-\d{2}$/.test(key)).length,
-      tickers: tickers.length,
+      dateKeys,
+      tickers: names.length,
+      capped: names.length === 100,
+      fields: [...fieldSet].sort(),
+      names,
+      body: result.body || null,
       file,
     });
   }
