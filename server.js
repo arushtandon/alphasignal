@@ -7534,7 +7534,33 @@ app.post('/api/danelfin/discover', async (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   const dir = path.join(DATA_DIR, 'danelfin-discovery');
   const doneFile = path.join(dir, 'done.json');
-  if (fs.existsSync(doneFile)) return res.json({ ok: true, already: true, ...JSON.parse(fs.readFileSync(doneFile, 'utf8')) });
+  if (fs.existsSync(doneFile)) {
+    const prior = JSON.parse(fs.readFileSync(doneFile, 'utf8'));
+    const calls = Array.isArray(prior.calls) ? prior.calls : [];
+    const localBug = calls.length > 0 && calls.every(call =>
+      (call.body && String(call.body.error || '') === 'fetchImpl is not a function')
+      || call.reason === 'breaker-open'
+    );
+    if (!localBug) return res.json({ ok: true, already: true, ...prior });
+    fs.unlinkSync(doneFile);
+    for (const name of fs.readdirSync(dir)) {
+      if (name.startsWith('discovery-')) fs.unlinkSync(path.join(dir, name));
+    }
+    const stateFile = path.join(DATA_DIR, 'danelfin-research', 'danelfin-budget.json');
+    try {
+      const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+      const month = new Date().toISOString().slice(0, 7);
+      const row = state.months && state.months[month];
+      if (row && row.byEnv && !state.localFetchBugReversed) {
+        const bugCalls = calls.filter(call => call.body && call.body.error === 'fetchImpl is not a function').length;
+        row.byEnv.research = Math.max(0, (row.byEnv.research || 0) - bugCalls);
+        state.localFetchBugReversed = { at: new Date().toISOString(), calls: bugCalls, reason: 'client bug, request never left the process' };
+      }
+      delete state.breakerUntil;
+      state.consecutiveFailures = 0;
+      fs.writeFileSync(stateFile, JSON.stringify(state));
+    } catch (_) {}
+  }
   const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
   const fields = 'aiscore,fundamental,technical,sentiment,low_risk';
   const client = createDanelfinClient({
@@ -7969,6 +7995,103 @@ const snapshotRecoveryReady = durableReady.then(async ready => {
     console.warn('PostgreSQL snapshot recovery failed:', error.message);
   }
 });
+
+app.get('/api/view/:ticker', async (req, res) => {
+  const { assembleTickerView, marketOf } = require('./lib/strategy/ticker-view');
+  const ticker = String(req.params.ticker || '').trim().toUpperCase();
+  if (!ticker) return res.status(400).json({ error: 'ticker required' });
+  try {
+    const view = await assembleTickerView(ticker, {
+      loadBars: symbol => fetchOHLCV(symbol, '2y', '1d').catch(() => []),
+      rawQuant: async symbol => {
+        const daily = await fetchOHLCV(symbol, '2y', '1d').catch(() => null);
+        const weekly = await fetchOHLCV(symbol, '2y', '1wk').catch(() => null);
+        if (!daily || daily.length < 60) return {};
+        const tech = buildFullTechResult(symbol, daily, weekly);
+        const out = {};
+        for (const horizon of ['short', 'medium', 'long']) {
+          const signal = computeQuantSignal(tech, null, horizon);
+          out[horizon] = {
+            conditions: Array.isArray(signal.conditions) ? signal.conditions.slice() : [],
+            action: signal.action,
+            buyScore: signal.buyScore,
+          };
+        }
+        return out;
+      },
+      structuralCaps: async (symbol, quant) => {
+        const daily = await fetchOHLCV(symbol, '2y', '1d').catch(() => null);
+        const weekly = await fetchOHLCV(symbol, '2y', '1wk').catch(() => null);
+        if (!daily) return [];
+        const tech = buildFullTechResult(symbol, daily, weekly);
+        const capped = {};
+        for (const horizon of ['short', 'medium', 'long']) capped[horizon] = computeQuantSignal(tech, null, horizon);
+        applyTierScoreCaps(capped);
+        const notes = [];
+        for (const horizon of ['short', 'medium', 'long']) {
+          const before = (quant[horizon] && quant[horizon].conditions) || [];
+          for (const condition of capped[horizon].conditions || []) {
+            if (!before.includes(condition)) notes.push(`${horizon}: ${condition}`);
+          }
+          if (Number(capped[horizon].buyScore) !== Number(quant[horizon] && quant[horizon].buyScore)) {
+            notes.push(`${horizon}: structural cap ${quant[horizon].buyScore} -> ${capped[horizon].buyScore}`);
+          }
+        }
+        return notes;
+      },
+      fundamentals: async symbol => {
+        if (marketOf(symbol) === 'Commodities') return null;
+        return { piotroski: null, valuation: null, quality: null };
+      },
+      earningsDate: async () => null,
+      analystConsensus: symbol => cachedViewAnalystTarget(symbol),
+      danelfinLists: () => readStoredDanelfinLists(),
+      marketRegime: bars => buildMarketRegime(bars),
+      paused: setupId => isSetupPaused(setupId),
+    });
+    res.json(view);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+function readStoredDanelfinLists() {
+  const dir = path.join(DATA_DIR, 'danelfin-discovery');
+  function names(file) {
+    try {
+      const body = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+      const out = new Set();
+      for (const [key, rows] of Object.entries(body || {})) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || !rows || typeof rows !== 'object') continue;
+        Object.keys(rows).forEach(name => out.add(String(name).toUpperCase()));
+      }
+      return out;
+    } catch (_) { return new Set(); }
+  }
+  return { ai10: names('discovery-latest-ai-10.json'), ai1: names('discovery-latest-ai-1.json') };
+}
+
+async function cachedViewAnalystTarget(symbol) {
+  if (marketOfSymbol(symbol) === 'Commodities') return null;
+  const day = new Date().toISOString().slice(0, 10);
+  const file = path.join(DATA_DIR, 'fmp-view-cache', day, `${symbol}.json`);
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')).target ?? null; } catch (_) {}
+  const key = fmpAnyApiKey();
+  if (!key) return null;
+  try {
+    const response = await fetch(`https://financialmodelingprep.com/api/v3/price-target-consensus/${encodeURIComponent(symbol)}?apikey=${encodeURIComponent(key)}`);
+    const body = await response.json();
+    const row = Array.isArray(body) ? body[0] : body;
+    const target = row && (row.targetConsensus ?? row.targetMean) != null ? Number(row.targetConsensus ?? row.targetMean) : null;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ target, label: 'analyst consensus', day }));
+    return Number.isFinite(target) ? target : null;
+  } catch (_) { return null; }
+}
+
+function marketOfSymbol(symbol) {
+  return require('./lib/strategy/ticker-view').marketOf(symbol);
+}
 
 app.get('/api/dashboard/picks', (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');

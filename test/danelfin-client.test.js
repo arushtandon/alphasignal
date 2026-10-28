@@ -125,6 +125,29 @@ test('the monthly cap refuses the 451st attempt', async () => {
   assert.equal(result.reason, 'budget');
 });
 
+test('a missing fetch is refused before it is counted', async () => {
+  const time = clock();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dan-'));
+  const saved = globalThis.fetch;
+  globalThis.fetch = undefined;
+  try {
+    const dan = createDanelfinClient({
+      root: dir,
+      environment: 'research',
+      apiKey: 'test-key',
+      allowNetwork: true,
+      now: time.now,
+      sleep: time.sleep,
+    });
+    const result = await dan.request({ purpose: 'nofetch', endpoint: '/ranking', params: { date: '2026-10-27' } });
+    assert.equal(result.reason, 'no-fetch');
+    assert.equal(dan.status().used, 0);
+    assert.equal(dan.status().breakerOpen, false);
+  } finally {
+    globalThis.fetch = saved;
+  }
+});
+
 test('cache-only mode makes no network call', async () => {
   const time = clock();
   let calls = 0;

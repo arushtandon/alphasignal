@@ -637,9 +637,11 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
         <div class="tbar-ttl">Single instrument analysis</div>
         <div class="srow">
           <input id="tickerInput" class="si" type="text" placeholder="Any ticker symbol..." maxlength="12" />
+          <button class="btn" id="viewBtn" onclick="openTickerView(document.getElementById('tickerInput').value)">View</button>
           <button class="btn ac" id="analyzeBtn" onclick="analyze()">Analyze →</button>
         </div>
       </div>
+      <div id="tickerView" style="margin:0 0 1rem"></div>
       <div id="aStatus"></div>
       <div id="aResults">
         <div class="emp"><div class="emp-a">α</div><p>Select from the sidebar or enter a ticker above.<br>The analysis includes full TA/FA breakdown,<br>entry, stop, targets and $10k PnL projection.</p></div>
@@ -1750,6 +1752,64 @@ function closeMobileSidebar(){
 // ══════════════════════════════════════════════
 // TABS
 // ══════════════════════════════════════════════
+async function openTickerView(raw){
+  const ticker=String(raw||'').trim().toUpperCase();
+  if(!ticker) return;
+  switchTab('analysis');
+  const input=document.getElementById('tickerInput');
+  if(input) input.value=ticker;
+  const host=document.getElementById('tickerView');
+  if(!host) return;
+  host.innerHTML='<div class="ld"><div class="sp"></div><span>Loading view for '+ticker+'...</span></div>';
+  try{
+    const res=await fetch('/api/view/'+encodeURIComponent(ticker),{headers:{'Accept':'application/json'}});
+    const view=await res.json();
+    if(!res.ok) throw new Error(view.error||('HTTP '+res.status));
+    host.innerHTML=renderTickerView(view);
+  }catch(error){
+    host.innerHTML='<div class="eb">'+error.message+'</div>';
+  }
+}
+function renderTickerView(view){
+  const status=view.status&&view.status.label?view.status.label:'No active setup';
+  const tier=view.status&&view.status.tier?' · '+view.status.tier:'';
+  function rules(block){
+    return (block.rules||[]).map(rule=>'<li>'+rule.name+': '+(rule.pass?'pass':'fail')
+      +(rule.value!=null?' · now '+rule.value:'')
+      +(rule.triggerPrice!=null?' · trigger ~'+rule.triggerPrice:'')
+      +(rule.note?' · '+rule.note:'')+'</li>').join('');
+  }
+  const distance=(view.distance||[]).map(block=>'<div style="margin:.4rem 0"><strong>'+block.setupId+'</strong> · '+block.tier+' · '+block.horizon+'<ul>'+rules(block)+'</ul></div>').join('')||'<div>No tested setup for this market.</div>';
+  const horizons=['short','medium','long'];
+  const reasons=horizons.map(hz=>{
+    const row=view.reasons&&view.reasons[hz]||{buy:[],notBuy:[]};
+    return '<div><strong>'+hz+'</strong><div>Buy: '+(row.buy.join('; ')||'—')+'</div><div>Not buy: '+(row.notBuy.join('; ')||'—')+'</div></div>';
+  }).join('');
+  const ifLong=horizons.map(hz=>{
+    const row=view.ifLong&&view.ifLong[hz];
+    if(!row) return '';
+    return '<div><strong>'+hz+'</strong> entry '+row.entry+' · stop '+row.stop+' · TP1 '+row.target1+' · TP2 '+row.target2+' · R:R '+row.rewardRisk+' · earnings '+(row.earningsDate||'—')+'<div style="color:var(--m1)">'+row.label+'</div></div>';
+  }).join('');
+  const trend=view.trend||{};
+  const st=trend.supertrend||{};
+  const targets=view.targets||{};
+  const fund=view.fundamentals;
+  const fundHtml=fund?'<div><strong>Fundamentals</strong> Piotroski '+(fund.piotroski==null?'—':fund.piotroski)+' · valuation '+(fund.valuation==null?'—':fund.valuation)+' · quality '+(fund.quality==null?'—':fund.quality)+'</div>':'';
+  return '<div style="border:1px solid var(--b1);border-radius:10px;padding:12px 14px;margin-top:.5rem">'
+    +'<div style="font-family:\'DM Sans\',sans-serif;font-size:18px;font-style:italic">'+view.ticker+' · '+view.market+'</div>'
+    +'<div style="font-family:\'DM Mono\',monospace;font-size:12px;margin:.35rem 0">'+status+tier+'</div>'
+    +'<div><strong>Distance to tested setups</strong>'+distance+'</div>'
+    +'<div><strong>Trend</strong> MA50 '+trend.ma50+' (slope '+trend.ma50Slope+') · MA200 '+trend.ma200+' (slope '+trend.ma200Slope+') · 12-1 '+trend.momentum12_1+' · 6m RS '+trend.rs6m+' · ATR% '+trend.atrPct
+    +'<div>Supertrend short '+(st.short&&st.short.direction)+' · medium '+(st.medium&&st.medium.direction)+' · long '+(st.long&&st.long.direction)+'</div></div>'
+    +'<div><strong>Reasons</strong>'+reasons+'</div>'
+    +'<div><strong>Structural caps</strong> '+(view.structuralCaps&&view.structuralCaps.length?view.structuralCaps.join('; '):'none')+'</div>'
+    +'<div><strong>If long today</strong>'+ifLong+'</div>'
+    +'<div><strong>Price targets</strong> 1 ATR '+targets.oneAtr+' · 2 ATR '+targets.twoAtr+' · nearest resistance '+targets.nearestResistance+' · 52-week high '+targets.high52
+    +' · analyst consensus '+(targets.analystConsensus?targets.analystConsensus.price+' ('+targets.analystConsensus.label+')':'—')+'</div>'
+    +fundHtml
+    +'<div><strong>Danelfin</strong> '+(view.danelfin&&view.danelfin.text)+'</div>'
+    +'</div>';
+}
 function switchTab(t){
   closeMobileSidebar();
   ['dashboard','analysis','history','performance','ibkr','moveinfo','live'].forEach(id=>{
@@ -6110,6 +6170,7 @@ function renderPicksPane(elId,picks,hz,side){
     const pnl=calcPnl(entryP,tp1,sl,action);
     const ratingLabel=s[ratingKey]||action;
     const rankTag = isSell?'SHORT':'PICK';
+    const viewBtn = `<button type="button" onclick="event.stopPropagation();openTickerView('${s.ticker}')" style="margin-left:6px;font:10px 'DM Mono',monospace;background:transparent;color:var(--m1);border:1px solid var(--b1);border-radius:4px;padding:1px 6px;cursor:pointer">View</button>`;
     const showSetup = s.setupKind === 'mean_reversion' && s.setupId;
     const setupHeader = (showSetup && (i === 0 || picks[i - 1].setupId !== s.setupId))
       ? `<div style="grid-column:1/-1;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.04em;color:var(--m1);margin:.4rem 0 .15rem">${s.setupId}${s.setupTier ? ' · ' + s.setupTier : ''}</div>`
@@ -6119,7 +6180,7 @@ function renderPicksPane(elId,picks,hz,side){
       : '';
     return `${setupHeader}<div class="pick-card ${ac}" onclick="loadPickDetail('${s.ticker}','${hz}')">
       <div class="pc-rank">#${i+1} ${rankTag} <span class="pc-score">${score}/100</span></div>
-      <div class="pc-ticker">${s.ticker}</div>
+      <div class="pc-ticker">${s.ticker}${viewBtn}</div>
       ${setupLine}
       <div class="pc-name">${s.name||s.ticker}</div>
       <div class="pc-action ${ac}">${ratingLabel}</div>
