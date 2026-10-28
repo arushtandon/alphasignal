@@ -7,11 +7,11 @@ The API findings below are from Danelfin's public ranking docs. The three confir
 ## What the ranking endpoint does
 
 - One ranking route. At least `ticker` or `date` (`YYYY-MM-DD`) is required.
-- Date only: the top 100 tickers that day. No offset, no next page.
-- Ticker only: the last 100 market days for that ticker, not the full history.
+- Date only: the top 100 tickers that day. No offset, no next page, no ascending sort.
+- Ticker only: the last 100 market days for that ticker, not the full history. Those rows are ordered by date, not by score.
 - Ticker and date: that name on that day.
 - Fields: `aiscore`, `fundamental`, `technical`, `sentiment`, `low_risk`, plus buy and sell track-record flags. Scores are 1–10.
-- Filters include `aiscore` (exact) and `aiscore_min`. There is no documented `aiscore_max`.
+- `aiscore` filters to one exact score, 1 through 10. The docs describe this as the tickers with that score on that day, and the example is `aiscore=10`. `aiscore_min` is a floor. There is no `aiscore_max` and no parameter that sorts the ranking from lowest score to highest.
 - Markets: US by default. Europe with `market=europe`, history from 2022-01-03. This study is US only.
 - Docs do not say whether a past date is the score as published that day or a later recompute. The study records that as unknown until Danelfin says otherwise. From the day this system stores a response, that file is our as-published copy and is never refetched.
 
@@ -19,10 +19,10 @@ The API findings below are from Danelfin's public ranking docs. The three confir
 
 Research share is 340 calls this month. Live keeps 60. Reserve 100 stays untouched.
 
-Because a date returns at most 100 names:
+A date with no score filter returns at most 100 names, the top of the ranking. The sell book stays, because the docs do allow an exact score filter. There is still no ascending sort.
 
 - Buy side, one call per date: `aiscore_min=9`. If the saved response has 100 tickers, treat it as truncated and say so. Do not invent a second page.
-- Sell side, two calls per date: `aiscore=1` and `aiscore=2`. This assumes an exact-score filter returns those names rather than the top 100. The first month's responses confirm or kill that assumption. If it fails, stop the sell book and do not spend the rest of the calls.
+- Sell side, two calls per date: `aiscore=1` and `aiscore=2`. That is the documented way to ask for the lowest scores. If a saved response is empty or capped at 100, record that and stop the sell book before spending the rest of the calls.
 
 Schedule, inside the 340:
 
