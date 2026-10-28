@@ -88,6 +88,25 @@ test('an exhausted share is refused and alerts', async () => {
   assert.equal(dan.booksPaused().otherBooks, 'run');
 });
 
+test('an expired breaker starts the failure count over', async () => {
+  const time = clock();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dan-'));
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'danelfin-budget.json'), JSON.stringify({
+    breakerUntil: time.now() - 1000,
+    consecutiveFailures: 2,
+    months: { '2026-10': { byEnv: { research: 0 }, byPurpose: {} } },
+  }));
+  const dan = client(dir, time, async () => ({ status: 500, json: async () => ({ error: 'down' }) }));
+  const first = await dan.request({ purpose: 'history', endpoint: '/ranking', params: { date: '2025-07-11' }, noRetry: true });
+  assert.equal(first.ok, false);
+  assert.equal(first.reason, undefined);
+  assert.equal(dan.status().breakerOpen, false);
+  await dan.request({ purpose: 'history', endpoint: '/ranking', params: { date: '2025-07-18' }, noRetry: true });
+  const blocked = await dan.request({ purpose: 'history', endpoint: '/ranking', params: { date: '2025-07-25' }, noRetry: true });
+  assert.equal(blocked.reason, 'breaker-open');
+});
+
 test('two failures open the breaker and a later call is refused', async () => {
   const time = clock();
   const dan = client(fs.mkdtempSync(path.join(os.tmpdir(), 'dan-')), time, async () => ({ status: 500, json: async () => ({ error: 'down' }) }));
