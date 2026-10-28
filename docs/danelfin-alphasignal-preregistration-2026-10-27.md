@@ -1,8 +1,8 @@
 # Danelfin + AlphaSignal — pre-registration
 
-Written 2026-10-27. Not run. Do not start the history pull or the study until this file is approved.
+Written 2026-10-27. Amended 2026-10-28. Not run. Do not start the history pull or the study until this file is approved.
 
-The API findings below are from Danelfin's public ranking docs. The three confirmation calls (earliest US date, AAPL history shape, one date with AI >= 9) are made by `POST /api/danelfin/discover` and stored on the data disk. This file is updated with those counts after that single run. No further calls are part of this registration.
+Buy books use AI score = 10 only. The sell book uses AI score = 1 only. That is two ranking calls per date. Lists filtered with a minimum (AI >= 9) or a second low score (AI = 2) are likely to come back at the 100-name cap and would be an incomplete universe. If the discovery calls for the latest session return exactly 100 names on either side, the history pull stays stopped.
 
 ## What the ranking endpoint does
 
@@ -19,19 +19,18 @@ The API findings below are from Danelfin's public ranking docs. The three confir
 
 Research share is 340 calls this month. Live keeps 60. Reserve 100 stays untouched.
 
-A date with no score filter returns at most 100 names, the top of the ranking. The sell book stays, because the docs do allow an exact score filter. There is still no ascending sort.
+A date with no score filter returns at most 100 names, the top of the ranking. There is no ascending sort. Each date in the pull is two calls: exact AI score 10, and exact AI score 1.
 
-- Buy side, one call per date: `aiscore_min=9`. If the saved response has 100 tickers, treat it as truncated and say so. Do not invent a second page.
-- Sell side, two calls per date: `aiscore=1` and `aiscore=2`. That is the documented way to ask for the lowest scores. If a saved response is empty or capped at 100, record that and stop the sell book before spending the rest of the calls.
+The research share is 340 calls per month. Live keeps 60. Reserve 100 stays untouched. The three discovery calls count against October's research share. Nothing below is started.
 
-Schedule, inside the 340:
+If `2018-01-02` comes back with a score, month-end dates run from January 2018 through September 2024 (81 dates, the last month before the two-year weekly window). That is 162 calls. The last two years are 104 week-end dates, 208 calls. 162 + 208 = 370, which does not fit in one month next to the discovery calls.
 
-| Phase | Dates | Calls per date | Calls |
-| --- | --- | ---: | ---: |
-| 1 | Month-ends from the first date the probe shows is live, through 24 months ago | 3 | about 3 × months. At a 2019 start that is ~80 months × 3 = 240 |
-| 2 | Week-ends for the last 24 months, only with what is left under 340 | 3 | at most 100 (about 33 weeks, not all 104) |
+| Month | What | Calls |
+| --- | --- | ---: |
+| October 2026 | 3 discovery calls, then 81 month-ends × 2, then the first 87 of 104 week-ends × 2 | 339 |
+| November 2026 | the remaining 17 week-ends × 2 | 34 |
 
-Spread phase 1 across the rest of this month and next if 240 does not fit beside other research use. The pull is checkpointed per date and side, writes each response immediately, and resumes without a repeat call.
+If `2018-01-02` has no scores, the month-end series starts at the first date that does, October's total falls, and the leftover week-ends still finish in November. Each response is written immediately and is never fetched again.
 
 ## Universe and trade rules
 
@@ -41,10 +40,10 @@ Entry: next session open. Costs: `lib/research/cost-model.js` US profile. Notion
 
 Books:
 
-- **S-BUY** (short horizon, long the stock): AI >= 9 and Williams %R(10) < -95 and close > MA200 and the vol-skip-top-30 regime. Exits are the US_SHORT_MR rules (ATR target and stop, time stop).
-- **M-BUY** (medium): AI >= 9 and close > MA200 and MA200 rising over 21 sessions and 12-1 > 0 and the engine medium score >= 62 from the same signal function the backtest uses. If that score cannot be reproduced on history, the arm uses 6-month relative strength in the top 30% instead, and the readout says so. Stop 2.5 ATR, engine targets, maximum 63 sessions.
+- **S-BUY** (short horizon, long the stock): AI = 10 and Williams %R(10) < -95 and close > MA200 and the vol-skip-top-30 regime. Exits are the US_SHORT_MR rules (ATR target and stop, time stop).
+- **M-BUY** (medium): AI = 10 and close > MA200 and MA200 rising over 21 sessions and 12-1 > 0 and the engine medium score >= 62 from the same signal function the backtest uses. If that score cannot be reproduced on history, the arm uses 6-month relative strength in the top 30% instead, and the readout says so. Stop 2.5 ATR, engine targets, maximum 63 sessions.
 - **L-BUY** (long): AI = 10 and point-in-time Piotroski >= 6 and 12-1 > 0. Monthly. Take the top k by AI score, then by 12-1. Hold 6 months.
-- **SELL** (medium): AI <= 2 and close < MA200 and MA200 falling and 6-month relative strength in the bottom 30%. Short the stock and buy a beta-scaled SPY hedge. Cover when close > MA50 or at 63 sessions. Borrow 1% a year, 3% if the price is under $5.
+- **SELL** (medium): AI = 1 and close < MA200 and MA200 falling and 6-month relative strength in the bottom 30%. Short the stock and buy a beta-scaled SPY hedge. Cover when close > MA50 or at 63 sessions. Borrow 1% a year, 3% if the price is under $5.
 
 Each book has three arms: Danelfin only (same exits, no overlay), AlphaSignal only (the overlay on the full universe, no Danelfin), and both.
 
