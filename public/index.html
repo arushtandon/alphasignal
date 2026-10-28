@@ -1782,9 +1782,30 @@ async function openTickerView(raw){
     const view=await res.json();
     if(!res.ok) throw new Error(view.error||('HTTP '+res.status));
     host.innerHTML=renderTickerView(view);
+    const lookup=document.getElementById('danelfinLookup');
+    if(lookup){
+      lookup.addEventListener('click', function(){ lookupDanelfin(view.ticker); });
+      fetch('/api/danelfin/budget',{cache:'no-store'}).then(r=>r.json()).then(function(budget){
+        const share=budget&&budget.shares&&budget.shares['view-lookups'];
+        if(!share) return;
+        lookup.textContent='Look up Danelfin score (uses 1 of '+Math.max(0, share.share-share.used)+' remaining this month)';
+      }).catch(function(){});
+    }
   }catch(error){
     host.innerHTML='<div class="eb">'+error.message+'</div>';
   }
+}
+async function lookupDanelfin(ticker){
+  const note=document.getElementById('danelfinLookupNote');
+  const budget=await fetch('/api/danelfin/budget',{cache:'no-store'}).then(r=>r.json()).catch(()=>null);
+  const viewShare=budget&&budget.shares&&budget.shares['view-lookups'];
+  const remaining=viewShare?Math.max(0, viewShare.share-viewShare.used):null;
+  if(note) note.textContent=remaining==null?'':'uses 1 of '+remaining+' remaining this month';
+  if(!window.confirm('Look up '+ticker+'? This uses 1 view lookup'+(remaining==null?'':(' ('+remaining+' remaining this month)'))+'.')) return;
+  const res=await fetch('/api/danelfin/view-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker})});
+  const body=await res.json();
+  if(!res.ok){ if(note) note.textContent=body.error||'lookup failed'; return; }
+  openTickerView(ticker);
 }
 function renderTickerView(view){
   const status=view.status&&view.status.label?view.status.label:'No active setup';
@@ -1823,7 +1844,12 @@ function renderTickerView(view){
     +'<div><strong>Price targets</strong> 1 ATR '+targets.oneAtr+' · 2 ATR '+targets.twoAtr+' · nearest resistance '+targets.nearestResistance+' · 52-week high '+targets.high52
     +' · analyst consensus '+(targets.analystConsensus?targets.analystConsensus.price+' ('+targets.analystConsensus.label+')':'—')+'</div>'
     +fundHtml
-    +'<div><strong>Danelfin</strong> '+(view.danelfin&&view.danelfin.text)+'</div>'
+    +'<div><strong>Danelfin</strong> '+(view.danelfin&&view.danelfin.text)
+    +(view.danelfin&&view.danelfin.date?' · '+view.danelfin.date:'')
+    +(view.danelfin&&view.danelfin.fundamental!=null?' · fund '+view.danelfin.fundamental+' · tech '+view.danelfin.technical+' · sent '+view.danelfin.sentiment+' · risk '+view.danelfin.low_risk:'')
+    +'</div>'
+    +'<button type="button" id="danelfinLookup" style="margin-top:6px">Look up Danelfin score</button>'
+    +'<div id="danelfinLookupNote" style="font-size:11px;color:var(--m1)"></div>'
     +'</div>';
 }
 function switchTab(t){

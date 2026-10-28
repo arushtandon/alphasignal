@@ -3331,6 +3331,11 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
 
   for (let i = windowStart; i < data.length - 2; i += entryStep) {
     if (i < nextAllowed) continue;
+    if (opts.signalDateSet) {
+      const stamp = Number(data[i] && data[i].t);
+      const day = new Date(stamp < 1e12 ? stamp * 1000 : stamp).toISOString().slice(0, 10);
+      if (!opts.signalDateSet.has(day)) continue;
+    }
     if ((++_yc & 15) === 0) await new Promise(r => setImmediate(r));
     const decisionStarted = timingCollector ? process.hrtime.bigint() : null;
     let decisionTimingRecorded = false;
@@ -3393,7 +3398,7 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
 
     // Use the same canonical score, confidence and side eligibility as live.
     const decisionPolicy = opts.decisionPolicy || DECISION_POLICY;
-    const decision = evaluateSignalDecision({
+    let decision = evaluateSignalDecision({
       signal: sig,
       side: opts.side,
       requireLevels: false,
@@ -3431,14 +3436,28 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
         ? sig.conditions.filter(condition => /FMP|Supertrend|quality|Tier|company-quality/i.test(condition))
         : [],
     };
+    let forcedListEntry = false;
     if (!decision.eligible) {
-      for (const reason of decision.rejectionReasons) reject(reason);
-      if (decisionRecords) decisionRecords.push({
-        ...decisionRecord, eligible: false, gate: 'canonicalPolicy',
-        rejectionReasons: decision.rejectionReasons,
-      });
-      finishDecisionTiming();
-      continue;
+      if (opts.danelfinListEntry === true && opts.signalDateSet) {
+        forcedListEntry = true;
+        decision = {
+          ...decision,
+          eligible: true,
+          side: 'buy',
+          action: 'Buy',
+          rating: 'Buy',
+          candidateRating: 'Buy',
+          rejectionReasons: [],
+        };
+      } else {
+        for (const reason of decision.rejectionReasons) reject(reason);
+        if (decisionRecords) decisionRecords.push({
+          ...decisionRecord, eligible: false, gate: 'canonicalPolicy',
+          rejectionReasons: decision.rejectionReasons,
+        });
+        finishDecisionTiming();
+        continue;
+      }
     }
     const isBuy = decision.side === 'buy';
     const isSell = decision.side === 'sell';
@@ -3465,7 +3484,7 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
       && paScore >= Number(decisionPolicy.minScore || 62));
     const paAngloOverride = !!(opts.priceActionShort && hz === 'short'
       && paSetup?.eligible && paScore >= Number(decisionPolicy.minScore || 62));
-    if (!marketPolicy.ok && !paAngloOverride && !scoreOnlyAngloOverride) {
+    if (!marketPolicy.ok && !paAngloOverride && !scoreOnlyAngloOverride && !forcedListEntry) {
       reject('marketPolicy');
       if (decisionRecords) decisionRecords.push({
         ...decisionRecord, eligible: false, gate: 'marketPolicy',
@@ -3513,7 +3532,7 @@ async function backtestSignal(data, hz, weeklyData = null, fund = null, opts = {
       finishDecisionTiming();
       continue;
     }
-    if (!levelsMeetMinRR(entry, gTp, gSl, isSell, minRrForSymbol(opts.symbol, PICKS_MIN_RR))) {
+    if (!forcedListEntry && !levelsMeetMinRR(entry, gTp, gSl, isSell, minRrForSymbol(opts.symbol, PICKS_MIN_RR))) {
       reject('rewardRisk');
       if (decisionRecords) decisionRecords.push({
         ...decisionRecord, eligible: false, gate: 'rewardRisk',
@@ -7526,8 +7545,16 @@ async function enrichHistoryTradeRecord(trade, caches = {}) {
 
 app.get('/api/danelfin/budget', (req, res) => {
   const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
-  const client = createDanelfinClient({ allowNetwork: false });
-  res.json({ ok: true, ...client.status() });
+  const roots = {
+    'live-sweep': path.join(DATA_DIR, 'danelfin-live'),
+    'view-lookups': path.join(DATA_DIR, 'danelfin-view'),
+    research: path.join(DATA_DIR, 'danelfin-research'),
+  };
+  const shares = {};
+  for (const [environment, root] of Object.entries(roots)) {
+    shares[environment] = createDanelfinClient({ root, environment, allowNetwork: false }).status();
+  }
+  res.json({ ok: true, shares, ...shares['live-sweep'] });
 });
 
 app.post('/api/danelfin/discover', async (req, res) => {
@@ -7622,7 +7649,9 @@ app.post('/api/danelfin/history-pull', (req, res) => {
   const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
   const { runBuyHistory, runCappedSectorSplit, readCheckpoint } = require('./lib/integrations/danelfin-history-pull');
   const root = path.join(DATA_DIR, 'danelfin-research');
-  const client = createDanelfinClient({ root, environment: 'research', allowNetwork: true });
+  const client = createDanelfinClient({
+    root, environment: 'research', allowNetwork: true, useReserve: true,
+  });
   danelfinHistoryPull = { running: true, phase: 'dates', startedAt: new Date().toISOString() };
   runBuyHistory(client, { root }).then(state => {
     if (state.stopped === 'budget' || state.stopped === 'breaker-open' || state.stopped === 'below-reserve' || state.stopped === 'deadline') {
@@ -8107,6 +8136,7 @@ app.get('/api/view/:ticker', async (req, res) => {
       earningsDate: async () => null,
       analystConsensus: symbol => cachedViewAnalystTarget(symbol),
       danelfinLists: () => readStoredDanelfinLists(),
+      danelfinScore: () => readStoredDanelfinScore(ticker),
       marketRegime: bars => buildMarketRegime(bars),
       paused: setupId => isSetupPaused(setupId),
     });
@@ -8114,6 +8144,88 @@ app.get('/api/view/:ticker', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+function applyDanelfinUsSelector(dashData) {
+  const { orderMode } = require('./lib/strategy/danelfin-sweep');
+  let stored = { names: [], scores: {} };
+  try { stored = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'danelfin-live', 'candidates.json'), 'utf8')); } catch (_) {}
+  const candidates = new Set(stored.names || []);
+  const scores = stored.scores || {};
+  const watches = [];
+  const next = { ...dashData };
+  for (const pane of ['short', 'medium', 'long']) {
+    next[pane] = (dashData[pane] || []).filter(row => {
+      const mode = orderMode(row, pane, candidates);
+      const score = scores[String(row.ticker || '').toUpperCase()];
+      if (score) {
+        row.danelfinAiScore = score.aiscore;
+        row.danelfinFundamental = score.fundamental;
+        row.danelfinTechnical = score.technical;
+        row.danelfinSentiment = score.sentiment;
+        row.danelfinLowRisk = score.low_risk;
+      }
+      if (mode === 'watch') {
+        watches.push({
+          ticker: row.ticker, horizon: pane, orders: false,
+          label: 'Danelfin >= 8 + AlphaSignal: not validated',
+          ai: score && score.aiscore, scores: score || null,
+        });
+        return false;
+      }
+      return mode !== 'block';
+    });
+  }
+  if (watches.length) {
+    const dir = path.join(DATA_DIR, 'danelfin-signals');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'engine-watch.json'), JSON.stringify({
+      orders: false, label: 'Danelfin >= 8 + AlphaSignal: not validated', cards: watches,
+    }));
+  }
+  return next;
+}
+
+function readStoredDanelfinScore(ticker) {
+  const symbol = String(ticker || '').toUpperCase();
+  try {
+    const stored = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'danelfin-live', 'candidates.json'), 'utf8'));
+    const score = stored.scores && stored.scores[symbol];
+    if (score && Number.isFinite(Number(score.aiscore))) return { ...score, source: 'sweep' };
+  } catch (_) {}
+  try {
+    const cached = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'danelfin-view', `${symbol}.json`), 'utf8'));
+    if (Date.now() - Date.parse(cached.savedAt) <= 7 * 86400000 && cached.score) return { ...cached.score, source: 'cache' };
+  } catch (_) {}
+  return null;
+}
+
+app.post('/api/danelfin/view-lookup', async (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const { viewScoreSource, scoreFromTickerBody } = require('./lib/strategy/danelfin-sweep');
+  const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
+  const ticker = String(req.body && req.body.ticker || '').trim().toUpperCase();
+  if (!ticker) return res.status(400).json({ error: 'ticker required' });
+  let sweep = {};
+  try { sweep = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'danelfin-live', 'candidates.json'), 'utf8')).scores || {}; } catch (_) {}
+  let cache = {};
+  try { cache[ticker] = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'danelfin-view', `${ticker}.json`), 'utf8')); } catch (_) {}
+  const choice = viewScoreSource(ticker, Date.now(), { sweep, cache });
+  if (choice.action !== 'spend') return res.json({ ok: true, spent: false, score: choice.score, from: choice.from });
+  const root = path.join(DATA_DIR, 'danelfin-view');
+  const client = createDanelfinClient({ root, environment: 'view-lookups', allowNetwork: true, maxCalls: 1 });
+  const result = await client.request({
+    purpose: 'view-lookup',
+    endpoint: '/ranking',
+    params: { ticker, fields: 'aiscore,fundamental,technical,sentiment,low_risk' },
+    noRetry: true,
+  });
+  if (!result.ok) return res.status(429).json({ error: result.reason || 'lookup refused', spent: false });
+  const score = scoreFromTickerBody(result.body, ticker);
+  fs.mkdirSync(root, { recursive: true });
+  fs.writeFileSync(path.join(root, `${ticker}.json`), JSON.stringify({ savedAt: new Date().toISOString(), score }));
+  const status = client.status();
+  res.json({ ok: true, spent: true, score, remaining: Math.max(0, status.share - status.used) });
 });
 
 function readStoredDanelfinLists() {
@@ -9476,6 +9588,7 @@ async function generateServerPicksFromShortlist(opts = {}) {
     // Never invent TP to pass — undersized reward setups are simply not recommended.
     const tickersBeforeMinRr = activeScanDiagnostic ? dashPaneTickers(dashData) : null;
     dashData = filterDashDataByMinRR(dashData);
+    dashData = applyDanelfinUsSelector(dashData);
     const tickersBeforeEarnings = activeScanDiagnostic ? dashPaneTickers(dashData) : null;
 
     // EARNINGS BLACKOUT: never open a brand-new position within 5 days of the
@@ -13448,38 +13561,81 @@ async function scanSchedulerTick(boot = false) {
 let liveDanelfinRanking = false;
 async function maybeLiveDanelfinRanking() {
   if (liveDanelfinRanking) return;
-  const { dueForLiveRanking } = require('./lib/strategy/danelfin-signal-cards');
+  const { dailySweepDue, weeklySweepDue, sectorSplitCalls, namesFromBody } = require('./lib/strategy/danelfin-sweep');
   const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
   const dir = path.join(DATA_DIR, 'danelfin-live');
   let stored = new Set();
+  let weeklyStored = new Set();
   try {
     stored = new Set(fs.readdirSync(dir).filter(name => /^\d{4}-\d{2}-\d{2}\.json$/.test(name)).map(name => name.slice(0, 10)));
   } catch (_) {}
-  const decision = dueForLiveRanking(new Date(), stored);
-  if (!decision.due) return;
+  try {
+    weeklyStored = new Set(fs.readdirSync(path.join(dir, 'weekly')).filter(name => /^\d{4}-\d{2}-\d{2}\.json$/.test(name)).map(name => name.slice(0, 10)));
+  } catch (_) {}
+  const weekly = weeklySweepDue(new Date(), weeklyStored);
+  const decision = dailySweepDue(new Date(), stored);
+  if (!weekly.due && !decision.due) return;
   liveDanelfinRanking = true;
   try {
     const client = createDanelfinClient({
       root: path.join(DATA_DIR, 'danelfin-live'),
-      environment: 'render-live',
+      environment: 'live-sweep',
       allowNetwork: true,
-      maxCalls: 1,
     });
-    const result = await client.request({
-      purpose: 'live-ai-10',
-      endpoint: '/ranking',
-      params: { date: decision.date, aiscore: 10, fields: 'aiscore,fundamental,technical,sentiment,low_risk' },
-      noRetry: true,
-    });
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, `${decision.date}.json`), JSON.stringify(result.body == null ? { status: result.status, reason: result.reason } : result.body));
+    const scores = {};
+    const names = [];
+    async function pull(call, folder) {
+      const result = await client.request({ ...call, endpoint: '/ranking', noRetry: true });
+      const fileDir = folder ? path.join(dir, folder) : dir;
+      fs.mkdirSync(fileDir, { recursive: true });
+      const sector = call.params.sector ? `-${call.params.sector}` : '';
+      fs.writeFileSync(
+        path.join(fileDir, `${call.params.date}-ai${call.params.aiscore}${sector}.json`),
+        JSON.stringify(result.body == null ? { status: result.status, reason: result.reason } : result.body)
+      );
+      return namesFromBody(result.body);
+    }
+    if (weekly.due) {
+      fs.mkdirSync(path.join(dir, 'weekly'), { recursive: true });
+      for (const call of weekly.calls) {
+        const parsed = await pull(call, 'weekly');
+        for (const name of parsed.names) {
+          const row = parsed.scores[name];
+          if (!row || !(row.aiscore >= 8)) continue;
+          if (!scores[name] || row.aiscore > scores[name].aiscore) scores[name] = row;
+          if (!names.includes(name)) names.push(name);
+        }
+      }
+      fs.writeFileSync(path.join(dir, 'weekly', `${weekly.date}.json`), JSON.stringify({ date: weekly.date, count: names.length }));
+    }
+    let capped = false;
+    const sweepDate = decision.due ? decision.date : weekly.date;
+    if (decision.due) {
+      const parsed = await pull(decision.calls[0], null);
+      capped = parsed.capped === true;
+      let dailyNames = parsed.names.slice();
+      const dailyScores = { ...parsed.scores };
+      if (capped) {
+        dailyNames = [];
+        for (const call of sectorSplitCalls(decision.date, 10)) {
+          const sectorParsed = await pull(call, 'daily-sectors');
+          for (const name of sectorParsed.names) {
+            dailyScores[name] = sectorParsed.scores[name];
+            if (!dailyNames.includes(name)) dailyNames.push(name);
+          }
+        }
+      }
+      for (const name of dailyNames) {
+        if (dailyScores[name]) scores[name] = dailyScores[name];
+        if (!names.includes(name)) names.push(name);
+      }
+    }
+    fs.writeFileSync(path.join(dir, 'candidates.json'), JSON.stringify({
+      date: sweepDate, names, scores, capped, orders: false,
+      label: 'Danelfin >= 8 + AlphaSignal: not validated',
+    }));
     const signalDir = path.join(DATA_DIR, 'danelfin-signals');
     fs.mkdirSync(signalDir, { recursive: true });
-    const names = [];
-    const body = result.body && typeof result.body === 'object' ? result.body : {};
-    for (const [key, rows] of Object.entries(body)) {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(key) && rows && typeof rows === 'object') names.push(...Object.keys(rows));
-    }
     const { buildWatchCards, rowFromBars } = require('./lib/strategy/danelfin-signal-cards');
     const rows = {};
     const u2 = {};
@@ -13502,16 +13658,37 @@ async function maybeLiveDanelfinRanking() {
     try {
       const { loadUsUniverseSnapshot, membershipAt } = require('./lib/research/us-universe');
       const snap = loadUsUniverseSnapshot(path.join(DATA_DIR, 'research', 'fmp'));
-      u1 = membershipAt(snap, decision.date);
+      u1 = membershipAt(snap, sweepDate);
     } catch (_) {}
-    const view = buildWatchCards({ names, rows, u1, u2 });
+    const { createFmpClient } = require('./lib/integrations/fmp-client');
+    const { loadResearchEnv } = require('./scripts/research-env');
+    loadResearchEnv();
+    const fmp = createFmpClient();
+    const liquid = [];
+    for (const ticker of awaitingMarketCap) {
+      const quote = await fmp.get('/stable/quote', { symbol: ticker }).catch(() => null);
+      const row = quote && Array.isArray(quote.body) ? quote.body[0] : null;
+      const cap = Number(row && row.marketCap);
+      u2[ticker].marketCap = Number.isFinite(cap) ? cap : null;
+      if (cap >= 2e9) {
+        u2[ticker].pass = true;
+        liquid.push(ticker);
+      }
+    }
+    const liquidScores = {};
+    for (const ticker of liquid) if (scores[ticker]) liquidScores[ticker] = scores[ticker];
+    fs.writeFileSync(path.join(dir, 'candidates.json'), JSON.stringify({
+      date: sweepDate, names: liquid, scores: liquidScores, capped, orders: false,
+      label: 'Danelfin >= 8 + AlphaSignal: not validated',
+    }));
+    const view = buildWatchCards({ names: liquid, rows, u1, u2 });
     const notional = 10000;
     fs.writeFileSync(path.join(signalDir, 'cards.json'), JSON.stringify({
       ok: true,
-      date: decision.date,
-      capped: names.length === 100,
+      date: sweepDate,
+      capped,
       orders: false,
-      label: 'Danelfin + AlphaSignal — not validated',
+      label: 'Danelfin >= 8 + AlphaSignal: not validated',
       cards: view.cards.map(card => ({
         ...card,
         model: { notional, entry: card.entry, pnl: null, status: 'open' },
@@ -15441,6 +15618,18 @@ function shouldEmitIbkrEntry(trade, hz) {
   if (snap.side !== 'buy' && snap.side !== 'sell') return false;
   if (!(snap.entry > 0) || !(snap.sl > 0)) return false;
   const z = hz || trade.hz || 'short';
+  {
+    const { orderMode } = require('./lib/strategy/danelfin-sweep');
+    let listed = [];
+    try {
+      listed = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'danelfin-live', 'candidates.json'), 'utf8')).names || [];
+    } catch (_) {}
+    const mode = orderMode(trade, z, new Set(listed));
+    if (mode === 'block' || mode === 'watch') {
+      console.log('IBKR entry skipped (Danelfin US selector):', trade && trade.ticker, z, mode);
+      return false;
+    }
+  }
   if (!bracketEnabled(snap.side, z)) {
     console.log('IBKR entry skipped (recommendation bracket paused):', snap.key, snap.side, z);
     return false;

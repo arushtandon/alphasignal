@@ -73,12 +73,12 @@ test('an exhausted share is refused and alerts', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dan-'));
   const alerts = [];
   const dan = client(dir, time, async () => ({ status: 200, json: async () => ({ ok: true }) }), {
-    environment: 'render-live',
+    environment: 'live-sweep',
     notify: text => alerts.push(text),
   });
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'danelfin-budget.json'), JSON.stringify({
-    months: { '2026-10': { byEnv: { 'render-live': 60 }, byPurpose: {} } },
+    months: { '2026-10': { byEnv: { 'live-sweep': 130 }, byPurpose: {} } },
   }));
   const result = await dan.request({ purpose: 'live', endpoint: '/ranking', params: { date: '2026-10-27' } });
   assert.equal(result.refused, true);

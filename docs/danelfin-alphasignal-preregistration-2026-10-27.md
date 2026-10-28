@@ -17,7 +17,7 @@ The sell book is dropped. On 2026-10-27, `aiscore=1` returned exactly 100 names,
 
 ## Call plan (buy side only)
 
-Research share is 340 calls this month. Live keeps 60. Reserve 100 stays untouched. The three discovery calls already counted. This pull is AI = 10 only.
+Research share is 170 calls this month. The live sweep keeps 130. View lookups keep 60. Reserve is 140. The same pace, breaker and monthly cap still apply. October's history pull was counted under the previous 340 research share; the calls already stored stay counted, and the approved completion of that pull may draw the reserve because 170 no longer covers them.
 
 | Stage | Dates | Calls |
 | --- | --- | ---: |
