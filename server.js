@@ -89,7 +89,7 @@ const {
   pauseSetup,
   sendTelegram,
 } = require('./lib/strategy/setup-book-runtime');
-const { evaluateBridgeWatch } = require('./lib/ibkr/bridge-watch');
+const { evaluateBridgeWatch, retainAlertStamp } = require('./lib/ibkr/bridge-watch');
 const { dailyToWeeklyBars, weeklyBarsVisibleAt } = require('./lib/research/weekly-bars');
 const { evaluateMtf, blendSignal } = require('./lib/research/mtf-supertrend');
 const { atomicWriteFileSync, atomicWriteJsonSync } = require('./lib/storage/atomic-json');
