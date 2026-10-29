@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  WATCH_LABEL, NOTIONAL, monthlySelectionDue, choosePicks, markPosition, updateForwardBook,
+  WATCH_LABEL, NOTIONAL, fridayMediumDue, monthlySelectionDue, choosePicks, selectMediumK1, markPosition, updateForwardBook,
 } = require('../lib/strategy/danelfin-forward');
 
 function bars(count, closeAt) {
@@ -17,6 +17,15 @@ function bars(count, closeAt) {
   return out;
 }
 
+test('medium selection is due on Friday after the US close', () => {
+  const due = fridayMediumDue(new Date('2026-10-30T20:15:00Z'), new Set());
+  assert.equal(due.due, true);
+  assert.equal(due.date, '2026-10-30');
+  assert.equal(fridayMediumDue(new Date('2026-10-29T20:15:00Z'), new Set()).due, false);
+  assert.equal(fridayMediumDue(new Date('2026-10-30T18:00:00Z'), new Set()).due, false);
+  assert.equal(fridayMediumDue(new Date('2026-10-30T20:15:00Z'), new Set(['2026-10-30'])).due, false);
+});
+
 test('monthly selection is the last weekday after the US close', () => {
   const due = monthlySelectionDue(new Date('2026-10-30T20:15:00Z'), new Set());
   assert.equal(due.due, true);
@@ -26,7 +35,7 @@ test('monthly selection is the last weekday after the US close', () => {
   assert.equal(monthlySelectionDue(new Date('2026-10-30T20:15:00Z'), new Set(['2026-10'])).due, false);
 });
 
-test('medium takes the top 6-month name and long takes up to five by 12-1', () => {
+test('medium takes the top 12-1 name not already held, and long takes up to five by 12-1', () => {
   const rows = [
     { ticker: 'AAA', ai: 10, close: 20, marketCap: 3e9, dollarAdv: 30e6, ret6: 0.4, ret12: 0.2, piotroski: 7 },
     { ticker: 'BBB', ai: 10, close: 20, marketCap: 3e9, dollarAdv: 30e6, ret6: 0.9, ret12: 0.1, piotroski: 5 },
@@ -35,10 +44,11 @@ test('medium takes the top 6-month name and long takes up to five by 12-1', () =
     { ticker: 'EEE', ai: 10, close: 4, marketCap: 3e9, dollarAdv: 30e6, ret6: 3, ret12: 3, piotroski: 9 },
   ];
   const picks = choosePicks(rows, []);
-  assert.equal(picks.find(row => row.horizon === 'medium').ticker, 'BBB');
+  assert.equal(picks.find(row => row.horizon === 'medium').ticker, 'CCC');
+  assert.equal(selectMediumK1(rows, ['CCC']).ticker, 'AAA');
   assert.deepEqual(picks.filter(row => row.horizon === 'long').map(row => row.ticker), ['CCC', 'AAA']);
   assert.ok(picks.every(row => row.orders === false && row.label === WATCH_LABEL));
-  const held = choosePicks(rows, [{ horizon: 'medium', ticker: 'BBB' }]);
+  const held = choosePicks(rows, [{ horizon: 'medium', ticker: 'CCC' }]);
   assert.equal(held.find(row => row.horizon === 'medium').ticker, 'AAA');
 });
 
@@ -105,6 +115,6 @@ test('the forward book spends nothing and writes watch cards only', async () => 
   assert.equal(book.orders, false);
   assert.equal(book.label, WATCH_LABEL);
   assert.ok(book.cards.every(card => card.orders === false));
-  assert.equal(book.cards.find(card => card.horizon === 'medium').ticker, 'BBB');
+  assert.equal(book.cards.find(card => card.horizon === 'medium').ticker, 'AAA');
   assert.equal(stored.cards.find(card => card.horizon === 'long').ticker, 'AAA');
 });

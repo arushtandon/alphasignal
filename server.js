@@ -13615,17 +13615,20 @@ let forwardStamp = '';
 async function maybeDanelfinForwardBook() {
   if (forwardBookRunning) return;
   const { nyParts } = require('./lib/strategy/danelfin-sweep');
-  const { monthlySelectionDue, updateForwardBook, WATCH_LABEL } = require('./lib/strategy/danelfin-forward');
+  const { monthlySelectionDue, fridayMediumDue, updateForwardBook, WATCH_LABEL } = require('./lib/strategy/danelfin-forward');
   const ny = nyParts(new Date());
   if (ny.weekday === 'Sat' || ny.weekday === 'Sun') return;
   if (ny.minutes < 16 * 60 + 10) return;
   const bookFile = path.join(DATA_DIR, 'danelfin-signals', 'forward-book.json');
   let selected = new Set();
+  let mediumDates = new Set();
   try {
     const existing = JSON.parse(fs.readFileSync(bookFile, 'utf8'));
     selected = new Set((existing.selections || []).map(row => row.month));
+    mediumDates = new Set(existing.mediumDates || []);
   } catch (_) {}
-  if (forwardStamp === ny.date && !monthlySelectionDue(new Date(), selected).due) return;
+  const now = new Date();
+  if (forwardStamp === ny.date && !monthlySelectionDue(now, selected).due && !fridayMediumDue(now, mediumDates).due) return;
   forwardBookRunning = true;
   try {
     const book = await updateForwardBook({

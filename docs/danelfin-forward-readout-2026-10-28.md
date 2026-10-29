@@ -8,7 +8,7 @@ On the calendar that keeps the seven capped weeks, this row clears the stage-1 t
 
 Dropping those seven capped weeks, the same row is excess t 1.95 and alpha t 1.49. That misses the gate. The row is not a pass.
 
-The stored k = 1 book ranked every AI = 10 date by 12-month return excluding the last month. The live medium watch card below is monthly and ranks by 6-month return, which is the forward rule set on 28 Oct 2026.
+The stored k = 1 book ranks that day's liquid AI = 10 names by 12-1 and skips a name already held. The live medium card uses that function each Friday after the US close.
 
 ## Live watch cards
 
@@ -16,7 +16,7 @@ US short mean-reversion orders are the validated book. A missing Danelfin file d
 
 US medium and US long do not take the live engine gate as a watch path. That gate produced no trades on the stored AI = 10 dates. The watch book is separate, has no entry events and no orders, and marks model P&L at $30,000 a name:
 
-- Medium, once a month: liquid US names on that day's AI = 10 list, top one by 6-month return, engine exits.
+- Medium, each Friday after the US close, from that Friday's stored AI = 10 list: liquid US names, top one by 12-1 that is not already in an open medium trade. This is the U2 M-BUY Danelfin k = 1 function. Exits are the engine medium exits: 2.5 ATR stop, 4.2 and 7.0 ATR targets, half off at the first target, runner stop to entry, 63-session time stop. The 6-month top-30% cut is the combined arm; applying it changes the name on some Fridays, including 2026-05-22.
 - Long, once a month: liquid US AI = 10, point-in-time Piotroski at least 6, 12-1 above zero, top five by 12-1, hold six months.
 
 The label on every watch card is "Danelfin + AlphaSignal: not validated, forward test".
