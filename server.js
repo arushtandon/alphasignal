@@ -142,6 +142,7 @@ const {
   stripEstimatedHkStamp
 } = require('./lib/ibkr/ib-commission');
 const { dedupeIbkrFillsByExecId } = require('./lib/ibkr/fill-dedupe');
+const { voidOverExitQtyTrims, isQtyTrimFill } = require('./lib/ibkr/void-over-exit-trims');
 const { aggregateTrades, calculateTradePnl } = require('./lib/ibkr/aggregate-trades');
 const { overlayPublishedBoardOnAnalyzeRow } = require('./lib/analysis/overlay-published-board');
 const { isMarketLikeExit } = require('./lib/ibkr/tp1-policy');
@@ -16548,6 +16549,32 @@ function dropQtyPadFillsForKeys(keys) {
   return n;
 }
 
+/**
+ * Void synthetic qty-trims that over-closed a lot later covered by real IB exits
+ * (SHEL.L Oct 13 runner trim vs Oct 29 TP2; SU.PA Oct 19 trim vs stop).
+ */
+function repairOverExitQtyTrims() {
+  let dropped = [];
+  mutateFillLedger('void_over_exit_qty_trim', (rows) => {
+    const result = voidOverExitQtyTrims(rows, { isGenuineIbExecFill });
+    dropped = result.dropped || [];
+    return result.rows;
+  }, {
+    mayDropProtected: (r) => isQtyTrimFill(r)
+  });
+  if (dropped.length) {
+    console.log('IBKR repair: voided', dropped.length, 'over-exit qty-trim fill(s)',
+      dropped.map(r => `${r.ticker || r.key}×${r.qty}@${r.price}`).join(' '));
+    try {
+      auditLog('ibkr_void_over_exit_qty_trim', {
+        count: dropped.length,
+        execIds: dropped.map(r => r && r.execId).filter(Boolean)
+      });
+    } catch (_) {}
+  }
+  return dropped.length;
+}
+
 function isGenuineIbExecFill(r) {
   if (!r) return false;
   if (r.synthetic === true) return false;
@@ -18027,6 +18054,7 @@ bootRepair('boot model-fill unstamp failed:', unstampModelIbkrFills);
 bootRepair('boot legacy unauthorized exits failed:', emitExitsForLegacyUnauthorizedKeys);
 bootRepair('boot abandon-unfilled exits failed:', emitExitsForAbandonedUnfilledEntries);
 bootRepair('boot ghost-flat repair failed:', repairErroneousGhostFlats);
+bootRepair('boot over-exit qty-trim void failed:', repairOverExitQtyTrims);
 bootRepair('boot ghost-flat error stamp failed:', stampGhostFlatFillsAsErrorTrade);
 bootRepair('boot user-restore ghost void failed:', restoreUserReentryGhostLots);
 bootRepair('boot quarantine error-off-model failed:', quarantineErrorFillsOffModelKeys);
@@ -18725,6 +18753,7 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
   try {
     try { quarantineErrorFillsOffModelKeys(); } catch (_) {}
     try { restoreUserReentryGhostLots(); } catch (_) {}
+    try { repairOverExitQtyTrims(); } catch (_) {}
     // Refresh dedupe set from disk (purge/other instance may have changed file).
     try {
       _ibkrExecIds.clear();
@@ -19211,6 +19240,36 @@ app.post('/api/ibkr/recon', express.json({ limit: '256kb' }), async (req, res) =
           const delta = asAbs - ibAbs;
           const px = primary.mark > 0 ? primary.mark : 0;
           if (!(delta > 0)) continue;
+          // Fill-lag guard: after TP1/stop the IB position drops before the
+          // exec hits the ledger. Inventing qty-trim then over-closes the lot
+          // (SHEL.L 13 Oct ×372; SU.PA 19 Oct ×14) so later real exits book $0
+          // and close-day costs look like a loss.
+          const aliases = ibkrYahooAliases(y);
+          const liveManaged = liveStopsIn.some(s => s && aliases.has(normalizeIbkrYahooTicker(s.ticker)))
+            || liveBracketsIn.some(b => b && (
+              aliases.has(normalizeIbkrYahooTicker(b.ticker))
+              || String(b.key || '') === String(primary.key)
+            ));
+          const fillRowsTrim = readIbkrFillRows();
+          const QTY_TRIM_EXIT_GRACE_MS = 15 * 60 * 1000;
+          const recentGenuineExit = fillRowsTrim.some(r => {
+            if (!r || r.role === 'entry' || !isGenuineIbExecFill(r)) return false;
+            if (String(r.key) !== String(primary.key)
+              && !aliases.has(normalizeIbkrYahooTicker(r.ticker || String(r.key || '').split('|')[0]))) {
+              return false;
+            }
+            const ts = Date.parse(r.time || 0);
+            return Number.isFinite(ts) && (Date.now() - ts) >= 0 && (Date.now() - ts) < QTY_TRIM_EXIT_GRACE_MS;
+          });
+          if (liveManaged || recentGenuineExit) {
+            issues.push({
+              ticker: y, severity: 'pending',
+              detail: liveManaged
+                ? `Qty drift AS=${asAbs} IB=${ibAbs} — live stop/bracket; defer qty-trim (fill lag)`
+                : `Qty drift AS=${asAbs} IB=${ibAbs} — recent genuine exit; defer qty-trim`
+            });
+            continue;
+          }
           if (!(px > 0) || (primary.avgEntry > 0 && Math.abs(px - primary.avgEntry) / primary.avgEntry < 0.0005)) {
             issues.push({
               ticker: y, severity: 'pending',

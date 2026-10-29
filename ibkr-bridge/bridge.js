@@ -4165,7 +4165,9 @@ async function main() {
     };
     if (row.tp1Done === true) {
       order.ocaGroup = runnerOcaGroupForKey(key, row);
-      order.ocaType = 2;
+      // Prefer an explicit type from the caller (live repair must not revise
+      // IB ocaType in place — error 10327). New parks default to type 2.
+      order.ocaType = fields.ocaType != null ? Number(fields.ocaType) : 2;
     }
     return baseOrder(order);
   }
@@ -4774,6 +4776,7 @@ async function main() {
       if (!(lastPx > 0) && bars.length) {
         lastPx = Number(bars[bars.length - 1].c) || 0;
       }
+      if (lastPx > 0 && entryPx > 0) lastPx = alignFillToModel(lastPx, entryPx);
       if (!(lastPx > 0)) {
         log('TSL catch-up deferred — no last print', key);
         continue;
@@ -6785,26 +6788,39 @@ async function main() {
             'tp2=' + existing.orderId, 'stop=' + row.stopId);
           continue;
         }
+        // IB error 10327: OCA group type revision is not allowed on a live
+        // order. Keep the working pair's ocaType; never upgrade 1→2 in place.
+        // New runner pairs still park with ocaType 2 (see parkRunnerTp2).
+        const liveOcaType = Number(stop.ocaType) === 2 && Number(existing.ocaType) === 2
+          ? 2
+          : (Number(stop.ocaType) || Number(existing.ocaType) || 1);
+        if ((Number(stop.ocaType) !== 2 || Number(existing.ocaType) !== 2)
+          && !row.ocaTypeLocked) {
+          row.ocaTypeLocked = true;
+          log('RECONCILE: skip OCA type revision (IB 10327)', key,
+            'stopType=' + stop.ocaType, 'tp2Type=' + existing.ocaType,
+            'keeping=' + liveOcaType);
+        }
         const needsPairRepair = stop.ocaGroup !== group || existing.ocaGroup !== group
-          || stop.ocaType !== 2 || existing.ocaType !== 2
           || Number(stop.qty) !== runnerQty || existingUnfilledQty !== runnerQty
           || row.runnerOcaStopId !== stop.orderId;
         if (needsPairRepair && Number(row.stopPx) > 0) {
           transmitOrder(stop.orderId, row.contract, runnerStopOrder(row, key, {
             orderId: stop.orderId, action: closeAction, auxPrice: row.stopPx,
-            totalQuantity: runnerQty
+            totalQuantity: runnerQty, ocaType: liveOcaType
           }), 'runner stop OCA repair ' + key);
           transmitOrder(existing.orderId, row.contract, baseOrder({
             orderId: existing.orderId, action: closeAction, orderType: 'LMT',
             lmtPrice: want, totalQuantity: tp2TotalQty, tif: 'GTC',
             outsideRth: ORDER_OUTSIDE_RTH, transmit: true,
-            ocaGroup: group, ocaType: 2
+            ocaGroup: group, ocaType: liveOcaType
           }), 'runner TP2 OCA repair ' + key);
           row.stopId = stop.orderId;
           row.runnerOcaStopId = stop.orderId;
           n++;
           log('RECONCILE: linked runner TP2+TSL OCA', key, 'orderId=' + existing.orderId,
-            'stop=' + stop.orderId, 'qty=' + runnerQty, 'group=' + group);
+            'stop=' + stop.orderId, 'qty=' + runnerQty, 'group=' + group,
+            'ocaType=' + liveOcaType);
         }
         continue;
       }

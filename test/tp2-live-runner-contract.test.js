@@ -14,8 +14,11 @@ test('runner TP2 is GTC and OCA-linked with its post-TP1 stop', () => {
   assert.match(bridge, /function runnerOcaGroupForKey\(key, row\)/);
   assert.match(bridge, /function runnerStopOrder\(row, key, fields\)/);
   assert.match(bridge, /order\.ocaGroup = runnerOcaGroupForKey\(key, row\)/);
-  assert.match(bridge, /order\.ocaType = 2/);
-  assert.match(bridge, /tif: 'GTC'[\s\S]{0,320}ocaType: 2/);
+  // New parks default to type 2; live repairs may pass fields.ocaType to avoid IB 10327.
+  assert.match(bridge, /order\.ocaType = fields\.ocaType != null \? Number\(fields\.ocaType\) : 2/);
+  assert.match(bridge, /ocaType: 2/);
+  assert.match(bridge, /tif: 'GTC'/);
+  assert.match(bridge, /const runnerOca = \{ ocaGroup: runnerOcaGroupForKey\(key, row\), ocaType: 2 \}/);
 });
 
 test('runner reconciliation adopts live TP2 before placing and repairs OCA in place', () => {
@@ -25,6 +28,10 @@ test('runner reconciliation adopts live TP2 before placing and repairs OCA in pl
   assert.match(bridge, /ensureWorkingTp2Children\(null, \{ onlyKey: key \}\)/);
   assert.match(bridge, /stop\.ocaGroup !== group \|\| existing\.ocaGroup !== group/);
   assert.match(bridge, /row\.runnerOcaStopId !== stop\.orderId/);
+  // Never revise live OCA type in place (IB error 10327).
+  assert.match(bridge, /skip OCA type revision \(IB 10327\)/);
+  assert.match(bridge, /ocaType: liveOcaType/);
+  assert.doesNotMatch(bridge, /stop\.ocaType !== 2 \|\| existing\.ocaType !== 2\s*\n\s*\|\| Number\(stop\.qty\)/);
 });
 
 test('runner quantities are attributed per row and partial TP2 fills retain protection', () => {
