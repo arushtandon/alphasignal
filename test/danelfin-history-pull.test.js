@@ -7,14 +7,16 @@ const os = require('os');
 const path = require('path');
 const {
   monthEndDates, weekEndDates, buyHistoryPlan, runBuyHistory, runCappedSectorSplit, historyView, SECTORS, readCheckpoint,
-  octoberCompletionPlan, researchSpendAllowed, CAPPED_WEEK_ENDS,
+  octoberCompletionPlan, researchSpendAllowed, CAPPED_WEEK_ENDS, DOCUMENTED_SECTOR_SLUGS,
+  PERMANENTLY_MISSING_DATES, rankingUrlPreview,
 } = require('../lib/integrations/danelfin-history-pull');
 const { buildWatchCards, dueForLiveRanking } = require('../lib/strategy/danelfin-signal-cards');
+const documentedSectors = require('./fixtures/danelfin-sector-slugs.json');
 
-test('October research spend is the failed-date retry and 77 sector calls', () => {
-  assert.deepEqual(octoberCompletionPlan(), [{ stage: 'week-end', date: '2025-07-11', aiscore: 10 }]);
+test('October research spend is closed (0711 permanent miss; no sector calls)', () => {
+  assert.deepEqual(octoberCompletionPlan(), []);
   const october = Date.parse('2026-10-28T00:00:00Z');
-  assert.equal(researchSpendAllowed({ purpose: 'history-ai-10-week-end', params: { date: '2025-07-11', aiscore: 10 } }, october), true);
+  assert.equal(researchSpendAllowed({ purpose: 'history-ai-10-week-end', params: { date: '2025-07-11', aiscore: 10 } }, october), false);
   assert.equal(researchSpendAllowed({ purpose: 'history-ai-10-week-end', params: { date: '2024-01-31', aiscore: 10 } }, october), false);
   assert.equal(researchSpendAllowed({ purpose: 'discovery-latest-ai-10', params: { date: '2026-10-27', aiscore: 10 } }, october), false);
   let sectors = 0;
@@ -23,9 +25,29 @@ test('October research spend is the failed-date retry and 77 sector calls', () =
       if (researchSpendAllowed({ purpose: 'history-ai-10-sector', params: { date, aiscore: 10, sector } }, october)) sectors += 1;
     }
   }
-  assert.equal(sectors, 77);
+  assert.equal(sectors, 0);
   assert.equal(researchSpendAllowed({ purpose: 'history-ai-10-sector', params: { date: '2024-01-31', aiscore: 10, sector: 'energy' } }, october), false);
   assert.equal(researchSpendAllowed({ purpose: 'discovery-latest-ai-10', params: {} }, Date.parse('2026-11-01T00:00:00Z')), true);
+  assert.ok(PERMANENTLY_MISSING_DATES['2025-07-11']);
+});
+
+test('sector ranking param uses documented slug format from Danelfin docs', () => {
+  assert.equal(documentedSectors.parameter, 'sector');
+  assert.equal(documentedSectors.format, 'slug');
+  assert.deepEqual([...DOCUMENTED_SECTOR_SLUGS], documentedSectors.slugs);
+  assert.deepEqual([...SECTORS], documentedSectors.slugs);
+  const url = rankingUrlPreview({
+    date: '2025-01-03',
+    aiscore: 10,
+    sector: 'communication-services',
+    fields: 'aiscore,fundamental,technical,sentiment,low_risk',
+  });
+  assert.equal(
+    url,
+    'https://apirest.danelfin.com/ranking?date=2025-01-03&aiscore=10&sector=communication-services&fields=aiscore%2Cfundamental%2Ctechnical%2Csentiment%2Clow_risk'
+  );
+  assert.ok(!/sector=Communication/.test(url));
+  assert.ok(!/sector=10\b/.test(url));
 });
 
 test('buy history is 81 month-ends then 104 Fridays, AI 10 only', () => {

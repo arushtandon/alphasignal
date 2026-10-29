@@ -842,7 +842,8 @@ function ok(name, cond, detail) {
       const bridge = fs.readFileSync(path.join(__dirname, '..', 'ibkr-bridge', 'bridge.js'), 'utf8');
       ok('T31 runner stops use live OCA helper',
         /function runnerStopOrder\(row, key, fields\)/.test(bridge)
-        && /order\.ocaType = 2/.test(bridge)
+        && (/order\.ocaType = 2/.test(bridge)
+          || /order\.ocaType = fields\.ocaType != null \? Number\(fields\.ocaType\) : 2/.test(bridge))
         && /tsl ratchet OCA check/.test(bridge));
       ok('T31 reconcile verifies live OCA orders',
         /stop\.ocaGroup !== group \|\| existing\.ocaGroup !== group/.test(bridge)

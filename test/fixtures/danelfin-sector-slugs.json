@@ -1,0 +1,20 @@
+{
+  "source": "https://danelfin.com/docs/api GET /sectors",
+  "parameter": "sector",
+  "format": "slug",
+  "note": "Ranking filter uses the same slug strings. Do not send display names or numeric ids.",
+  "exampleUrl": "https://apirest.danelfin.com/ranking?date=2024-01-02&sector=utilities",
+  "slugs": [
+    "communication-services",
+    "consumer-discretionary",
+    "consumer-staples",
+    "energy",
+    "financials",
+    "health-care",
+    "industrials",
+    "information-technology",
+    "materials",
+    "real-estate",
+    "utilities"
+  ]
+}

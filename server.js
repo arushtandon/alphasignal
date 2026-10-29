@@ -7683,7 +7683,12 @@ app.get('/api/danelfin/history-pull', (req, res) => {
   const { historyView } = require('./lib/integrations/danelfin-history-pull');
   const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
   const root = path.join(DATA_DIR, 'danelfin-research');
-  const view = historyView(root, { names: req.query.names === '1' });
+  const view = historyView(root, {
+    names: req.query.names === '1',
+    persistMissing: true,
+    responseDate: req.query.response || null,
+    responseSector: req.query.sector || null,
+  });
   const research = createDanelfinClient({ root, environment: 'research', allowNetwork: false }).status();
   res.json({
     ok: true,
@@ -7695,6 +7700,7 @@ app.get('/api/danelfin/history-pull', (req, res) => {
       share: research.share,
       byPurpose: research.byPurpose,
       breakerOpen: research.breakerOpen,
+      lastCall: research.lastCall || null,
     },
   });
 });

@@ -23,4 +23,10 @@ The label on every watch card is "Danelfin + AlphaSignal: not validated, forward
 
 ## October calls
 
-Through 31 Oct 2026 the research share accepts two things only: one retry of the failed 2025-07-11 list, and the 77 sector calls on the seven capped Fridays. The ledger by share is reported on 1 Nov 2026.
+October research network spend is closed. `2025-07-11` is permanently missing (Danelfin error or empty AI = 10 list after retries; omitted from the candidate table). The one sector probe on `2025-01-03` / `communication-services` returned HTTP 404 with the documented slug; the remaining 76 sector calls were not run and are not planned for October.
+
+November: keep the capped Fridays as the stored top-100 lists. Do not spend the remaining sector split unless a new study needs names beyond those 100 — the live medium watch card uses the U2 k = 1 Friday rule on the stored list, and the near-miss row was already scored with and without the capped weeks.
+
+## Ledger note (29 Oct 2026)
+
+October usage across shares: live-sweep 1 + view-lookups 0 + research 192 = **193 of 500** overall (share pool 130+60+170+140).

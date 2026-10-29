@@ -27,9 +27,9 @@ Research share is 170 calls this month. The live sweep keeps 130. View lookups k
 | Capped week-ends, by sector | 7 Fridays × 11 sectors | 77 |
 | October total with the sector split | | 265 |
 
-Each response is written before the next call. A date already stored is not fetched again. Nothing is requested after 31 Oct 2026 24:00 UTC. Through that deadline the research share accepts only the 2025-07-11 retry and the 77 sector calls. The ledger by share is reported on 1 Nov 2026. See `docs/danelfin-forward-readout-2026-10-28.md`.
+Each response is written before the next call. A date already stored is not fetched again. October research spend is closed: `2025-07-11` is permanently missing, and the remaining capped-Friday sector splits are not run (one probe returned HTTP 404). See `docs/danelfin-forward-readout-2026-10-28.md`.
 
-Seven week-end files came back with exactly 100 names. The ranking route accepts a `sector` slug. The 11 slugs on the sectors list are communication-services, consumer-discretionary, consumer-staples, energy, financials, health-care, industrials, information-technology, materials, real-estate, and utilities. No call is spent to list them again. Each of those seven dates is requested once per sector, `aiscore=10`, same fields, checkpointed the same way. A sector already stored is not fetched again.
+Seven week-end files came back with exactly 100 names. The ranking route accepts a `sector` slug (documented format). The 11 slugs on the sectors list are communication-services, consumer-discretionary, consumer-staples, energy, financials, health-care, industrials, information-technology, materials, real-estate, and utilities.
 
 A date is treated as uncapped only when every sector response has fewer than 100 names and every name in the original 100 is in the union. A sector that returns 100 stays flagged, and that week is not replaced by a partial union. The candidate table then reports that week both as the stored 100 and as excluded.
 
