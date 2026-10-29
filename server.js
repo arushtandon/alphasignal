@@ -88,6 +88,7 @@ const {
   resumeSetup,
   pauseSetup,
   sendTelegram,
+  telegramConfigured,
 } = require('./lib/strategy/setup-book-runtime');
 const { evaluateBridgeWatch, retainAlertStamp } = require('./lib/ibkr/bridge-watch');
 const { dailyToWeeklyBars, weeklyBarsVisibleAt } = require('./lib/research/weekly-bars');
@@ -7977,6 +7978,14 @@ function loadHistoryFile() {
   return [];
 }
 
+function persistLateEntryDeviations(rows) {
+  const { stampLateEntryDeviation } = require('./lib/strategy/setup-book-runtime');
+  let changed = false;
+  for (const trade of rows || []) if (stampLateEntryDeviation(trade)) changed = true;
+  if (changed) saveHistoryFile(rows);
+  return changed;
+}
+
 function saveHistoryFile(data) {
   try {
     const snapshot = { version: HISTORY_VERSION, data };
@@ -7990,6 +7999,7 @@ function saveHistoryFile(data) {
 }
 
 let tradeHistory = loadHistoryFile();
+persistLateEntryDeviations(tradeHistory);
 
 // ── Shared dashboard picks (same scan on phone + desktop) ───────────────────
 const DASHBOARD_PICKS_VERSION = 1;
@@ -8070,6 +8080,7 @@ const snapshotRecoveryReady = durableReady.then(async ready => {
       const savedHistory = await durableStore.loadSnapshot('trade-history');
       if (savedHistory && Array.isArray(savedHistory.data) && savedHistory.data.length) {
         tradeHistory = savedHistory.data;
+        persistLateEntryDeviations(tradeHistory);
         atomicWriteJsonSync(HISTORY_FILE, savedHistory);
         console.log('Recovered trade history from PostgreSQL:', tradeHistory.length);
       }
@@ -9846,6 +9857,18 @@ app.get('/api/debug/vendors/:symbol', async (req, res) => {
   }
 });
 
+app.post('/api/telegram/test', async (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  if (!telegramConfigured()) return res.status(409).json({ ok: false, configured: false });
+  try {
+    const result = await sendTelegram('AlphaSignal Render alert test');
+    const status = result && result.status;
+    res.json({ ok: status >= 200 && status < 300, configured: true, status: status || null });
+  } catch (error) {
+    res.status(502).json({ ok: false, configured: true, error: 'send failed' });
+  }
+});
+
 app.get('/api/health', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
@@ -9877,6 +9900,7 @@ app.get('/api/health', async (req, res) => {
     uptime_s: Math.round(process.uptime()),
     rss_mb: Math.round((process.memoryUsage().rss || 0) / 1048576),
     bridge: bridgeWatchView(),
+    telegram: { configured: telegramConfigured() },
     quotes: 'yahoo_finance',
     earnings: {
       finnhub_calendar: !!(process.env.FINNHUB_API_KEY || '').trim(),

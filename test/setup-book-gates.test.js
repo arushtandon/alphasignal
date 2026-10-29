@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { calculateRiskSize } = require('../lib/risk/sizing');
-const { setupBookPnlViews } = require('../lib/strategy/setup-book-runtime');
+const { setupBookPnlViews, stampLateEntryDeviation } = require('../lib/strategy/setup-book-runtime');
 const { parentEntrySpec, toContract } = require('../ibkr-bridge/bridge');
 
 test('ALAB spread-limit does not reject a setup-book ticket', () => {
@@ -52,4 +52,26 @@ test('setup-book P&L defaults to IBKR fills and keeps model trades labelled besi
   assert.equal(view.filled.trades, 1);
   assert.equal(view.model.label, 'Model (board) trades');
   assert.equal(view.model.trades, 1);
+});
+
+test('2503.T on 29 Oct is tagged and kept out of the comparable setup-book P&L', () => {
+  const trade = {
+    setupId: 'JAPAN_MEDIUM_MR',
+    hz: 'medium',
+    mediumStatus: 'sl_hit',
+    mediumPnlPct: 1.2,
+    ticker: '2503.T',
+    entryDate: '2026-10-29T04:15:47.743Z',
+    ibkrFilled: true,
+  };
+  assert.equal(stampLateEntryDeviation(trade), true);
+  assert.equal(trade.lateEntryDeviation, true);
+  assert.equal(trade.lateEntryOpen, 2817.5);
+  assert.equal(trade.lateEntryLimit, 2885);
+  const other = { ticker: '7203.T', entryDate: '2026-10-29', setupId: 'JAPAN_MEDIUM_MR', hz: 'medium', mediumStatus: 'sl_hit', mediumPnlPct: -1, ibkrFilled: true };
+  assert.equal(stampLateEntryDeviation(other), false);
+  const view = setupBookPnlViews([trade, other]).JAPAN_MEDIUM_MR;
+  assert.equal(view.filled.trades, 2);
+  assert.equal(view.filledExcludingLateEntry.trades, 1);
+  assert.equal(view.lateEntryDeviation.trades, 1);
 });
