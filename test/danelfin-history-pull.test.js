@@ -7,8 +7,26 @@ const os = require('os');
 const path = require('path');
 const {
   monthEndDates, weekEndDates, buyHistoryPlan, runBuyHistory, runCappedSectorSplit, historyView, SECTORS, readCheckpoint,
+  octoberCompletionPlan, researchSpendAllowed, CAPPED_WEEK_ENDS,
 } = require('../lib/integrations/danelfin-history-pull');
 const { buildWatchCards, dueForLiveRanking } = require('../lib/strategy/danelfin-signal-cards');
+
+test('October research spend is the failed-date retry and 77 sector calls', () => {
+  assert.deepEqual(octoberCompletionPlan(), [{ stage: 'week-end', date: '2025-07-11', aiscore: 10 }]);
+  const october = Date.parse('2026-10-28T00:00:00Z');
+  assert.equal(researchSpendAllowed({ purpose: 'history-ai-10-week-end', params: { date: '2025-07-11', aiscore: 10 } }, october), true);
+  assert.equal(researchSpendAllowed({ purpose: 'history-ai-10-week-end', params: { date: '2024-01-31', aiscore: 10 } }, october), false);
+  assert.equal(researchSpendAllowed({ purpose: 'discovery-latest-ai-10', params: { date: '2026-10-27', aiscore: 10 } }, october), false);
+  let sectors = 0;
+  for (const date of CAPPED_WEEK_ENDS) {
+    for (const sector of SECTORS) {
+      if (researchSpendAllowed({ purpose: 'history-ai-10-sector', params: { date, aiscore: 10, sector } }, october)) sectors += 1;
+    }
+  }
+  assert.equal(sectors, 77);
+  assert.equal(researchSpendAllowed({ purpose: 'history-ai-10-sector', params: { date: '2024-01-31', aiscore: 10, sector: 'energy' } }, october), false);
+  assert.equal(researchSpendAllowed({ purpose: 'discovery-latest-ai-10', params: {} }, Date.parse('2026-11-01T00:00:00Z')), true);
+});
 
 test('buy history is 81 month-ends then 104 Fridays, AI 10 only', () => {
   const months = monthEndDates();

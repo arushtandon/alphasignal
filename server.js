@@ -7559,6 +7559,8 @@ app.get('/api/danelfin/budget', (req, res) => {
 
 app.post('/api/danelfin/discover', async (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const { DEADLINE_MS } = require('./lib/integrations/danelfin-history-pull');
+  if (Date.now() < DEADLINE_MS) return res.status(409).json({ ok: false, reason: 'october-completion-only' });
   const dir = path.join(DATA_DIR, 'danelfin-discovery');
   const doneFile = path.join(dir, 'done.json');
   let priorLocalBug = false;
@@ -7647,14 +7649,15 @@ app.post('/api/danelfin/history-pull', (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   if (danelfinHistoryPull.running) return res.json({ ok: true, running: true, startedAt: danelfinHistoryPull.startedAt });
   const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
-  const { runBuyHistory, runCappedSectorSplit, readCheckpoint } = require('./lib/integrations/danelfin-history-pull');
+  const { runBuyHistory, runCappedSectorSplit, readCheckpoint, octoberCompletionPlan, DEADLINE_MS } = require('./lib/integrations/danelfin-history-pull');
+  if (Date.now() >= DEADLINE_MS) return res.status(409).json({ ok: false, reason: 'deadline' });
   const root = path.join(DATA_DIR, 'danelfin-research');
   const client = createDanelfinClient({
     root, environment: 'research', allowNetwork: true, useReserve: true,
   });
   danelfinHistoryPull = { running: true, phase: 'dates', startedAt: new Date().toISOString() };
-  runBuyHistory(client, { root }).then(state => {
-    if (state.stopped === 'budget' || state.stopped === 'breaker-open' || state.stopped === 'below-reserve' || state.stopped === 'deadline') {
+  runBuyHistory(client, { root, plan: octoberCompletionPlan() }).then(state => {
+    if (state.stopped === 'budget' || state.stopped === 'breaker-open' || state.stopped === 'below-reserve' || state.stopped === 'deadline' || state.stopped === 'october-completion-only') {
       return state;
     }
     danelfinHistoryPull.phase = 'sectors';
@@ -7699,7 +7702,7 @@ app.get('/api/danelfin/signal-cards', (req, res) => {
   try {
     res.json(JSON.parse(fs.readFileSync(file, 'utf8')));
   } catch (_) {
-    res.json({ ok: true, cards: [], missingPrice: [], orders: false, label: 'Danelfin + AlphaSignal — not validated' });
+    res.json({ ok: true, cards: [], orders: false, label: 'Danelfin + AlphaSignal: not validated, forward test' });
   }
 });
 
@@ -8147,52 +8150,19 @@ app.get('/api/view/:ticker', async (req, res) => {
 });
 
 function applyDanelfinUsSelector(dashData) {
-  const { orderMode } = require('./lib/strategy/danelfin-sweep');
-  let stored = { names: [], scores: {} };
-  try { stored = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'danelfin-live', 'candidates.json'), 'utf8')); } catch (_) {}
-  const candidates = new Set(stored.names || []);
-  const scores = stored.scores || {};
-  const watches = [];
-  const next = { ...dashData };
-  for (const pane of ['short', 'medium', 'long']) {
-    next[pane] = (dashData[pane] || []).filter(row => {
-      const mode = orderMode(row, pane, candidates);
-      const score = scores[String(row.ticker || '').toUpperCase()];
-      if (score) {
-        row.danelfinAiScore = score.aiscore;
-        row.danelfinFundamental = score.fundamental;
-        row.danelfinTechnical = score.technical;
-        row.danelfinSentiment = score.sentiment;
-        row.danelfinLowRisk = score.low_risk;
-      }
-      if (mode === 'watch') {
-        watches.push({
-          ticker: row.ticker, horizon: pane, orders: false,
-          label: 'Danelfin >= 8 + AlphaSignal: not validated',
-          ai: score && score.aiscore, scores: score || null,
-        });
-        return false;
-      }
-      return mode !== 'block';
-    });
-  }
-  if (watches.length) {
-    const dir = path.join(DATA_DIR, 'danelfin-signals');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'engine-watch.json'), JSON.stringify({
-      orders: false, label: 'Danelfin >= 8 + AlphaSignal: not validated', cards: watches,
-    }));
-  }
-  return next;
+  const { applyStoredScores } = require('./lib/strategy/danelfin-sweep');
+  return applyStoredScores(dashData, readStoredDanelfinScores());
+}
+
+function readStoredDanelfinScores() {
+  const { readStoredScores } = require('./lib/strategy/danelfin-sweep');
+  return readStoredScores(path.join(DATA_DIR, 'danelfin-live'));
 }
 
 function readStoredDanelfinScore(ticker) {
   const symbol = String(ticker || '').toUpperCase();
-  try {
-    const stored = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'danelfin-live', 'candidates.json'), 'utf8'));
-    const score = stored.scores && stored.scores[symbol];
-    if (score && Number.isFinite(Number(score.aiscore))) return { ...score, source: 'sweep' };
-  } catch (_) {}
+  const score = readStoredDanelfinScores()[symbol];
+  if (score && Number.isFinite(Number(score.aiscore))) return { ...score, source: 'sweep' };
   try {
     const cached = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'danelfin-view', `${symbol}.json`), 'utf8'));
     if (Date.now() - Date.parse(cached.savedAt) <= 7 * 86400000 && cached.score) return { ...cached.score, source: 'cache' };
@@ -8206,8 +8176,7 @@ app.post('/api/danelfin/view-lookup', async (req, res) => {
   const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
   const ticker = String(req.body && req.body.ticker || '').trim().toUpperCase();
   if (!ticker) return res.status(400).json({ error: 'ticker required' });
-  let sweep = {};
-  try { sweep = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'danelfin-live', 'candidates.json'), 'utf8')).scores || {}; } catch (_) {}
+  const sweep = readStoredDanelfinScores();
   let cache = {};
   try { cache[ticker] = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'danelfin-view', `${ticker}.json`), 'utf8')); } catch (_) {}
   const choice = viewScoreSource(ticker, Date.now(), { sweep, cache });
@@ -13555,6 +13524,141 @@ async function scanSchedulerTick(boot = false) {
   } catch (e) { console.warn('scanSchedulerTick:', e.message); }
 }
 
+function readLiveAi10(date) {
+  const { namesFromBody, SECTORS } = require('./lib/strategy/danelfin-sweep');
+  const dir = path.join(DATA_DIR, 'danelfin-live');
+  const file = path.join(dir, `${date}-ai10.json`);
+  if (!fs.existsSync(file)) return null;
+  let body;
+  try { body = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return null; }
+  const parsed = namesFromBody(body);
+  if (!parsed.capped) return { names: parsed.names, scores: parsed.scores, truncated: false };
+  const names = [];
+  const scores = {};
+  for (const sector of SECTORS) {
+    const sectorFile = path.join(dir, 'daily-sectors', `${date}-ai10-${sector}.json`);
+    if (!fs.existsSync(sectorFile)) return null;
+    let sectorBody;
+    try { sectorBody = JSON.parse(fs.readFileSync(sectorFile, 'utf8')); } catch (_) { return null; }
+    const sectorParsed = namesFromBody(sectorBody);
+    if (sectorParsed.capped) return { names: [], scores: {}, truncated: true };
+    for (const name of sectorParsed.names) {
+      scores[name] = sectorParsed.scores[name];
+      if (!names.includes(name)) names.push(name);
+    }
+  }
+  return { names, scores, truncated: false };
+}
+
+async function loadForwardBars(symbol) {
+  const raw = await fetchOHLCV(symbol, '2y', '1d').catch(() => null);
+  if (!Array.isArray(raw)) return [];
+  return raw.map(bar => ({
+    date: new Date(Number(bar.t) * 1000).toISOString().slice(0, 10),
+    o: Number(bar.o),
+    h: Number(bar.h),
+    l: Number(bar.l),
+    c: Number(bar.c),
+    v: Number(bar.v),
+  })).filter(bar => bar.date && bar.c > 0);
+}
+
+async function loadForwardCap(symbol) {
+  try {
+    const { createFmpClient } = require('./lib/integrations/fmp-client');
+    const { loadResearchEnv } = require('./scripts/research-env');
+    loadResearchEnv();
+    const quote = await createFmpClient().get('/stable/quote', { symbol });
+    const row = quote && Array.isArray(quote.body) ? quote.body[0] : null;
+    const cap = Number(row && row.marketCap);
+    return Number.isFinite(cap) ? cap : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function loadForwardPiotroski(symbol, asOf) {
+  const { scoreStatements, pioAt } = require('./lib/research/filing45-piotroski');
+  const file = path.join(DATA_DIR, 'danelfin-signals', 'statements', `${symbol}.json`);
+  let record = null;
+  try { record = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) {}
+  const fresh = record && record.fetchedAt && Date.now() - Date.parse(record.fetchedAt) <= 30 * 86400000;
+  if (!fresh) {
+    try {
+      const { createFmpClient } = require('./lib/integrations/fmp-client');
+      const { loadResearchEnv } = require('./scripts/research-env');
+      loadResearchEnv();
+      const fmp = createFmpClient();
+      const endpoints = [
+        ['income', '/stable/income-statement'],
+        ['balance', '/stable/balance-sheet-statement'],
+        ['cashflow', '/stable/cash-flow-statement'],
+      ];
+      const got = {};
+      for (const [key, pathname] of endpoints) {
+        const result = await fmp.get(pathname, { symbol, period: 'quarter', limit: 80 });
+        if (!result || result.status !== 200 || !Array.isArray(result.body)) return null;
+        got[key] = result.body;
+      }
+      record = { symbol, fetchedAt: new Date().toISOString(), income: got.income, balance: got.balance, cashflow: got.cashflow };
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(record));
+    } catch (_) {
+      return null;
+    }
+  }
+  return pioAt(scoreStatements(record.income, record.balance, record.cashflow).scores, asOf);
+}
+
+let forwardBookRunning = false;
+let forwardStamp = '';
+async function maybeDanelfinForwardBook() {
+  if (forwardBookRunning) return;
+  const { nyParts } = require('./lib/strategy/danelfin-sweep');
+  const { monthlySelectionDue, updateForwardBook, WATCH_LABEL } = require('./lib/strategy/danelfin-forward');
+  const ny = nyParts(new Date());
+  if (ny.weekday === 'Sat' || ny.weekday === 'Sun') return;
+  if (ny.minutes < 16 * 60 + 10) return;
+  const bookFile = path.join(DATA_DIR, 'danelfin-signals', 'forward-book.json');
+  let selected = new Set();
+  try {
+    const existing = JSON.parse(fs.readFileSync(bookFile, 'utf8'));
+    selected = new Set((existing.selections || []).map(row => row.month));
+  } catch (_) {}
+  if (forwardStamp === ny.date && !monthlySelectionDue(new Date(), selected).due) return;
+  forwardBookRunning = true;
+  try {
+    const book = await updateForwardBook({
+      now: () => new Date(),
+      readBook() {
+        try { return JSON.parse(fs.readFileSync(bookFile, 'utf8')); } catch (_) { return null; }
+      },
+      writeBook(value) {
+        const dir = path.dirname(bookFile);
+        fs.mkdirSync(dir, { recursive: true });
+        const payload = { ...value };
+        delete payload.waitingForList;
+        fs.writeFileSync(bookFile, JSON.stringify(payload, null, 2));
+        const date = (payload.selections || []).reduce((latest, row) => (!latest || row.date > latest ? row.date : latest), null);
+        fs.writeFileSync(path.join(dir, 'cards.json'), JSON.stringify({
+          ok: true,
+          orders: false,
+          label: WATCH_LABEL,
+          date,
+          cards: payload.cards || [],
+        }, null, 2));
+      },
+      readAi10: readLiveAi10,
+      loadBars: loadForwardBars,
+      loadCap: loadForwardCap,
+      loadPiotroski: loadForwardPiotroski,
+    });
+    if (!book.waitingForList) forwardStamp = ny.date;
+  } finally {
+    forwardBookRunning = false;
+  }
+}
+
 // Initial kick once the heavier boot sync has settled, then poll every 5 min
 // so the 05:00 SGT board lands by ~05:05 and failed attempts retry quickly
 // before the Tokyo open (08:00 SGT).
@@ -13574,7 +13678,12 @@ async function maybeLiveDanelfinRanking() {
   } catch (_) {}
   const weekly = weeklySweepDue(new Date(), weeklyStored);
   const decision = dailySweepDue(new Date(), stored);
-  if (!weekly.due && !decision.due) return;
+  if (!weekly.due && !decision.due) {
+    try { await maybeDanelfinForwardBook(); } catch (error) {
+      console.warn('danelfin forward book:', error && error.message);
+    }
+    return;
+  }
   liveDanelfinRanking = true;
   try {
     const client = createDanelfinClient({
@@ -13632,74 +13741,14 @@ async function maybeLiveDanelfinRanking() {
     }
     fs.writeFileSync(path.join(dir, 'candidates.json'), JSON.stringify({
       date: sweepDate, names, scores, capped, orders: false,
-      label: 'Danelfin >= 8 + AlphaSignal: not validated',
     }));
-    const signalDir = path.join(DATA_DIR, 'danelfin-signals');
-    fs.mkdirSync(signalDir, { recursive: true });
-    const { buildWatchCards, rowFromBars } = require('./lib/strategy/danelfin-signal-cards');
-    const rows = {};
-    const u2 = {};
-    const awaitingMarketCap = [];
-    for (const name of names) {
-      const ticker = String(name).toUpperCase();
-      const bars = await fetchOHLCV(ticker, '2y', '1d').catch(() => null);
-      const row = rowFromBars(Array.isArray(bars) ? bars : [], {});
-      rows[ticker] = row;
-      if (!row.hasPrice) {
-        u2[ticker] = { pass: false, hasPrice: false };
-        continue;
-      }
-      const tail = bars.slice(-20);
-      const dollar = tail.reduce((sum, bar) => sum + Number(bar.c) * Number(bar.v || 0), 0) / (tail.length || 1);
-      u2[ticker] = { pass: false, hasPrice: true, dollarAdv: dollar, marketCap: null };
-      if (row.close >= 5 && dollar >= 20_000_000) awaitingMarketCap.push(ticker);
-    }
-    let u1 = new Set();
-    try {
-      const { loadUsUniverseSnapshot, membershipAt } = require('./lib/research/us-universe');
-      const snap = loadUsUniverseSnapshot(path.join(DATA_DIR, 'research', 'fmp'));
-      u1 = membershipAt(snap, sweepDate);
-    } catch (_) {}
-    const { createFmpClient } = require('./lib/integrations/fmp-client');
-    const { loadResearchEnv } = require('./scripts/research-env');
-    loadResearchEnv();
-    const fmp = createFmpClient();
-    const liquid = [];
-    for (const ticker of awaitingMarketCap) {
-      const quote = await fmp.get('/stable/quote', { symbol: ticker }).catch(() => null);
-      const row = quote && Array.isArray(quote.body) ? quote.body[0] : null;
-      const cap = Number(row && row.marketCap);
-      u2[ticker].marketCap = Number.isFinite(cap) ? cap : null;
-      if (cap >= 2e9) {
-        u2[ticker].pass = true;
-        liquid.push(ticker);
-      }
-    }
-    const liquidScores = {};
-    for (const ticker of liquid) if (scores[ticker]) liquidScores[ticker] = scores[ticker];
-    fs.writeFileSync(path.join(dir, 'candidates.json'), JSON.stringify({
-      date: sweepDate, names: liquid, scores: liquidScores, capped, orders: false,
-      label: 'Danelfin >= 8 + AlphaSignal: not validated',
-    }));
-    const view = buildWatchCards({ names: liquid, rows, u1, u2 });
-    const notional = 10000;
-    fs.writeFileSync(path.join(signalDir, 'cards.json'), JSON.stringify({
-      ok: true,
-      date: sweepDate,
-      capped,
-      orders: false,
-      label: 'Danelfin >= 8 + AlphaSignal: not validated',
-      cards: view.cards.map(card => ({
-        ...card,
-        model: { notional, entry: card.entry, pnl: null, status: 'open' },
-      })),
-      missingPrice: view.missingPrice,
-      awaitingMarketCap,
-    }, null, 2));
   } catch (error) {
     console.warn('live Danelfin ranking failed:', error && error.message);
   } finally {
     liveDanelfinRanking = false;
+  }
+  try { await maybeDanelfinForwardBook(); } catch (error) {
+    console.warn('danelfin forward book:', error && error.message);
   }
 }
 
@@ -14439,6 +14488,8 @@ app.post('/api/analyze', async (req, res) => {
         row.danelfinTechnical = sig.danelfin.technical;
         row.danelfinFundamental = sig.danelfin.fundamental;
         row.danelfinSentiment = sig.danelfin.sentiment;
+        row.danelfinLowRisk = sig.danelfin.low_risk;
+        row.danelfinDate = sig.danelfin.date;
       }
       row = applyServerPriceLevels(row, +pq.price, tech || null, fund || null);
       row = overlayBoardOnAnalyzeRow(row, dashHint);
@@ -15619,14 +15670,9 @@ function shouldEmitIbkrEntry(trade, hz) {
   if (!(snap.entry > 0) || !(snap.sl > 0)) return false;
   const z = hz || trade.hz || 'short';
   {
-    const { orderMode } = require('./lib/strategy/danelfin-sweep');
-    let listed = [];
-    try {
-      listed = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'danelfin-live', 'candidates.json'), 'utf8')).names || [];
-    } catch (_) {}
-    const mode = orderMode(trade, z, new Set(listed));
-    if (mode === 'block' || mode === 'watch') {
-      console.log('IBKR entry skipped (Danelfin US selector):', trade && trade.ticker, z, mode);
+    const { selectorBlocksOrder } = require('./lib/strategy/danelfin-sweep');
+    if (selectorBlocksOrder(trade, z)) {
+      console.log('IBKR entry skipped (Danelfin US selector):', trade && trade.ticker, z);
       return false;
     }
   }

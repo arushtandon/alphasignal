@@ -27,7 +27,7 @@ Research share is 170 calls this month. The live sweep keeps 130. View lookups k
 | Capped week-ends, by sector | 7 Fridays × 11 sectors | 77 |
 | October total with the sector split | | 265 |
 
-265 is inside the 340 research share. Each response is written before the next call. A date already stored is not fetched again. Nothing is requested after 31 Oct 2026 24:00 UTC.
+Each response is written before the next call. A date already stored is not fetched again. Nothing is requested after 31 Oct 2026 24:00 UTC. Through that deadline the research share accepts only the 2025-07-11 retry and the 77 sector calls. The ledger by share is reported on 1 Nov 2026. See `docs/danelfin-forward-readout-2026-10-28.md`.
 
 Seven week-end files came back with exactly 100 names. The ranking route accepts a `sector` slug. The 11 slugs on the sectors list are communication-services, consumer-discretionary, consumer-staples, energy, financials, health-care, industrials, information-technology, materials, real-estate, and utilities. No call is spent to list them again. Each of those seven dates is requested once per sector, `aiscore=10`, same fields, checkpointed the same way. A sector already stored is not fetched again.
 
@@ -66,4 +66,6 @@ Look-ahead: signals only on dates after Danelfin was publishing. The probe's ear
 
 ## Live watch cards
 
-From the next US close, one `aiscore=10` call per session, on the live share (60 per month). The stored list is overlaid with the buy rules on U1 and U2. Cards are watch-only: no entry events and no orders. A separate model book marks $10,000 notional from the recorded entry. If the call returns 100 names, the card section shows a cap warning.
+US_SHORT_MR orders the validated US universe and does not wait for a Danelfin file. A stored score is added to that card when the name is already in a stored list.
+
+The medium and long watch book is separate from the live engine. It places no orders. Medium is the monthly liquid AI = 10 name with the highest 6-month return, with the engine exit. Long is the monthly liquid AI = 10 names with point-in-time Piotroski at least 6 and 12-1 above zero, top five by 12-1, held six months. Model P&L uses $30,000 a name. The result of the U2 k = 1 row is in `docs/danelfin-forward-readout-2026-10-28.md`.

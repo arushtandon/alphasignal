@@ -522,11 +522,16 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
       if (!el) return;
       var cards = body.cards || [];
       var warn = body.capped ? ' WARNING: AI 10 list returned 100 names and is capped.' : '';
-      el.textContent = (body.label || 'Danelfin + AlphaSignal — not validated')
+      var lines = cards.map(function (card) {
+        var pnl = card.model && card.model.pnl != null ? (' $' + Math.round(card.model.pnl)) : '';
+        return card.horizon + ' ' + card.ticker + ' ' + (card.status || '') + pnl;
+      });
+      el.textContent = (body.label || 'Danelfin + AlphaSignal: not validated, forward test')
         + (body.date ? ' ' + body.date : '')
         + ' · ' + cards.length + ' watch cards'
         + ' · orders off'
-        + warn;
+        + warn
+        + (lines.length ? ' · ' + lines.join(', ') : '');
     }).catch(function () {});
   }
   loadDanelfinBudget();
@@ -579,7 +584,7 @@ footer{grid-column:2;grid-row:2;text-align:center;padding:1.5rem 1.5rem 3.5rem;b
         <p>Top 5 long &amp; short opportunities across the full research universe, ranked by AI composite score</p>
         <div class="dash-ts" id="dashTs">Loading...</div>
         <div id="danelfinBudget" style="margin-top:6px;font-size:11px;font-family:'DM Mono',monospace;color:var(--m1)">Danelfin budget: …</div>
-        <div id="danelfinSignals" style="margin-top:8px;font-size:11px;font-family:'DM Mono',monospace;color:var(--m1)">Danelfin + AlphaSignal — not validated</div>
+        <div id="danelfinSignals" style="margin-top:8px;font-size:11px;font-family:'DM Mono',monospace;color:var(--m1)">Danelfin + AlphaSignal: not validated, forward test</div>
       </div>
 
       <!-- Two-column layout: picks (left) + earnings sidebar (right) -->
@@ -7402,7 +7407,7 @@ function renderCard(s){
       ?'<div style="background:linear-gradient(135deg,rgba(10,22,50,0.97),rgba(5,12,32,0.99));border:1px solid rgba(55,115,225,0.30);border-radius:10px;padding:11px 13px;margin-bottom:4px">'
         +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
         +'<div><div style="font-size:9px;font-weight:700;color:rgba(90,150,255,0.95);font-family:DM Mono,monospace;letter-spacing:.08em">DANELFIN AI</div>'
-        +'<div style="font-size:7px;color:rgba(90,150,255,0.4);font-family:DM Mono,monospace">10K features/day · ML trained since 2017</div></div>'
+        +'<div style="font-size:7px;color:rgba(90,150,255,0.4);font-family:DM Mono,monospace">10K features/day · ML trained since 2017'+(s.danelfinDate?' · '+s.danelfinDate:'')+'</div></div>'
         +'<div style="display:flex;align-items:center;gap:6px">'
         +(s.danelfinBuyTrack?'<div style="font-size:8px;background:rgba(0,180,90,0.12);color:#00c864;border:1px solid rgba(0,180,90,0.28);padding:2px 7px;border-radius:4px;font-family:DM Mono,monospace;font-weight:600">✓ Buy Track Record</div>':'')
         +'<div style="text-align:center"><div style="font-size:22px;font-weight:800;font-family:DM Mono,monospace;line-height:1;color:'+(s.danelfinAiScore>=8?'#00d4ff':s.danelfinAiScore>=7?'#00c864':s.danelfinAiScore<=3?'#ff4444':'rgba(200,200,200,0.85)')+'">'+s.danelfinAiScore+'<span style="font-size:11px;opacity:0.4;font-weight:400">/10</span></div>'

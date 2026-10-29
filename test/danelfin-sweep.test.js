@@ -3,7 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  dailySweepDue, weeklySweepDue, sectorSplitCalls, orderMode, viewScoreSource, namesFromBody, SECTORS,
+  dailySweepDue, weeklySweepDue, sectorSplitCalls, orderMode, selectorBlocksOrder,
+  applyStoredScores, viewScoreSource, namesFromBody, SECTORS,
 } = require('../lib/strategy/danelfin-sweep');
 
 test('daily AI 10 is due only after the US close on a weekday', () => {
@@ -36,13 +37,33 @@ test('a 100-name response is capped and splits into 11 sector calls', () => {
   assert.equal(sectorSplitCalls('2026-10-28', 10).length, 11);
 });
 
-test('US short orders only inside the candidate set; medium and long are watch-only', () => {
-  const candidates = new Set(['AAPL']);
-  assert.equal(orderMode({ ticker: 'AAPL', market: 'US', setupId: 'US_SHORT_MR' }, 'short', candidates), 'order');
-  assert.equal(orderMode({ ticker: 'MSFT', market: 'US', setupId: 'US_SHORT_MR' }, 'short', candidates), 'block');
-  assert.equal(orderMode({ ticker: 'AAPL', market: 'US' }, 'medium', candidates), 'watch');
-  assert.equal(orderMode({ ticker: 'AAPL', market: 'US' }, 'long', candidates), 'watch');
-  assert.equal(orderMode({ ticker: '7203.T', market: 'Japan', setupId: 'JAPAN_MEDIUM_MR' }, 'medium', candidates), 'unchanged');
+test('no candidate file: US_SHORT_MR still orders and the board is not filtered', () => {
+  const pick = { ticker: 'ALAB', market: 'US', setupId: 'US_SHORT_MR' };
+  assert.equal(orderMode(pick, 'short', null), 'order');
+  assert.equal(orderMode(pick, 'short', new Set()), 'order');
+  assert.equal(selectorBlocksOrder(pick, 'short'), false);
+  assert.equal(orderMode({ ticker: 'AAPL', market: 'US' }, 'medium'), 'unchanged');
+  assert.equal(orderMode({ ticker: 'AAPL', market: 'US' }, 'long'), 'unchanged');
+  assert.equal(orderMode({ ticker: '7203.T', market: 'Japan', setupId: 'JAPAN_MEDIUM_MR' }, 'medium'), 'unchanged');
+  const board = applyStoredScores({
+    short: [pick],
+    medium: [{ ticker: 'AAPL', market: 'US' }],
+    long: [{ ticker: 'MSFT', market: 'US' }],
+  }, {});
+  assert.equal(board.short.length, 1);
+  assert.equal(board.short[0].setupId, 'US_SHORT_MR');
+  assert.equal(board.short[0].danelfinAiScore, undefined);
+  assert.equal(board.medium.length, 1);
+  assert.equal(board.long.length, 1);
+  const stamped = applyStoredScores({
+    short: [{ ticker: 'ALAB', market: 'US', setupId: 'US_SHORT_MR' }],
+  }, { ALAB: { aiscore: 9, fundamental: 8, technical: 7, sentiment: 6, low_risk: 5, date: '2026-10-28' } });
+  assert.equal(stamped.short[0].danelfinAiScore, 9);
+  assert.equal(stamped.short[0].danelfinFundamental, 8);
+  assert.equal(stamped.short[0].danelfinTechnical, 7);
+  assert.equal(stamped.short[0].danelfinSentiment, 6);
+  assert.equal(stamped.short[0].danelfinLowRisk, 5);
+  assert.equal(stamped.short[0].danelfinDate, '2026-10-28');
 });
 
 test('view scores prefer the sweep, then a 7-day cache, and never spend by themselves', () => {

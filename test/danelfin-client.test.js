@@ -26,6 +26,7 @@ function client(dir, time, fetch, extra = {}) {
     fetch,
     notify: extra.notify,
     maxCalls: extra.maxCalls,
+    octoberCompletion: false,
   });
 }
 
@@ -160,6 +161,7 @@ test('server construction sends one counted ranking request through global fetch
       environment: 'research',
       allowNetwork: true,
       maxCalls: 3,
+      octoberCompletion: false,
     });
     const fields = 'aiscore,fundamental,technical,sentiment,low_risk';
     const result = await client.request({
@@ -222,6 +224,7 @@ test('a missing fetch is refused before it is counted', async () => {
       environment: 'research',
       apiKey: 'test-key',
       allowNetwork: true,
+      octoberCompletion: false,
       now: time.now,
       sleep: time.sleep,
     });
@@ -232,6 +235,34 @@ test('a missing fetch is refused before it is counted', async () => {
   } finally {
     globalThis.fetch = saved;
   }
+});
+
+test('October research refuses every call except the completion list and does not count it', async () => {
+  const time = clock();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dan-'));
+  let calls = 0;
+  const dan = createDanelfinClient({
+    root: dir,
+    environment: 'research',
+    apiKey: 'test-key',
+    allowNetwork: true,
+    now: time.now,
+    sleep: time.sleep,
+    fetch: async () => { calls += 1; return { status: 200, json: async () => ({}) }; },
+  });
+  const refused = await dan.request({ purpose: 'discovery-latest-ai-10', endpoint: '/ranking', params: { date: '2026-10-27', aiscore: 10 } });
+  assert.equal(refused.reason, 'october-completion-only');
+  assert.equal(calls, 0);
+  assert.equal(dan.status().used, 0);
+  const allowed = await dan.request({
+    purpose: 'history-ai-10-week-end',
+    endpoint: '/ranking',
+    params: { date: '2025-07-11', aiscore: 10 },
+    noRetry: true,
+  });
+  assert.equal(allowed.ok, true);
+  assert.equal(calls, 1);
+  assert.equal(dan.status().used, 1);
 });
 
 test('cache-only mode makes no network call', async () => {
