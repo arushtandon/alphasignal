@@ -209,6 +209,7 @@ const {
   usPremarketParentDecision,
   noteOfficialOpen,
 } = require('../lib/strategy/us-premarket-entry');
+const { LATE_AFTER_MIN, missedOpenDue, latestSessionOpen } = require('../lib/strategy/late-open-entry');
 
 const LIVE_ROLE = process.argv.includes('live') || process.env.IBKR_BRIDGE_ROLE === 'live';
 if (!LIVE_ROLE) {
@@ -979,11 +980,37 @@ function entryChildFlags({ asiaStandalone, momentumNoStop, oneLotRunner, tp1Px, 
   };
 }
 
+function minutesSinceCashOpen(contract, nowMs = Date.now()) {
+  const market = contract && (contract.market || (contract.usRth ? 'US' : null));
+  const clock = MARKET_CLOCKS[market];
+  if (!clock) return null;
+  return localClock(nowMs, clock.timeZone).minutes - clock.open;
+}
+
 function parentEntrySpec(contract, action, qty, opts = {}) {
   const phase = opts.phaseOverride || sessionPhase(contract);
   const side = opts.side || (String(action).toUpperCase() === 'SELL' ? 'sell' : 'buy');
   const entryPx = Number(opts.entryPx);
   const quotePx = Number(opts.quotePx);
+  if (opts.setupId && phase === 'rth') {
+    const since = opts.minutesSinceOpen != null
+      ? Number(opts.minutesSinceOpen)
+      : minutesSinceCashOpen(contract, opts.nowMs || Date.now());
+    if (since > LATE_AFTER_MIN) {
+      const openPx = Number(opts.officialOpen);
+      if (!(openPx > 0)) {
+        return { defer: true, entryStyle: 'DEFER-OFFICIAL-OPEN', action, totalQuantity: qty };
+      }
+      const sell = side === 'sell';
+      const rounded = roundPx(openPx, contract, sell ? 'up' : 'down');
+      const lmtPrice = sell ? Math.max(rounded, openPx) : Math.min(rounded, openPx);
+      return {
+        orderType: 'LMT', action, totalQuantity: qty,
+        lmtPrice, tif: 'DAY', outsideRth: false, transmit: true,
+        entryStyle: 'LMT-MISSED-OPEN',
+      };
+    }
+  }
   if (opts.momentumOpen && contract && contract.market === 'LSE') {
     const ref = quotePx > 0 ? quotePx : entryPx;
     if (ref > 0) {
@@ -3956,11 +3983,22 @@ async function main() {
       quotePx = Number(q && q.px) || Number(ibQuoteForTicker(evt.ticker)) || Number(evt.entry) || 0;
       quoteSrc = (q && q.src) || (quotePx ? 'entry' : null);
     }
+    let officialOpen = null;
+    let minutesSinceOpen = null;
+    if (evt.setupId) {
+      minutesSinceOpen = minutesSinceCashOpen(contract);
+      if (sessionPhase(contract) === 'rth' && minutesSinceOpen > LATE_AFTER_MIN) {
+        const bars = await fetchYahooDailyBars(evt.ticker);
+        officialOpen = latestSessionOpen(bars, Date.now());
+      }
+    }
     const parentSpec = parentEntrySpec(contract, openAction, split.total, {
       side: evt.side, entryPx: evt.entry, quotePx,
       setupId: evt.setupId,
       usSetupPremarket: isUsSetupBookBuy(evt),
       nowMs: Date.now(),
+      minutesSinceOpen,
+      officialOpen,
       forceOpg: !!evt.forceOpg,
       momentumOpen: !!evt.momentumOpen,
       forceExt: String(evt.reason || '') === 'rearm-model-entry',
@@ -7438,6 +7476,20 @@ async function main() {
           }
         }
       } catch (e) { log('RECONCILE: off-board cancel failed', e.message); }
+
+      for (const [key, row] of Object.entries(state.byKey || {})) {
+        if (!missedOpenDue(row, sessionPhase(row.contract || toContract(row.ticker)))) continue;
+        log('missed-open', row.ticker, key);
+        if (row.parentId != null) cancelOrder(row.parentId, 'missed-open ' + key);
+        if (row.stopId != null) cancelOrder(row.stopId, 'missed-open stop ' + key);
+        if (row.tp1Id != null) cancelOrder(row.tp1Id, 'missed-open tp1 ' + key);
+        if (row.tp2Id != null) cancelOrder(row.tp2Id, 'missed-open tp2 ' + key);
+        row.closed = true;
+        row.holdCancelledUnfilled = true;
+        row.flatReason = 'missed-open';
+        row.updated = new Date().toISOString();
+        saveState(state);
+      }
 
       // History Hold-check: ONLY cancel *unfilled* parents.
       // Never flatten a filled position because history was rewritten to Hold

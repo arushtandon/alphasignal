@@ -60,6 +60,30 @@ test('30 minutes without a signal alerts, then repeats every 2 hours until it re
   assert.equal(back.banner, null);
 });
 
+test('the 29 Oct outage stays inside the alert window from the Europe close through the Japan morning', () => {
+  const seen = '2026-10-28T11:30:43.726Z';
+  const morning = Date.parse('2026-10-29T00:00:00Z');
+  const noon = Date.parse('2026-10-29T04:01:32Z');
+  for (const now of [morning, noon]) {
+    const view = evaluateBridgeWatch({ lastSeenAt: seen }, now, STALE_MS);
+    assert.equal(view.offline, true);
+    assert.equal(view.alert.kind, 'offline');
+    assert.match(view.alert.text, /^BRIDGE OFFLINE since /);
+  }
+});
+
+test('a skipped Telegram send does not suppress the next attempt', () => {
+  const { retainAlertStamp } = require('../lib/ibkr/bridge-watch');
+  const now = Date.parse('2026-10-29T04:01:32Z');
+  const seen = '2026-10-28T11:30:43.726Z';
+  const previous = { lastSeenAt: seen, lastAlertAt: null };
+  const view = evaluateBridgeWatch(previous, now, STALE_MS);
+  const kept = retainAlertStamp(previous, view, { skipped: true });
+  assert.equal(kept.lastAlertAt, null);
+  const again = evaluateBridgeWatch({ ...previous, ...kept }, now + 60 * 1000, STALE_MS);
+  assert.equal(again.alert.kind, 'offline');
+});
+
 test('a fresh signal during the watch window is not an outage, and Saturday stays quiet', () => {
   const now = Date.parse('2026-10-27T14:00:00Z');
   const live = evaluateBridgeWatch({ lastSeenAt: new Date(now - 5 * MIN).toISOString() }, now, STALE_MS);

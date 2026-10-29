@@ -7796,13 +7796,27 @@ function bridgeWatchView(now = Date.now()) {
 }
 function runBridgeWatch() {
   const view = evaluateBridgeWatch(bridgeWatch, Date.now(), Math.round(process.uptime() * 1000));
-  bridgeWatch.offlineSince = view.offlineSince;
-  bridgeWatch.lastAlertAt = view.lastAlertAt;
-  if (view.alert) {
-    saveBridgeWatch();
-    sendTelegram(view.alert.text).catch(error => console.warn('bridge watch telegram failed', error.message));
-    console.warn(view.alert.text);
+  if (!view.alert) {
+    bridgeWatch.offlineSince = view.offlineSince;
+    bridgeWatch.lastAlertAt = view.lastAlertAt;
+    return;
   }
+  console.warn(view.alert.text);
+  sendTelegram(view.alert.text).then(result => {
+    const stamp = retainAlertStamp(bridgeWatch, view, result);
+    bridgeWatch.offlineSince = stamp.offlineSince;
+    bridgeWatch.lastAlertAt = stamp.lastAlertAt;
+    if (result && result.skipped) {
+      console.warn('BRIDGE OFFLINE not sent: Telegram is not configured on this server');
+    }
+    saveBridgeWatch();
+  }).catch(error => {
+    console.warn('bridge watch telegram failed', error.message);
+    const stamp = retainAlertStamp(bridgeWatch, view, { skipped: true });
+    bridgeWatch.offlineSince = stamp.offlineSince;
+    bridgeWatch.lastAlertAt = stamp.lastAlertAt;
+    saveBridgeWatch();
+  });
 }
 if (IS_MAIN_PROCESS) setInterval(runBridgeWatch, 60 * 1000).unref();
 
