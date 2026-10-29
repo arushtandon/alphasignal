@@ -18,14 +18,21 @@ test('daily AI 10 is due only after the US close on a weekday', () => {
   assert.equal(stored.due, false);
 });
 
-test('Saturday weekly sweep is 22 sector calls for AI 8 and 9', () => {
-  const due = weeklySweepDue(new Date('2026-10-31T15:00:00Z'), new Set());
+test('Saturday weekly sweep stays off until the sector probe re-enables it', () => {
+  const blocked = weeklySweepDue(new Date('2026-10-31T15:00:00Z'), new Set());
+  assert.equal(blocked.due, false);
+  assert.equal(blocked.disabled, true);
+  assert.equal(blocked.reason, 'weekly-sector-sweep-disabled');
+});
+
+test('Saturday weekly sweep is 22 sector calls for AI 8 and 9 when enabled', () => {
+  const due = weeklySweepDue(new Date('2026-10-31T15:00:00Z'), new Set(), { enabled: true });
   assert.equal(due.due, true);
   assert.equal(due.date, '2026-10-30');
   assert.equal(due.calls.length, 22);
   assert.equal(due.calls.filter(call => call.params.aiscore === 8).length, 11);
   assert.equal(new Set(due.calls.map(call => call.params.sector)).size, SECTORS.length);
-  const again = weeklySweepDue(new Date('2026-10-31T15:00:00Z'), new Set(['2026-10-30']));
+  const again = weeklySweepDue(new Date('2026-10-31T15:00:00Z'), new Set(['2026-10-30']), { enabled: true });
   assert.equal(again.due, false);
 });
 

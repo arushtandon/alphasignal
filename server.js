@@ -8202,6 +8202,60 @@ function readStoredDanelfinScore(ticker) {
   return null;
 }
 
+/**
+ * One-shot live-sweep sector filter probe (no date = current list).
+ * Body optional: { aiscore?: 9, sector?: 'information-technology' }.
+ * Counted against live-sweep. Used to verify sector filtering before Saturday.
+ */
+app.post('/api/danelfin/sector-probe', async (req, res) => {
+  if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
+  const { namesFromBody, FIELDS, SECTORS } = require('./lib/strategy/danelfin-sweep');
+  const { createDanelfinClient } = require('./lib/integrations/danelfin-client');
+  const aiscore = Number(req.body && req.body.aiscore) || 9;
+  const sector = String(req.body && req.body.sector || 'information-technology').trim();
+  if (!(aiscore >= 1 && aiscore <= 10)) return res.status(400).json({ error: 'aiscore 1-10' });
+  if (!SECTORS.includes(sector)) return res.status(400).json({ error: 'unknown sector slug', sector });
+  const root = path.join(DATA_DIR, 'danelfin-live');
+  const marker = path.join(root, 'sector-probe-latest.json');
+  try {
+    const prior = JSON.parse(fs.readFileSync(marker, 'utf8'));
+    if (prior && prior.at && Date.now() - Date.parse(prior.at) < 60 * 60 * 1000
+      && prior.params && prior.params.aiscore === aiscore && prior.params.sector === sector) {
+      return res.json({ ok: true, reused: true, ...prior });
+    }
+  } catch (_) {}
+  const client = createDanelfinClient({
+    root, environment: 'live-sweep', allowNetwork: true, maxCalls: 1,
+  });
+  const params = { aiscore, sector, fields: FIELDS };
+  const result = await client.request({
+    purpose: 'live-sector-probe',
+    endpoint: '/ranking',
+    params,
+    noRetry: true,
+  });
+  const parsed = namesFromBody(result.body);
+  const body = result.body && typeof result.body === 'object' ? result.body : null;
+  const out = {
+    ok: result.ok === true,
+    status: result.status || null,
+    refused: result.refused === true,
+    reason: result.reason || null,
+    params,
+    url: `https://apirest.danelfin.com/ranking?aiscore=${aiscore}&sector=${encodeURIComponent(sector)}&fields=${encodeURIComponent(FIELDS)}`,
+    namesCount: parsed.names.length,
+    capped: parsed.capped === true,
+    sampleNames: parsed.names.slice(0, 20),
+    message: body && (body.message || body.error || body.Message || null),
+    dateKeys: body ? Object.keys(body).filter(key => /^\d{4}-\d{2}-\d{2}$/.test(key)) : [],
+    live: client.status(),
+    at: new Date().toISOString(),
+  };
+  fs.mkdirSync(root, { recursive: true });
+  fs.writeFileSync(marker, JSON.stringify(out));
+  res.json(out);
+});
+
 app.post('/api/danelfin/view-lookup', async (req, res) => {
   if (!ibkrEventsAuthorized(req)) return res.status(401).json({ error: 'unauthorized' });
   const { viewScoreSource, scoreFromTickerBody } = require('./lib/strategy/danelfin-sweep');
