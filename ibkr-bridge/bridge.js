@@ -2443,7 +2443,9 @@ async function main() {
     }
     state.clientId = activeClientId;
     saveState(state);
-    log('IB connected with clientId', activeClientId);
+    log('IB connected with clientId', activeClientId,
+      Number(process.env.IBKR_MASTER_CLIENT_ID) === Number(activeClientId)
+        ? '(Gateway master)' : '');
     ibReady = true;
     try {
       const rec = gatewayRecoverDecision(state.alertMeta, Date.now());
@@ -7460,6 +7462,67 @@ async function main() {
     if (DRY || !ib) return;
     if (!positionsReady) { log('reconcile skipped — waiting for IB position snapshot'); return; }
     try {
+      // Local protection must not wait on AlphaSignal. A 502 used to abort
+      // this function before the 6758 cancel and the 6501 reopen.
+      const liveOrders = await listWorkingOrdersDetailed();
+      if (!state.wrongSide6758Cancelled) {
+        const wrongSide = (liveOrders.orders || []).find(o => Number(o.orderId) === 59148332);
+        if (!wrongSide && liveOrders.complete) {
+          state.wrongSide6758Cancelled = true;
+          saveState(state);
+          log('6758 wrong-side stop already gone', 59148332);
+        } else if (wrongSide) {
+          try {
+            ib.cancelOrder(59148332);
+            log('cancel sent wrong-side 6758 SELL STP', 59148332,
+              'qty=' + wrongSide.qty, 'client=' + activeClientId, '(master)');
+            state.wrongSide6758Cancelled = true;
+            saveState(state);
+          } catch (e) {
+            log('6758 master cancel failed', e.message);
+            const cid = Number(wrongSide.clientId) || 30;
+            const slot = await ensureOwnerSlot(cid);
+            if (slot && slot.api) {
+              slot.api.cancelOrder(59148332);
+              log('cancel sent wrong-side 6758 SELL STP', 59148332, 'client=' + cid);
+              state.wrongSide6758Cancelled = true;
+              saveState(state);
+            }
+          }
+        }
+      }
+      for (const [key, row] of Object.entries(state.byKey)) {
+        if (!row || !row.closed || !row.staleUnfilledAbandoned || !row.ticker) continue;
+        const reopenContract = row.contract || toContract(row.ticker);
+        const reopenHeld = heldForContract(reopenContract);
+        const reopenPos = reopenHeld
+          ? (row.side === 'sell' ? -reopenHeld.pos : reopenHeld.pos) : 0;
+        const reopenPlan = planReopenAbandonedRow({
+          row,
+          posInDir: reopenPos,
+          otherOpenOwns: otherOpenRowOwnsConId(state.byKey, reopenContract && reopenContract.conId, key),
+          orders: liveOrders.orders || [],
+          conId: reopenContract && reopenContract.conId,
+        });
+        if (!reopenPlan.reopen) continue;
+        row.closed = false;
+        row.staleUnfilledAbandoned = false;
+        row.entryFilled = true;
+        if (reopenPlan.stopId) {
+          row.stopId = reopenPlan.stopId;
+          row.stopClientId = reopenPlan.stopClientId;
+          rememberOrderClient(state.orderClients, reopenPlan.stopId, reopenPlan.stopClientId);
+        }
+        if (reopenPlan.tp1Id) {
+          row.tp1Id = reopenPlan.tp1Id;
+          row.tp1ClientId = reopenPlan.tp1ClientId;
+          rememberOrderClient(state.orderClients, reopenPlan.tp1Id, reopenPlan.tp1ClientId);
+        }
+        row.updated = new Date().toISOString();
+        saveState(state);
+        log('RECONCILE: reopened held row', key, 'pos', reopenPos,
+          'stop=' + (row.stopId || ''), 'tp1=' + (row.tp1Id || ''));
+      }
       applyUserRequestedRestores();
       await rollExpiredFutures();
       // tail=1 → NEWEST 2000 events (oldest-first truncation went stale past
@@ -7953,32 +8016,6 @@ async function main() {
       //     when the live quote is at/better than the AlphaSignal entry; else
       //     stay OPG through 09:30. Never MKT-EXT (IB queues those until RTH).
       const listedParents = await listWorkingOrdersDetailed();
-      // 30 Oct 2026: 6758.T is short 300. This SELL STP would add to it.
-      // Client 96 cannot cancel a client-30 order (IB 10147) until this
-      // process, which owns client 30, sends the cancel. One attempt.
-      if (!state.wrongSide6758Cancelled) {
-        const wrongSide = (listedParents.orders || []).find(o => Number(o.orderId) === 59148332);
-        if (!wrongSide) {
-          state.wrongSide6758Cancelled = true;
-          saveState(state);
-        } else {
-          const cid = Number(wrongSide.clientId) || 30;
-          const slot = await ensureOwnerSlot(cid);
-          if (slot && slot.api) {
-            try {
-              slot.api.cancelOrder(59148332);
-              log('cancel sent wrong-side 6758 SELL STP', 59148332,
-                'qty=' + wrongSide.qty, 'client=' + cid);
-              state.wrongSide6758Cancelled = true;
-              saveState(state);
-            } catch (e) {
-              log('6758 wrong-side cancel failed', e.message);
-            }
-          } else {
-            log('6758 wrong-side cancel skipped — no socket', cid);
-          }
-        }
-      }
       const workingParentIds = new Set(
         (listedParents.orders || []).map(o => Number(o.orderId)).filter(n => n > 0)
       );
