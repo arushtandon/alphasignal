@@ -94,6 +94,13 @@ const https = require('https');
 const crypto = require('crypto');
 const Holidays = require('date-holidays');
 const { telegramConfigured, sendTelegramAlert } = require('./telegram');
+const {
+  isOcaRepairLabel,
+  isModifyRejectCode,
+  safeRepairStopQty,
+  shouldSkipPairRepair,
+  markRepairLocked,
+} = require('../lib/ibkr/runner-oca-repair');
 const { admitPolledEntries } = require('./account-summary-refresh');
 const { partitionStaleRetries } = require('../lib/schedule/entry-cutoff');
 const {
@@ -2001,6 +2008,30 @@ async function main() {
         return;
       }
       log('IB error', code, 'reqId=' + reqId, err && err.message ? err.message : err);
+      // OCA / in-place revise refused: leave live orders untouched, stop retrying
+      // that runner pair, alert once (IB 10327 loop on BRK-B / 1038.HK).
+      if (isModifyRejectCode(code)) {
+        const oid = Number(reqId);
+        const pending = pendingOrders.get(oid);
+        const label = pending && pending.label;
+        const row = rowOwningOrder(state.byKey, oid);
+        if (row && (isOcaRepairLabel(label) || row.runnerOcaStopId === oid || row.tp2Id === oid || row.stopId === oid)) {
+          const newly = markRepairLocked(row, {
+            code,
+            message: err && err.message ? err.message : String(err || ''),
+            orderId: oid,
+          });
+          releasePending(oid);
+          if (newly) {
+            saveState(state);
+            const alert = 'IB modify reject ' + code + ' — repairLocked '
+              + (row.ticker || '') + ' key=' + (Object.keys(state.byKey || {}).find(k => state.byKey[k] === row) || '')
+              + ' oid=' + oid + ' — existing stop/TP2 left untouched; no more OCA repairs for this pair.';
+            log('RECONCILE:', alert);
+            sendTelegramAlert(alert).catch(e => log('TELEGRAM repairLocked alert failed', e.message));
+          }
+        }
+      }
       if (Number(code) === 10289) {
         for (const [key, row] of Object.entries(state.byKey || {})) {
           if (!row || row.closed) continue;
@@ -6791,6 +6822,12 @@ async function main() {
         // IB error 10327: OCA group type revision is not allowed on a live
         // order. Keep the working pair's ocaType; never upgrade 1→2 in place.
         // New runner pairs still park with ocaType 2 (see parkRunnerTp2).
+        // After any modify reject, repairLocked stops the retry loop.
+        if (shouldSkipPairRepair(row)) {
+          logOnce('repair-locked-' + key, 'RECONCILE: skip OCA repair — repairLocked', key,
+            'code=' + (row.repairLockedCode || ''), 'at=' + (row.repairLockedAt || ''));
+          continue;
+        }
         const liveOcaType = Number(stop.ocaType) === 2 && Number(existing.ocaType) === 2
           ? 2
           : (Number(stop.ocaType) || Number(existing.ocaType) || 1);
@@ -6801,13 +6838,22 @@ async function main() {
             'stopType=' + stop.ocaType, 'tp2Type=' + existing.ocaType,
             'keeping=' + liveOcaType);
         }
+        const stopRepairQty = safeRepairStopQty({
+          runnerQty,
+          positionQty: posInDir,
+          currentStopQty: stop.qty,
+        });
         const needsPairRepair = stop.ocaGroup !== group || existing.ocaGroup !== group
-          || Number(stop.qty) !== runnerQty || existingUnfilledQty !== runnerQty
+          || Number(stop.qty) !== stopRepairQty || existingUnfilledQty !== runnerQty
           || row.runnerOcaStopId !== stop.orderId;
         if (needsPairRepair && Number(row.stopPx) > 0) {
+          if (stopRepairQty + 1e-9 < Number(stop.qty)) {
+            log('RECONCILE: refuse stop qty reduce on OCA repair', key,
+              Number(stop.qty), '→', stopRepairQty);
+          }
           transmitOrder(stop.orderId, row.contract, runnerStopOrder(row, key, {
             orderId: stop.orderId, action: closeAction, auxPrice: row.stopPx,
-            totalQuantity: runnerQty, ocaType: liveOcaType
+            totalQuantity: stopRepairQty, ocaType: liveOcaType
           }), 'runner stop OCA repair ' + key);
           transmitOrder(existing.orderId, row.contract, baseOrder({
             orderId: existing.orderId, action: closeAction, orderType: 'LMT',
@@ -6819,7 +6865,7 @@ async function main() {
           row.runnerOcaStopId = stop.orderId;
           n++;
           log('RECONCILE: linked runner TP2+TSL OCA', key, 'orderId=' + existing.orderId,
-            'stop=' + stop.orderId, 'qty=' + runnerQty, 'group=' + group,
+            'stop=' + stop.orderId, 'qty=' + stopRepairQty, 'group=' + group,
             'ocaType=' + liveOcaType);
         }
         continue;

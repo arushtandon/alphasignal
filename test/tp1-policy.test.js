@@ -34,13 +34,13 @@ test('unsplittable 1-lot / 1-contract sells the full qty at TP1', () => {
   assert.equal(isFullQtyTp1(2000, 2000), true);
 });
 
-test('protective stop stays full until a TP1 LMT is actually working', () => {
+test('protective stop stays full while TP1 LMT is merely working', () => {
   assert.equal(protectiveStopQty({
     posInDir: 850, tp1WorkingQty: 0, tp1Done: false, fullTp1: false
   }), 850, 'MNDI planned half must not naked 425');
   assert.equal(protectiveStopQty({
     posInDir: 850, tp1WorkingQty: 425, tp1Done: false, fullTp1: false
-  }), 425);
+  }), 850, 'working TP1 LMT must not shrink the stop');
   assert.equal(protectiveStopQty({
     posInDir: 850, tp1WorkingQty: 0, tp1Done: true, fullTp1: false
   }), 850);
