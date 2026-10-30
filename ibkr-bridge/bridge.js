@@ -7523,6 +7523,38 @@ async function main() {
         log('RECONCILE: reopened held row', key, 'pos', reopenPos,
           'stop=' + (row.stopId || ''), 'tp1=' + (row.tp1Id || ''));
       }
+      const row6501 = state.byKey['6501.T|short|Wed Aug 19 2026'];
+      if (row6501 && !state.restored6501OriginalChildren) {
+        const origStop = (liveOrders.orders || []).find(o => Number(o.orderId) === 1);
+        const origTp = (liveOrders.orders || []).find(o => Number(o.orderId) === 2);
+        const widenTp = (liveOrders.orders || []).find(o => Number(o.orderId) === 60669125);
+        if (widenTp) {
+          const cid = Number(widenTp.clientId) || 30;
+          const slot = await ensureOwnerSlot(cid);
+          if (slot && slot.api) {
+            slot.api.cancelOrder(60669125);
+            log('cancel sent 6501 widen TP', 60669125, 'client=' + cid);
+          } else {
+            ib.cancelOrder(60669125);
+            log('cancel sent 6501 widen TP', 60669125, 'client=' + activeClientId, '(master)');
+          }
+        }
+        if (origStop && origTp) {
+          row6501.stopId = 1;
+          row6501.stopClientId = 93;
+          row6501.stopPx = Number(origStop.aux) || 4966;
+          row6501.tp1Id = 2;
+          row6501.tp1ClientId = 93;
+          row6501.tp1Px = Number(origTp.lmt) || 5744;
+          rememberOrderClient(state.orderClients, 1, 93);
+          rememberOrderClient(state.orderClients, 2, 93);
+          state.restored6501OriginalChildren = true;
+          row6501.updated = new Date().toISOString();
+          saveState(state);
+          log('6501 original children restored', 'stop=1', 'tp1=2',
+            'stp=' + row6501.stopPx, 'tp=' + row6501.tp1Px);
+        }
+      }
       applyUserRequestedRestores();
       await rollExpiredFutures();
       // tail=1 → NEWEST 2000 events (oldest-first truncation went stale past
