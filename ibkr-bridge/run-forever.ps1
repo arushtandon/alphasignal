@@ -8,6 +8,26 @@
 $ErrorActionPreference = "Continue"
 Set-Location $PSScriptRoot
 
+# One supervisor per machine. A second window (or the Watch task racing a
+# logon start) used to connect clientId 27, get kicked, and exit 75 in a loop.
+$mutexName = 'Global\AlphaSignalPaperBridge'
+$script:bridgeMutex = $null
+try {
+  $script:bridgeMutex = New-Object System.Threading.Mutex($false, $mutexName)
+} catch {
+  $mutexName = 'Local\AlphaSignalPaperBridge'
+  $script:bridgeMutex = New-Object System.Threading.Mutex($false, $mutexName)
+}
+if (-not $script:bridgeMutex -or -not $script:bridgeMutex.WaitOne(0)) {
+  $logDir = Join-Path $PSScriptRoot 'logs'
+  New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+  $log = Join-Path $logDir ("bridge-{0}.log" -f (Get-Date -Format 'yyyy-MM-dd'))
+  $msg = (Get-Date -Format o) + ' [run-forever] another supervisor already holds ' + $mutexName + ' - this instance is exiting so clientId 27 is not taken twice'
+  try { Add-Content -Path $log -Value $msg -ErrorAction SilentlyContinue } catch {}
+  Write-Host $msg
+  exit 0
+}
+
 $env:ALPHASIGNAL_URL = "https://alphasignal-dvg5.onrender.com"
 $env:IBKR_PORT       = "4002"        # 4002 = IB Gateway paper, 7497 = TWS paper
 $env:IBKR_ACCOUNT    = "DU1764495"
@@ -19,7 +39,11 @@ $env:CAPITAL_POOL_ENABLED = "1"
 # Avoid clientId 17 — a stuck elevated node often holds it (Access Denied to kill).
 # flatten-all.js uses 18; keep bridge manager on 27. Execution workers 30-49
 # (20 sockets including 27). One-shots 19/25-26/28-29 stay reserved.
+# Client 93 placed the weekend addon stops. Gateway → API → Settings →
+# "Master API client ID" must be 27 so this process can cancel those orders.
+# Without that checkbox, cancelOrder from 27 does not reach client 93.
 $env:IBKR_CLIENT_ID  = "27"
+$env:IBKR_MASTER_CLIENT_ID = "27"
 $env:IBKR_EXEC_POOL_SIZE = "20"
 $env:IBKR_EXEC_POOL_START = "30"
 # Portfolio marks (updatePortfolio) are the primary MTM source. Tick MD type

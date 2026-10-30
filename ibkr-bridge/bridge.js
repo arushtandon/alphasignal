@@ -54,6 +54,11 @@
  *   LSE→LSE, otherwise SMART (then listing venue on IB error 200). A reject
  *   is not "parked" — TP1 / SL / entries retry until IB shows Working.
  *
+ * Orders go to IBKR from this process. An approved one-off may use another
+ * client id (never 27) and must append each fill to one-off-inbox.json so
+ * the next start posts it to the AlphaSignal ledger. archive/ scripts that
+ * call placeOrder are retired; do not run them.
+ *
  *   A reconciliation sweep runs every few minutes as a belt-and-braces pass:
  *   any open order belonging to a closed key is cancelled, and any key flat
  *   in IB but still "open" in state is marked closed.
@@ -64,6 +69,8 @@
  *   IBKR_HOST            default 127.0.0.1
  *   IBKR_PORT            7497 (TWS paper) or 4002 (Gateway paper)
  *   IBKR_CLIENT_ID       manager socket (run-forever pins 27)
+ *   IBKR_MASTER_CLIENT_ID  Gateway Master API client ID (27). Addon cancels
+ *                        go out on this socket. Set the same value in Gateway.
  *   IBKR_EXEC_POOL_SIZE  execution sockets including manager (default 20, max 25)
  *   IBKR_EXEC_POOL_START first worker id (default 30; skips 18/19/25-26/28-29)
  *   IBKR_ACCOUNT         paper account id (optional; IB default if unset)
@@ -101,6 +108,19 @@ const {
   shouldSkipPairRepair,
   markRepairLocked,
 } = require('../lib/ibkr/runner-oca-repair');
+const {
+  adoptAddonIds,
+  foldAddonOnTp1,
+  isAddonOrder,
+  primaryStopTargetQty,
+  refusePrimaryEnlarge,
+} = require('../lib/ibkr/addon-coverage');
+const {
+  planReopenAbandonedRow,
+  otherOpenRowOwnsConId,
+  shouldAbandonStaleUnfilled,
+  shouldClearFalseOpgFill,
+} = require('../lib/ibkr/held-row');
 const { admitPolledEntries } = require('./account-summary-refresh');
 const { partitionStaleRetries } = require('../lib/schedule/entry-cutoff');
 const {
@@ -1514,8 +1534,33 @@ function placeableContract(contract, exchangeOverride) {
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
+function absorbOneOffInbox(state) {
+  const inbox = path.join(__dirname, 'one-off-inbox.json');
+  if (!fs.existsSync(inbox)) return;
+  let body;
+  try { body = JSON.parse(fs.readFileSync(inbox, 'utf8')); }
+  catch (e) { log('one-off inbox unreadable', e.message); return; }
+  const reports = Array.isArray(body && body.reports) ? body.reports : [];
+  if (!reports.length) return;
+  state.pendingReports = state.pendingReports || [];
+  const have = new Set(state.pendingReports.map(r => String(r && r.execId || '')));
+  let n = 0;
+  for (const r of reports) {
+    const id = String(r && r.execId || '');
+    if (!id || have.has(id)) continue;
+    state.pendingReports.push(r);
+    have.add(id);
+    n++;
+  }
+  if (n) {
+    saveState(state);
+    log('one-off inbox queued', n, 'fill(s) for the ledger');
+  }
+}
+
 async function main() {
   const state = loadState();
+  absorbOneOffInbox(state);
   log(`Bridge start | AlphaSignal=${BASE} | IB=${HOST}:${PORT} clientId=${CLIENT_ID} | execPool=${EXEC_POOL_SIZE} from ${EXEC_POOL_START} | dryRun=${DRY} | outsideRth=${ORDER_OUTSIDE_RTH} | risk/trade=${(RISK_SIZING_LIMITS.riskPct * 100).toFixed(2)}% NLV`);
   log(`SETUP_BOOK_ENABLED=${process.env.SETUP_BOOK_ENABLED === '1' ? '1' : '0'} SETUP_BOOK_PAPER_EXECUTION=${SETUP_BOOK_PAPER_EXECUTION ? '1' : '0'} role=${LIVE_ROLE ? 'live' : 'paper'} account=${ACCOUNT || '(unset)'}`);
   log(`Reconcile every ${(SWEEP_MS / 60000).toFixed(0)}m | Telegram alerts=${telegramConfigured() ? 'ON' : 'OFF (set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)'}`
@@ -4565,8 +4610,30 @@ async function main() {
       return;
     }
     if (row.qtyRunner > 0) {
+      const fold = foldAddonOnTp1({
+        positionRemaining: row.qtyRunner,
+        addonStopQty: Number(row.addonStopId) > 0 ? 1 : 0,
+      });
+      if (fold.cancelAddon && row.addonStopId != null) {
+        const addonOid = row.addonStopId;
+        const master = Number(process.env.IBKR_MASTER_CLIENT_ID) || 0;
+        if (master > 0 && master === activeClientId && ib) {
+          try {
+            _bridgeCancelRequestedAt.set(Number(addonOid), Date.now());
+            ib.cancelOrder(addonOid);
+            log('cancel sent', 'fold addon stop after TP1 ' + key, addonOid,
+              'client=' + master, '(master)');
+          } catch (e) {
+            log('cancel failed', 'fold addon stop after TP1 ' + key, addonOid, e.message);
+          }
+        } else {
+          cancelOrder(addonOid, 'fold addon stop after TP1 ' + key);
+        }
+        row.addonStopId = null;
+        row.addonFoldedAt = new Date().toISOString();
+      }
       transmitOrder(row.stopId, row.contract, runnerStopOrder(row, key, {
-        orderId: row.stopId, auxPrice: runnerStop, totalQuantity: row.qtyRunner,
+        orderId: row.stopId, auxPrice: runnerStop, totalQuantity: fold.primaryStopQty,
         parentId: row.parentId
       }), 'stop→runner/TSL ' + key);
     } else {
@@ -6379,13 +6446,28 @@ async function main() {
       );
       const lot = Math.max(boardLotHint(row.ticker, row.contract && row.contract.lotHint), 1);
       const fullTp1 = !row.tp1Done && isFullQtyTp1(posInDir, lot);
-      // Shrink the stop only when a TP1 LMT is actually working. Planned
-      // half / qtySold is not a fill (MNDI 850→425 naked, PLTR runner dump).
-      // When TP1 is live, runner-only stop: DHL 25 Aug STP 157 + TP1 78 on a
-      // 157 long would otherwise be short 78.
-      const plannedStopQty = protectiveStopQty({
+      const closeLimits = working.filter(o =>
+        o.type === 'LMT' && o.action === closeAction && rowMatchesWorking(row, o)
+      );
+      const adopted = adoptAddonIds(row, stps, closeLimits);
+      if (adopted.stop || adopted.tp1) {
+        if (adopted.stop) rememberOrderClient(state.orderClients, row.addonStopId, row.addonStopClientId);
+        if (adopted.tp1) rememberOrderClient(state.orderClients, row.addonTp1Id, row.addonTp1ClientId);
+        row.updated = new Date().toISOString();
+        log('RECONCILE: adopted addon orders', key,
+          'stop=' + (row.addonStopId || ''), 'tp1=' + (row.addonTp1Id || ''));
+      }
+      const addonStop = row.addonStopId != null
+        ? stps.find(o => Number(o.orderId) === Number(row.addonStopId)) : null;
+      const addonQty = addonStop ? (Number(addonStop.qty) || 0) : 0;
+      const fullCoverQty = protectiveStopQty({
         posInDir, tp1WorkingQty, tp1Done: row.tp1Done, fullTp1
       });
+      // A working addon already covers part of the position. Do not grow the
+      // primary stop up to the full size on top of it.
+      const plannedStopQty = (!row.tp1Done && addonQty > 0)
+        ? primaryStopTargetQty({ positionQty: posInDir, addonStopQty: addonQty })
+        : fullCoverQty;
       const runnerAttribution = row.tp1Done ? attributedRunnerQty(key, row, posInDir) : null;
       if (runnerAttribution && (runnerAttribution.ambiguous || !(runnerAttribution.qty > 0))) {
         log('RECONCILE: skip runner stop — attribution ambiguous', key, runnerAttribution.reason || '');
@@ -6396,7 +6478,7 @@ async function main() {
       // Before TP1 the legacy fallback is safe; after TP1 only its tracked ID
       // can identify the per-row protective order.
       const existing = (row.stopId != null ? stps.find(o => o.orderId === row.stopId) : null)
-        || (!row.tp1Done ? stps[0] : null);
+        || (!row.tp1Done ? stps.find(o => !isAddonOrder(row, o.orderId)) : null);
       if (existing) {
         const ownerCid = Number(existing.clientId) || Number(state.orderClients[existing.orderId]) || 0;
         if (ownerCid > 0) {
@@ -6447,28 +6529,34 @@ async function main() {
           log('RECONCILE: adopted working stop', key, 'orderId=' + existing.orderId, 'stp=' + existing.aux);
         }
         if (stopQty > 0 && Math.abs(existing.qty - stopQty) > 1e-6) {
-          if (!canModify) {
+          if (refusePrimaryEnlarge({
+            currentQty: existing.qty, targetQty: stopQty, addonStopQty: addonQty,
+          })) {
+            log('RECONCILE: refuse primary enlarge while addon stop exists', key,
+              existing.qty, '→', stopQty, 'addon', addonQty);
+          } else if (!canModify) {
             log('RECONCILE: cannot resize stop — missing worker clientId', key,
               existing.qty, '→', stopQty);
-            continue;
+          } else {
+            const resizeSlot = await ensureOwnerSlot(ownerCid);
+            if (!resizeSlot || !resizeSlot.ready) {
+              log('RECONCILE: cannot resize stop — no socket for client', ownerCid, key);
+            } else {
+              transmitOrder(existing.orderId, row.contract, protectiveStopOrder(row, key, {
+                orderId: existing.orderId,
+                action: closeAction,
+                auxPrice: existing.aux > 0 ? existing.aux : roundPx(row.stopPx, row.contract),
+                totalQuantity: stopQty,
+                transmit: true
+              }), 'stop qty in-place ' + key);
+              log('RECONCILE: stop qty updated in place', key, existing.qty, '→', stopQty,
+                '(TP1 working', tp1WorkingQty + ')');
+            }
           }
-          const resizeSlot = await ensureOwnerSlot(ownerCid);
-          if (!resizeSlot || !resizeSlot.ready) {
-            log('RECONCILE: cannot resize stop — no socket for client', ownerCid, key);
-            continue;
-          }
-          transmitOrder(existing.orderId, row.contract, protectiveStopOrder(row, key, {
-            orderId: existing.orderId,
-            action: closeAction,
-            auxPrice: existing.aux > 0 ? existing.aux : roundPx(row.stopPx, row.contract),
-            totalQuantity: stopQty,
-            transmit: true
-          }), 'stop qty in-place ' + key);
-          log('RECONCILE: stop qty updated in place', key, existing.qty, '→', stopQty,
-            '(TP1 working', tp1WorkingQty + ')');
         }
         for (const extra of stps) {
           if (extra.orderId === existing.orderId) continue;
+          if (isAddonOrder(row, extra.orderId)) continue;
           cancelOrder(extra.orderId, 'duplicate stop ' + key);
         }
         continue;
@@ -6576,9 +6664,13 @@ async function main() {
       const lmts = working.filter(o =>
         o.type === 'LMT' && o.action === closeAction && rowMatchesWorking(row, o)
       );
-      const existing = lmts.find(o => Math.abs(o.qty - half) < 1e-6)
-        || (row.tp1Id != null ? lmts.find(o => o.orderId === row.tp1Id) : null)
-        || lmts[0];
+      const adoptStops = working.filter(o =>
+        o.type === 'STP' && o.action === closeAction && rowMatchesWorking(row, o)
+      );
+      adoptAddonIds(row, adoptStops, lmts);
+      const existing = (row.tp1Id != null ? lmts.find(o => o.orderId === row.tp1Id) : null)
+        || lmts.find(o => !isAddonOrder(row, o.orderId) && Math.abs(o.qty - half) < 1e-6)
+        || lmts.find(o => !isAddonOrder(row, o.orderId));
       if (existing) {
         const wantTp1 = Number(row.tp1Px);
         const slack = Math.max(Math.abs(wantTp1) * 0.001, 0.01);
@@ -6608,6 +6700,7 @@ async function main() {
         }
         for (const extra of lmts) {
           if (extra.orderId === existing.orderId) continue;
+          if (isAddonOrder(row, extra.orderId)) continue;
           cancelOrder(extra.orderId, 'duplicate TP1 ' + key);
         }
         continue;
@@ -6621,6 +6714,7 @@ async function main() {
         let cancelled = 0;
         for (const o of stps) {
           if (!keep || o.orderId === keep.orderId) continue;
+          if (isAddonOrder(row, o.orderId)) continue;
           cancelOrder(o.orderId, 'free locates for TP1 ' + key);
           cancelled++;
         }
@@ -6628,6 +6722,7 @@ async function main() {
           log('TP1 — cancelled extra stops to free locates', key, 'n=' + cancelled);
           for (const o of stps) {
             if (!keep || o.orderId === keep.orderId) continue;
+            if (isAddonOrder(row, o.orderId)) continue;
             await waitCancel(o.orderId, 4000);
           }
         }
@@ -7858,6 +7953,32 @@ async function main() {
       //     when the live quote is at/better than the AlphaSignal entry; else
       //     stay OPG through 09:30. Never MKT-EXT (IB queues those until RTH).
       const listedParents = await listWorkingOrdersDetailed();
+      // 30 Oct 2026: 6758.T is short 300. This SELL STP would add to it.
+      // Client 96 cannot cancel a client-30 order (IB 10147) until this
+      // process, which owns client 30, sends the cancel. One attempt.
+      if (!state.wrongSide6758Cancelled) {
+        const wrongSide = (listedParents.orders || []).find(o => Number(o.orderId) === 59148332);
+        if (!wrongSide) {
+          state.wrongSide6758Cancelled = true;
+          saveState(state);
+        } else {
+          const cid = Number(wrongSide.clientId) || 30;
+          const slot = await ensureOwnerSlot(cid);
+          if (slot && slot.api) {
+            try {
+              slot.api.cancelOrder(59148332);
+              log('cancel sent wrong-side 6758 SELL STP', 59148332,
+                'qty=' + wrongSide.qty, 'client=' + cid);
+              state.wrongSide6758Cancelled = true;
+              saveState(state);
+            } catch (e) {
+              log('6758 wrong-side cancel failed', e.message);
+            }
+          } else {
+            log('6758 wrong-side cancel skipped — no socket', cid);
+          }
+        }
+      }
       const workingParentIds = new Set(
         (listedParents.orders || []).map(o => Number(o.orderId)).filter(n => n > 0)
       );
@@ -7941,6 +8062,39 @@ async function main() {
         } catch (e) { log('RECONCILE: rearm failed', key, e.message); }
       }
       for (const [key, row] of Object.entries(state.byKey)) {
+        if (row && row.closed && row.staleUnfilledAbandoned && row.ticker) {
+          const reopenContract = row.contract || toContract(row.ticker);
+          const reopenHeld = heldForContract(reopenContract);
+          const reopenPos = reopenHeld
+            ? (row.side === 'sell' ? -reopenHeld.pos : reopenHeld.pos) : 0;
+          const reopenPlan = planReopenAbandonedRow({
+            row,
+            posInDir: reopenPos,
+            otherOpenOwns: otherOpenRowOwnsConId(state.byKey, reopenContract && reopenContract.conId, key),
+            orders: listedParents.orders || [],
+            conId: reopenContract && reopenContract.conId,
+          });
+          if (reopenPlan.reopen) {
+            row.closed = false;
+            row.staleUnfilledAbandoned = false;
+            row.entryFilled = true;
+            if (reopenPlan.stopId) {
+              row.stopId = reopenPlan.stopId;
+              row.stopClientId = reopenPlan.stopClientId;
+              rememberOrderClient(state.orderClients, reopenPlan.stopId, reopenPlan.stopClientId);
+            }
+            if (reopenPlan.tp1Id) {
+              row.tp1Id = reopenPlan.tp1Id;
+              row.tp1ClientId = reopenPlan.tp1ClientId;
+              rememberOrderClient(state.orderClients, reopenPlan.tp1Id, reopenPlan.tp1ClientId);
+            }
+            row.updated = new Date().toISOString();
+            saveState(state);
+            log('RECONCILE: reopened held row', key, 'pos', reopenPos,
+              'stop=' + (row.stopId || ''), 'tp1=' + (row.tp1Id || ''),
+              '— orders left as they are');
+          }
+        }
         if (row.closed || !row.ticker) continue;
         if (keyState.get(key) !== 'open' && !row.userReentry && !keepUnfilledWorking(row, key)) continue;
         const srcEvt = entryByKey.get(key);
@@ -7955,7 +8109,7 @@ async function main() {
         const market = contract.market || (contract.usRth ? 'US' : '');
         const phase = sessionPhase(contract);
         const asia = market === 'HK' || market === 'JP';
-        const held = posMap.get(posKeyOf(contract));
+        const held = heldForContract(contract);
         const posInDir = held ? (row.side === 'sell' ? -held.pos : held.pos) : 0;
         // Only attribute fills to THIS parent — sibling horizons share a symbol
         // (e.g. 2914.T short filled must not mark 2914.T long filled).
@@ -7976,8 +8130,13 @@ async function main() {
         // False fill: sibling horizon stamped entryFilled while this OPG never
         // filled. Only clear when THIS parent has zero fills — otherwise we
         // re-arm and double-buy (2914.T long entered twice today).
-        if (row.entryFilled && asia && phase === 'rth' && row.entryStyle === 'OPG'
-          && parentFilledQty <= 0) {
+        if (asia && phase === 'rth' && shouldClearFalseOpgFill({
+          entryFilled: row.entryFilled,
+          entryStyle: row.entryStyle,
+          parentFilledQty,
+          posInDir,
+          ibAvgFill: row.ibAvgFill,
+        })) {
           log('RECONCILE: clearing false entryFilled on OPG Asia row', key);
           row.entryFilled = false;
           saveState(state);
@@ -8021,7 +8180,13 @@ async function main() {
             Number.isFinite(tradeTs) ? tradeTs : Infinity,
             Number.isFinite(keyDayTs) ? keyDayTs : Infinity
           );
-          if (Number.isFinite(oldest) && oldest !== Infinity && (Date.now() - oldest) > MAX_EVENT_AGE_MS) {
+          if (shouldAbandonStaleUnfilled({
+            posInDir,
+            ibAvgFill: row.ibAvgFill,
+            ageExceeded: Number.isFinite(oldest) && oldest !== Infinity
+              && (Date.now() - oldest) > MAX_EVENT_AGE_MS,
+            positionsReady,
+          })) {
             log('RECONCILE: abandon stale unfilled key', key);
             if (row.parentId != null) cancelOrder(row.parentId, 'stale-unfilled parent ' + key);
             if (row.stopId != null) cancelOrder(row.stopId, 'stale-unfilled stop ' + key);
